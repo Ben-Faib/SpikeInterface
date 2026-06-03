@@ -180,6 +180,175 @@ def _render_footer(status) -> str:
             '16 neural channels (raw 1–16) with 6 analog aux channels (analog 1–6).</div>')
 
 
+def _render_lfp(lfp) -> str:
+    if lfp is None:
+        return '<p class="skip">LFP failed to load — see the status banner.</p>'
+    from scipy.signal import welch
+
+    fs = lfp.get_sampling_frequency()
+    n = int(min(LFP_WINDOW_S, lfp.get_total_duration()) * fs)
+    chan_ids = list(lfp.get_channel_ids())[:LFP_MAX_CHANNELS]
+    traces = lfp.get_traces(start_frame=0, end_frame=n, channel_ids=chan_ids)
+    t = np.arange(n) / fs
+
+    # Stacked traces with a vertical offset so channels don't overlap.
+    spacing = 1.2 * float(np.nanpercentile(np.abs(traces), 99)) if traces.size else 1.0
+    spacing = spacing or 1.0
+    traces_fig = go.Figure()
+    for i, ch in enumerate(chan_ids):
+        traces_fig.add_trace(go.Scatter(x=t, y=traces[:, i] + i * spacing, mode="lines",
+                                        name=str(ch), line=dict(width=0.8)))
+    traces_fig.update_yaxes(tickvals=[i * spacing for i in range(len(chan_ids))],
+                            ticktext=[str(c) for c in chan_ids], title="channel")
+    traces_fig.update_layout(title=f"LFP — first {LFP_WINDOW_S:g}s, {len(chan_ids)} channels @ {fs:g} Hz",
+                             xaxis_title="time (s)", height=460, margin=dict(t=40, b=40))
+
+    # Power spectrum (Welch) over the same channels.
+    psd_fig = go.Figure()
+    for i, ch in enumerate(chan_ids):
+        f, pxx = welch(traces[:, i], fs=fs, nperseg=min(1024, n))
+        psd_fig.add_trace(go.Scatter(x=f, y=pxx, mode="lines", name=str(ch), line=dict(width=1)))
+    psd_fig.update_layout(title="LFP power spectrum (Welch)", xaxis_title="frequency (Hz)",
+                          yaxis_title="power", yaxis_type="log", height=380, margin=dict(t=40, b=40))
+
+    return ('<p class="note">First few channels shown stacked; toggle channels via the legend.</p>'
+            + _fig_html(traces_fig) + _fig_html(psd_fig))
+
+
+def _spike_figs(unit_ids, train_seconds, title_prefix):
+    """Build (raster_fig, rate_fig) from a {unit_id: spike_times_seconds} provider."""
+    trains = {u: np.asarray(train_seconds(u), dtype=float) for u in unit_ids}
+    duration = max((tr[-1] for tr in trains.values() if tr.size), default=1.0) or 1.0
+
+    raster = go.Figure()
+    for row, u in enumerate(unit_ids):
+        tr = trains[u]
+        raster.add_trace(go.Scatter(x=tr, y=np.full(tr.shape, row), mode="markers",
+                                    marker=dict(symbol="line-ns-open", size=6),
+                                    name=f"unit {int(u)}"))
+    raster.update_yaxes(tickvals=list(range(len(unit_ids))),
+                        ticktext=[str(int(u)) for u in unit_ids], title="unit id")
+    raster.update_layout(title=f"{title_prefix} — spike raster ({len(unit_ids)} units)",
+                         xaxis_title="time (s)", height=max(320, 22 * len(unit_ids) + 80),
+                         margin=dict(t=40, b=40), showlegend=False)
+
+    rates = [trains[u].size / duration for u in unit_ids]
+    rate = go.Figure(go.Bar(x=[str(int(u)) for u in unit_ids], y=rates))
+    rate.update_layout(title=f"{title_prefix} — mean firing rate", xaxis_title="unit id",
+                       yaxis_title="rate (Hz)", height=360, margin=dict(t=40, b=40))
+    return raster, rate
+
+
+def _render_nev(nev) -> str:
+    if nev is None:
+        return '<p class="skip">.nev units failed to load — see the status banner.</p>'
+    fs = nev.get_sampling_frequency()
+    unit_ids = list(nev.get_unit_ids())
+    raster, rate = _spike_figs(unit_ids, lambda u: nev.get_unit_spike_train(u) / fs,
+                               "Online (.nev) units")
+    return ('<p class="note">Already-detected online units from the .nev. '
+            'Blackrock convention: unit 0 = unsorted threshold crossings, 1..n = sorted, 255 = noise.</p>'
+            + _fig_html(raster) + _fig_html(rate))
+
+
+def _render_sorted(analyzer) -> str:
+    if analyzer is None:
+        return ('<p class="skip">No saved analyzer found — run a sort from the launcher '
+                '(<code>python scripts/make_report.py</code>).</p>')
+    sorting = analyzer.sorting
+    fs = analyzer.sampling_frequency
+    unit_ids = list(analyzer.unit_ids)
+    dur = analyzer.get_total_duration()
+
+    raster, rate = _spike_figs(unit_ids, lambda u: sorting.get_unit_spike_train(u) / fs,
+                               "Sorted (tridesclous2) units")
+
+    # Waveform templates: each unit on its peak-to-peak best channel.
+    tex = analyzer.get_extension("templates")
+    templates = tex.get_data()            # (n_units, n_samples, n_channels)
+    nbefore = tex.nbefore
+    chan_ids = list(analyzer.channel_ids)
+    n_samples = templates.shape[1]
+    tms = (np.arange(n_samples) - nbefore) / fs * 1000.0
+    wf = go.Figure()
+    for i, u in enumerate(unit_ids):
+        best = int(np.argmax(np.ptp(templates[i], axis=0)))   # numpy 2.x: ndarray.ptp() removed
+        wf.add_trace(go.Scatter(x=tms, y=templates[i][:, best], mode="lines",
+                                name=f"unit {int(u)} (ch {chan_ids[best]})"))
+    wf.update_layout(title="Waveform template per unit (best channel)",
+                     xaxis_title="time from trough (ms)", yaxis_title="amplitude (a.u.)",
+                     height=440, margin=dict(t=40, b=40))
+
+    return (f'<p class="note">Sorted with tridesclous2 over {dur:.1f}s sorted data, '
+            f'{len(unit_ids)} units. Toggle units via the legend.</p>'
+            '<div class="caveat">Placeholder independent-channel probe + 6 analog aux channels '
+            'are included — cross-channel spatial structure is not physical.</div>'
+            + _fig_html(raster) + _fig_html(rate) + _fig_html(wf))
+
+
+def _render_qc(analyzer) -> str:
+    if analyzer is None:
+        return '<p class="skip">No saved analyzer — quality metrics unavailable.</p>'
+    qm = analyzer.get_extension("quality_metrics").get_data()  # DataFrame, index = unit ids
+    cols = [c for c in ["firing_rate", "snr", "isi_violations_ratio", "isi_violations_count"]
+            if c in qm.columns]
+    qm = qm.sort_values("snr", ascending=False) if "snr" in qm.columns else qm
+
+    headers = "".join(
+        f'<th onclick="sortTable(this.closest(\'table\'),{j + 1},true)">{html.escape(c)}</th>'
+        for j, c in enumerate(cols)
+    )
+    rows = ""
+    for uid, r in qm.iterrows():
+        cells = "".join(f"<td>{r[c]:.3g}</td>" for c in cols)
+        rows += (f'<tr><td onclick="sortTable(this.closest(\'table\'),0,true)">{int(uid)}</td>{cells}</tr>')
+    table = (f'<p class="note">Click a column header to sort.</p>'
+             f'<table class="qc"><thead><tr>'
+             f'<th onclick="sortTable(this.closest(\'table\'),0,true)">unit</th>{headers}</tr></thead>'
+             f'<tbody>{rows}</tbody></table>')
+
+    scatter = ""
+    if {"firing_rate", "snr"} <= set(qm.columns):
+        size = None
+        if "isi_violations_ratio" in qm.columns:
+            viol = qm["isi_violations_ratio"].to_numpy(dtype=float)
+            size = 8 + 18 * (viol / viol.max()) if viol.max() > 0 else None
+        fig = go.Figure(go.Scatter(
+            x=qm["firing_rate"], y=qm["snr"], mode="markers+text",
+            text=[str(int(u)) for u in qm.index], textposition="top center",
+            marker=dict(size=size if size is not None else 12),
+            hovertemplate="unit %{text}<br>rate %{x:.2f} Hz<br>SNR %{y:.2f}<extra></extra>"))
+        fig.update_layout(title="SNR vs firing rate (marker size = ISI-violation ratio)",
+                          xaxis_title="firing rate (Hz)", yaxis_title="SNR",
+                          height=420, margin=dict(t=40, b=40))
+        scatter = _fig_html(fig)
+    return table + scatter
+
+
+def _render_events(events) -> str:
+    if events is None:
+        return '<p class="skip">Events could not be read (best-effort) — see the status banner.</p>'
+    nonempty = [e for e in events if len(e["times"])]
+    empty_names = [e["name"] for e in events if not len(e["times"])]
+    if not nonempty:
+        return ('<p class="skip">No event markers present in this recording '
+                f'({len(events)} event channel(s), all empty).</p>')
+    fig = go.Figure()
+    for row, e in enumerate(nonempty):
+        times = np.asarray(e["times"], dtype=float)
+        fig.add_trace(go.Scatter(x=times, y=np.full(times.shape, row), mode="markers",
+                                 marker=dict(symbol="line-ns-open", size=8),
+                                 name=f'{e["name"]} ({times.size})'))
+    fig.update_yaxes(tickvals=list(range(len(nonempty))),
+                     ticktext=[e["name"] for e in nonempty], title="event channel")
+    fig.update_layout(title="Digital / analog event markers over time",
+                      xaxis_title="time (s)", height=max(280, 40 * len(nonempty) + 120),
+                      margin=dict(t=40, b=40), showlegend=False)
+    note = (f'<p class="note">Empty channels: {html.escape(", ".join(empty_names))}.</p>'
+            if empty_names else "")
+    return _fig_html(fig) + note
+
+
 # --------------------------------------------------------------------------- #
 # Public entry point
 # --------------------------------------------------------------------------- #
@@ -191,6 +360,11 @@ def build_report(data_dir=None, analyzer_dir=None, out_path=None) -> Path:
     objects, status = _gather(data_dir, analyzer_dir)
     sections = [
         _safe_section("status", "Status & provenance", _render_status, status),
+        _safe_section("lfp", "LFP (.ns2 @ 1 kHz)", _render_lfp, objects.get("lfp")),
+        _safe_section("nev", ".nev online units", _render_nev, objects.get("nev")),
+        _safe_section("sorted", "Sorted units (tridesclous2)", _render_sorted, objects.get("analyzer")),
+        _safe_section("qc", "Quality metrics", _render_qc, objects.get("analyzer")),
+        _safe_section("events", "Events", _render_events, objects.get("events")),
         _safe_section("footer", "About", _render_footer, status),
     ]
     out_path.write_text(_html_document("PFCM7 recording report", sections), encoding="utf-8")
