@@ -41,6 +41,12 @@ desktop.ini
 .vscode/
 .idea/
 
+# --- Editor swap/backup files ---
+*.swp
+*.swo
+*.swn
+*~
+
 # --- R session cruft ---
 .Rhistory
 .RData
