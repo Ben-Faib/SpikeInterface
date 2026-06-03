@@ -1,0 +1,49 @@
+# Conda environment for SpikeInterface — works on macOS, Windows and Linux.
+#
+# Create it with:
+#     conda env create -f environment.yml
+#     conda activate si_env
+#
+# The heavy compiled packages (numpy, scipy, numba, hdbscan, scikit-learn,
+# h5py, zarr) come from conda-forge as pre-built binaries, which is the most
+# robust way to get a working scientific stack on both macOS and Windows.
+# SpikeInterface itself (and its pure/wheel-only deps) is installed with pip.
+#
+# Based on SpikeInterface's tested "beginner" environment, with the
+# Linux-only helpers (htop, libxcb, cxx-compiler) and the GPU-only Kilosort
+# sorter removed so it installs cleanly everywhere. The CPU sorters used by
+# scripts/run_sorting.py (tridesclous2, spykingcircus2) are bundled in
+# spikeinterface[full] below — no extra packages needed. See README.md to add a
+# GPU sorter (Kilosort) later if you have an NVIDIA GPU.
+name: si_env
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip
+  # --- scientific stack (binary wheels from conda-forge) ---
+  - numpy
+  - scipy
+  - joblib
+  - tqdm
+  - matplotlib
+  - h5py
+  - pandas
+  - xarray
+  - zarr<3            # SpikeInterface does not support zarr 3.x yet
+  - scikit-learn
+  - hdbscan
+  - networkx
+  - numba
+  - loky
+  # --- notebooks + interactive plotting ---
+  - jupyterlab
+  - ipywidgets
+  - ipympl
+  # --- Qt backend for the optional desktop GUIs (spikeinterface-gui, ephyviewer) ---
+  - pyqt=5
+  - pyqtgraph
+  - pip:
+      - "spikeinterface[full,widgets]"
+      - spikeinterface-gui
+      - ephyviewer

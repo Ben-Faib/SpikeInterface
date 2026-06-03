@@ -1,0 +1,47 @@
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# --- Virtual environments ---
+si_env/
+.venv/
+venv/
+env/
+ENV/
+
+# --- Raw recordings (large; keep out of git) ---
+# The .ns5 broadband is ~176 MB — over GitHub's 100 MB/file limit, so committing
+# it would break a push. Track raw data with git-lfs / DVC or out-of-band instead.
+*.ns[1-6]
+*.nev
+
+# --- SpikeInterface / analysis outputs ---
+outputs/
+results/
+cache/
+*.zarr/
+analyzer*/
+sorter_output*/
+*_recording/
+waveforms*/
+toy_example_recording/
+
+# --- Jupyter ---
+.jupyter/
+
+# --- OS cruft ---
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# --- IDE ---
+.vscode/
+.idea/
+
+# --- R session cruft ---
+.Rhistory
+.RData
+.Rproj.user/
