@@ -39,7 +39,9 @@ Python 3.12.13.
   rec}, backend='ephyviewer')` (blocks on `app.exec()` — run in a subprocess).
 - **`compare_two_sorters(s1, s2, sorting1_name=, sorting2_name=)`** →
   `SymmetricSortingComparison`. Heatmap matrix = `get_ordered_agreement_scores()`;
-  matched/unmatched from `hungarian_match_12` (value `-1` = unmatched).
+  matched/unmatched from `hungarian_match_12` (unmatched sentinel is `""` in
+  SpikeInterface 0.104.3 — parse partner ids with `int()` and treat `""`/`-1` as
+  unmatched).
 - **Commensurability caveat:** the two saved sorts are NOT comparable as-is —
   `tridesclous2` = 132.0 s / 19 units (full), `spykingcircus2` = 10.0 s / 14 units
   (smoke run). Comparing them yields ~0 matches purely from the window mismatch.

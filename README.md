@@ -238,8 +238,8 @@ wired into `run_sorting.py`. **Kilosort4** is faster but needs an NVIDIA GPU
 
 ```bash
 conda activate si_env
-python scripts/make_report.py     # prints a health check, offers a re-sort menu,
-                                  # then writes outputs/report.html
+python SpikeInterface_Menu.py report   # build + open outputs/report.html
+# scripts/make_report.py still works — it's now a thin shim that calls the above
 ```
 
 `outputs/report.html` is a **single self-contained file** (open it in any
@@ -249,12 +249,11 @@ spectrum, the **`.nev`** online units, the **sorted units** (raster + waveform
 templates), **quality metrics** (sortable table + SNR-vs-rate scatter), and the
 **event-marker** timeline.
 
-`make_report.py` reloads the raw data through the loaders every time (so it
-re-checks that loading works) and visualises the **saved** sort. Press **Enter**
-to reuse that sort, or pick a **quick** (first 30 s) or **full** re-sort from the
-menu first — re-sorting just runs `run_sorting.py` for you. Each section is
-isolated, so if one stage is broken it shows up as a red/SKIP row instead of
-crashing the report.
+The report reloads the raw data through the loaders every time (so it re-checks
+that loading works) and visualises the **saved** sort. To (re-)run a sort first,
+use the launcher's menu (`python SpikeInterface_Menu.py` → *Run / re-run
+sorting*) or `python scripts/run_sorting.py`. Each section is isolated, so if one
+stage is broken it shows up as a red/SKIP row instead of crashing the report.
 
 ## Windows notes
 

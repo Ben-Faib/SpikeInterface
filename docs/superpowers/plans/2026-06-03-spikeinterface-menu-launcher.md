@@ -209,15 +209,31 @@ def _heatmap(cmp) -> go.Figure:
 
 
 def _match_table(cmp) -> str:
-    hm = cmp.hungarian_match_12  # sorter1 unit id -> sorter2 unit id (-1 = unmatched)
+    # Hungarian optimal 1:1 assignment. The unmatched sentinel varies by
+    # SpikeInterface version / dtype: it can be "" (empty string, the case in
+    # 0.104.3) or -1, and matched partner ids may be ints or numeric strings.
+    # int()-parsing handles every encoding: "" / None / NaN -> unmatched (int()
+    # raises), -1 -> unmatched.
+    hm = cmp.hungarian_match_12  # sorter1 unit id -> partner unit id
+
+    def _partner(v):
+        try:
+            iv = int(v)
+        except (TypeError, ValueError):
+            return None
+        return None if iv == -1 else iv
+
     rows = ""
+    n_matched = 0
     for u1, u2 in hm.items():
-        matched = u2 != -1
-        partner = str(int(u2)) if matched else "—"
-        frac = cmp.get_agreement_fraction(u1, u2) if matched else 0.0
+        p = _partner(u2)
+        if p is None:
+            partner, frac = "—", 0.0
+        else:
+            partner, frac = str(p), cmp.get_agreement_fraction(u1, u2)
+            n_matched += 1
         rows += f"<tr><td>{int(u1)}</td><td>{partner}</td><td>{frac:.3g}</td></tr>"
-    n_matched = int((hm != -1).sum())
-    n_unmatched = int((hm == -1).sum())
+    n_unmatched = len(hm) - n_matched
     summary = (f'<p class="note">{n_matched} matched · {n_unmatched} unmatched '
                f'{cmp.sorting1_name} units · delta_time={DELTA_TIME_MS} ms · '
                f'match_score={MATCH_SCORE}. Click a header to sort.</p>')
