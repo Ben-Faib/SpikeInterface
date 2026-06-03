@@ -31,6 +31,8 @@ python scripts/run_sorting.py --sorter spykingcircus2
 python scripts/run_sorting.py --duration 30    # quick smoke test: sort only first 30 s
 python scripts/run_sorting.py --verbosity normal    # step messages + table only, no progress bars
 python scripts/run_sorting.py --verbosity quiet     # only the final quality-metrics table
+python scripts/make_report.py          # interactive: loader health + re-sort menu -> outputs/report.html
+python scripts/make_report.py --data-dir /path/to/recording
 jupyter lab notebooks/01_explore_lfp_and_spikes.ipynb   # explore LFP + .nev units
 jupyter lab notebooks/02_spike_sorting.ipynb            # interactive sort of the .ns5 broadband
 ```
@@ -63,6 +65,8 @@ All loaders default to reading the repo root and accept `data_dir=...` to point 
 - `configure_output()` runs **before** importing SpikeInterface (so env vars/the tqdm patch land before OpenMP/Numba/the sorters init). It mutes chatter at *every* level: sets `KMP_WARNINGS`/`PYTHONWARNINGS` (kills the OpenMP banner + covers worker subprocesses), filters the probe/resource_tracker/non-persistent `UserWarning`s, and mutes `NumbaWarning` by **category** (a message regex misses it — numba prepends ANSI codes to the message).
 - `_install_aligned_tqdm()` (verbose only) monkeypatches `tqdm` so every bar is uniform: strips the `(no parallelization)`/`(workers: …)` suffix, pads each description to a **fixed width** (`_TQDM_DESC_WIDTH`), and draws a **fixed-width coloured** bar (`_TQDM_BAR_WIDTH`/`_TQDM_BAR_COLOUR`, not stretched to the terminal edge) via one `bar_format`. Must patch before the SpikeInterface import so the libraries' `from tqdm.auto import tqdm` picks up the subclass.
 - `ConsoleUI` renders the structured output with **rich** (now an explicit dep; degrades to plain `print` if rich is absent): a banner rule, numbered `[i/N]` phase headers (cyan/bold), dim detail lines, a boxed per-unit quality-metrics `Table`, and a green `✓ Done` line. Colours auto-disable when stdout isn't a TTY.
+
+`scripts/report.py` builds a single self-contained `outputs/report.html` (Plotly JS **inlined**, so it opens offline) via `build_report(data_dir, analyzer_dir, out_path)`. Each loader stage runs in its own try/except (a failure becomes a red/SKIP row in the status banner, never a crashed report), and sorted-unit data — sorting, waveform templates, quality metrics — is read **only** from the saved `SortingAnalyzer` (its single source of truth; the loose `outputs/<sorter>/sorting/` folder and `quality_metrics.csv` are from other runs and ignored). Sections: status banner, LFP traces + Welch spectrum, `.nev` online units, sorted units (raster/rates/templates), quality metrics (sortable table + SNR scatter), event-marker timeline, footer. `scripts/make_report.py` is the **interactive launcher**: it prints loader health + live sort provenance, offers a *reuse / quick / full re-sort* terminal menu (no CLI flag — re-sorting shells out to `run_sorting.py`, coupling only to its CLI + `outputs/<sorter>/` layout, never its stdout), then builds the report. Non-interactive stdin defaults to reuse, so it never blocks.
 
 Non-obvious behaviours baked into the loaders — preserve these when editing:
 

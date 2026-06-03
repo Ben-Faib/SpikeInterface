@@ -220,6 +220,28 @@ wired into `run_sorting.py`. **Kilosort4** is faster but needs an NVIDIA GPU
 (CUDA + PyTorch, `pip install kilosort`) and so won't run on this Mac. Kilosort
 1–3, IronClust, etc. need MATLAB or Docker.
 
+## One-glance HTML report
+
+```bash
+conda activate si_env
+python scripts/make_report.py     # prints a health check, offers a re-sort menu,
+                                  # then writes outputs/report.html
+```
+
+`outputs/report.html` is a **single self-contained file** (open it in any
+browser — Plotly is inlined, so it works offline) that lets you confirm the whole
+pipeline at a glance: a PASS/FAIL **status banner**, **LFP** traces + power
+spectrum, the **`.nev`** online units, the **sorted units** (raster + waveform
+templates), **quality metrics** (sortable table + SNR-vs-rate scatter), and the
+**event-marker** timeline.
+
+`make_report.py` reloads the raw data through the loaders every time (so it
+re-checks that loading works) and visualises the **saved** sort. Press **Enter**
+to reuse that sort, or pick a **quick** (first 30 s) or **full** re-sort from the
+menu first — re-sorting just runs `run_sorting.py` for you. Each section is
+isolated, so if one stage is broken it shows up as a red/SKIP row instead of
+crashing the report.
+
 ## Windows notes
 
 - **Multiprocessing:** when you call SpikeInterface functions with `n_jobs > 1`
