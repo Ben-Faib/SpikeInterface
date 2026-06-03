@@ -23,6 +23,9 @@ Spike sorting **is** possible because the raw broadband `.ns5` is present. Two f
 
 ```bash
 conda activate si_env                  # env is conda, Python 3.12, named si_env
+python SpikeInterface_Menu.py          # ⭐ single front door: status dashboard + menu (explore/sort/report/gui/traces/compare/verify)
+python SpikeInterface_Menu.py report   # or run one action directly: explore|sort|report|gui|traces|compare|verify
+python SpikeInterface_Menu.py gui --sorter tridesclous2   # spikeinterface-gui (sigui) on the saved sort
 python scripts/verify_install.py       # smoke test — lib versions, LFP + broadband + sorters summary
 python scripts/explore_data.py         # writes lfp_traces.png / spike_raster.png / firing_rates.png to outputs/ (git-ignored)
 python scripts/explore_data.py --data-dir /path/to/other/recording
@@ -33,6 +36,7 @@ python scripts/run_sorting.py --verbosity normal    # step messages + table only
 python scripts/run_sorting.py --verbosity quiet     # only the final quality-metrics table
 python scripts/make_report.py          # interactive: loader health + re-sort menu -> outputs/report.html
 python scripts/make_report.py --data-dir /path/to/recording
+python scripts/compare.py              # agreement matrix between the two sorters -> outputs/comparison.html
 jupyter lab notebooks/01_explore_lfp_and_spikes.ipynb   # explore LFP + .nev units
 jupyter lab notebooks/02_spike_sorting.ipynb            # interactive sort of the .ns5 broadband
 ```
@@ -67,6 +71,22 @@ All loaders default to reading the repo root and accept `data_dir=...` to point 
 - `ConsoleUI` renders the structured output with **rich** (now an explicit dep; degrades to plain `print` if rich is absent): a banner rule, numbered `[i/N]` phase headers (cyan/bold), dim detail lines, a boxed per-unit quality-metrics `Table`, and a green `✓ Done` line. Colours auto-disable when stdout isn't a TTY.
 
 `scripts/report.py` builds a single self-contained `outputs/report.html` (Plotly JS **inlined**, so it opens offline) via `build_report(data_dir, analyzer_dir, out_path)`. Each loader stage runs in its own try/except (a failure becomes a red/SKIP row in the status banner, never a crashed report), and sorted-unit data — sorting, waveform templates, quality metrics — is read **only** from the saved `SortingAnalyzer` (its single source of truth; the loose `outputs/<sorter>/sorting/` folder and `quality_metrics.csv` are from other runs and ignored). Sections: status banner, LFP traces + Welch spectrum, `.nev` online units, sorted units (raster/rates/templates), quality metrics (sortable table + SNR scatter), event-marker timeline, footer. `scripts/make_report.py` is the **interactive launcher**: it prints loader health + live sort provenance, offers a *reuse / quick / full re-sort* terminal menu (no CLI flag — re-sorting shells out to `run_sorting.py`, coupling only to its CLI + `outputs/<sorter>/` layout, never its stdout), then builds the report. Non-interactive stdin defaults to reuse, so it never blocks.
+
+`SpikeInterface_Menu.py` (repo **root**, not `scripts/`) is the single front-door
+launcher: run bare it prints a status dashboard (via `report._gather`) + a
+numbered menu; run with an action (`report`, `sort`, `gui`, `traces`, `compare`,
+`verify`, `explore`) it dispatches directly. It shells out to the `scripts/*.py`
+for explore/sort/verify (live stdout), calls `report.build_report(...)`
+in-process, and launches the **blocking** Qt GUIs in fresh child processes
+(`_self`): the inspector is `spikeinterface-gui` (console command **`sigui
+<analyzer_dir>`**, not `spikeinterface-gui`) and the trace browser is
+`plot_traces(..., backend="ephyviewer")`. `make_report.py` is now a thin shim
+over the launcher's `report` action. `scripts/compare.py` builds a standalone
+`outputs/comparison.html` from `compare_two_sorters`; it refuses to draw a
+misleading matrix when the two sorts cover different windows (the launcher's
+`compare` action offers to re-sort both over a common window first). The Qt
+binding in `si_env` is **PyQt5** (the `PySide6<6.8` pin is satisfied by a pip
+install but the conda env resolves to PyQt5; either works).
 
 Non-obvious behaviours baked into the loaders — preserve these when editing:
 

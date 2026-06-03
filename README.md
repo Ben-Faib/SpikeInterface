@@ -117,6 +117,20 @@ you're ready.
 Activate the environment first — once per terminal (Windows: the **Anaconda
 Prompt** is the zero-config option; PowerShell/cmd work too after `conda init`):
 
+### Quick start — the menu
+
+Once set up, the simplest way in is the single launcher at the repo root:
+
+```bash
+conda activate si_env
+python SpikeInterface_Menu.py        # status dashboard + a numbered menu
+```
+
+Pick a number to explore the data, run a sort, build & open the interactive HTML
+report, open the `spikeinterface-gui` inspector, scroll raw traces, or compare
+the two sorters. Power users can run a single action directly, e.g.
+`python SpikeInterface_Menu.py report` or `python SpikeInterface_Menu.py gui`.
+
 ```bash
 conda activate si_env
 ```
