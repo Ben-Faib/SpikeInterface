@@ -30,11 +30,24 @@ and digital events — all in one file you open in a browser and scroll.
 - The pipeline already runs end-to-end. `outputs/tridesclous2/` holds a saved
   `Sorting`, a `SortingAnalyzer` (with `templates` + `quality_metrics`
   extensions), and `quality_metrics.csv`.
-- **The saved sort is a 20 s smoke test, not the full recording**
-  (`analyzer/.../recording_attributes.json` → `num_samples: 600000` @ 30 kHz =
-  20 s; 18 units). The launcher must show this provenance so the user always
-  knows what they're looking at, and the **full re-sort** menu option is the way
-  to upgrade it.
+- **Read sort provenance LIVE from the loaded analyzer, never from the cached
+  JSON.** The loaded analyzer reports `get_total_duration() = 132.0 s`, 18 units
+  (verified 2026-06-03), even though the stale
+  `analyzer/.../recording_attributes.json` snapshot says `num_samples: 600000`
+  (20 s) from an earlier run. The launcher shows whatever the analyzer reports at
+  runtime so it is always correct; the **full re-sort** menu option refreshes it.
+- **The `analyzer/` is the single source of truth; `outputs/.../sorting/` and
+  `quality_metrics.csv` are from a *different* run** (their unit-id sets differ
+  from the analyzer's). The report reads sorting + templates + QC ALL from the
+  analyzer (`analyzer.sorting`, `get_extension("templates")`,
+  `get_extension("quality_metrics")`) so nothing can disagree; it ignores the
+  loose `sorting/` folder and CSV.
+- API facts verified against `si_env` (2026-06-03): `.nev` → 6 units (ids 0–5,
+  0 = unsorted); templates `get_data()` shape `(n_units, n_samples, n_channels)`
+  with `tex.nbefore`; QC columns `firing_rate, snr, isi_violations_ratio,
+  isi_violations_count` indexed by unit id; events present
+  (`analog_input_channel_1`, 748 markers). **numpy 2.4.6 removed
+  `ndarray.ptp()`** — use `np.ptp(arr, axis=...)`.
 - Broadband stream = 16 real neural channels (`raw 1–16`, ~0.25 µV/bit) + 6
   analog aux channels (`analog 1–6`, mV-scale). Sorting currently runs on all 22.
   The report labels this; it does not change it.
@@ -95,6 +108,16 @@ broadband to Plotly.
    subprocess (passing the chosen duration and a sensible `--verbosity`), so all
    sorting + verbosity logic is reused, not duplicated. After it finishes, build
    the report against the freshly written analyzer.
+
+   **Coupling rule (so `run_sorting.py`'s in-flux terminal output can't break
+   us):** the launcher couples ONLY to `run_sorting.py`'s *CLI surface*
+   (`--duration / --verbosity / --data-dir / --sorter`) and its *filesystem
+   output* (`outputs/<sorter>/analyzer`). It must NOT parse `run_sorting`'s
+   stdout. Detect success from the subprocess **exit code + the analyzer dir
+   existing**, and let the subprocess **inherit stdout/stderr** so its (evolving)
+   verbosity output streams live to the user. The exact flag names/defaults are
+   re-read from the current `run_sorting.py` when the subprocess call is wired,
+   in case the verbosity work renames or re-defaults them.
 5. **Non-interactive safety:** if stdin is not a TTY (CI / piped), skip the menu
    and default to reuse, so the script never blocks. Accept `--data-dir` only
    (no `--resort`-style flag — re-sorting is a menu choice, per the user).
