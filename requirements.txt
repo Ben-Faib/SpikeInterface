@@ -11,8 +11,11 @@
 #     uv pip install -r requirements.txt
 #
 # Use Python 3.12 — it has pre-built wheels for every dependency below on both
-# macOS and Windows (Python 3.13 lacks some, e.g. hdbscan, on Windows).
+# macOS and Windows, so pip never has to compile from source (which on Windows
+# would need the MSVC C++ Build Tools). 3.13 has broader wheel coverage than it
+# used to, but some deps can still lag, so 3.12 is the tested choice.
 spikeinterface[full,widgets]
+rich                # structured/coloured terminal output in scripts/run_sorting.py
 jupyterlab
 ipywidgets
 ipympl

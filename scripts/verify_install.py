@@ -24,6 +24,7 @@ import blackrock_io as bio  # noqa: E402
 
 
 def main() -> int:
+    bio.use_utf8_stdout()  # so the final "✓" line can't crash on a Windows console
     print("=== Library versions ===")
     import spikeinterface as si
 

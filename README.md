@@ -53,7 +53,9 @@ winget install -e --id Anaconda.Miniconda3   REM or run the installer from the l
 ```
 
 Then open **"Anaconda Prompt (miniconda3)"** from the Start menu and run every
-command below there — **not** in PowerShell.
+command below there — it has `conda` pre-initialised, so it's the simplest. (PowerShell
+also works after a one-time `conda init powershell` + restarting the shell; if you then
+hit a script-blocked error, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.)
 
 ### 2. Get the code
 
@@ -87,8 +89,9 @@ python -m ipykernel install --user --name si_env    # register the env as a Jupy
 
 This installs Python 3.12, the scientific stack (numpy/scipy/numba/hdbscan/…),
 and `spikeinterface[full,widgets]` — including the `tridesclous2` and
-`spykingcircus2` sorters. **Use Python 3.12**, not 3.13 (some deps like `hdbscan`
-lack 3.13 Windows wheels).
+`spykingcircus2` sorters. **Use Python 3.12**, not 3.13 — it has the broadest
+prebuilt-wheel coverage across the whole dependency set on Windows, so the install
+never needs a compiler.
 
 > **No conda?** Pip/venv works instead — create a Python 3.12 virtual env and
 > `pip install -r requirements.txt`:
@@ -111,8 +114,8 @@ you're ready.
 
 ## Running everything
 
-Activate the environment first — once per terminal (Windows: in **Anaconda
-Prompt**, not PowerShell):
+Activate the environment first — once per terminal (Windows: the **Anaconda
+Prompt** is the zero-config option; PowerShell/cmd work too after `conda init`):
 
 ```bash
 conda activate si_env
@@ -222,9 +225,17 @@ wired into `run_sorting.py`. **Kilosort4** is faster but needs an NVIDIA GPU
 - **Multiprocessing:** when you call SpikeInterface functions with `n_jobs > 1`
   in a script, wrap the entry point in `if __name__ == "__main__":` (Windows
   uses `spawn`). The provided scripts already do this.
-- Run spike sorters from **Command Prompt**, not PowerShell.
-- Keep output paths short — Windows' 260-character path limit can break
-  `.zarr` folder outputs deep in nested directories.
+- **Any shell works.** The sorters are pure in-process Python, so cmd, PowerShell
+  and the Anaconda Prompt are all fine — use whichever has `conda` initialised
+  (the Anaconda Prompt needs no setup).
+- **Console output is UTF-8-safe.** The scripts force UTF-8 stdout so the `✓`/`→`
+  status glyphs don't `UnicodeEncodeError` when you redirect output to a file on a
+  legacy console code page (`python scripts\run_sorting.py > log.txt`).
+- Keep output paths short if you save in **`.zarr`** — its deeply-nested chunk
+  files can hit Windows' 260-character path limit. (The default `run_sorting.py`
+  pipeline writes a `binary_folder`, not zarr, and stays well under the limit.)
+  On Windows 10 1607+ you can also lift the limit via the `LongPathsEnabled`
+  registry key / Group Policy.
 
 ## Troubleshooting
 
@@ -233,8 +244,11 @@ wired into `run_sorting.py`. **Kilosort4** is faster but needs an NVIDIA GPU
 - **Jupyter uses the wrong Python** — install/select the kernel:
   `python -m ipykernel install --user --name si_env`, then pick `si_env` in
   Jupyter.
-- **`hdbscan` fails to build on Windows** — you're probably on Python 3.13;
-  recreate the env with Python 3.12.
+- **A dependency tries to compile from source on Windows** (e.g. an
+  `error: Microsoft Visual C++ 14.0 ... is required`) — you're probably on a
+  Python version that lacks a prebuilt wheel for it. Recreate the env with
+  **Python 3.12**, which has wheels for every dependency (or use the conda path,
+  which installs binaries). On 3.12 no compiler is needed.
 
 ## References
 

@@ -96,6 +96,7 @@ def plot_firing_rates(sorting, out_path: Path):
 
 
 def main() -> int:
+    bio.use_utf8_stdout()  # UTF-8 stdout so the "✓"/em-dash output is Windows-safe
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--data-dir",

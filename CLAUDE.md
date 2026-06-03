@@ -29,6 +29,8 @@ python scripts/explore_data.py --data-dir /path/to/other/recording
 python scripts/run_sorting.py          # sort .ns5 broadband with tridesclous2 -> outputs/<sorter>/
 python scripts/run_sorting.py --sorter spykingcircus2
 python scripts/run_sorting.py --duration 30    # quick smoke test: sort only first 30 s
+python scripts/run_sorting.py --verbosity normal    # step messages + table only, no progress bars
+python scripts/run_sorting.py --verbosity quiet     # only the final quality-metrics table
 jupyter lab notebooks/01_explore_lfp_and_spikes.ipynb   # explore LFP + .nev units
 jupyter lab notebooks/02_spike_sorting.ipynb            # interactive sort of the .ns5 broadband
 ```
@@ -37,7 +39,7 @@ The raw recordings are **git-ignored** (`*.ns[1-6]`, `*.nev` — the `.ns5` is ~
 
 Env (re)creation: `conda env create -f environment.yml` (Option A) or `uv pip install -r requirements.txt` into a 3.12 venv (Option B). `verify_install.py` is the closest thing to a test — run it to confirm changes to the loaders still read the data.
 
-**Use Python 3.12, not 3.13** (`hdbscan` lacks 3.13 Windows wheels). Pins that matter: `zarr<3` (SpikeInterface doesn't support zarr 3.x), `PySide6<6.8`.
+**Use Python 3.12, not 3.13** — broadest prebuilt-wheel coverage across the whole dependency set on Windows, so the install never needs a C/C++ compiler (current `hdbscan` 0.8.44 *does* now ship 3.13 Windows wheels, but other deps may still lag, so 3.12 stays the tested choice). Pins that matter: `zarr<3` (SpikeInterface doesn't support zarr 3.x), `PySide6<6.8`.
 
 ## Architecture
 
@@ -56,6 +58,11 @@ bio.list_streams()                # (stream_name, stream_id) tuples for the nsX 
 All loaders default to reading the repo root and accept `data_dir=...` to point elsewhere.
 
 `scripts/run_sorting.py` is the sorting entry point built on these loaders: `read_broadband()` → `bandpass_filter(300–6000)` → `common_reference(median)` → `run_sorter(--sorter)` → save Sorting + `SortingAnalyzer` quality metrics under `outputs/<sorter>/`. Use `--duration N` to sort only the first N seconds as a smoke test.
+
+**Terminal presentation** (`run_sorting.py` only) is layered: `--verbosity {quiet,normal,verbose}` (default `verbose`) picks how much shows — `verbose` = numbered phase headers + per-step sorter prints + progress bars, `normal` = headers + final table (no bars), `quiet` = final table only.
+- `configure_output()` runs **before** importing SpikeInterface (so env vars/the tqdm patch land before OpenMP/Numba/the sorters init). It mutes chatter at *every* level: sets `KMP_WARNINGS`/`PYTHONWARNINGS` (kills the OpenMP banner + covers worker subprocesses), filters the probe/resource_tracker/non-persistent `UserWarning`s, and mutes `NumbaWarning` by **category** (a message regex misses it — numba prepends ANSI codes to the message).
+- `_install_aligned_tqdm()` (verbose only) monkeypatches `tqdm` so every bar is uniform: strips the `(no parallelization)`/`(workers: …)` suffix, pads each description to a **fixed width** (`_TQDM_DESC_WIDTH`), and draws a **fixed-width coloured** bar (`_TQDM_BAR_WIDTH`/`_TQDM_BAR_COLOUR`, not stretched to the terminal edge) via one `bar_format`. Must patch before the SpikeInterface import so the libraries' `from tqdm.auto import tqdm` picks up the subclass.
+- `ConsoleUI` renders the structured output with **rich** (now an explicit dep; degrades to plain `print` if rich is absent): a banner rule, numbered `[i/N]` phase headers (cyan/bold), dim detail lines, a boxed per-unit quality-metrics `Table`, and a green `✓ Done` line. Colours auto-disable when stdout isn't a TTY.
 
 Non-obvious behaviours baked into the loaders — preserve these when editing:
 

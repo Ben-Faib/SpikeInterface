@@ -38,6 +38,26 @@ NEV_TIMESTAMP_RATE = 30_000.0
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
+def use_utf8_stdout() -> None:
+    """Force UTF-8 stdout/stderr so non-ASCII status output never crashes on Windows.
+
+    The scripts print glyphs like ``✓``/``→``/``…``. On an interactive console
+    this is a no-op (Python already uses UTF-8 there), but when output is
+    redirected or piped on Windows, stdout falls back to the locale code page
+    (e.g. cp1252/cp437) and printing those glyphs raises ``UnicodeEncodeError``.
+    Re-encoding to UTF-8 writes valid bytes instead. Idempotent and harmless on
+    macOS/Linux. Call once at program start, before any rich/tqdm console is made.
+    """
+    import sys
+
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8")
+            except (ValueError, OSError):
+                pass
+
+
 def find_blackrock_base(data_dir: "Path | str | None" = None) -> Path:
     """Return the extension-less base path of a Blackrock file set.
 
