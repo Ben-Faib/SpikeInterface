@@ -215,10 +215,17 @@ def _render_lfp(lfp) -> str:
             + _fig_html(traces_fig) + _fig_html(psd_fig))
 
 
-def _spike_figs(unit_ids, train_seconds, title_prefix):
-    """Build (raster_fig, rate_fig) from a {unit_id: spike_times_seconds} provider."""
+def _spike_figs(unit_ids, train_seconds, title_prefix, total_duration=None):
+    """Build (raster_fig, rate_fig) from a {unit_id: spike_times_seconds} provider.
+
+    Firing rates use total_duration (the recording length) when given, so they
+    match the quality-metrics table; otherwise they fall back to the last spike
+    time across units.
+    """
     trains = {u: np.asarray(train_seconds(u), dtype=float) for u in unit_ids}
-    duration = max((tr[-1] for tr in trains.values() if tr.size), default=1.0) or 1.0
+    duration = total_duration if total_duration else max(
+        (tr[-1] for tr in trains.values() if tr.size), default=1.0)
+    duration = duration or 1.0
 
     raster = go.Figure()
     for row, u in enumerate(unit_ids):
@@ -244,8 +251,12 @@ def _render_nev(nev) -> str:
         return '<p class="skip">.nev units failed to load — see the status banner.</p>'
     fs = nev.get_sampling_frequency()
     unit_ids = list(nev.get_unit_ids())
+    try:
+        total = nev.get_total_duration()
+    except Exception:  # noqa: BLE001 - a bare .nev Sorting may not know its duration
+        total = None
     raster, rate = _spike_figs(unit_ids, lambda u: nev.get_unit_spike_train(u) / fs,
-                               "Online (.nev) units")
+                               "Online (.nev) units", total_duration=total)
     return ('<p class="note">Already-detected online units from the .nev. '
             'Blackrock convention: unit 0 = unsorted threshold crossings, 1..n = sorted, 255 = noise.</p>'
             + _fig_html(raster) + _fig_html(rate))
@@ -261,7 +272,7 @@ def _render_sorted(analyzer) -> str:
     dur = analyzer.get_total_duration()
 
     raster, rate = _spike_figs(unit_ids, lambda u: sorting.get_unit_spike_train(u) / fs,
-                               "Sorted (tridesclous2) units")
+                               "Sorted (tridesclous2) units", total_duration=dur)
 
     # Waveform templates: each unit on its peak-to-peak best channel.
     tex = analyzer.get_extension("templates")
@@ -276,7 +287,7 @@ def _render_sorted(analyzer) -> str:
         wf.add_trace(go.Scatter(x=tms, y=templates[i][:, best], mode="lines",
                                 name=f"unit {int(u)} (ch {chan_ids[best]})"))
     wf.update_layout(title="Waveform template per unit (best channel)",
-                     xaxis_title="time from trough (ms)", yaxis_title="amplitude (a.u.)",
+                     xaxis_title="time relative to spike (ms)", yaxis_title="amplitude (a.u.)",
                      height=440, margin=dict(t=40, b=40))
 
     return (f'<p class="note">Sorted with tridesclous2 over {dur:.1f}s sorted data, '
