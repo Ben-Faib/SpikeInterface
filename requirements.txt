@@ -21,6 +21,7 @@ pyqtgraph
 PySide6<6.8
 ephyviewer
 spikeinterface-gui
+plotly>=5.20,<6
 
 # Spike sorting: tridesclous2 and spykingcircus2 are bundled in
 # spikeinterface[full] above — no extra install needed (see scripts/run_sorting.py).

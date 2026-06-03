@@ -47,3 +47,4 @@ dependencies:
       - "spikeinterface[full,widgets]"
       - spikeinterface-gui
       - ephyviewer
+      - plotly>=5.20,<6
