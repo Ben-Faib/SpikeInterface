@@ -262,7 +262,7 @@ def _render_nev(nev) -> str:
             + _fig_html(raster) + _fig_html(rate))
 
 
-def _render_sorted(analyzer) -> str:
+def _render_sorted(analyzer, sorter_label) -> str:
     if analyzer is None:
         return ('<p class="skip">No saved analyzer found — run a sort from the launcher '
                 '(<code>python scripts/make_report.py</code>).</p>')
@@ -272,7 +272,7 @@ def _render_sorted(analyzer) -> str:
     dur = analyzer.get_total_duration()
 
     raster, rate = _spike_figs(unit_ids, lambda u: sorting.get_unit_spike_train(u) / fs,
-                               "Sorted (tridesclous2) units", total_duration=dur)
+                               f"Sorted ({sorter_label}) units", total_duration=dur)
 
     # Waveform templates: each unit on its peak-to-peak best channel.
     tex = analyzer.get_extension("templates")
@@ -290,7 +290,7 @@ def _render_sorted(analyzer) -> str:
                      xaxis_title="time relative to spike (ms)", yaxis_title="amplitude (a.u.)",
                      height=440, margin=dict(t=40, b=40))
 
-    return (f'<p class="note">Sorted with tridesclous2 over {dur:.1f}s sorted data, '
+    return (f'<p class="note">Sorted with {sorter_label} over {dur:.1f}s sorted data, '
             f'{len(unit_ids)} units. Toggle units via the legend.</p>'
             '<div class="caveat">Placeholder independent-channel probe + 6 analog aux channels '
             'are included — cross-channel spatial structure is not physical.</div>'
@@ -363,8 +363,9 @@ def _render_events(events) -> str:
 # --------------------------------------------------------------------------- #
 # Public entry point
 # --------------------------------------------------------------------------- #
-def build_report(data_dir=None, analyzer_dir=None, out_path=None) -> Path:
+def build_report(data_dir=None, analyzer_dir=None, out_path=None, sorter_label=None) -> Path:
     analyzer_dir = Path(analyzer_dir) if analyzer_dir else DEFAULT_ANALYZER_DIR
+    sorter_label = sorter_label or analyzer_dir.parent.name
     out_path = Path(out_path) if out_path else (OUTPUT_DIR / "report.html")
     OUTPUT_DIR.mkdir(exist_ok=True)
 
@@ -373,7 +374,7 @@ def build_report(data_dir=None, analyzer_dir=None, out_path=None) -> Path:
         _safe_section("status", "Status & provenance", _render_status, status),
         _safe_section("lfp", "LFP (.ns2 @ 1 kHz)", _render_lfp, objects.get("lfp")),
         _safe_section("nev", ".nev online units", _render_nev, objects.get("nev")),
-        _safe_section("sorted", "Sorted units (tridesclous2)", _render_sorted, objects.get("analyzer")),
+        _safe_section("sorted", f"Sorted units ({sorter_label})", _render_sorted, objects.get("analyzer"), sorter_label),
         _safe_section("qc", "Quality metrics", _render_qc, objects.get("analyzer")),
         _safe_section("events", "Events", _render_events, objects.get("events")),
         _safe_section("footer", "About", _render_footer, status),
