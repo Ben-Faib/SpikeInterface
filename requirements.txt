@@ -16,6 +16,7 @@
 # used to, but some deps can still lag, so 3.12 is the tested choice.
 spikeinterface[full,widgets]
 rich                # structured/coloured terminal output in scripts/run_sorting.py
+prompt_toolkit      # arrow-key menu navigation in SpikeInterface_Menu.py (cross-platform)
 jupyterlab
 ipywidgets
 ipympl

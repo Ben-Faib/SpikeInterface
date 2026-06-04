@@ -104,23 +104,10 @@ def _self(action: str, args) -> bool:
 
 
 def _choose_sorter(current: str) -> str:
-    """Prompt for which sorter to use; Enter keeps the current one.
-
-    Accepts a number (1/2), a sorter name, or empty (keep current).
-    """
-    ui.say("\n[bold]Which sorter?[/]")
-    for i, s in enumerate(SORTERS, 1):
-        mark = f"   [{ui.MUTED}](current)[/]" if s == current else ""
-        ui.say(f"  [bold {ui.ACCENT}]{i}[/]) {s}{mark}")
-    raw = ui.prompt(f"[bold {ui.ACCENT}]> [/][{ui.MUTED}][{SORTERS.index(current) + 1}] [/]").strip().lower()
-    if not raw:
-        return current
-    if raw.isdigit() and 1 <= int(raw) <= len(SORTERS):
-        return SORTERS[int(raw) - 1]
-    if raw in SORTERS:
-        return raw
-    ui.warn(f"Unknown choice — keeping {current}.")
-    return current
+    """Arrow-key pick of which sorter to use; cancel keeps the current one."""
+    opts = [(s, s, "(current)" if s == current else "") for s in SORTERS]
+    choice = ui.select("Which sorter?", opts, default=SORTERS.index(current))
+    return choice if choice in SORTERS else current
 
 
 # --------------------------------------------------------------------------- #
@@ -214,9 +201,12 @@ def action_compare(args) -> bool:
     if mismatch:
         ui.warn("The two sorts cover different windows: "
                 + ", ".join(f"{s}={d:.1f}s" for s, d in durations.items()) + ".")
-        if sys.stdin.isatty() and ui.prompt(
-                f"Re-sort both over the first {QUICK_SECONDS}s to compare? "
-                f"[{ui.MUTED}][y/N] [/]").strip().lower() == "y":
+        choice = ui.select(
+            f"Re-sort both over the first {QUICK_SECONDS}s so the comparison is meaningful?",
+            [("no", "No — just show the window-mismatch caveat", ""),
+             ("yes", f"Yes — re-sort both ({QUICK_SECONDS}s) then compare", "")],
+            default=0)
+        if choice == "yes":
             for s in sorters:
                 _shell("run_sorting.py", "--sorter", s, "--duration", str(QUICK_SECONDS),
                        *(["--data-dir", args.data_dir] if args.data_dir else []))
@@ -253,27 +243,33 @@ def _menu(args) -> int:
         return 0 if DISPATCH["report"](args) else 1
 
     pipeline, infos = _load_dashboard(args.data_dir, args.sorter)
+    cursor = 0
     while True:
         _render_dashboard(pipeline, infos)
-        ui.menu(_MENU, args.sorter)
-        choice = ui.prompt(f"[bold {ui.ACCENT}]> [/]").strip().lower()
-        if choice in ("q", ""):
+        options = [(action, title, hint) for _k, action, title, hint in _MENU]
+        options.append(("__sorter__", f"Switch active sorter (now: {args.sorter})",
+                        "→ " + " / ".join(SORTERS)))
+        options.append(("__quit__", "Quit", ""))
+        choice = ui.select("Choose an action    ↑/↓ then Enter · or press a number · q to quit",
+                           options, default=cursor)
+        if choice in (None, "__quit__"):
             return 0
-        if choice == "t":
+        cursor = next((n for n, o in enumerate(options) if o[0] == choice), 0)
+        if choice == "__sorter__":
             args.sorter = SORTERS[(SORTERS.index(args.sorter) + 1) % len(SORTERS)]
             for i in infos:  # flip the active marker without a heavy reload
                 i["active"] = i["name"] == args.sorter
             continue
-        action = next((a for k, a, *_ in _MENU if k == choice), None)
-        if action is None:
-            ui.warn("Unknown choice.")
-            continue
+        action = choice
         if action == "sort":
             args.sorter = _choose_sorter(args.sorter)
-            args.duration = (QUICK_SECONDS
-                             if ui.prompt(f"Quick {QUICK_SECONDS}s test? "
-                                          f"[{ui.MUTED}][y/N] [/]").strip().lower() == "y"
-                             else None)
+            span = ui.select("Sort how much?",
+                             [("full", "Full recording", ""),
+                              ("quick", f"Quick test — first {QUICK_SECONDS}s", "")],
+                             default=0)
+            if span is None:  # cancelled -> back to the menu without sorting
+                continue
+            args.duration = QUICK_SECONDS if span == "quick" else None
         if action in QT_ACTIONS:
             _self(action, args)        # fresh child process for the blocking Qt window
         else:

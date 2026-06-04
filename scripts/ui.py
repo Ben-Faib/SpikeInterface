@@ -10,6 +10,7 @@ The palette intentionally matches run_sorting.ConsoleUI.PALETTE.
 from __future__ import annotations
 
 import re
+import sys
 
 # Palette — same values as run_sorting.ConsoleUI.PALETTE.
 ACCENT, MUTED, OK, WARN, BAD = "cyan", "dim", "bold green", "yellow", "bold red"
@@ -22,6 +23,17 @@ try:  # rich is a declared dependency; the fallback is just safety.
     _C: Console | None = Console(highlight=False)
 except Exception:  # pragma: no cover - rich missing
     _C = None
+
+try:  # prompt_toolkit drives the arrow-key menu (cross-platform); typed fallback otherwise.
+    from prompt_toolkit.application import Application
+    from prompt_toolkit.key_binding import KeyBindings
+    from prompt_toolkit.layout import HSplit, Layout, Window
+    from prompt_toolkit.layout.controls import FormattedTextControl
+    from prompt_toolkit.styles import Style
+
+    _PT = True
+except Exception:  # pragma: no cover - prompt_toolkit missing
+    _PT = False
 
 _TAG = re.compile(r"\[/?[a-z0-9 #]*\]")  # crude markup stripper for the plain fallback
 
@@ -119,19 +131,84 @@ def status_table(rows) -> None:
     _C.print(t)
 
 
-def menu(items, active: str) -> None:
-    """Render the numbered action menu. ``items`` = list of (key, action, title, hint)."""
-    width = max((len(title) for _k, _a, title, _h in items), default=0)
-    if _C is None:
-        print()
-        for key, _a, title, hint in items:
-            print(f"  {key}) {title.ljust(width)}   {hint}")
-        print(f"  t) Switch active sorter for report/GUI/compare (now: {active})")
-        print("  q) Quit")
-        return
-    _C.print()
-    for key, _a, title, hint in items:
-        _C.print(f"  [bold {ACCENT}]{key}[/]) [bold]{title.ljust(width)}[/]   [{MUTED}]{hint}[/]")
-    _C.print(f"  [bold {ACCENT}]t[/]) [{MUTED}]Switch active sorter for report/GUI/compare "
-             f"(now: [/][bold]{active}[/][{MUTED}])[/]")
-    _C.print(f"  [bold {ACCENT}]q[/]) [{MUTED}]Quit[/]")
+def _select_typed(title, options, default):
+    """Numbered typed fallback for select() (no prompt_toolkit / not a TTY)."""
+    say(f"\n[bold]{title}[/]")
+    for n, (key, main, hint) in enumerate(options, 1):
+        h = f"   [{MUTED}]{hint}[/]" if hint else ""
+        say(f"  [bold {ACCENT}]{n}[/]) {main}{h}")
+    raw = prompt(f"[bold {ACCENT}]> [/][{MUTED}][{default + 1}] [/]").strip().lower()
+    if not raw:
+        return options[default][0]
+    if raw in ("q", "quit"):
+        return None
+    if raw.isdigit() and 1 <= int(raw) <= len(options):
+        return options[int(raw) - 1][0]
+    for key, main, hint in options:
+        if raw == str(key).lower() or raw == main.lower():
+            return key
+    warn("Unknown choice.")
+    return _select_typed(title, options, default)
+
+
+def select(title, options, default: int = 0, _input=None, _output=None):
+    """Single-select navigated with arrow keys (or j/k), number shortcuts, Enter.
+
+    ``options`` is a list of ``(key, main, hint)`` tuples; returns the chosen
+    ``key``, or ``None`` if the user cancels (``q`` / Ctrl-C). Falls back to a
+    typed numbered prompt when prompt_toolkit is unavailable or stdin is not a
+    TTY, so piping/CI still work. ``_input``/``_output`` are test injection hooks.
+    """
+    default = max(0, min(default, len(options) - 1))
+    interactive = _input is not None or (_PT and sys.stdin.isatty())
+    if not interactive:
+        return _select_typed(title, options, default)
+
+    idx = [default]
+
+    def _move(delta):
+        def handler(_event):
+            idx[0] = (idx[0] + delta) % len(options)
+        return handler
+
+    kb = KeyBindings()
+    for key in ("up", "k", "c-p"):
+        kb.add(key)(_move(-1))
+    for key in ("down", "j", "c-n"):
+        kb.add(key)(_move(1))
+
+    @kb.add("enter")
+    def _enter(event):
+        event.app.exit(result=options[idx[0]][0])
+
+    @kb.add("q")
+    @kb.add("c-c")
+    def _cancel(event):
+        event.app.exit(result=None)
+
+    for _n in range(1, min(len(options), 9) + 1):
+        @kb.add(str(_n))
+        def _pick(event, i=_n - 1):
+            event.app.exit(result=options[i][0])
+
+    def render():
+        frags = [("class:title", f"{title}\n")]
+        for n, (_key, main, hint) in enumerate(options):
+            sel = n == idx[0]
+            frags.append(("class:pointer", "❯ ") if sel else ("", "  "))
+            frags.append(("class:selected", main) if sel else ("", main))
+            if hint:
+                frags.append(("class:hint", f"   {hint}"))
+            frags.append(("", "\n"))
+        return frags
+
+    window = Window(FormattedTextControl(render, focusable=True, show_cursor=False))
+    style = Style.from_dict({"title": "bold", "pointer": "bold cyan",
+                             "selected": "bold cyan", "hint": "#808080"})
+    kwargs = dict(layout=Layout(HSplit([window])), key_bindings=kb, style=style,
+                  full_screen=False, mouse_support=False, erase_when_done=True)
+    if _input is not None:
+        kwargs["input"] = _input
+    if _output is not None:
+        kwargs["output"] = _output
+    return Application(**kwargs).run()
