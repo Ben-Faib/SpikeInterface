@@ -84,10 +84,16 @@ SpikeInterface`), a **sorter tab bar** (one tab per sorter, switched with
 (moved with **↑/↓** or j/k; Enter runs the highlighted action on the **active
 tab's sorter** — there is no separate "which sorter" prompt; numbers jump;
 `q`/Ctrl-C quits). Off-TTY / without prompt_toolkit it falls back to a scrolling
-status panel + a typed numbered menu (with a *Switch sorter* entry). The palette
-is the **cyan** accent shared with `run_sorting.py`. `scripts/ui.py` also holds
-the shared rich styling (rules, boxed tables, ✓ lines) and the inline `select()`
-(full/quick, compare prompts). It shells out to the `scripts/*.py`
+status panel + a typed numbered menu (with a *Switch sorter* entry). The
+full-screen view has a **framed border**, **section divider rules**, and
+**boxed-table** headers (column header + heavy `━` underline). A compact **blue +
+gold Pitt shield** (`ui._LOGO`) sits atop it. The **accent colour is themeable**
+(`ui.THEMES`: periwinkle/sea-green/steel-blue/amber/cyan; default periwinkle) via
+a *Change colour theme* menu action; the choice is **persisted** to a git-ignored
+`.si_menu.json` at the repo root (`_load_config`/`_save_config`) and re-applied on
+launch with `ui.set_accent()`. `scripts/ui.py` also holds the shared rich styling
+(rules, boxed tables, ✓ lines) and the inline `select()` (theme/full-quick/compare
+prompts). It shells out to the `scripts/*.py`
 for explore/sort/verify (live stdout), calls `report.build_report(...)`
 in-process, and launches the **blocking** Qt GUIs in fresh child processes
 (`_self`): the inspector is `spikeinterface-gui` (console command **`sigui

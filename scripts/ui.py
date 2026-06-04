@@ -12,8 +12,26 @@ from __future__ import annotations
 import re
 import sys
 
-# Palette — cyan accent, matching run_sorting.ConsoleUI.PALETTE.
-ACCENT, MUTED, OK, WARN, BAD = "cyan", "dim", "bold green", "yellow", "bold red"
+# Selectable accent themes for the UI chrome (headers, tabs, pointer, rules).
+# The blue+gold shield is fixed and not affected. Picked via the menu's Theme
+# action and persisted locally; see SpikeInterface_Menu.py.
+THEMES = {
+    "periwinkle": "#9b8cff",
+    "sea-green": "#56d39a",
+    "steel-blue": "#6ea8fe",
+    "amber": "#e3a008",
+    "cyan": "#33c5c5",
+}
+DEFAULT_THEME = "periwinkle"
+# ACCENT is mutated by set_accent(); functions read it at call time so a theme
+# change takes effect on the next render. MUTED/OK/WARN/BAD are fixed.
+ACCENT, MUTED, OK, WARN, BAD = THEMES[DEFAULT_THEME], "dim", "bold green", "#e3a008", "bold red"
+
+
+def set_accent(color: str) -> None:
+    """Set the UI accent colour (any rich/prompt_toolkit colour, e.g. a hex)."""
+    global ACCENT
+    ACCENT = color
 # PASS/SKIP/FAIL -> (rich style, glyph) for the pipeline status table.
 _BADGE = {"PASS": ("bold green", "✓"), "SKIP": ("dim", "–"), "FAIL": ("bold red", "✗")}
 # Same, as prompt_toolkit style-class names (used by the full-screen dashboard).
@@ -47,6 +65,7 @@ try:  # prompt_toolkit drives the arrow-key menu (cross-platform); typed fallbac
     from prompt_toolkit.layout import HSplit, Layout, Window
     from prompt_toolkit.layout.controls import FormattedTextControl
     from prompt_toolkit.styles import Style
+    from prompt_toolkit.widgets import Frame
 
     _PT = True
 except Exception:  # pragma: no cover - prompt_toolkit missing
@@ -227,8 +246,8 @@ def select(title, options, default: int = 0, _input=None, _output=None):
         return frags
 
     window = Window(FormattedTextControl(render, focusable=True, show_cursor=False))
-    style = Style.from_dict({"title": "bold", "pointer": "bold cyan",
-                             "selected": "bold cyan", "hint": "#808080"})
+    style = Style.from_dict({"title": "bold", "pointer": f"bold {ACCENT}",
+                             "selected": f"bold {ACCENT}", "hint": "#808080"})
     kwargs = dict(layout=Layout(HSplit([window])), key_bindings=kb, style=style,
                   full_screen=False, mouse_support=False, erase_when_done=True)
     if _input is not None:
@@ -308,31 +327,54 @@ def dashboard_menu(header, pipeline, infos, active: int = 0, actions=(), default
         def _pick(event, i=_n - 1):
             event.app.exit(result=(actions[i][0], tab[0]))
 
+    # Layout width: fit the widest content line (capped) so the divider rules and
+    # the boxed-table underline span the content.
     stage_w = max((len(r["stage"]) for r in pipeline), default=0)
+    act_w = max((len(t) for _k, t, _h in actions), default=0)
+    tab_row = "  ".join(f" {i['name']} · {_sorter_summary(i)} " for i in infos)
+    widths = [len("  " + header), len("  PIPELINE"), len("  " + tab_row)]
+    widths += [6 + stage_w + 3 + len(r["detail"]) for r in pipeline]
+    widths += [4 + act_w + (3 + len(h) if h else 0) for _k, _t, h in actions]
+    if last:
+        widths.append(len("  " + last))
+    W = min(max(widths + [52]), 92)
+    detail_avail = max(8, W - (6 + stage_w + 3))
+    rule = "  " + "─" * (W - 2)
+    heavy = "  " + "━" * (W - 2)
+
+    def _trunc(text, n):
+        return text if len(text) <= n else text[: max(0, n - 1)] + "…"
 
     def body():
-        frags = [("", "\n")]
+        f = [("", "\n")]
         if last:
-            frags += [("class:last", f"  {last}"), ("", "\n\n")]
-        frags += [("class:section", "  SORTER"), ("", "\n  ")]
+            f += [("class:last", f"  {last}"), ("", "\n\n")]
+        # SORTER — section label + divider rule + tabs
+        f += [("class:section", "  SORTER"), ("", "\n"), ("class:rule", rule), ("", "\n  ")]
         for i, info in enumerate(infos):
             label = f" {info['name']} · {_sorter_summary(info)} "
-            frags.append(("class:tab.active", label) if i == tab[0] else ("class:tab", label))
-            frags.append(("", "  "))
-        frags += [("", "\n\n"), ("class:section", "  PIPELINE"), ("", "\n")]
+            f.append(("class:tab.active", label) if i == tab[0] else ("class:tab", label))
+            f.append(("", "  "))
+        f += [("", "\n\n")]
+        # PIPELINE — boxed table: column header + heavy underline + rows
+        f += [("class:section", "  PIPELINE"), ("", "\n")]
+        f += [("class:colhead", "   " + "stage".ljust(stage_w + 3) + "detail"), ("", "\n")]
+        f += [("class:rule", heavy), ("", "\n")]
         for r in pipeline:
             st, glyph = _BADGE_PT.get(r["status"], ("class:skip", r["status"]))
-            frags += [(st, f"   {glyph}  "), ("class:stage", r["stage"].ljust(stage_w)),
-                      ("class:hint", f"   {r['detail']}"), ("", "\n")]
-        frags += [("", "\n"), ("class:section", "  ACTIONS"), ("", "\n")]
+            f += [(st, f"   {glyph}  "), ("class:stage", r["stage"].ljust(stage_w)),
+                  ("class:hint", "   " + _trunc(r["detail"], detail_avail)), ("", "\n")]
+        f += [("", "\n")]
+        # ACTIONS — section label + divider rule + list
+        f += [("class:section", "  ACTIONS"), ("", "\n"), ("class:rule", rule), ("", "\n")]
         for n, (_key, title, hint) in enumerate(actions):
             sel = n == cur[0]
-            frags.append(("class:pointer", "  ❯ ") if sel else ("", "    "))
-            frags.append(("class:selected", title) if sel else ("class:action", title))
+            f.append(("class:pointer", "  ❯ ") if sel else ("", "    "))
+            f.append(("class:selected", title) if sel else ("class:action", title))
             if hint:
-                frags.append(("class:hint", f"   {hint}"))
-            frags.append(("", "\n"))
-        return frags
+                f.append(("class:hint", f"   {hint}"))
+            f.append(("", "\n"))
+        return f
 
     def banner_ft():
         frags = [("", "\n")]
@@ -342,28 +384,32 @@ def dashboard_menu(header, pipeline, infos, active: int = 0, actions=(), default
         frags.append(("class:header", f"  {header}"))
         return frags
 
-    header_win = Window(FormattedTextControl(banner_ft), height=len(_LOGO) + 2)
+    banner_win = Window(FormattedTextControl(banner_ft), height=len(_LOGO) + 2)
     body_win = Window(FormattedTextControl(body, focusable=True, show_cursor=False))
+    panel = Frame(HSplit([banner_win, body_win]))  # framed border around the dashboard
     footer_win = Window(
-        FormattedTextControl(lambda: [("class:footer",
+        FormattedTextControl(lambda: [("class:hint",
             "  ↑/↓ move   ·   ←/→ or Tab switch sorter   ·   Enter select   ·   q quit")]),
-        height=1, style="class:footer")
+        height=1)
 
+    a = ACCENT  # current theme accent (read at call time)
     style = Style.from_dict({
-        "header": "bold cyan",
-        "footer": "#7d8590",
-        "section": "bold cyan",
+        "header": f"bold {a}",
+        "section": f"bold {a}",
+        "colhead": f"bold {a}",
+        "rule": "#3a4048",
+        "frame.border": a,
         "tab": "#9aa4b2",
-        "tab.active": "reverse bold cyan",
-        "pointer": "bold cyan",
-        "selected": "bold cyan",
+        "tab.active": f"reverse bold {a}",
+        "pointer": f"bold {a}",
+        "selected": f"bold {a}",
         "action": "#d0d7de",
         "stage": "#d0d7de",
         "hint": "#7d8590",
-        "last": "bold cyan",
+        "last": f"bold {a}",
         "pass": "#3fb950", "fail": "#f85149", "skip": "#7d8590",
     })
-    kwargs = dict(layout=Layout(HSplit([header_win, body_win, footer_win])),
+    kwargs = dict(layout=Layout(HSplit([panel, footer_win])),
                   key_bindings=kb, style=style, full_screen=True, mouse_support=False)
     if _input is not None:
         kwargs["input"] = _input

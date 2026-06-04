@@ -51,3 +51,6 @@ desktop.ini
 .Rhistory
 .RData
 .Rproj.user/
+
+# Local menu preferences (theme, etc.)
+.si_menu.json

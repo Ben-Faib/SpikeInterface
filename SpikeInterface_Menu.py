@@ -27,6 +27,7 @@ Actions:
 from __future__ import annotations
 
 import argparse
+import json
 import subprocess
 import sys
 import webbrowser
@@ -45,6 +46,32 @@ ACTIONS = ["explore", "sort", "report", "gui", "traces", "compare", "verify"]
 # Actions that open a blocking Qt window: the menu launches them in a fresh
 # child process so the menu survives and Qt gets a clean process each time.
 QT_ACTIONS = {"gui", "traces"}
+
+
+CONFIG_PATH = bio.REPO_ROOT / ".si_menu.json"  # local, git-ignored user prefs
+
+
+def _load_config() -> dict:
+    try:
+        return json.loads(CONFIG_PATH.read_text())
+    except Exception:  # noqa: BLE001 - missing/corrupt -> defaults
+        return {}
+
+
+def _save_config(cfg: dict) -> None:
+    try:
+        CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
+    except Exception:  # noqa: BLE001 - best-effort
+        pass
+
+
+def _apply_saved_theme(cfg: dict) -> str:
+    """Set the UI accent from saved config; return the active theme name."""
+    theme = cfg.get("theme", ui.DEFAULT_THEME)
+    if theme not in ui.THEMES:
+        theme = ui.DEFAULT_THEME
+    ui.set_accent(ui.THEMES[theme])
+    return theme
 
 
 def _analyzer_dir(sorter: str) -> Path:
@@ -240,6 +267,7 @@ _MENU = [
     ("5", "traces",  "Scroll raw traces",       "ephyviewer trace browser"),
     ("6", "compare", "Compare the two sorters", "agreement matrix → comparison.html"),
     ("7", "verify",  "Verify install",          "environment smoke test"),
+    ("8", "theme",   "Change colour theme",     "pick an accent colour (saved for next time)"),
 ]
 
 
@@ -247,6 +275,9 @@ def _menu(args) -> int:
     if not sys.stdin.isatty():
         ui.note("(non-interactive stdin -> building the report)")
         return 0 if DISPATCH["report"](args) else 1
+
+    cfg = _load_config()
+    theme = _apply_saved_theme(cfg)
 
     pipeline, infos = _load_dashboard(args.data_dir, args.sorter)
     active_idx = SORTERS.index(args.sorter)
@@ -266,6 +297,18 @@ def _menu(args) -> int:
             active_idx = (active_idx + 1) % len(SORTERS)
             continue
         cursor = next((n for n, a in enumerate(actions) if a[0] == action), 0)
+        if action == "theme":
+            names = list(ui.THEMES)
+            choice = ui.select("Accent colour  (saved for next time)",
+                               [(n, n, "(current)" if n == theme else "") for n in names],
+                               default=names.index(theme) if theme in names else 0)
+            if choice:
+                theme = choice
+                ui.set_accent(ui.THEMES[theme])
+                cfg["theme"] = theme
+                _save_config(cfg)
+                last = f"Theme → {theme}"
+            continue
         if action == "sort":
             span = ui.select("Sort how much?",
                              [("full", "Full recording", ""),
@@ -295,6 +338,7 @@ def main() -> int:
 
     if args.action is None:
         return _menu(args)
+    _apply_saved_theme(_load_config())  # honour the saved accent for direct actions too
     ok = DISPATCH[args.action](args)
     return 0 if ok else 1
 
