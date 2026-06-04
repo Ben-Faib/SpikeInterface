@@ -19,6 +19,21 @@ _BADGE = {"PASS": ("bold green", "✓"), "SKIP": ("dim", "–"), "FAIL": ("bold 
 # Same, as prompt_toolkit style-class names (used by the full-screen dashboard).
 _BADGE_PT = {"PASS": ("class:pass", "✓"), "SKIP": ("class:skip", "–"), "FAIL": ("class:fail", "✗")}
 
+# Compact University of Pittsburgh shield — authentic blue + gold (the rest of the
+# UI stays cyan). Each row is a list of (style, text) fragments; styles are direct
+# colours so they're independent of the cyan menu theme.
+_LOGO_BLUE, _LOGO_GOLD = "#1f6feb", "#ffb81c"
+_LOGO = [
+    [(_LOGO_BLUE, "   ▟█▙ ▟█▙ ▟█▙")],
+    [(_LOGO_BLUE, "  ▟███████████▙")],
+    [(_LOGO_BLUE, "  █  ●     ●  █")],
+    [(_LOGO_BLUE, "  █ "), (_LOGO_GOLD, "██"), (_LOGO_BLUE, "██"), (_LOGO_GOLD, "██"),
+     (_LOGO_BLUE, "██"), (_LOGO_GOLD, "██"), (_LOGO_BLUE, " █")],
+    [(_LOGO_BLUE, "  ▜▙   ●   ▟▛")],
+    [(_LOGO_BLUE, "   ▜▙▁▁▁▁▁▟▛")],
+    [(_LOGO_BLUE, "     ▜███▛")],
+]
+
 try:  # rich is a declared dependency; the fallback is just safety.
     from rich.console import Console
 
@@ -80,6 +95,13 @@ def done(text: str) -> None:
 
 def link(label: str, uri: str) -> None:
     say(f"[{MUTED}]{label}[/] {uri}")
+
+
+def banner(header: str) -> None:
+    """Print the Pitt shield + header line (rich path / typed fallback)."""
+    for line in _LOGO:
+        say("".join(f"[{style}]{text}[/]" for style, text in line))
+    say(f"[bold {ACCENT}]{header}[/]")
 
 
 def sorters_panel(infos) -> None:
@@ -246,7 +268,7 @@ def dashboard_menu(header, pipeline, infos, active: int = 0, actions=(), default
     default = max(0, min(default, len(actions) - 1))
     interactive = _input is not None or (_PT and sys.stdin.isatty())
     if not interactive:
-        rule(header)
+        banner(header)
         for i, info in enumerate(infos):
             info["active"] = i == active
         sorters_panel(infos)
@@ -312,8 +334,15 @@ def dashboard_menu(header, pipeline, infos, active: int = 0, actions=(), default
             frags.append(("", "\n"))
         return frags
 
-    header_win = Window(FormattedTextControl(lambda: [("class:header", f"  {header}")]),
-                        height=1, style="class:header")
+    def banner_ft():
+        frags = [("", "\n")]
+        for line in _LOGO:
+            frags.extend(line)
+            frags.append(("", "\n"))
+        frags.append(("class:header", f"  {header}"))
+        return frags
+
+    header_win = Window(FormattedTextControl(banner_ft), height=len(_LOGO) + 2)
     body_win = Window(FormattedTextControl(body, focusable=True, show_cursor=False))
     footer_win = Window(
         FormattedTextControl(lambda: [("class:footer",
