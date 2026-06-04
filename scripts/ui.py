@@ -38,19 +38,42 @@ _BADGE = {"PASS": ("bold green", "✓"), "SKIP": ("dim", "–"), "FAIL": ("bold 
 _BADGE_PT = {"PASS": ("class:pass", "✓"), "SKIP": ("class:skip", "–"), "FAIL": ("class:fail", "✗")}
 
 # Compact University of Pittsburgh shield — authentic blue + gold (the rest of the
-# UI stays cyan). Each row is a list of (style, text) fragments; styles are direct
-# colours so they're independent of the cyan menu theme.
+# UI keeps its accent). Drawn on a fixed grid of ONLY the full block █ and spaces,
+# so every row is exactly the same width in any monospace font/terminal — no
+# ambiguous-width glyphs (●, quadrant blocks) that misalign across machines.
+# B = blue pixel, G = gold pixel, space = empty.  Every row is 14 columns.
 _LOGO_BLUE, _LOGO_GOLD = "#1f6feb", "#ffb81c"
-_LOGO = [
-    [(_LOGO_BLUE, "   ▟█▙ ▟█▙ ▟█▙")],
-    [(_LOGO_BLUE, "  ▟███████████▙")],
-    [(_LOGO_BLUE, "  █  ●     ●  █")],
-    [(_LOGO_BLUE, "  █ "), (_LOGO_GOLD, "██"), (_LOGO_BLUE, "██"), (_LOGO_GOLD, "██"),
-     (_LOGO_BLUE, "██"), (_LOGO_GOLD, "██"), (_LOGO_BLUE, " █")],
-    [(_LOGO_BLUE, "  ▜▙   ●   ▟▛")],
-    [(_LOGO_BLUE, "   ▜▙▁▁▁▁▁▟▛")],
-    [(_LOGO_BLUE, "     ▜███▛")],
+_LOGO_ART = [
+    ".BB..BB..BB...",   # crenellated crown (3 merlons)
+    "BBBBBBBBBBBBBB",   # shield top edge
+    "BB..........BB",
+    "BBGGGGGGGGGGBB",   # gold band
+    "BBGGBBGGBBGGBB",   # gold/blue checker
+    "BB..........BB",
+    ".BB........BB.",   # taper
+    "..BB......BB..",
+    "...BBBBBBBB...",   # rounded base
 ]
+
+
+def _build_logo(art):
+    """Turn the B/G/space grid into per-row (style, text) fragments (run-length)."""
+    rows = []
+    for line in art:
+        frags, i = [], 0
+        while i < len(line):
+            j = i
+            while j < len(line) and line[j] == line[i]:
+                j += 1
+            run, ch = line[i:j], line[i]
+            style = _LOGO_BLUE if ch == "B" else _LOGO_GOLD if ch == "G" else ""
+            frags.append((style, ("█" if ch in "BG" else " ") * len(run)))
+            i = j
+        rows.append(frags)
+    return rows
+
+
+_LOGO = _build_logo(_LOGO_ART)
 
 try:  # rich is a declared dependency; the fallback is just safety.
     from rich.console import Console
@@ -118,8 +141,8 @@ def link(label: str, uri: str) -> None:
 def banner(header: str) -> None:
     """Print the Pitt shield + header line (rich path / typed fallback)."""
     for line in _LOGO:
-        say("".join(f"[{style}]{text}[/]" for style, text in line))
-    say(f"[bold {ACCENT}]{header}[/]")
+        say("  " + "".join((f"[{style}]{text}[/]" if style else text) for style, text in line))
+    say(f"  [bold {ACCENT}]{header}[/]")
 
 
 def sorters_panel(infos) -> None:
@@ -386,6 +409,7 @@ def dashboard_menu(header, pipeline, infos, active: int = 0, actions=(), default
     def banner_ft():
         f = [("", "\n")]
         for line in _LOGO:
+            f.append(("", "  "))
             f.extend(line)
             f.append(("", "\n"))
         # Centred title rule (no full border).
