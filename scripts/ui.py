@@ -65,7 +65,6 @@ try:  # prompt_toolkit drives the arrow-key menu (cross-platform); typed fallbac
     from prompt_toolkit.layout import HSplit, Layout, Window
     from prompt_toolkit.layout.controls import FormattedTextControl
     from prompt_toolkit.styles import Style
-    from prompt_toolkit.widgets import Frame
 
     _PT = True
 except Exception:  # pragma: no cover - prompt_toolkit missing
@@ -327,20 +326,19 @@ def dashboard_menu(header, pipeline, infos, active: int = 0, actions=(), default
         def _pick(event, i=_n - 1):
             event.app.exit(result=(actions[i][0], tab[0]))
 
-    # Layout width: fit the widest content line (capped) so the divider rules and
-    # the boxed-table underline span the content.
-    stage_w = max((len(r["stage"]) for r in pipeline), default=0)
-    act_w = max((len(t) for _k, t, _h in actions), default=0)
-    tab_row = "  ".join(f" {i['name']} · {_sorter_summary(i)} " for i in infos)
-    widths = [len("  " + header), len("  PIPELINE"), len("  " + tab_row)]
-    widths += [6 + stage_w + 3 + len(r["detail"]) for r in pipeline]
-    widths += [4 + act_w + (3 + len(h) if h else 0) for _k, _t, h in actions]
-    if last:
-        widths.append(len("  " + last))
-    W = min(max(widths + [52]), 92)
-    detail_avail = max(8, W - (6 + stage_w + 3))
-    rule = "  " + "─" * (W - 2)
-    heavy = "  " + "━" * (W - 2)
+    # Column widths for the two info tables; thin underlines span each table.
+    name_w = max([len("sorter")] + [len(i["name"]) for i in infos])
+
+    def _saved(info):
+        return (f"{info['units']} units · {info['duration']:.1f}s"
+                if info.get("present") else "no saved sort")
+
+    saved_w = max([len("saved sort")] + [len(_saved(i)) + len("  (active)") for i in infos])
+    stage_w = max([len("stage")] + [len(r["stage"]) for r in pipeline])
+    detail_w = min(max([len("detail")] + [len(r["detail"]) for r in pipeline]), 64)
+    W = min(max(2 + name_w + 3 + saved_w, 2 + stage_w + 3 + detail_w, len(header) + 10), 92)
+    sorter_uline = "  " + "─" * (name_w + 3 + saved_w)
+    pipe_uline = "  " + "─" * (stage_w + 3 + detail_w)
 
     def _trunc(text, n):
         return text if len(text) <= n else text[: max(0, n - 1)] + "…"
@@ -349,44 +347,53 @@ def dashboard_menu(header, pipeline, infos, active: int = 0, actions=(), default
         f = [("", "\n")]
         if last:
             f += [("class:last", f"  {last}"), ("", "\n\n")]
-        # SORTER — section label + divider rule + tabs
-        f += [("class:section", "  SORTER"), ("", "\n"), ("class:rule", rule), ("", "\n  ")]
+        # Sorters — a table; ←/→ (or Tab) moves the active row
+        f += [("class:section", "  Sorters"), ("", "\n")]
+        f += [("class:colhead", "  " + "sorter".ljust(name_w) + "   saved sort"), ("", "\n")]
+        f += [("class:rule", sorter_uline), ("", "\n")]
         for i, info in enumerate(infos):
-            label = f" {info['name']} · {_sorter_summary(info)} "
-            f.append(("class:tab.active", label) if i == tab[0] else ("class:tab", label))
-            f.append(("", "  "))
-        f += [("", "\n\n")]
-        # PIPELINE — boxed table: column header + heavy underline + rows
-        f += [("class:section", "  PIPELINE"), ("", "\n")]
-        f += [("class:colhead", "   " + "stage".ljust(stage_w + 3) + "detail"), ("", "\n")]
-        f += [("class:rule", heavy), ("", "\n")]
+            sel = i == tab[0]
+            f.append(("class:pointer", "→ ") if sel else ("", "  "))
+            f.append(("class:selected" if sel else "class:action", info["name"].ljust(name_w)))
+            f.append(("class:hint", "   " + _saved(info)))
+            if sel:
+                f.append(("class:hint", "  (active)"))
+            f.append(("", "\n"))
+        f += [("", "\n")]
+        # Pipeline — a table
+        f += [("class:section", "  Pipeline"), ("", "\n")]
+        f += [("class:colhead", "  " + "stage".ljust(stage_w) + "   detail"), ("", "\n")]
+        f += [("class:rule", pipe_uline), ("", "\n")]
         for r in pipeline:
             st, glyph = _BADGE_PT.get(r["status"], ("class:skip", r["status"]))
-            f += [(st, f"   {glyph}  "), ("class:stage", r["stage"].ljust(stage_w)),
-                  ("class:hint", "   " + _trunc(r["detail"], detail_avail)), ("", "\n")]
+            f += [(st, glyph + " "), ("class:stage", r["stage"].ljust(stage_w)),
+                  ("class:hint", "   " + _trunc(r["detail"], detail_w)), ("", "\n")]
         f += [("", "\n")]
-        # ACTIONS — section label + divider rule + list
-        f += [("class:section", "  ACTIONS"), ("", "\n"), ("class:rule", rule), ("", "\n")]
+        # Actions — the navigable menu (↑/↓ move, Enter runs)
+        f += [("class:section", "  Actions"), ("", "\n")]
         for n, (_key, title, hint) in enumerate(actions):
             sel = n == cur[0]
-            f.append(("class:pointer", "  ❯ ") if sel else ("", "    "))
-            f.append(("class:selected", title) if sel else ("class:action", title))
+            f.append(("class:pointer", "❯ ") if sel else ("", "  "))
+            f.append(("class:selected" if sel else "class:action", title))
             if hint:
                 f.append(("class:hint", f"   {hint}"))
             f.append(("", "\n"))
         return f
 
+    pad = max(0, W - len(header) - 2)
+    rule_l, rule_r = "─" * (pad // 2), "─" * (pad - pad // 2)
+
     def banner_ft():
-        frags = [("", "\n")]
+        f = [("", "\n")]
         for line in _LOGO:
-            frags.extend(line)
-            frags.append(("", "\n"))
-        frags.append(("class:header", f"  {header}"))
-        return frags
+            f.extend(line)
+            f.append(("", "\n"))
+        # Centred title rule (no full border).
+        f += [("class:rule", rule_l + " "), ("class:header", header), ("class:rule", " " + rule_r)]
+        return f
 
     banner_win = Window(FormattedTextControl(banner_ft), height=len(_LOGO) + 2)
     body_win = Window(FormattedTextControl(body, focusable=True, show_cursor=False))
-    panel = Frame(HSplit([banner_win, body_win]))  # framed border around the dashboard
     footer_win = Window(
         FormattedTextControl(lambda: [("class:hint",
             "  ↑/↓ move   ·   ←/→ or Tab switch sorter   ·   Enter select   ·   q quit")]),
@@ -395,12 +402,9 @@ def dashboard_menu(header, pipeline, infos, active: int = 0, actions=(), default
     a = ACCENT  # current theme accent (read at call time)
     style = Style.from_dict({
         "header": f"bold {a}",
-        "section": f"bold {a}",
-        "colhead": f"bold {a}",
-        "rule": "#3a4048",
-        "frame.border": a,
-        "tab": "#9aa4b2",
-        "tab.active": f"reverse bold {a}",
+        "section": f"bold italic {a}",
+        "colhead": "bold #d0d7de",
+        "rule": "#4a5058",
         "pointer": f"bold {a}",
         "selected": f"bold {a}",
         "action": "#d0d7de",
@@ -409,7 +413,7 @@ def dashboard_menu(header, pipeline, infos, active: int = 0, actions=(), default
         "last": f"bold {a}",
         "pass": "#3fb950", "fail": "#f85149", "skip": "#7d8590",
     })
-    kwargs = dict(layout=Layout(HSplit([panel, footer_win])),
+    kwargs = dict(layout=Layout(HSplit([banner_win, body_win, footer_win])),
                   key_bindings=kb, style=style, full_screen=True, mouse_support=False)
     if _input is not None:
         kwargs["input"] = _input

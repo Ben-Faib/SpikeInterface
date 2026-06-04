@@ -85,9 +85,9 @@ SpikeInterface`), a **sorter tab bar** (one tab per sorter, switched with
 tab's sorter** — there is no separate "which sorter" prompt; numbers jump;
 `q`/Ctrl-C quits). Off-TTY / without prompt_toolkit it falls back to a scrolling
 status panel + a typed numbered menu (with a *Switch sorter* entry). The
-full-screen view has a **framed border**, **section divider rules**, and
-**boxed-table** headers (column header + heavy `━` underline). A compact **blue +
-gold Pitt shield** (`ui._LOGO`) sits atop it. The **accent colour is themeable**
+full-screen view uses a **centred title rule** and **thin column-header
+underlines** under the Sorters + Pipeline tables (no full border). A compact
+**blue + gold Pitt shield** (`ui._LOGO`) sits atop it. The **accent colour is themeable**
 (`ui.THEMES`: periwinkle/sea-green/steel-blue/amber/cyan; default periwinkle) via
 a *Change colour theme* menu action; the choice is **persisted** to a git-ignored
 `.si_menu.json` at the repo root (`_load_config`/`_save_config`) and re-applied on
