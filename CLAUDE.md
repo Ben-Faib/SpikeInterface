@@ -75,12 +75,16 @@ All loaders default to reading the repo root and accept `data_dir=...` to point 
 `SpikeInterface_Menu.py` (repo **root**, not `scripts/`) is the single front-door
 launcher: run bare it prints a status dashboard (via `report._gather`) + a
 numbered menu; run with an action (`report`, `sort`, `gui`, `traces`, `compare`,
-`verify`, `explore`) it dispatches directly. The menu is **arrow-key navigable**
-(↑/↓ or j/k, number shortcuts, Enter; `q`/Ctrl-C cancels) via `scripts/ui.py`'s
-`select()` — built on `prompt_toolkit` (now a declared dep; cross-platform), with
-a typed numbered fallback when prompt_toolkit is absent or stdin isn't a TTY. The
-dashboard shows **both** sorters with their saved-sort summary + an active marker;
-it's loaded once and refreshed only after a sort/compare. `scripts/ui.py` also
+`verify`, `explore`) it dispatches directly. The menu is a **tabbed arrow-key
+TUI** (`scripts/ui.py`'s `tab_menu()`): a top tab bar with one tab per sorter —
+switched with **←/→** or **Tab** — over an action list moved with **↑/↓** (or
+j/k); Enter runs the highlighted action on the **active tab's sorter** (so there
+is no separate "which sorter" prompt), numbers jump, `q`/Ctrl-C quits. Built on
+`prompt_toolkit` (now a declared dep; cross-platform), it falls back to a typed
+numbered menu (with a *Switch sorter* entry) when prompt_toolkit is absent or
+stdin isn't a TTY. The dashboard also shows **both** sorters with their saved-sort
+summary + an active marker; it's loaded once and refreshed only after a
+sort/compare. `scripts/ui.py` also
 holds the shared rich styling (banner rules, boxed tables, ✓ lines) that mirrors
 `run_sorting.py`'s look. It shells out to the `scripts/*.py`
 for explore/sort/verify (live stdout), calls `report.build_report(...)`

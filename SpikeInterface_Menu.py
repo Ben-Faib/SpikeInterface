@@ -103,11 +103,12 @@ def _self(action: str, args) -> bool:
     return subprocess.run(cmd).returncode == 0
 
 
-def _choose_sorter(current: str) -> str:
-    """Arrow-key pick of which sorter to use; cancel keeps the current one."""
-    opts = [(s, s, "(current)" if s == current else "") for s in SORTERS]
-    choice = ui.select("Which sorter?", opts, default=SORTERS.index(current))
-    return choice if choice in SORTERS else current
+def _tab_label(sorter: str, infos) -> str:
+    """One sorter-tab label, e.g. 'tridesclous2 · 19u/132s' or 'spykingcircus2 · no sort'."""
+    info = next((i for i in infos if i["name"] == sorter), None)
+    if info and info["present"]:
+        return f"{sorter} · {info['units']}u/{info['duration']:.0f}s"
+    return f"{sorter} · no sort"
 
 
 # --------------------------------------------------------------------------- #
@@ -243,26 +244,23 @@ def _menu(args) -> int:
         return 0 if DISPATCH["report"](args) else 1
 
     pipeline, infos = _load_dashboard(args.data_dir, args.sorter)
+    active_idx = SORTERS.index(args.sorter)
     cursor = 0
+    actions = [(action, title, hint) for _k, action, title, hint in _MENU] + [("__quit__", "Quit", "")]
     while True:
         _render_dashboard(pipeline, infos)
-        options = [(action, title, hint) for _k, action, title, hint in _MENU]
-        options.append(("__sorter__", f"Switch active sorter (now: {args.sorter})",
-                        "→ " + " / ".join(SORTERS)))
-        options.append(("__quit__", "Quit", ""))
-        choice = ui.select("Choose an action    ↑/↓ then Enter · or press a number · q to quit",
-                           options, default=cursor)
-        if choice in (None, "__quit__"):
+        tabs = [_tab_label(s, infos) for s in SORTERS]
+        action, active_idx = ui.tab_menu(actions, tabs, active=active_idx, default=cursor)
+        args.sorter = SORTERS[active_idx]          # the active tab IS the sorter
+        for i in infos:  # keep the at-a-glance panel's active marker in sync
+            i["active"] = i["name"] == args.sorter
+        if action in (None, "__quit__"):
             return 0
-        cursor = next((n for n, o in enumerate(options) if o[0] == choice), 0)
-        if choice == "__sorter__":
-            args.sorter = SORTERS[(SORTERS.index(args.sorter) + 1) % len(SORTERS)]
-            for i in infos:  # flip the active marker without a heavy reload
-                i["active"] = i["name"] == args.sorter
+        if action == "__sorter__":  # typed-fallback only: cycle to the next sorter
+            active_idx = (active_idx + 1) % len(SORTERS)
             continue
-        action = choice
+        cursor = next((n for n, a in enumerate(actions) if a[0] == action), 0)
         if action == "sort":
-            args.sorter = _choose_sorter(args.sorter)
             span = ui.select("Sort how much?",
                              [("full", "Full recording", ""),
                               ("quick", f"Quick test — first {QUICK_SECONDS}s", "")],
@@ -276,6 +274,7 @@ def _menu(args) -> int:
             DISPATCH[action](args)
         if action in ("sort", "compare"):  # only these can change saved-sort state
             pipeline, infos = _load_dashboard(args.data_dir, args.sorter)
+            active_idx = SORTERS.index(args.sorter)
 
 
 def main() -> int:

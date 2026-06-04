@@ -212,3 +212,89 @@ def select(title, options, default: int = 0, _input=None, _output=None):
     if _output is not None:
         kwargs["output"] = _output
     return Application(**kwargs).run()
+
+
+def _tab_menu_typed(actions, tabs, active, default):
+    """Typed fallback for tab_menu (no prompt_toolkit / not a TTY)."""
+    say("\n[bold]Sorter:[/] " + "   ".join(
+        (f"[bold {ACCENT}]▸ {t}[/]" if i == active else t) for i, t in enumerate(tabs)))
+    opts = list(actions) + [("__sorter__", "Switch sorter", "cycle to the next sorter")]
+    return _select_typed("Choose an action", opts, default), active
+
+
+def tab_menu(actions, tabs, active: int = 0, default: int = 0, _input=None, _output=None):
+    """Tabbed action menu: a top tab bar (one tab per sorter) + an action list.
+
+    Keys: ←/→ (or Tab / Shift-Tab) switch the active tab, ↑/↓ (or j/k) move the
+    action list, Enter runs the highlighted action, a number jumps to that action,
+    q / Ctrl-C quits. ``actions`` = list of (key, title, hint); ``tabs`` = list of
+    display strings. Returns ``(action_key_or_None, active_tab_index)``. Falls back
+    to a typed prompt when prompt_toolkit is unavailable or stdin is not a TTY
+    (the fallback can return the sentinel key ``"__sorter__"`` to cycle sorter).
+    """
+    active = max(0, min(active, len(tabs) - 1))
+    default = max(0, min(default, len(actions) - 1))
+    interactive = _input is not None or (_PT and sys.stdin.isatty())
+    if not interactive:
+        return _tab_menu_typed(actions, tabs, active, default)
+
+    tab = [active]
+    cur = [default]
+
+    def _step(target, delta, n):
+        def handler(_event):
+            target[0] = (target[0] + delta) % n
+        return handler
+
+    kb = KeyBindings()
+    for key in ("left", "c-b", "s-tab"):
+        kb.add(key)(_step(tab, -1, len(tabs)))
+    for key in ("right", "c-f", "tab"):
+        kb.add(key)(_step(tab, 1, len(tabs)))
+    for key in ("up", "k", "c-p"):
+        kb.add(key)(_step(cur, -1, len(actions)))
+    for key in ("down", "j", "c-n"):
+        kb.add(key)(_step(cur, 1, len(actions)))
+
+    @kb.add("enter")
+    def _enter(event):
+        event.app.exit(result=(actions[cur[0]][0], tab[0]))
+
+    @kb.add("q")
+    @kb.add("c-c")
+    def _cancel(event):
+        event.app.exit(result=(None, tab[0]))
+
+    for _n in range(1, min(len(actions), 9) + 1):
+        @kb.add(str(_n))
+        def _pick(event, i=_n - 1):
+            event.app.exit(result=(actions[i][0], tab[0]))
+
+    def render():
+        frags = [("class:label", "Sorter   ")]
+        for i, t in enumerate(tabs):
+            frags.append(("class:tab.active", f" {t} ") if i == tab[0] else ("class:tab", f" {t} "))
+            frags.append(("", "  "))
+        frags.append(("", "\n\n"))
+        for n, (_key, title, hint) in enumerate(actions):
+            sel = n == cur[0]
+            frags.append(("class:pointer", "❯ ") if sel else ("", "  "))
+            frags.append(("class:selected", title) if sel else ("", title))
+            if hint:
+                frags.append(("class:hint", f"   {hint}"))
+            frags.append(("", "\n"))
+        frags.append(("class:hint", "\n[ ↑/↓ move · ←/→ or Tab switch sorter · Enter select · q quit ]\n"))
+        return frags
+
+    window = Window(FormattedTextControl(render, focusable=True, show_cursor=False))
+    style = Style.from_dict({
+        "label": "bold", "tab": "#808080", "tab.active": "reverse bold cyan",
+        "pointer": "bold cyan", "selected": "bold cyan", "hint": "#808080",
+    })
+    kwargs = dict(layout=Layout(HSplit([window])), key_bindings=kb, style=style,
+                  full_screen=False, mouse_support=False, erase_when_done=True)
+    if _input is not None:
+        kwargs["input"] = _input
+    if _output is not None:
+        kwargs["output"] = _output
+    return Application(**kwargs).run()
