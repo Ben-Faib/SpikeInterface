@@ -85,11 +85,9 @@ SpikeInterface`), a **sorter tab bar** (one tab per sorter, switched with
 tab's sorter** — there is no separate "which sorter" prompt; numbers jump;
 `q`/Ctrl-C quits). Off-TTY / without prompt_toolkit it falls back to a scrolling
 status panel + a typed numbered menu (with a *Switch sorter* entry). The palette
-is **University of Pittsburgh navy + gold** (`PITT_NAVY`/`PITT_GOLD` in
-`scripts/ui.py`, also applied to `run_sorting.py`'s accent), replacing the old
-cyan. `scripts/ui.py` also holds the shared rich styling (rules, boxed tables, ✓
-lines) and the inline `select()` (full/quick, compare prompts). It shells out to
-the `scripts/*.py`
+is the **cyan** accent shared with `run_sorting.py`. `scripts/ui.py` also holds
+the shared rich styling (rules, boxed tables, ✓ lines) and the inline `select()`
+(full/quick, compare prompts). It shells out to the `scripts/*.py`
 for explore/sort/verify (live stdout), calls `report.build_report(...)`
 in-process, and launches the **blocking** Qt GUIs in fresh child processes
 (`_self`): the inspector is `spikeinterface-gui` (console command **`sigui

@@ -12,9 +12,8 @@ from __future__ import annotations
 import re
 import sys
 
-# University of Pittsburgh palette: navy + gold (replaces the old cyan accent).
-PITT_NAVY, PITT_GOLD = "#003594", "#ffb81c"
-ACCENT, MUTED, OK, WARN, BAD = PITT_GOLD, "dim", "bold green", PITT_GOLD, "bold red"
+# Palette — cyan accent, matching run_sorting.ConsoleUI.PALETTE.
+ACCENT, MUTED, OK, WARN, BAD = "cyan", "dim", "bold green", "yellow", "bold red"
 # PASS/SKIP/FAIL -> (rich style, glyph) for the pipeline status table.
 _BADGE = {"PASS": ("bold green", "✓"), "SKIP": ("dim", "–"), "FAIL": ("bold red", "✗")}
 # Same, as prompt_toolkit style-class names (used by the full-screen dashboard).
@@ -206,8 +205,8 @@ def select(title, options, default: int = 0, _input=None, _output=None):
         return frags
 
     window = Window(FormattedTextControl(render, focusable=True, show_cursor=False))
-    style = Style.from_dict({"title": "bold", "pointer": f"bold {PITT_GOLD}",
-                             "selected": f"bold {PITT_GOLD}", "hint": "#808080"})
+    style = Style.from_dict({"title": "bold", "pointer": "bold cyan",
+                             "selected": "bold cyan", "hint": "#808080"})
     kwargs = dict(layout=Layout(HSplit([window])), key_bindings=kb, style=style,
                   full_screen=False, mouse_support=False, erase_when_done=True)
     if _input is not None:
@@ -322,17 +321,17 @@ def dashboard_menu(header, pipeline, infos, active: int = 0, actions=(), default
         height=1, style="class:footer")
 
     style = Style.from_dict({
-        "header": f"bg:{PITT_NAVY} {PITT_GOLD} bold",
-        "footer": f"bg:{PITT_NAVY} #d0d7de",
-        "section": f"{PITT_GOLD} bold",
+        "header": "bold cyan",
+        "footer": "#7d8590",
+        "section": "bold cyan",
         "tab": "#9aa4b2",
-        "tab.active": f"bg:{PITT_GOLD} {PITT_NAVY} bold",
-        "pointer": f"{PITT_GOLD} bold",
-        "selected": f"{PITT_GOLD} bold",
+        "tab.active": "reverse bold cyan",
+        "pointer": "bold cyan",
+        "selected": "bold cyan",
         "action": "#d0d7de",
         "stage": "#d0d7de",
         "hint": "#7d8590",
-        "last": f"{PITT_GOLD} bold",
+        "last": "bold cyan",
         "pass": "#3fb950", "fail": "#f85149", "skip": "#7d8590",
     })
     kwargs = dict(layout=Layout(HSplit([header_win, body_win, footer_win])),
