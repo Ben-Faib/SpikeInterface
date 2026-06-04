@@ -78,10 +78,21 @@ def _load_dashboard(data_dir, active: str):
     return pipeline, infos
 
 
-def _render_dashboard(pipeline, infos) -> None:
-    ui.rule("PFCM7 workspace")
-    ui.sorters_panel(infos)
-    ui.status_table(pipeline)
+HEADER = "University of Pittsburgh · SpikeInterface"
+
+
+def _last_message(action: str, sorter: str, ok: bool) -> str:
+    """One-line 'what just happened' shown at the top of the dashboard next loop."""
+    verb = {
+        "explore": "Saved exploratory figures → outputs/",
+        "sort": f"Sorted {sorter}",
+        "report": f"Built report ({sorter}) → outputs/report.html",
+        "gui": "Closed the GUI inspector",
+        "traces": "Closed the trace viewer",
+        "compare": "Built sorter comparison → outputs/comparison.html",
+        "verify": "Ran the install check",
+    }.get(action, action)
+    return f"{'✓' if ok else '✗'} {verb}"
 
 
 # --------------------------------------------------------------------------- #
@@ -103,12 +114,6 @@ def _self(action: str, args) -> bool:
     return subprocess.run(cmd).returncode == 0
 
 
-def _tab_label(sorter: str, infos) -> str:
-    """One sorter-tab label, e.g. 'tridesclous2 · 19u/132s' or 'spykingcircus2 · no sort'."""
-    info = next((i for i in infos if i["name"] == sorter), None)
-    if info and info["present"]:
-        return f"{sorter} · {info['units']}u/{info['duration']:.0f}s"
-    return f"{sorter} · no sort"
 
 
 # --------------------------------------------------------------------------- #
@@ -229,7 +234,7 @@ DISPATCH = {
 # (key, action, title, hint)
 _MENU = [
     ("1", "explore", "Explore raw data",        "static figures (LFP + .nev), no sort needed"),
-    ("2", "sort",    "Run / re-run sorting",    "asks which sorter (tridesclous2 / spykingcircus2)"),
+    ("2", "sort",    "Run / re-run sorting",    "sorts the active sorter tab; pick full or quick"),
     ("3", "report",  "Build & open report",     "interactive HTML → browser"),
     ("4", "gui",     "Open GUI inspector",      "spikeinterface-gui on the active sort"),
     ("5", "traces",  "Scroll raw traces",       "ephyviewer trace browser"),
@@ -246,13 +251,14 @@ def _menu(args) -> int:
     pipeline, infos = _load_dashboard(args.data_dir, args.sorter)
     active_idx = SORTERS.index(args.sorter)
     cursor = 0
+    last = None
     actions = [(action, title, hint) for _k, action, title, hint in _MENU] + [("__quit__", "Quit", "")]
     while True:
-        _render_dashboard(pipeline, infos)
-        tabs = [_tab_label(s, infos) for s in SORTERS]
-        action, active_idx = ui.tab_menu(actions, tabs, active=active_idx, default=cursor)
+        # One pinned, in-place view: header + sorter tabs + pipeline + last action + menu.
+        action, active_idx = ui.dashboard_menu(HEADER, pipeline, infos, active_idx, actions,
+                                               default=cursor, last=last)
         args.sorter = SORTERS[active_idx]          # the active tab IS the sorter
-        for i in infos:  # keep the at-a-glance panel's active marker in sync
+        for i in infos:
             i["active"] = i["name"] == args.sorter
         if action in (None, "__quit__"):
             return 0
@@ -266,12 +272,11 @@ def _menu(args) -> int:
                               ("quick", f"Quick test — first {QUICK_SECONDS}s", "")],
                              default=0)
             if span is None:  # cancelled -> back to the menu without sorting
+                last = "Sort cancelled"
                 continue
             args.duration = QUICK_SECONDS if span == "quick" else None
-        if action in QT_ACTIONS:
-            _self(action, args)        # fresh child process for the blocking Qt window
-        else:
-            DISPATCH[action](args)
+        ok = _self(action, args) if action in QT_ACTIONS else DISPATCH[action](args)
+        last = _last_message(action, args.sorter, ok)
         if action in ("sort", "compare"):  # only these can change saved-sort state
             pipeline, infos = _load_dashboard(args.data_dir, args.sorter)
             active_idx = SORTERS.index(args.sorter)

@@ -12,10 +12,13 @@ from __future__ import annotations
 import re
 import sys
 
-# Palette — same values as run_sorting.ConsoleUI.PALETTE.
-ACCENT, MUTED, OK, WARN, BAD = "cyan", "dim", "bold green", "yellow", "bold red"
+# University of Pittsburgh palette: navy + gold (replaces the old cyan accent).
+PITT_NAVY, PITT_GOLD = "#003594", "#ffb81c"
+ACCENT, MUTED, OK, WARN, BAD = PITT_GOLD, "dim", "bold green", PITT_GOLD, "bold red"
 # PASS/SKIP/FAIL -> (rich style, glyph) for the pipeline status table.
 _BADGE = {"PASS": ("bold green", "✓"), "SKIP": ("dim", "–"), "FAIL": ("bold red", "✗")}
+# Same, as prompt_toolkit style-class names (used by the full-screen dashboard).
+_BADGE_PT = {"PASS": ("class:pass", "✓"), "SKIP": ("class:skip", "–"), "FAIL": ("class:fail", "✗")}
 
 try:  # rich is a declared dependency; the fallback is just safety.
     from rich.console import Console
@@ -203,8 +206,8 @@ def select(title, options, default: int = 0, _input=None, _output=None):
         return frags
 
     window = Window(FormattedTextControl(render, focusable=True, show_cursor=False))
-    style = Style.from_dict({"title": "bold", "pointer": "bold cyan",
-                             "selected": "bold cyan", "hint": "#808080"})
+    style = Style.from_dict({"title": "bold", "pointer": f"bold {PITT_GOLD}",
+                             "selected": f"bold {PITT_GOLD}", "hint": "#808080"})
     kwargs = dict(layout=Layout(HSplit([window])), key_bindings=kb, style=style,
                   full_screen=False, mouse_support=False, erase_when_done=True)
     if _input is not None:
@@ -222,20 +225,34 @@ def _tab_menu_typed(actions, tabs, active, default):
     return _select_typed("Choose an action", opts, default), active
 
 
-def tab_menu(actions, tabs, active: int = 0, default: int = 0, _input=None, _output=None):
-    """Tabbed action menu: a top tab bar (one tab per sorter) + an action list.
+def _sorter_summary(info) -> str:
+    return f"{info['units']}u · {info['duration']:.0f}s" if info.get("present") else "no sort"
 
-    Keys: ←/→ (or Tab / Shift-Tab) switch the active tab, ↑/↓ (or j/k) move the
-    action list, Enter runs the highlighted action, a number jumps to that action,
-    q / Ctrl-C quits. ``actions`` = list of (key, title, hint); ``tabs`` = list of
-    display strings. Returns ``(action_key_or_None, active_tab_index)``. Falls back
-    to a typed prompt when prompt_toolkit is unavailable or stdin is not a TTY
-    (the fallback can return the sentinel key ``"__sorter__"`` to cycle sorter).
+
+def dashboard_menu(header, pipeline, infos, active: int = 0, actions=(), default: int = 0,
+                   last=None, _input=None, _output=None):
+    """Single, in-place full-screen TUI: pinned header + sorter tabs + pipeline
+    status + a 'last action' line + the action list, with a key-hint footer.
+
+    The high-level info stays at the top and updates in place; choosing an action
+    exits the app (so the action's own output prints below in the normal terminal),
+    then the caller re-enters with refreshed data — so there is never more than one
+    dashboard on screen. Keys: ←/→ (or Tab/Shift-Tab) switch the sorter tab, ↑/↓
+    (or j/k) move the action list, Enter runs it, a number jumps, q/Ctrl-C quits.
+    Returns ``(action_key_or_None, active_tab_index)``. Without prompt_toolkit or
+    off-TTY it prints a scrolling status panel + a typed menu (which can return the
+    sentinel ``"__sorter__"`` to cycle the active sorter).
     """
-    active = max(0, min(active, len(tabs) - 1))
+    active = max(0, min(active, len(infos) - 1))
     default = max(0, min(default, len(actions) - 1))
     interactive = _input is not None or (_PT and sys.stdin.isatty())
     if not interactive:
+        rule(header)
+        for i, info in enumerate(infos):
+            info["active"] = i == active
+        sorters_panel(infos)
+        status_table(pipeline)
+        tabs = [f"{i['name']} · {_sorter_summary(i)}" for i in infos]
         return _tab_menu_typed(actions, tabs, active, default)
 
     tab = [active]
@@ -248,9 +265,9 @@ def tab_menu(actions, tabs, active: int = 0, default: int = 0, _input=None, _out
 
     kb = KeyBindings()
     for key in ("left", "c-b", "s-tab"):
-        kb.add(key)(_step(tab, -1, len(tabs)))
+        kb.add(key)(_step(tab, -1, len(infos)))
     for key in ("right", "c-f", "tab"):
-        kb.add(key)(_step(tab, 1, len(tabs)))
+        kb.add(key)(_step(tab, 1, len(infos)))
     for key in ("up", "k", "c-p"):
         kb.add(key)(_step(cur, -1, len(actions)))
     for key in ("down", "j", "c-n"):
@@ -270,29 +287,56 @@ def tab_menu(actions, tabs, active: int = 0, default: int = 0, _input=None, _out
         def _pick(event, i=_n - 1):
             event.app.exit(result=(actions[i][0], tab[0]))
 
-    def render():
-        frags = [("class:label", "Sorter   ")]
-        for i, t in enumerate(tabs):
-            frags.append(("class:tab.active", f" {t} ") if i == tab[0] else ("class:tab", f" {t} "))
+    stage_w = max((len(r["stage"]) for r in pipeline), default=0)
+
+    def body():
+        frags = [("", "\n")]
+        if last:
+            frags += [("class:last", f"  {last}"), ("", "\n\n")]
+        frags += [("class:section", "  SORTER"), ("", "\n  ")]
+        for i, info in enumerate(infos):
+            label = f" {info['name']} · {_sorter_summary(info)} "
+            frags.append(("class:tab.active", label) if i == tab[0] else ("class:tab", label))
             frags.append(("", "  "))
-        frags.append(("", "\n\n"))
+        frags += [("", "\n\n"), ("class:section", "  PIPELINE"), ("", "\n")]
+        for r in pipeline:
+            st, glyph = _BADGE_PT.get(r["status"], ("class:skip", r["status"]))
+            frags += [(st, f"   {glyph}  "), ("class:stage", r["stage"].ljust(stage_w)),
+                      ("class:hint", f"   {r['detail']}"), ("", "\n")]
+        frags += [("", "\n"), ("class:section", "  ACTIONS"), ("", "\n")]
         for n, (_key, title, hint) in enumerate(actions):
             sel = n == cur[0]
-            frags.append(("class:pointer", "❯ ") if sel else ("", "  "))
-            frags.append(("class:selected", title) if sel else ("", title))
+            frags.append(("class:pointer", "  ❯ ") if sel else ("", "    "))
+            frags.append(("class:selected", title) if sel else ("class:action", title))
             if hint:
                 frags.append(("class:hint", f"   {hint}"))
             frags.append(("", "\n"))
-        frags.append(("class:hint", "\n[ ↑/↓ move · ←/→ or Tab switch sorter · Enter select · q quit ]\n"))
         return frags
 
-    window = Window(FormattedTextControl(render, focusable=True, show_cursor=False))
+    header_win = Window(FormattedTextControl(lambda: [("class:header", f"  {header}")]),
+                        height=1, style="class:header")
+    body_win = Window(FormattedTextControl(body, focusable=True, show_cursor=False))
+    footer_win = Window(
+        FormattedTextControl(lambda: [("class:footer",
+            "  ↑/↓ move   ·   ←/→ or Tab switch sorter   ·   Enter select   ·   q quit")]),
+        height=1, style="class:footer")
+
     style = Style.from_dict({
-        "label": "bold", "tab": "#808080", "tab.active": "reverse bold cyan",
-        "pointer": "bold cyan", "selected": "bold cyan", "hint": "#808080",
+        "header": f"bg:{PITT_NAVY} {PITT_GOLD} bold",
+        "footer": f"bg:{PITT_NAVY} #d0d7de",
+        "section": f"{PITT_GOLD} bold",
+        "tab": "#9aa4b2",
+        "tab.active": f"bg:{PITT_GOLD} {PITT_NAVY} bold",
+        "pointer": f"{PITT_GOLD} bold",
+        "selected": f"{PITT_GOLD} bold",
+        "action": "#d0d7de",
+        "stage": "#d0d7de",
+        "hint": "#7d8590",
+        "last": f"{PITT_GOLD} bold",
+        "pass": "#3fb950", "fail": "#f85149", "skip": "#7d8590",
     })
-    kwargs = dict(layout=Layout(HSplit([window])), key_bindings=kb, style=style,
-                  full_screen=False, mouse_support=False, erase_when_done=True)
+    kwargs = dict(layout=Layout(HSplit([header_win, body_win, footer_win])),
+                  key_bindings=kb, style=style, full_screen=True, mouse_support=False)
     if _input is not None:
         kwargs["input"] = _input
     if _output is not None:

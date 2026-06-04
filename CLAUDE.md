@@ -73,20 +73,23 @@ All loaders default to reading the repo root and accept `data_dir=...` to point 
 `scripts/report.py` builds a single self-contained `outputs/report.html` (Plotly JS **inlined**, so it opens offline) via `build_report(data_dir, analyzer_dir, out_path)`. Each loader stage runs in its own try/except (a failure becomes a red/SKIP row in the status banner, never a crashed report), and sorted-unit data — sorting, waveform templates, quality metrics — is read **only** from the saved `SortingAnalyzer` (its single source of truth; the loose `outputs/<sorter>/sorting/` folder and `quality_metrics.csv` are from other runs and ignored). Sections: status banner, LFP traces + Welch spectrum, `.nev` online units, sorted units (raster/rates/templates), quality metrics (sortable table + SNR scatter), event-marker timeline, footer. The interactive front door is now `SpikeInterface_Menu.py` (see below); `scripts/make_report.py` is a thin shim that forwards to it.
 
 `SpikeInterface_Menu.py` (repo **root**, not `scripts/`) is the single front-door
-launcher: run bare it prints a status dashboard (via `report._gather`) + a
-numbered menu; run with an action (`report`, `sort`, `gui`, `traces`, `compare`,
-`verify`, `explore`) it dispatches directly. The menu is a **tabbed arrow-key
-TUI** (`scripts/ui.py`'s `tab_menu()`): a top tab bar with one tab per sorter —
-switched with **←/→** or **Tab** — over an action list moved with **↑/↓** (or
-j/k); Enter runs the highlighted action on the **active tab's sorter** (so there
-is no separate "which sorter" prompt), numbers jump, `q`/Ctrl-C quits. Built on
-`prompt_toolkit` (now a declared dep; cross-platform), it falls back to a typed
-numbered menu (with a *Switch sorter* entry) when prompt_toolkit is absent or
-stdin isn't a TTY. The dashboard also shows **both** sorters with their saved-sort
-summary + an active marker; it's loaded once and refreshed only after a
-sort/compare. `scripts/ui.py` also
-holds the shared rich styling (banner rules, boxed tables, ✓ lines) that mirrors
-`run_sorting.py`'s look. It shells out to the `scripts/*.py`
+launcher: run bare it opens an interactive dashboard; run with an action
+(`report`, `sort`, `gui`, `traces`, `compare`, `verify`, `explore`) it dispatches
+directly. The interactive view is a **single full-screen TUI** (`scripts/ui.py`'s
+`dashboard_menu()`, built on `prompt_toolkit`) that updates **in place** — never
+stacking duplicate dashboards. It pins a header (`University of Pittsburgh ·
+SpikeInterface`), a **sorter tab bar** (one tab per sorter, switched with
+**←/→** or **Tab/Shift-Tab**), the sorter-independent **pipeline status**, a
+**last-action** line that updates as you do things, and the **action list**
+(moved with **↑/↓** or j/k; Enter runs the highlighted action on the **active
+tab's sorter** — there is no separate "which sorter" prompt; numbers jump;
+`q`/Ctrl-C quits). Off-TTY / without prompt_toolkit it falls back to a scrolling
+status panel + a typed numbered menu (with a *Switch sorter* entry). The palette
+is **University of Pittsburgh navy + gold** (`PITT_NAVY`/`PITT_GOLD` in
+`scripts/ui.py`, also applied to `run_sorting.py`'s accent), replacing the old
+cyan. `scripts/ui.py` also holds the shared rich styling (rules, boxed tables, ✓
+lines) and the inline `select()` (full/quick, compare prompts). It shells out to
+the `scripts/*.py`
 for explore/sort/verify (live stdout), calls `report.build_report(...)`
 in-process, and launches the **blocking** Qt GUIs in fresh child processes
 (`_self`): the inspector is `spikeinterface-gui` (console command **`sigui

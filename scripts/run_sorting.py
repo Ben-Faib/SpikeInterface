@@ -69,9 +69,9 @@ _TQDM_DESC_WIDTH = 34
 # Fixed bar width (chars). A fixed width — rather than stretching to the terminal
 # edge — keeps the bars compact and visually uniform.
 _TQDM_BAR_WIDTH = 28
-# Colour of the bar fill (any tqdm-accepted name or hex). Matches the cyan used
-# for the phase headers in ConsoleUI for a consistent palette.
-_TQDM_BAR_COLOUR = "cyan"
+# Colour of the bar fill (any tqdm-accepted name or hex). Matches the Pitt gold
+# used for the phase headers in ConsoleUI for a consistent palette.
+_TQDM_BAR_COLOUR = "#ffb81c"
 # Drop SpikeInterface's parallelisation suffix from the description — it is the
 # same on (almost) every bar and only pushes the bar start to the right.
 _TQDM_DESC_SUFFIX = re.compile(r"\s*\((?:no parallelization|workers:[^)]*)\)\s*$")
@@ -129,7 +129,7 @@ class ConsoleUI:
     progress bars themselves are drawn by tqdm, not here.
     """
 
-    PALETTE = {"accent": "cyan", "muted": "dim", "ok": "bold green", "warn": "yellow"}
+    PALETTE = {"accent": "#ffb81c", "muted": "dim", "ok": "bold green", "warn": "#ffb81c"}
 
     def __init__(self, *, quiet: bool, total_phases: int):
         self.quiet = quiet
