@@ -68,6 +68,26 @@ def _self(action: str, args) -> bool:
     return subprocess.run(cmd).returncode == 0
 
 
+def _choose_sorter(current: str) -> str:
+    """Prompt for which sorter to use; Enter keeps the current one.
+
+    Accepts a number (1/2), a sorter name, or empty (keep current). This is the
+    discoverable way to pick spykingcircus2 vs tridesclous2 at sort time.
+    """
+    print("\nWhich sorter?")
+    for i, s in enumerate(SORTERS, 1):
+        print(f"  {i}) {s}" + ("   (current)" if s == current else ""))
+    raw = input(f"> [{SORTERS.index(current) + 1}] ").strip().lower()
+    if not raw:
+        return current
+    if raw.isdigit() and 1 <= int(raw) <= len(SORTERS):
+        return SORTERS[int(raw) - 1]
+    if raw in SORTERS:
+        return raw
+    print(f"Unknown choice — keeping {current}.")
+    return current
+
+
 # --------------------------------------------------------------------------- #
 # Actions
 # --------------------------------------------------------------------------- #
@@ -176,7 +196,7 @@ DISPATCH = {
 
 _MENU = [
     ("1", "explore", "Explore raw data         quick static figures (LFP + .nev)"),
-    ("2", "sort",    "Run / re-run sorting     tridesclous2 or spykingcircus2"),
+    ("2", "sort",    "Run / re-run sorting     (asks which sorter: tridesclous2 / spykingcircus2)"),
     ("3", "report",  "Build & open report      interactive HTML -> browser"),
     ("4", "gui",     "Open GUI inspector       spikeinterface-gui on the saved sort"),
     ("5", "traces",  "Scroll raw traces        ephyviewer trace browser"),
@@ -193,7 +213,7 @@ def _menu(args) -> int:
         print()
         for key, _action, label in _MENU:
             print(f"  {key}) {label}")
-        print("  t) Switch active sorter")
+        print(f"  t) Switch active sorter for report/GUI/compare (now: {args.sorter})")
         print("  q) Quit")
         choice = input("> ").strip().lower()
         if choice in ("q", ""):
@@ -207,6 +227,7 @@ def _menu(args) -> int:
             print("Unknown choice.")
             continue
         if action == "sort":
+            args.sorter = _choose_sorter(args.sorter)
             args.duration = (QUICK_SECONDS
                              if input(f"Quick {QUICK_SECONDS}s test? [y/N] ").strip().lower() == "y"
                              else None)
