@@ -1,0 +1,29 @@
+[project]
+name = "spikeinterface-pfcm7"
+version = "0.1.0"
+description = "SpikeInterface workspace for the PFCM7 Blackrock/Ripple recording"
+readme = "README.md"
+requires-python = "==3.12.*"
+dependencies = [
+    "spikeinterface[full,widgets]>=0.104,<0.105",
+    "spikeinterface-gui[desktop]>=0.13",
+    "ephyviewer",
+    "neo",
+    "probeinterface",
+    "numpy",
+    "scipy>=1.10",
+    "matplotlib>=3.6",
+    "numba",
+    "hdbscan>=0.8.33",
+    "zarr>=2.18,<3",
+    "plotly>=5.20,<6",
+    "rich",
+    "prompt_toolkit>=3.0",
+    "pyqtgraph",
+]
+
+[project.optional-dependencies]
+notebooks = ["jupyterlab", "ipywidgets", "ipympl"]
+
+[tool.uv]
+package = false
