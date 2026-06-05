@@ -35,9 +35,12 @@ PyTorch, which is not installed here.
 from __future__ import annotations
 
 import argparse
+import gc
 import os
 import re
+import shutil
 import sys
+import time
 import warnings
 from pathlib import Path
 
@@ -248,6 +251,28 @@ def configure_output(level: str) -> bool:
     return show_bars
 
 
+def _robust_rmtree(path: Path, attempts: int = 5, delay: float = 0.5) -> None:
+    """Remove a directory tree, retrying past transient Windows file locks.
+
+    SpikeInterface writes ``sorting``/``analyzer`` as memory-mapped binary
+    folders. On Windows a just-closed ``spikeinterface-gui``/ephyviewer can leave
+    a lagging handle, so deleting the folder to overwrite it raises
+    ``PermissionError`` (WinError 32) — POSIX unlinks an open file silently, so
+    this only bites on Windows. Retry with a gc sweep + short backoff; re-raise
+    if the lock never clears.
+    """
+    for attempt in range(attempts):
+        try:
+            if path.exists():
+                shutil.rmtree(path)
+            return
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            gc.collect()
+            time.sleep(delay)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -319,10 +344,12 @@ def main() -> int:
     )
     ui.result(f"{len(sorting.get_unit_ids())} units found")
 
+    _robust_rmtree(out / "sorting")  # retry past Windows GUI file-locks before overwrite
     sorting = sorting.save(folder=str(out / "sorting"), overwrite=True)
 
     if not args.no_metrics:
         ui.phase("Quality metrics", "(SortingAnalyzer)")
+        _robust_rmtree(out / "analyzer")  # retry past Windows GUI file-locks before overwrite
         analyzer = si.create_sorting_analyzer(
             sorting, rec, folder=str(out / "analyzer"), format="binary_folder", overwrite=True
         )
