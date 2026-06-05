@@ -1,8 +1,7 @@
 """Build a single self-contained interactive HTML report for the recording.
 
-    conda activate si_env
-    python scripts/make_report.py          # interactive launcher (preferred)
-    python -c "import sys; sys.path.insert(0,'scripts'); import report; report.build_report()"
+    uv run python scripts/make_report.py   # interactive launcher (preferred)
+    uv run python -c "import sys; sys.path.insert(0,'scripts'); import report; report.build_report()"
 
 Writes outputs/report.html — one offline file (Plotly JS inlined) covering loader
 health, LFP, .nev online units, the tridesclous2 sort, quality metrics and

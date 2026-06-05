@@ -1,12 +1,11 @@
 """Spike-sort the raw broadband recording (.ns5 @ ~30 kHz).
 
-    conda activate si_env
-    python scripts/run_sorting.py                          # tridesclous2, full recording
-    python scripts/run_sorting.py --sorter spykingcircus2  # the other installed sorter
-    python scripts/run_sorting.py --duration 30            # quick test: first 30 s only
-    python scripts/run_sorting.py --data-dir /path/to/recording
-    python scripts/run_sorting.py --verbosity normal       # step messages + table, no bars
-    python scripts/run_sorting.py --verbosity quiet        # only the final result + table
+    uv run python scripts/run_sorting.py                          # tridesclous2, full recording
+    uv run python scripts/run_sorting.py --sorter spykingcircus2  # the other installed sorter
+    uv run python scripts/run_sorting.py --duration 30            # quick test: first 30 s only
+    uv run python scripts/run_sorting.py --data-dir /path/to/recording
+    uv run python scripts/run_sorting.py --verbosity normal       # step messages + table, no bars
+    uv run python scripts/run_sorting.py --verbosity quiet        # only the final result + table
 
 Output is clean at every level: progress bars are aligned (uniform width/layout)
 and library/native warnings (probe, OpenMP, numba, resource_tracker) are muted.

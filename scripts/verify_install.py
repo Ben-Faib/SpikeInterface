@@ -2,8 +2,7 @@
 
 Run it after creating the environment:
 
-    conda activate si_env
-    python scripts/verify_install.py
+    uv run python scripts/verify_install.py
 
 It prints library versions and a summary of the LFP recording (.ns2), the raw
 broadband recording (.ns5/.ns6, if present), the installed sorters, the spike

@@ -1,8 +1,7 @@
 """Load the LFP + spike events and save a few exploratory figures.
 
-    conda activate si_env
-    python scripts/explore_data.py            # uses the data in the repo root
-    python scripts/explore_data.py --data-dir /path/to/another/recording
+    uv run python scripts/explore_data.py            # uses the data in the repo root
+    uv run python scripts/explore_data.py --data-dir /path/to/another/recording
 
 Figures are written to ./outputs/ (git-ignored):
     * lfp_traces.png   — a short window of several LFP channels

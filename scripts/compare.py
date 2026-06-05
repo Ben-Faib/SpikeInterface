@@ -1,7 +1,6 @@
 """Build a standalone interactive comparison of the two sorters.
 
-    conda activate si_env
-    python scripts/compare.py            # builds outputs/comparison.html
+    uv run python scripts/compare.py     # builds outputs/comparison.html
 
 Compares the saved tridesclous2 and spykingcircus2 sorts with SpikeInterface's
 compare_two_sorters: an agreement-score heatmap + a matched/unmatched unit table.

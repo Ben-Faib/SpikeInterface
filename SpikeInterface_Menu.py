@@ -1,10 +1,10 @@
 #!/usr/bin/env python
 """PFCM7 SpikeInterface workspace — single front-door menu launcher.
 
-    conda activate si_env
-    python SpikeInterface_Menu.py            # interactive status + menu
-    python SpikeInterface_Menu.py report     # run one action directly, then exit
-    python SpikeInterface_Menu.py --help
+    uv run python SpikeInterface_Menu.py            # interactive status + menu
+    uv run python SpikeInterface_Menu.py report     # run one action directly, then exit
+    uv run python SpikeInterface_Menu.py --help
+    REM Windows: double-click run.bat (or: run.bat report)
 
 Run with no action -> prints a pipeline-status dashboard and a numbered menu
 (friendly for everyone). Run with an action -> dispatches it directly (handy for
