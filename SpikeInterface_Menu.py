@@ -53,14 +53,14 @@ CONFIG_PATH = bio.REPO_ROOT / ".si_menu.json"  # local, git-ignored user prefs
 
 def _load_config() -> dict:
     try:
-        return json.loads(CONFIG_PATH.read_text())
+        return json.loads(CONFIG_PATH.read_text(encoding="utf-8"))
     except Exception:  # noqa: BLE001 - missing/corrupt -> defaults
         return {}
 
 
 def _save_config(cfg: dict) -> None:
     try:
-        CONFIG_PATH.write_text(json.dumps(cfg, indent=2))
+        CONFIG_PATH.write_text(json.dumps(cfg, indent=2), encoding="utf-8")
     except Exception:  # noqa: BLE001 - best-effort
         pass
 
