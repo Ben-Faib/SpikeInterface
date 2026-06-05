@@ -327,6 +327,7 @@ def _menu(args) -> int:
 
 def main() -> int:
     bio.use_utf8_stdout()
+    bio.mute_native_chatter()  # quiet OpenMP/Numba/probe noise for in-process report/compare too
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("action", nargs="?", choices=ACTIONS, default=None,

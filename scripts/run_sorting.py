@@ -36,12 +36,10 @@ from __future__ import annotations
 
 import argparse
 import gc
-import os
 import re
 import shutil
 import sys
 import time
-import warnings
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -49,21 +47,6 @@ import blackrock_io as bio  # noqa: E402
 
 SORTERS = ["tridesclous2", "spykingcircus2"]
 VERBOSITY_LEVELS = ["quiet", "normal", "verbose"]
-
-# Library/native chatter muted at every level — it is never the "verbose"
-# signal the user wants, it only breaks up the progress-bar formatting. Each
-# entry is a regex matched against the start of a warning message (warnings uses
-# re.match), so it silences the noise regardless of which Warning subclass raised it:
-#   - probe warning: sorters rebuild an internal recording that drops our probe
-#   - resource_tracker: known multiprocessing shared-memory cleanup chatter
-#   - non-persistent recording: expected — we register an in-memory recording
-# (The numba "unsafe cast" note is muted by category instead — numba prepends
-# ANSI colour codes to its message, so a message regex would never match.)
-_MUTED_WARNINGS = (
-    "There is no Probe attached",
-    "resource_tracker",
-    "The registered recording will not be persistent",
-)
 
 # Width the tqdm description is padded/truncated to, so every progress bar's
 # fill lines up in the same column. 34 fits all but the longest SI/sorter job
@@ -229,21 +212,10 @@ def configure_output(level: str) -> bool:
     """
     # UTF-8 stdout/stderr first, before rich/tqdm/SI build any console — so the
     # ✓ / → / … glyphs below never raise UnicodeEncodeError on a legacy Windows
-    # console code page (cp1252/cp437) when output is redirected or piped.
+    # console code page (cp1252/cp437) when output is redirected or piped. Then
+    # mute OpenMP/Numba/probe/resource-tracker noise before the heavy imports.
     bio.use_utf8_stdout()
-    # Set before the heavy imports: KMP_WARNINGS kills the "OMP: Info #276 ..."
-    # banner; PYTHONWARNINGS=ignore also covers any spawned worker subprocesses,
-    # whose warnings the main process's filters below would never see.
-    os.environ.setdefault("KMP_WARNINGS", "0")
-    os.environ.setdefault("PYTHONWARNINGS", "ignore")
-    for msg in _MUTED_WARNINGS:
-        warnings.filterwarnings("ignore", message=msg)
-    try:  # numba may be absent; its cast warning is muted by category
-        from numba.core.errors import NumbaWarning
-
-        warnings.filterwarnings("ignore", category=NumbaWarning)
-    except Exception:
-        pass
+    bio.mute_native_chatter()
 
     show_bars = level == "verbose"
     if show_bars:

@@ -58,6 +58,45 @@ def use_utf8_stdout() -> None:
                 pass
 
 
+# Library/native chatter that is never useful signal — only clutter that breaks
+# the clean terminal formatting. Muted everywhere it can leak: the verbose
+# progress output, the in-process report/compare paths, and spawned sorter
+# workers. Each entry is a regex matched against the START of a warning message
+# (warnings uses re.match), so it silences the noise regardless of the Warning
+# subclass that raised it:
+#   - probe warning: sorters rebuild an internal recording that drops our probe
+#   - resource_tracker: known multiprocessing shared-memory cleanup chatter
+#   - non-persistent recording: expected — we register an in-memory recording
+_MUTED_WARNINGS = (
+    "There is no Probe attached",
+    "resource_tracker",
+    "The registered recording will not be persistent",
+)
+
+
+def mute_native_chatter() -> None:
+    """Silence OpenMP/Numba/probe/resource-tracker noise.
+
+    Call *before* importing spikeinterface so ``KMP_WARNINGS`` lands before
+    OpenMP initialises and ``PYTHONWARNINGS=ignore`` propagates to any spawned
+    sorter worker subprocess (whose warnings the in-process filters never see).
+    Idempotent; safe to call from every entry point.
+    """
+    import os
+    import warnings
+
+    os.environ.setdefault("KMP_WARNINGS", "0")
+    os.environ.setdefault("PYTHONWARNINGS", "ignore")
+    for msg in _MUTED_WARNINGS:
+        warnings.filterwarnings("ignore", message=msg)
+    try:  # numba may be absent; its cast note is muted by category because numba
+        from numba.core.errors import NumbaWarning  # prepends ANSI codes -> a message regex misses it
+
+        warnings.filterwarnings("ignore", category=NumbaWarning)
+    except Exception:
+        pass
+
+
 def find_blackrock_base(data_dir: "Path | str | None" = None) -> Path:
     """Return the extension-less base path of a Blackrock file set.
 
