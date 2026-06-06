@@ -27,6 +27,7 @@ uv run python SpikeInterface_Menu.py   # ⭐ single front door: status dashboard
 uv run python SpikeInterface_Menu.py report   # or run one action directly: explore|sort|report|gui|traces|compare|verify
 uv run python SpikeInterface_Menu.py gui --sorter tridesclous2   # spikeinterface-gui (sigui) on the saved sort
 uv run python scripts/verify_install.py       # smoke test — lib versions, LFP + broadband + sorters summary
+uv run python -m pytest tests/                 # Textual Pilot tests for the v2 menu (small-size / focus / missing-data)
 uv run python scripts/explore_data.py         # writes lfp_traces.png / spike_raster.png / firing_rates.png to outputs/ (git-ignored)
 uv run python scripts/explore_data.py --data-dir /path/to/other/recording
 uv run python scripts/run_sorting.py          # sort .ns5 broadband with tridesclous2 -> outputs/<sorter>/
@@ -43,7 +44,7 @@ uv run jupyter lab notebooks/02_spike_sorting.ipynb            # interactive sor
 
 The raw recordings are **git-ignored** (`*.ns[1-6]`, `*.nev` — the `.ns5` is ~176 MB, over GitHub's 100 MB/file limit), so a fresh clone has no data. The `PFCM7_d0ephys_Block2.{ns2,ns5,nev}` set must sit in the repo root (or be pointed at with `--data-dir`); loaders auto-discover any Blackrock file set by base name, so a missing set surfaces as a clear `FileNotFoundError` from `find_blackrock_base()`.
 
-Env (re)creation: `uv sync` (Option A — primary; reads `pyproject.toml` + `uv.lock`, fetches Python 3.12) or `conda env create -f environment.yml` (Option B — conda fallback). `uv run python scripts/verify_install.py` is the closest thing to a test — run it to confirm changes to the loaders still read the data.
+Env (re)creation: `uv sync` (Option A — primary; reads `pyproject.toml` + `uv.lock`, fetches Python 3.12) or `conda env create -f environment.yml` (Option B — conda fallback). `uv run python scripts/verify_install.py` is the closest thing to a loader smoke test — run it to confirm changes to the loaders still read the data — and `uv run python -m pytest tests/` runs the Textual menu tests (a `dev` dependency-group with `pytest` + `pytest-asyncio`; install with `uv sync --group dev`). The v2 menu needs **`textual`** (a runtime dependency in `pyproject.toml`); without it the launcher falls back to the legacy prompt_toolkit/typed menu.
 
 **Use Python 3.12, not 3.13** — broadest prebuilt-wheel coverage across the whole dependency set on Windows, so the install never needs a C/C++ compiler (current `hdbscan` 0.8.44 *does* now ship 3.13 Windows wheels, but other deps may still lag, so 3.12 stays the tested choice). uv enforces this via `requires-python = "==3.12.*"` in `pyproject.toml` + a `.python-version` file. Pins that matter (carried in `pyproject.toml`): `zarr<3` (SpikeInterface doesn't support zarr 3.x), `plotly<6` (report.py inlines `plotly.offline.get_plotlyjs`), and the PySide6 desktop GUI binding.
 
@@ -75,34 +76,51 @@ All loaders default to reading the repo root and accept `data_dir=...` to point 
 `SpikeInterface_Menu.py` (repo **root**, not `scripts/`) is the single front-door
 launcher: run bare it opens an interactive dashboard; run with an action
 (`report`, `sort`, `gui`, `traces`, `compare`, `verify`, `explore`) it dispatches
-directly. The interactive view is a **single full-screen TUI** (`scripts/ui.py`'s
-`dashboard_menu()`, built on `prompt_toolkit`) that updates **in place** — never
-stacking duplicate dashboards. It pins a header (`University of Pittsburgh ·
-SpikeInterface`), a **sorter tab bar** (one tab per sorter, switched with
-**←/→** or **Tab/Shift-Tab**), the sorter-independent **pipeline status**, a
-**last-action** line that updates as you do things, and the **action list**
-(moved with **↑/↓** or j/k; Enter runs the highlighted action on the **active
-tab's sorter** — there is no separate "which sorter" prompt; numbers jump;
-`q`/Ctrl-C quits). Off-TTY / without prompt_toolkit it falls back to a scrolling
-status panel + a typed numbered menu (with a *Switch sorter* entry). The
-full-screen view uses a **centred title rule** (no full border). The **Sorters**
-are a **horizontal tab bar** of accent pills (the active sorter is an
-accent-filled pill; each pill carries a compact `· Nu` unit count, with the active
-sorter's full saved-sort line shown beneath the bar) headed by a `‹ ← / → › switch`
-hint; the **Pipeline** stays a column table with a **thin column-header underline**.
+directly. The interactive view (terminal UI **v2**) is a **single full-screen Textual app**
+(`scripts/menu_app.py`'s `SpikeMenuApp`) — a *resident* dashboard that stays
+usable at **any window size**, from a wide desktop down to a short VS Code pane.
+The launcher builds a `MenuController` (the bridge to dashboard data + action
+running) and runs the app; the app is a pure view that calls back into the
+controller. Layout is **two-pane and responsive**: a left **Sorter** sidebar (a
+focusable list, one row per sorter with a `● … ACTIVE` marker + `Nu · Ns`
+saved-sort summary) above a compact **Pipeline** panel (LFP/Broadband/.nev/Events
+with ✓/–/✗), and a right **Actions** list. On narrow terminals (`< NARROW_COLS`,
+≈78) the panes **stack**; on short terminals the shield collapses
+(full→compact→mini→hidden) and **both lists scroll** — so the active sorter and
+the actions are never clipped. **Navigation:** ←/→ (or Tab/Shift-Tab) move focus
+**between** the Sorter and Actions panes (the focused pane shows an accent
+border); ↑/↓ (or j/k) move within it; Enter on a sorter makes it active, Enter on
+an action runs it; **1–9** jump-run an action, **t** cycles the active sorter,
+**d** opens data-setup help, `q`/Ctrl-C quit. The active sorter stays marked
+independently of focus and is echoed in the footer. Actions run via Textual's
+**`suspend()`** (the app drops out of the alt-screen so the action's own stdout
+scrolls normally, then resumes and re-renders) — the sort-span and theme picks
+use in-app **modal** screens, while compare's conditional re-sort prompt still
+uses `ui.select` during the suspend. **Missing data:** when no `.nev/.nsX` set is
+found (`_data_report()`), the app shows a red **banner**, dims the data-dependent
+actions, and offers a **Data Setup** screen (`d`, or the *Data files* action)
+listing each expected file (`.ns2` LFP / `.ns5` broadband / `.nev` events) as a
+present/missing checklist with the exact folder it belongs in. Off-TTY / without
+Textual installed it falls back to the legacy `ui.dashboard_menu()`
+(prompt_toolkit full-screen, else a typed numbered menu), which prepends the same
+missing-data guidance in plain text.
 A detailed
-**blue + gold Pitt shield** (`ui._LOGO`, built from `ui._LOGO_ART`, a 21-col grid)
-sits atop it — drawn on a fixed grid of only the full block `█` and spaces (every
-row the same width), so it aligns in any monospace terminal/font with no
-ambiguous-width glyphs. The heraldry sits in negative space (the empty interior =
-the white field): three crenellated turrets, a centre keystone notch, two roundels
-above a blue/gold checky band, one roundel below, tapering to the base point. The **accent colour is themeable**
-(`ui.THEMES`: periwinkle/sea-green/steel-blue/amber/cyan; default periwinkle) via
-a *Change colour theme* menu action; the choice is **persisted** to a git-ignored
-`.si_menu.json` at the repo root (`_load_config`/`_save_config`) and re-applied on
-launch with `ui.set_accent()`. `scripts/ui.py` also holds the shared rich styling
-(rules, boxed tables, ✓ lines) and the inline `select()` (theme/full-quick/compare
-prompts). It shells out to the `scripts/*.py`
+**blue + gold Pitt shield** (the `ui._LOGO_ART` ladder — 21/15/11-col grids of
+only the full block `█` and spaces, every row the same width so it aligns in any
+monospace terminal/font with no ambiguous-width glyphs) sits atop the view, drawn
+by `ShieldWidget` which picks the largest crest that fits the live window (or
+hides it). The heraldry sits in negative space (the empty interior = the white
+field): crenellated turrets, a centre keystone notch, roundels over a blue/gold
+checky band, tapering to the base point. The **accent colour is themeable**
+(`ui.THEMES`: periwinkle/sea-green/steel-blue/amber/cyan; default periwinkle),
+driven into the Textual **`$accentcolor`** CSS variable (via
+`App.get_css_variables` + `refresh_css`); it is changed through the *Change colour
+theme* modal and **persisted** to a git-ignored `.si_menu.json` at the repo root
+(`_load_config`/`_save_config`), re-applied on launch with `ui.set_accent()`.
+`scripts/ui.py` still holds the shared rich styling (rules, boxed tables, ✓
+lines), the shield art + theme palette, and the inline `select()` used by the
+fallback menu and compare's re-sort prompt. The controller shells out to the
+`scripts/*.py`
 for explore/sort/verify (live stdout), calls `report.build_report(...)`
 in-process, and launches the **blocking** Qt GUIs in fresh child processes
 (`_self`): the inspector is `spikeinterface-gui` (console command **`sigui

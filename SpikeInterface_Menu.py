@@ -105,6 +105,36 @@ def _load_dashboard(data_dir, active: str):
     return pipeline, infos
 
 
+def _data_report(data_dir) -> dict:
+    """Which recording files are present/missing and where they belong.
+
+    Powers the v2 dashboard's missing-data banner + the Data Setup screen. Never
+    raises: a missing file set simply reports ``present=False`` with guidance.
+    """
+    d = (Path(data_dir).expanduser().resolve() if data_dir else bio.REPO_ROOT)
+    base = None
+    err = None
+    present = True
+    try:
+        base = bio.find_blackrock_base(d)
+    except FileNotFoundError as e:  # no .nev/.nsX at all
+        present = False
+        err = str(e)
+
+    def has(ext: str) -> bool:
+        if base is not None:
+            return base.with_suffix(ext).exists()
+        return bool(list(d.glob("*" + ext)))
+
+    files = [
+        {"ext": ".ns2", "label": "LFP — analog @ 1 kHz", "present": has(".ns2")},
+        {"ext": ".ns5", "label": "Broadband — raw @ 30 kHz (sortable)", "present": has(".ns5")},
+        {"ext": ".nev", "label": "Spike events + digital markers", "present": has(".nev")},
+    ]
+    return {"present": present, "data_dir": str(d),
+            "base": (base.name if base is not None else None), "files": files, "error": err}
+
+
 HEADER = "University of Pittsburgh · SpikeInterface"
 
 
@@ -270,14 +300,122 @@ _MENU = [
     ("8", "theme",   "Change colour theme",     "pick an accent colour (saved for next time)"),
 ]
 
+# v2 (Textual) action table — (key, title, hint, needs_data). ``needs_data`` dims
+# the action and blocks it when no recording is present; data-setup/theme/verify/
+# quit always work. ``data-setup`` and ``quit`` are handled in-app, not by DISPATCH.
+_ACTIONS = [
+    ("explore",    "Explore raw data",        "static figures (LFP + .nev), no sort needed", True),
+    ("sort",       "Run / re-run sorting",    "sort the active sorter; full or quick",       True),
+    ("report",     "Build & open report",     "interactive HTML → browser",                  True),
+    ("gui",        "Open GUI inspector",      "spikeinterface-gui on the active sort",       True),
+    ("traces",     "Scroll raw traces",       "ephyviewer trace browser",                    True),
+    ("compare",    "Compare the two sorters", "agreement matrix → comparison.html",          True),
+    ("verify",     "Verify install",          "environment smoke test",                      False),
+    ("theme",      "Change colour theme",     "pick an accent colour (saved)",               False),
+    ("data-setup", "Data files & setup help", "what's expected and where it goes",           False),
+    ("quit",       "Quit",                    "exit the menu (or press q)",                  False),
+]
+
+
+class MenuController:
+    """Bridge between the Textual dashboard (view) and this launcher's logic.
+
+    Holds the live dashboard state (pipeline rows, per-sorter infos, data report)
+    and runs actions through the same ``DISPATCH`` / ``_self`` paths as the direct
+    CLI, so behaviour matches ``python SpikeInterface_Menu.py <action>`` exactly.
+    """
+
+    quick_seconds = QUICK_SECONDS
+
+    def __init__(self, args, cfg: dict):
+        self.args = args
+        self.cfg = cfg
+        self.header = HEADER
+        self.sorters = list(SORTERS)
+        self.themes = dict(ui.THEMES)
+        self.actions = [dict(key=k, title=t, hint=h, needs_data=nd) for k, t, h, nd in _ACTIONS]
+        self.theme_name = cfg.get("theme", ui.DEFAULT_THEME)
+        if self.theme_name not in ui.THEMES:
+            self.theme_name = ui.DEFAULT_THEME
+        self.accent = ui.THEMES[self.theme_name]
+        self.active_idx = self.sorters.index(args.sorter) if args.sorter in self.sorters else 0
+        self.reload()
+
+    @property
+    def active_sorter(self) -> str:
+        return self.sorters[self.active_idx]
+
+    def set_active(self, idx: int) -> None:
+        self.active_idx = idx % len(self.sorters)
+        self.args.sorter = self.active_sorter
+        for i, info in enumerate(self.infos):
+            info["active"] = (i == self.active_idx)
+
+    def set_theme(self, name: str) -> str:
+        ui.set_accent(ui.THEMES[name])
+        self.theme_name = name
+        self.accent = ui.THEMES[name]
+        self.cfg["theme"] = name
+        _save_config(self.cfg)
+        return self.accent
+
+    def reload(self) -> None:
+        self.pipeline, self.infos = _load_dashboard(self.args.data_dir, self.active_sorter)
+        for i, info in enumerate(self.infos):
+            info["active"] = (i == self.active_idx)
+        self.data_report = _data_report(self.args.data_dir)
+
+    def run(self, key: str, span: str | None) -> tuple[bool, str, bool]:
+        self.args.sorter = self.active_sorter
+        if key == "sort":
+            self.args.duration = QUICK_SECONDS if span == "quick" else None
+        try:
+            ok = _self(key, self.args) if key in QT_ACTIONS else DISPATCH[key](self.args)
+        except Exception as e:  # noqa: BLE001 - surface, keep the app alive
+            ui.warn(f"{key} failed: {e!r}")
+            ok = False
+        return ok, _last_message(key, self.args.sorter, ok), key in ("sort", "compare")
+
+
+def _print_setup_plain(report: dict) -> None:
+    """Plain-text missing-data guidance for the typed fallback menu."""
+    ui.warn(f"No recording found in {report['data_dir']}")
+    ui.note("Expected one file set sharing a base name:")
+    for f in report["files"]:
+        mark = "[bold green]✓[/]" if f["present"] else "[bold red]✗[/]"
+        name = (report["base"] or "<RECORDING_NAME>") + f["ext"]
+        ui.say(f"  {mark} {name:32} [dim]{f['label']}[/]")
+    ui.note(f"Drop the set into {report['data_dir']} (or pass --data-dir).")
+    ui.note("The raw .ns5/.ns2/.nev are git-ignored, so a fresh clone has none.")
+
 
 def _menu(args) -> int:
+    """Interactive front door: Textual dashboard if possible, else typed fallback."""
     if not sys.stdin.isatty():
         ui.note("(non-interactive stdin -> building the report)")
         return 0 if DISPATCH["report"](args) else 1
 
     cfg = _load_config()
     theme = _apply_saved_theme(cfg)
+
+    try:
+        import menu_app  # noqa: F401 - imports textual; ImportError -> fallback
+        have_textual = True
+    except ImportError:
+        have_textual = False
+
+    if have_textual:
+        controller = MenuController(args, cfg)
+        menu_app.SpikeMenuApp(controller).run()
+        return 0
+    return _menu_fallback(args, cfg, theme)
+
+
+def _menu_fallback(args, cfg: dict, theme: str) -> int:
+    """Typed / prompt_toolkit dashboard used when Textual is unavailable."""
+    report = _data_report(args.data_dir)
+    if not report["present"]:
+        _print_setup_plain(report)
 
     pipeline, infos = _load_dashboard(args.data_dir, args.sorter)
     active_idx = SORTERS.index(args.sorter)
