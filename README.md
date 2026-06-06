@@ -31,31 +31,30 @@ Recorded with Trellis (Ripple), April 2025.
 
 ## First-time setup (macOS & Windows)
 
-From a clean machine to a working install. Do steps 1–4 **once**; after that you
-only run `conda activate si_env` (step 5) in each new terminal.
+From a clean machine to a working install. Install **uv** once (step 1); after
+that everything runs with `uv run …` — no environment to "activate".
 
-### 1. Install Miniconda (one-time)
+### 1. Install uv (one-time)
 
-Miniconda gives you the `conda` package manager. Skip this if you already have
-conda or Anaconda. Universal installer: <https://www.anaconda.com/download/success>.
+[uv](https://docs.astral.sh/uv/) is a fast Python package/environment manager. It
+installs Python itself, so you do **not** need conda or a system Python.
 
-**macOS** (Apple Silicon or Intel):
+**Windows** (PowerShell or cmd):
+
+```powershell
+winget install --id=astral-sh.uv -e
+```
+
+**macOS / Linux:**
 
 ```bash
-brew install --cask miniconda       # or run the installer from the link above
-conda init "$(basename "$SHELL")"   # then close and reopen the terminal
+brew install uv        # or: curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
-**Windows:**
+Close and reopen the terminal afterwards so `uv` is on `PATH`.
 
-```bat
-winget install -e --id Anaconda.Miniconda3   REM or run the installer from the link above
-```
-
-Then open **"Anaconda Prompt (miniconda3)"** from the Start menu and run every
-command below there — it has `conda` pre-initialised, so it's the simplest. (PowerShell
-also works after a one-time `conda init powershell` + restarting the shell; if you then
-hit a script-blocked error, run `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.)
+> **Prefer conda?** It still works as a fallback — see *Fallback: conda* at the
+> bottom of this section.
 
 ### 2. Get the code
 
@@ -82,29 +81,28 @@ PFCM7_d0ephys_Block2.nev     # spike events
 ### 4. Create the environment (one-time, ~5–10 min)
 
 ```bash
-conda env create -f environment.yml                 # builds si_env from conda-forge + pip
-conda activate si_env
-python -m ipykernel install --user --name si_env    # register the env as a Jupyter kernel
+uv sync          # builds .venv from the committed uv.lock (Python 3.12 + all deps)
 ```
 
-This installs Python 3.12, the scientific stack (numpy/scipy/numba/hdbscan/…),
-and `spikeinterface[full,widgets]` — including the `tridesclous2` and
-`spykingcircus2` sorters. **Use Python 3.12**, not 3.13 — it has the broadest
-prebuilt-wheel coverage across the whole dependency set on Windows, so the install
-never needs a compiler.
+`uv sync` downloads a private **Python 3.12** (if you don't have one), then
+installs the locked scientific stack (numpy/scipy/numba/hdbscan/…),
+`spikeinterface[full,widgets]` with the `tridesclous2` and `spykingcircus2`
+sorters, the PySide6 desktop GUIs, and Plotly. **Python 3.12 is pinned on
+purpose** — it has prebuilt wheels for every dependency on Windows, so the
+install never needs a C/C++ compiler. To include the Jupyter notebook tools:
 
-> **No conda?** Pip/venv works instead — create a Python 3.12 virtual env and
-> `pip install -r requirements.txt`:
-> - macOS/Linux: `python3.12 -m venv si_env && source si_env/bin/activate`
-> - Windows: `py -3.12 -m venv si_env && si_env\Scripts\activate`
->
-> `uv` is a faster drop-in: `uv venv si_env --python 3.12 && uv pip install -r requirements.txt`.
+```bash
+uv sync --extra notebooks
+```
+
+> **Fallback: conda.** Prefer conda? `conda env create -f environment.yml` then
+> `conda activate si_env` still works (it installs PyQt5 instead of PySide6 for
+> the GUIs). Use this only if you can't or won't install uv.
 
 ### 5. Verify it works
 
 ```bash
-conda activate si_env          # if not already active
-python scripts/verify_install.py
+uv run python scripts/verify_install.py
 ```
 
 Prints library versions and a summary of the LFP recording, the broadband
@@ -114,35 +112,33 @@ you're ready.
 
 ## Running everything
 
-Activate the environment first — once per terminal (Windows: the **Anaconda
-Prompt** is the zero-config option; PowerShell/cmd work too after `conda init`):
+No activation step — every command is just `uv run …` (or, on Windows,
+double-click `run.bat`).
 
 ### Quick start — the menu
 
-Once set up, the simplest way in is the single launcher at the repo root:
+The simplest way in is the single launcher at the repo root:
 
 ```bash
-conda activate si_env
-python SpikeInterface_Menu.py        # status dashboard + a numbered menu
+uv run python SpikeInterface_Menu.py        # status dashboard + a numbered menu
 ```
+
+On **Windows** you can instead double-click **`run.bat`** (or run `run.bat` /
+`.\run.ps1` from a terminal) — it wraps the same command.
 
 Pick a number to explore the data, run a sort, build & open the interactive HTML
 report, open the `spikeinterface-gui` inspector, scroll raw traces, or compare
 the two sorters. Power users can run a single action directly, e.g.
-`python SpikeInterface_Menu.py report` or `python SpikeInterface_Menu.py gui`.
+`uv run python SpikeInterface_Menu.py report` or `uv run python SpikeInterface_Menu.py gui`.
+
+The whole workflow, in order:
 
 ```bash
-conda activate si_env
-```
-
-Then the whole workflow, in order:
-
-```bash
-python scripts/verify_install.py     # 1. sanity-check the env + that the data loads
-python scripts/explore_data.py       # 2. save LFP / raster / firing-rate PNGs to outputs/
-python scripts/run_sorting.py        # 3. spike-sort the .ns5 broadband -> outputs/tridesclous2/
-jupyter lab notebooks/01_explore_lfp_and_spikes.ipynb   # 4a. explore LFP + units interactively
-jupyter lab notebooks/02_spike_sorting.ipynb            # 4b. sort interactively, with plots
+uv run python scripts/verify_install.py     # 1. sanity-check the env + that the data loads
+uv run python scripts/explore_data.py       # 2. save LFP / raster / firing-rate PNGs to outputs/
+uv run python scripts/run_sorting.py        # 3. spike-sort the .ns5 broadband -> outputs/tridesclous2/
+uv run jupyter lab notebooks/01_explore_lfp_and_spikes.ipynb   # 4a. explore LFP + units interactively
+uv run jupyter lab notebooks/02_spike_sorting.ipynb            # 4b. sort interactively, with plots
 ```
 
 What each does:
@@ -153,8 +149,8 @@ What each does:
   [Spike sorting](#spike-sorting) for the `--sorter` / `--duration` / `--data-dir`
   options and the output layout. It runs on CPU in a couple of minutes; add
   `--duration 30` to sort just the first 30 s as a quick check.
-- **Notebooks:** after `jupyter lab` opens, pick the **`si_env`** kernel
-  (Kernel ▸ Change Kernel) — it was registered in setup step 4.
+- **Notebooks:** `uv run jupyter lab` uses the project's own `.venv` kernel —
+  no `ipykernel install` step needed. Just open a notebook and run.
 - **Data elsewhere?** Every script accepts `--data-dir /path/to/folder`
   (default: the repo root).
 
@@ -177,8 +173,10 @@ By default they read the repo root; pass `data_dir="..."` to point elsewhere.
 
 ```
 .
-├── environment.yml      # conda environment (Option A)
-├── requirements.txt     # pip/uv environment (Option B)
+├── pyproject.toml       # uv environment (primary) — `uv sync`
+├── uv.lock              # locked, reproducible resolution
+├── environment.yml      # conda environment (fallback)
+├── run.bat / run.ps1    # Windows launchers (uv run …)
 ├── scripts/
 │   ├── blackrock_io.py    # reusable loaders (read_lfp / read_broadband / read_spikes / read_events)
 │   ├── verify_install.py  # smoke test
@@ -198,10 +196,10 @@ The raw broadband `.ns5` (30 kHz) is what makes sorting possible. `scripts/run_s
 runs the whole pipeline:
 
 ```bash
-python scripts/run_sorting.py                          # tridesclous2 (default), full recording
-python scripts/run_sorting.py --sorter spykingcircus2  # the other installed sorter
-python scripts/run_sorting.py --duration 30            # quick test: first 30 s only
-python scripts/run_sorting.py --data-dir /path/to/recording
+uv run python scripts/run_sorting.py                          # tridesclous2 (default), full recording
+uv run python scripts/run_sorting.py --sorter spykingcircus2  # the other installed sorter
+uv run python scripts/run_sorting.py --duration 30            # quick test: first 30 s only
+uv run python scripts/run_sorting.py --data-dir /path/to/recording
 ```
 
 It reads the broadband, attaches a placeholder probe (see below), band-passes
@@ -237,8 +235,7 @@ wired into `run_sorting.py`. **Kilosort4** is faster but needs an NVIDIA GPU
 ## One-glance HTML report
 
 ```bash
-conda activate si_env
-python SpikeInterface_Menu.py report   # build + open outputs/report.html
+uv run python SpikeInterface_Menu.py report   # build + open outputs/report.html
 # scripts/make_report.py still works — it's now a thin shim that calls the above
 ```
 
@@ -251,8 +248,8 @@ templates), **quality metrics** (sortable table + SNR-vs-rate scatter), and the
 
 The report reloads the raw data through the loaders every time (so it re-checks
 that loading works) and visualises the **saved** sort. To (re-)run a sort first,
-use the launcher's menu (`python SpikeInterface_Menu.py` → *Run / re-run
-sorting*) or `python scripts/run_sorting.py`. Each section is isolated, so if one
+use the launcher's menu (`uv run python SpikeInterface_Menu.py` → *Run / re-run
+sorting*) or `uv run python scripts/run_sorting.py`. Each section is isolated, so if one
 stage is broken it shows up as a red/SKIP row instead of crashing the report.
 
 ## Windows notes
@@ -260,12 +257,12 @@ stage is broken it shows up as a red/SKIP row instead of crashing the report.
 - **Multiprocessing:** when you call SpikeInterface functions with `n_jobs > 1`
   in a script, wrap the entry point in `if __name__ == "__main__":` (Windows
   uses `spawn`). The provided scripts already do this.
-- **Any shell works.** The sorters are pure in-process Python, so cmd, PowerShell
-  and the Anaconda Prompt are all fine — use whichever has `conda` initialised
-  (the Anaconda Prompt needs no setup).
+- **Any shell works.** cmd and PowerShell are both fine; `run.bat` / `run.ps1`
+  set `PYTHONUTF8=1` for you. For the full-screen menu, **Windows Terminal** (or
+  Windows 10 1903+) renders the Unicode shield/box-drawing best.
 - **Console output is UTF-8-safe.** The scripts force UTF-8 stdout so the `✓`/`→`
   status glyphs don't `UnicodeEncodeError` when you redirect output to a file on a
-  legacy console code page (`python scripts\run_sorting.py > log.txt`).
+  legacy console code page (`uv run python scripts\run_sorting.py > log.txt`).
 - Keep output paths short if you save in **`.zarr`** — its deeply-nested chunk
   files can hit Windows' 260-character path limit. (The default `run_sorting.py`
   pipeline writes a `binary_folder`, not zarr, and stays well under the limit.)
@@ -274,16 +271,15 @@ stage is broken it shows up as a red/SKIP row instead of crashing the report.
 
 ## Troubleshooting
 
-- **`No module named 'spikeinterface'`** — activate the env first
-  (`conda activate si_env`).
-- **Jupyter uses the wrong Python** — install/select the kernel:
-  `python -m ipykernel install --user --name si_env`, then pick `si_env` in
-  Jupyter.
+- **`No module named 'spikeinterface'`** — run scripts with `uv run python …`
+  (uv resolves the env automatically), or run `uv sync` first.
+- **Jupyter uses the wrong Python** — launch it with `uv run jupyter lab`; it
+  uses the project `.venv` kernel, so no `ipykernel install` is needed.
 - **A dependency tries to compile from source on Windows** (e.g. an
-  `error: Microsoft Visual C++ 14.0 ... is required`) — you're probably on a
-  Python version that lacks a prebuilt wheel for it. Recreate the env with
-  **Python 3.12**, which has wheels for every dependency (or use the conda path,
-  which installs binaries). On 3.12 no compiler is needed.
+  `error: Microsoft Visual C++ 14.0 ... is required`) — uv is pinned to
+  **Python 3.12** via `.python-version`, which has prebuilt wheels for every
+  dependency, so this should not happen. If you bypassed uv and used a different
+  Python, switch back to `uv sync`.
 
 ## References
 
