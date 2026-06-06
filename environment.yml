@@ -1,5 +1,9 @@
 # Conda environment for SpikeInterface — works on macOS, Windows and Linux.
 #
+# NOTE: the PRIMARY install path is now uv (`uv sync`, see pyproject.toml /
+# README.md). This conda file is kept as a fallback for conda users. Under conda
+# the Qt GUIs resolve to PyQt5; under uv they resolve to PySide6.
+#
 # Create it with:
 #     conda env create -f environment.yml
 #     conda activate si_env
@@ -31,7 +35,6 @@ dependencies:
   - matplotlib
   - h5py
   - pandas
-  - xarray
   - zarr<3            # SpikeInterface does not support zarr 3.x yet
   - scikit-learn
   - hdbscan
