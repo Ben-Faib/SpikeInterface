@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SpikeInterface · Windows Setup</title>
+<style>
+  :root{
+    --navy:#0a2d57;            /* Pitt navy */
+    --navy-2:#0e3a6e;
+    --gold:#ffb81c;            /* Pitt gold */
+    --ink:#1a2230;
+    --muted:#5b6677;
+    --line:#e4e8ef;
+    --bg:#f5f7fb;
+    --card:#ffffff;
+    --code-bg:#0d1b2e;
+    --code-ink:#e8eef7;
+    --ok:#1f9d57;
+    --radius:14px;
+    --shadow:0 1px 2px rgba(16,32,64,.06), 0 8px 28px rgba(16,32,64,.07);
+  }
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{
+    margin:0;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);
+    background:var(--bg);
+    line-height:1.6;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:880px;margin:0 auto;padding:0 22px 90px}
+
+  /* Header */
+  header{
+    background:
+      radial-gradient(1200px 320px at 80% -40%, rgba(255,184,28,.22), transparent 60%),
+      linear-gradient(135deg, var(--navy) 0%, var(--navy-2) 100%);
+    color:#fff;
+    border-bottom:4px solid var(--gold);
+  }
+  .head-inner{max-width:880px;margin:0 auto;padding:34px 22px 30px}
+  .eyebrow{
+    font-size:12.5px;letter-spacing:.14em;text-transform:uppercase;
+    color:var(--gold);font-weight:700;margin:0 0 8px
+  }
+  header h1{margin:0;font-size:31px;line-height:1.15;letter-spacing:-.02em;font-weight:800}
+  header p{margin:10px 0 0;color:#cdd9ec;max-width:62ch;font-size:15.5px}
+  .badges{margin-top:18px;display:flex;flex-wrap:wrap;gap:8px}
+  .badge{
+    font-size:12.5px;font-weight:600;color:#eaf1fb;
+    background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.18);
+    padding:5px 11px;border-radius:999px
+  }
+  .badge b{color:var(--gold);font-weight:700}
+
+  /* Callout */
+  .note{
+    background:#fff8e6;border:1px solid #f3e2ad;border-left:4px solid var(--gold);
+    border-radius:10px;padding:14px 16px;margin:20px 0;font-size:14.5px;color:#6a5410
+  }
+  .note.info{background:#eef4ff;border-color:#cfe0ff;border-left-color:var(--navy);color:#26415f}
+  .note strong{color:inherit}
+
+  /* Section titles */
+  h2.section{
+    font-size:14px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+    font-weight:700;margin:42px 0 14px;padding-bottom:8px;border-bottom:1px solid var(--line)
+  }
+
+  /* Step cards */
+  .step{
+    background:var(--card);border:1px solid var(--line);border-radius:var(--radius);
+    box-shadow:var(--shadow);padding:20px 22px;margin:16px 0;position:relative
+  }
+  .step-head{display:flex;align-items:center;gap:13px;margin-bottom:6px}
+  .num{
+    flex:0 0 auto;width:32px;height:32px;border-radius:50%;
+    background:var(--navy);color:#fff;font-weight:800;font-size:15px;
+    display:grid;place-items:center;box-shadow:inset 0 0 0 2px var(--gold)
+  }
+  .step-head h3{margin:0;font-size:18.5px;letter-spacing:-.01em}
+  .step .body{color:var(--ink)}
+  .step .body p{margin:8px 0}
+  .step .sub{color:var(--muted);font-size:14px}
+  .opt{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--navy);background:#eaf1fb;border:1px solid #d6e3f6;padding:2px 8px;border-radius:999px;margin-left:auto}
+
+  /* Command box */
+  .cmd{
+    position:relative;margin:13px 0 4px;border-radius:10px;
+    background:var(--code-bg);border:1px solid #14253c;overflow:hidden
+  }
+  .cmd code{
+    display:block;font-family:"SF Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,"Liberation Mono",monospace;
+    font-size:14px;color:var(--code-ink);
+    padding:15px 96px 15px 16px;white-space:pre-wrap;word-break:break-word;line-height:1.55
+  }
+  .cmd code .tok{color:#ffd87a}            /* highlight the program name */
+  .cmd .copy{
+    position:absolute;top:9px;right:9px;
+    font:inherit;font-size:12.5px;font-weight:600;color:#cfe0ff;
+    background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.18);
+    border-radius:8px;padding:6px 12px;cursor:pointer;transition:all .15s ease;
+    display:inline-flex;align-items:center;gap:6px
+  }
+  .cmd .copy:hover{background:rgba(255,255,255,.14);color:#fff}
+  .cmd .copy:active{transform:translateY(1px)}
+  .cmd .copy.copied{background:var(--ok);border-color:var(--ok);color:#fff}
+  .cmd .copy svg{width:14px;height:14px;display:block}
+
+  /* file tree / plain block */
+  .files{
+    background:#f1f4f9;border:1px dashed #c8d2e0;border-radius:10px;
+    font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13.5px;color:#3a4759;
+    padding:14px 16px;margin:12px 0;white-space:pre-wrap
+  }
+
+  /* action grid */
+  .actions{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px;margin-top:6px}
+  .action{border:1px solid var(--line);border-radius:10px;padding:11px 13px;background:#fff}
+  .action b{display:block;font-size:14.5px;color:var(--navy)}
+  .action span{font-size:13px;color:var(--muted)}
+
+  kbd{font-family:ui-monospace,monospace;font-size:12.5px;background:#eef1f6;border:1px solid #d4dbe6;
+    border-bottom-width:2px;border-radius:5px;padding:1px 6px;color:#33405a}
+  a{color:var(--navy-2);text-decoration:none;border-bottom:1px solid #b9cdea}
+  a:hover{border-bottom-color:var(--navy-2)}
+  code.inline{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;
+    background:#eef1f6;border:1px solid #e0e6ef;border-radius:5px;padding:1px 6px;color:#27406b}
+
+  footer{margin-top:46px;padding-top:20px;border-top:1px solid var(--line);
+    color:var(--muted);font-size:13px;text-align:center}
+
+  .toast{
+    position:fixed;left:50%;bottom:28px;transform:translateX(-50%) translateY(20px);
+    background:var(--ink);color:#fff;padding:10px 18px;border-radius:999px;font-size:14px;
+    box-shadow:0 10px 30px rgba(0,0,0,.25);opacity:0;pointer-events:none;transition:all .25s ease;z-index:50
+  }
+  .toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  @media (max-width:560px){
+    header h1{font-size:25px}
+    .cmd code{padding-right:16px;padding-bottom:46px}
+    .cmd .copy{top:auto;bottom:9px;right:9px}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="head-inner">
+    <p class="eyebrow">University of Pittsburgh · SpikeInterface</p>
+    <h1>Run SpikeInterface on Windows</h1>
+    <p>A clean, no-conda install using <strong>uv</strong>. uv installs Python for you and builds the
+       whole environment from a locked file — no Anaconda, no compiler, no PATH wrangling.</p>
+    <div class="badges">
+      <span class="badge">⏱ <b>~10 min</b> first time</span>
+      <span class="badge">🪟 Windows 10 / 11</span>
+      <span class="badge">🧱 <b>No compiler</b> needed</span>
+      <span class="badge">🐍 Python <b>3.12</b> (auto)</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <div class="note info">
+    <strong>What you'll need:</strong> a Windows PC, an internet connection, and the recording files
+    (<code class="inline">PFCM7_d0ephys_Block2.ns2 / .ns5 / .nev</code>). The raw data is <em>not</em> in
+    the repository (the <code class="inline">.ns5</code> is ~176&nbsp;MB), so you copy it in yourself in Step&nbsp;3.
+  </div>
+
+  <h2 class="section">Setup — do these once</h2>
+
+  <!-- STEP 1 -->
+  <div class="step">
+    <div class="step-head"><span class="num">1</span><h3>Install uv</h3></div>
+    <div class="body">
+      <p>Open <strong>PowerShell</strong> (press <kbd>⊞ Win</kbd>, type <em>PowerShell</em>, Enter) and run:</p>
+      <div class="cmd"><code><span class="tok">winget</span> install --id=astral-sh.uv -e</code><button class="copy" type="button">Copy</button></div>
+      <p class="sub">No winget? Use this instead:</p>
+      <div class="cmd"><code><span class="tok">powershell</span> -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"</code><button class="copy" type="button">Copy</button></div>
+      <p class="sub">Then <strong>close and reopen</strong> PowerShell so <code class="inline">uv</code> is on your PATH.</p>
+    </div>
+  </div>
+
+  <!-- STEP 2 -->
+  <div class="step">
+    <div class="step-head"><span class="num">2</span><h3>Get the project</h3></div>
+    <div class="body">
+      <p>Clone the repository (replace <code class="inline">&lt;repo-url&gt;</code> with the actual URL), or copy the
+         project folder onto the PC. Then move into it:</p>
+      <div class="cmd"><code><span class="tok">git</span> clone &lt;repo-url&gt; SpikeInterface</code><button class="copy" type="button">Copy</button></div>
+      <div class="cmd"><code><span class="tok">cd</span> SpikeInterface</code><button class="copy" type="button">Copy</button></div>
+      <p class="sub">Run every remaining command from inside this folder.</p>
+    </div>
+  </div>
+
+  <!-- STEP 3 -->
+  <div class="step">
+    <div class="step-head"><span class="num">3</span><h3>Add the recording data</h3></div>
+    <div class="body">
+      <p>Copy the three data files into the <strong>root</strong> of the project folder (next to
+         <code class="inline">pyproject.toml</code>):</p>
+      <div class="files">SpikeInterface\
+├─ PFCM7_d0ephys_Block2.ns2     (LFP, 1 kHz)
+├─ PFCM7_d0ephys_Block2.ns5     (raw broadband, 30 kHz — ~176 MB)
+└─ PFCM7_d0ephys_Block2.nev     (spike events)</div>
+      <p class="sub">No data yet? You can still install — the menu just won't have a recording to act on.</p>
+    </div>
+  </div>
+
+  <!-- STEP 4 -->
+  <div class="step">
+    <div class="step-head"><span class="num">4</span><h3>Build the environment</h3></div>
+    <div class="body">
+      <p>This one command downloads Python 3.12 and every dependency (SpikeInterface, the PySide6 GUIs,
+         the sorters) from the locked file:</p>
+      <div class="cmd"><code><span class="tok">uv</span> sync</code><button class="copy" type="button">Copy</button></div>
+      <p class="sub">First run takes ~5–10 minutes (PySide6 is large). Everything installs as prebuilt
+         wheels — <strong>no Visual C++ / build tools required.</strong> To also get the Jupyter notebooks:</p>
+      <div class="cmd"><code><span class="tok">uv</span> sync --extra notebooks</code><button class="copy" type="button">Copy</button></div>
+    </div>
+  </div>
+
+  <!-- STEP 5 -->
+  <div class="step">
+    <div class="step-head"><span class="num">5</span><h3>Verify it works</h3><span class="opt">recommended</span></div>
+    <div class="body">
+      <p>Quick smoke test — checks the libraries load and the data reads:</p>
+      <div class="cmd"><code><span class="tok">uv</span> run python scripts\verify_install.py</code><button class="copy" type="button">Copy</button></div>
+      <p class="sub">Success ends with <code class="inline">All good — SpikeInterface can read your data. ✓</code></p>
+    </div>
+  </div>
+
+  <h2 class="section">Run it — every time after</h2>
+
+  <!-- STEP 6 -->
+  <div class="step">
+    <div class="step-head"><span class="num">6</span><h3>Open the menu</h3></div>
+    <div class="body">
+      <p><strong>Easiest:</strong> double-click <code class="inline">run.bat</code> in the project folder.</p>
+      <p>Or from a terminal in the folder:</p>
+      <div class="cmd"><code><span class="tok">.\run.bat</span></code><button class="copy" type="button">Copy</button></div>
+      <p class="sub">Equivalent, without the launcher script:</p>
+      <div class="cmd"><code><span class="tok">uv</span> run python SpikeInterface_Menu.py</code><button class="copy" type="button">Copy</button></div>
+      <p class="sub">Run one action directly (skip the menu), e.g. build the HTML report:</p>
+      <div class="cmd"><code><span class="tok">.\run.bat</span> report</code><button class="copy" type="button">Copy</button></div>
+    </div>
+  </div>
+
+  <h2 class="section">What's in the menu</h2>
+  <div class="actions">
+    <div class="action"><b>explore</b><span>Quick LFP + spike figures</span></div>
+    <div class="action"><b>sort</b><span>Spike-sort the broadband</span></div>
+    <div class="action"><b>report</b><span>Build &amp; open HTML report</span></div>
+    <div class="action"><b>gui</b><span>spikeinterface-gui inspector</span></div>
+    <div class="action"><b>traces</b><span>Scroll raw traces (ephyviewer)</span></div>
+    <div class="action"><b>compare</b><span>Agreement between sorters</span></div>
+    <div class="action"><b>verify</b><span>Environment smoke test</span></div>
+  </div>
+  <p class="sub" style="margin-top:12px;color:var(--muted)">Move with <kbd>↑</kbd>/<kbd>↓</kbd>, press <kbd>Enter</kbd> to run the highlighted action, or type its number. <kbd>q</kbd> quits.</p>
+
+  <h2 class="section">Notes &amp; troubleshooting</h2>
+  <div class="note">
+    <strong>Best display:</strong> use <strong>Windows Terminal</strong> (or Windows 10 1903+) so the
+    full-screen menu's shield and box-drawing render correctly. <code class="inline">run.bat</code> already
+    sets <code class="inline">PYTHONUTF8=1</code> for you.
+  </div>
+  <div class="note info">
+    <strong>“No module named …”?</strong> Make sure you ran <code class="inline">uv sync</code> in the project
+    folder, and launch scripts with <code class="inline">uv run python …</code> (or <code class="inline">run.bat</code>) —
+    uv resolves the environment automatically, so there is nothing to “activate.”
+  </div>
+  <div class="note info">
+    <strong>Prefer conda?</strong> It still works as a fallback: <code class="inline">conda env create -f environment.yml</code>
+    then <code class="inline">conda activate si_env</code>. The uv path above is the recommended one and needs no conda.
+  </div>
+
+  <footer>
+    SpikeInterface workspace · University of Pittsburgh — generated setup guide. Open this file in any browser; the Copy buttons work offline.
+  </footer>
+</div>
+
+<div class="toast" id="toast">Copied to clipboard</div>
+
+<script>
+(function(){
+  function flash(btn){
+    var original = btn.innerHTML;
+    btn.classList.add('copied');
+    btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Copied';
+    var toast = document.getElementById('toast');
+    toast.classList.add('show');
+    setTimeout(function(){
+      btn.classList.remove('copied');
+      btn.innerHTML = original;
+      toast.classList.remove('show');
+    }, 1500);
+  }
+  function copyText(text){
+    // Preferred: async clipboard API (needs a secure context).
+    if(navigator.clipboard && window.isSecureContext){
+      return navigator.clipboard.writeText(text);
+    }
+    // Fallback for file:// pages / older browsers: hidden textarea + execCommand.
+    return new Promise(function(resolve, reject){
+      var ta = document.createElement('textarea');
+      ta.value = text;
+      ta.setAttribute('readonly','');
+      ta.style.position = 'fixed';
+      ta.style.top = '-1000px';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      ta.setSelectionRange(0, ta.value.length);
+      var ok = false;
+      try { ok = document.execCommand('copy'); } catch(e){ ok = false; }
+      document.body.removeChild(ta);
+      ok ? resolve() : reject(new Error('copy failed'));
+    });
+  }
+  document.querySelectorAll('.cmd .copy').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var code = btn.parentElement.querySelector('code');
+      var text = (code.innerText || code.textContent).trim();
+      copyText(text).then(function(){ flash(btn); })
+        .catch(function(){
+          // Last resort: select the text so the user can Ctrl+C.
+          var r = document.createRange(); r.selectNodeContents(code);
+          var s = window.getSelection(); s.removeAllRanges(); s.addRange(r);
+          btn.textContent = 'Press Ctrl+C';
+          setTimeout(function(){ btn.textContent = 'Copy'; }, 2000);
+        });
+    });
+  });
+})();
+</script>
+</body>
+</html>

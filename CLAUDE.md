@@ -85,12 +85,18 @@ SpikeInterface`), a **sorter tab bar** (one tab per sorter, switched with
 tab's sorter** — there is no separate "which sorter" prompt; numbers jump;
 `q`/Ctrl-C quits). Off-TTY / without prompt_toolkit it falls back to a scrolling
 status panel + a typed numbered menu (with a *Switch sorter* entry). The
-full-screen view uses a **centred title rule** and **thin column-header
-underlines** under the Sorters + Pipeline tables (no full border). A compact
-**blue + gold Pitt shield** (`ui._LOGO`, built from `ui._LOGO_ART`) sits atop it —
-drawn on a fixed grid of only the full block `█` and spaces (every row the same
-width), so it aligns in any monospace terminal/font with no ambiguous-width
-glyphs. The **accent colour is themeable**
+full-screen view uses a **centred title rule** (no full border). The **Sorters**
+are a **horizontal tab bar** of accent pills (the active sorter is an
+accent-filled pill; each pill carries a compact `· Nu` unit count, with the active
+sorter's full saved-sort line shown beneath the bar) headed by a `‹ ← / → › switch`
+hint; the **Pipeline** stays a column table with a **thin column-header underline**.
+A detailed
+**blue + gold Pitt shield** (`ui._LOGO`, built from `ui._LOGO_ART`, a 21-col grid)
+sits atop it — drawn on a fixed grid of only the full block `█` and spaces (every
+row the same width), so it aligns in any monospace terminal/font with no
+ambiguous-width glyphs. The heraldry sits in negative space (the empty interior =
+the white field): three crenellated turrets, a centre keystone notch, two roundels
+above a blue/gold checky band, one roundel below, tapering to the base point. The **accent colour is themeable**
 (`ui.THEMES`: periwinkle/sea-green/steel-blue/amber/cyan; default periwinkle) via
 a *Change colour theme* menu action; the choice is **persisted** to a git-ignored
 `.si_menu.json` at the repo root (`_load_config`/`_save_config`) and re-applied on

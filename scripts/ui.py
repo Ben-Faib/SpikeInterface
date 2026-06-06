@@ -10,6 +10,7 @@ The palette intentionally matches run_sorting.ConsoleUI.PALETTE.
 from __future__ import annotations
 
 import re
+import shutil
 import sys
 
 # Selectable accent themes for the UI chrome (headers, tabs, pointer, rules).
@@ -37,22 +38,57 @@ _BADGE = {"PASS": ("bold green", "✓"), "SKIP": ("dim", "–"), "FAIL": ("bold 
 # Same, as prompt_toolkit style-class names (used by the full-screen dashboard).
 _BADGE_PT = {"PASS": ("class:pass", "✓"), "SKIP": ("class:skip", "–"), "FAIL": ("class:fail", "✗")}
 
-# Compact University of Pittsburgh shield — authentic blue + gold (the rest of the
-# UI keeps its accent). Drawn on a fixed grid of ONLY the full block █ and spaces,
-# so every row is exactly the same width in any monospace font/terminal — no
-# ambiguous-width glyphs (●, quadrant blocks) that misalign across machines.
-# B = blue pixel, G = gold pixel, space = empty.  Every row is 14 columns.
+# University of Pittsburgh shield — authentic blue + gold (the rest of the UI keeps
+# its accent). Drawn on a fixed grid of ONLY the full block █ and spaces, so every
+# row is exactly the same width in any monospace font/terminal — no ambiguous-width
+# glyphs (●, quadrant blocks) that misalign across machines. The empty interior reads
+# as the white field; the heraldry sits in negative space, matching the real crest:
+# three crenellated turrets, a centre keystone notch, two roundels in the upper field,
+# a blue/gold checky band, one roundel below, tapering to the base point.
+# B = blue pixel, G = gold pixel, '.'/space = empty.  Each grid is internally square
+# (all rows equal width); three sizes feed the responsive ladder (pick_logo) so the
+# shield shrinks — full → compact → mini → none — to fit small terminal windows.
 _LOGO_BLUE, _LOGO_GOLD = "#1f6feb", "#ffb81c"
-_LOGO_ART = [
-    ".BB..BB..BB...",   # crenellated crown (3 merlons)
-    "BBBBBBBBBBBBBB",   # shield top edge
-    "BB..........BB",
-    "BBGGGGGGGGGGBB",   # gold band
-    "BBGGBBGGBBGGBB",   # gold/blue checker
-    "BB..........BB",
-    ".BB........BB.",   # taper
-    "..BB......BB..",
-    "...BBBBBBBB...",   # rounded base
+_LOGO_ART = [                  # full crest — 21 columns
+    ".B.B.B..B.B.B..B.B.B.",   # three crenellated turrets
+    ".BBBBB..BBBBB..BBBBB.",   # turret bodies
+    "BBBBBBBBBB.BBBBBBBBBB",   # shield top edge + centre keystone notch
+    "B...................B",   # upper white field
+    "B....BBB.....BBB....B",   # two roundels
+    "B...................B",   # upper white field
+    "BGGGGGGGGGGGGGGGGGGGB",   # gold band — top margin
+    "BGBBGGBBGGBBGGBBGGBGB",   # checky band, row A
+    "BGGGBBGGBBGGBBGGBBGGB",   # checky band, row B (offset)
+    "BGGGGGGGGGGGGGGGGGGGB",   # gold band — bottom margin
+    "B...................B",   # lower white field
+    "B........BBB........B",   # one roundel
+    ".BB...............BB.",   # taper
+    "...BB...........BB...",   # taper
+    ".....BB.......BB.....",   # taper
+    ".......BB...BB.......",   # taper
+    ".........BBB.........",   # base point
+]
+_LOGO_ART_COMPACT = [          # medium crest — 15 columns
+    ".B.B..B.B..B.B.",         # turrets
+    ".BBB..BBB..BBB.",         # bodies
+    "BBBBBBB.BBBBBBB",         # top edge + notch
+    "B..BB.....BB..B",         # two roundels
+    "BGBBGGBBGGBBGGB",         # checky band, row A
+    "BGGGBBGGBBGGBGB",         # checky band, row B
+    "B.............B",         # lower white field
+    ".BB.........BB.",         # taper
+    "...BB.....BB...",         # taper
+    ".....BB.BB.....",         # taper
+    "......BBB......",         # base point
+]
+_LOGO_ART_MINI = [             # small crest — 11 columns
+    ".B...B...B.",             # turret nubs
+    "BBBBB.BBBBB",             # top edge + notch
+    "B..B...B..B",             # two roundels
+    "BGBGBGBGBGB",             # gold/checky band
+    ".B.......B.",             # taper
+    "...B...B...",             # taper
+    "....BBB....",             # base point
 ]
 
 
@@ -74,6 +110,53 @@ def _build_logo(art):
 
 
 _LOGO = _build_logo(_LOGO_ART)
+_LOGO_COMPACT = _build_logo(_LOGO_ART_COMPACT)
+_LOGO_MINI = _build_logo(_LOGO_ART_MINI)
+
+# Responsive ladder, widest first: (width, height, built rows). The dashboard and the
+# scrolling banner both pick the largest shield that fits the live terminal, so it
+# never wraps a narrow window or crowds the menu off a short one.
+_LOGOS = [
+    (len(_LOGO_ART[0]), len(_LOGO_ART), _LOGO),
+    (len(_LOGO_ART_COMPACT[0]), len(_LOGO_ART_COMPACT), _LOGO_COMPACT),
+    (len(_LOGO_ART_MINI[0]), len(_LOGO_ART_MINI), _LOGO_MINI),
+]
+_LOGO_INDENT = 2  # leading "  " before every shield row
+
+
+def _term_size():
+    """Live (cols, rows). Inside a running prompt_toolkit app, read its output size (so
+    the dashboard tracks live resizes); otherwise use the real terminal via shutil.
+
+    NB: ``get_app()`` returns a *DummyApplication* (fixed 80x40) when no app is running,
+    which would mask the true terminal — so use ``get_app_or_none()`` and fall through."""
+    try:
+        from prompt_toolkit.application import get_app_or_none
+
+        app = get_app_or_none()
+        if app is not None:
+            s = app.output.get_size()
+            if s.columns and s.rows:
+                return s.columns, s.rows
+    except Exception:
+        pass
+    ts = shutil.get_terminal_size(fallback=(80, 24))
+    return ts.columns, ts.lines
+
+
+def pick_logo(cols, rows=None, reserve=0):
+    """Largest shield whose width (+indent) fits ``cols`` and whose height fits the
+    vertical budget ``rows - reserve``; ``[]`` (no shield) if even the mini won't fit.
+    Pass ``rows=None`` (default) to ignore height — e.g. for scrolling output that
+    can run off the bottom of the screen."""
+    for w, h, logo in _LOGOS:
+        if w + _LOGO_INDENT > cols:
+            continue
+        if rows is not None and h > rows - reserve:
+            continue
+        return logo
+    return []
+
 
 try:  # rich is a declared dependency; the fallback is just safety.
     from rich.console import Console
@@ -139,8 +222,12 @@ def link(label: str, uri: str) -> None:
 
 
 def banner(header: str) -> None:
-    """Print the Pitt shield + header line (rich path / typed fallback)."""
-    for line in _LOGO:
+    """Print the Pitt shield + header line (rich path / typed fallback).
+
+    Output here scrolls, so only width matters: pick the largest shield that fits the
+    terminal so a narrow window never wraps the art (and very narrow windows drop it)."""
+    cols, _ = _term_size()
+    for line in pick_logo(cols):
         say("  " + "".join((f"[{style}]{text}[/]" if style else text) for style, text in line))
     say(f"  [bold {ACCENT}]{header}[/]")
 
@@ -349,19 +436,25 @@ def dashboard_menu(header, pipeline, infos, active: int = 0, actions=(), default
         def _pick(event, i=_n - 1):
             event.app.exit(result=(actions[i][0], tab[0]))
 
-    # Column widths for the two info tables; thin underlines span each table.
-    name_w = max([len("sorter")] + [len(i["name"]) for i in infos])
-
     def _saved(info):
         return (f"{info['units']} units · {info['duration']:.1f}s"
                 if info.get("present") else "no saved sort")
 
-    saved_w = max([len("saved sort")] + [len(_saved(i)) + len("  (active)") for i in infos])
+    def _chip(info):
+        # Compact tab label: name + unit count, so both sorters compare at a glance.
+        tail = f" · {info['units']}u" if info.get("present") else " · no sort"
+        return f" {info['name']}{tail} "
+
+    # The sorter tab bar is horizontal; pipeline stays a column table with an underline.
+    tabbar_w = 2 + sum(len(_chip(i)) for i in infos) + 2 * max(0, len(infos) - 1)
     stage_w = max([len("stage")] + [len(r["stage"]) for r in pipeline])
     detail_w = min(max([len("detail")] + [len(r["detail"]) for r in pipeline]), 64)
-    W = min(max(2 + name_w + 3 + saved_w, 2 + stage_w + 3 + detail_w, len(header) + 10), 92)
-    sorter_uline = "  " + "─" * (name_w + 3 + saved_w)
+    W = min(max(tabbar_w, 2 + stage_w + 3 + detail_w, len(header) + 10), 92)
     pipe_uline = "  " + "─" * (stage_w + 3 + detail_w)
+    # Lines the body() control emits — so the responsive shield can yield enough rows
+    # to keep the whole menu visible on a short terminal. 12 fixed newline-blocks +
+    # the variable rows + 1 line of safety so the last action is never clipped.
+    body_rows = 13 + (2 if last else 0) + len(pipeline) + len(actions)
 
     def _trunc(text, n):
         return text if len(text) <= n else text[: max(0, n - 1)] + "…"
@@ -370,19 +463,18 @@ def dashboard_menu(header, pipeline, infos, active: int = 0, actions=(), default
         f = [("", "\n")]
         if last:
             f += [("class:last", f"  {last}"), ("", "\n\n")]
-        # Sorters — a table; ←/→ (or Tab) moves the active row
-        f += [("class:section", "  Sorters"), ("", "\n")]
-        f += [("class:colhead", "  " + "sorter".ljust(name_w) + "   saved sort"), ("", "\n")]
-        f += [("class:rule", sorter_uline), ("", "\n")]
+        # Sorters — a horizontal tab bar; ←/→ (or Tab) switches the active tab.
+        f += [("class:section", "  Sorters"),
+              ("class:tabhint", "    ‹ ← / → ›"), ("class:hint", " switch"), ("", "\n\n")]
+        f.append(("", "  "))
         for i, info in enumerate(infos):
             sel = i == tab[0]
-            f.append(("class:pointer", "→ ") if sel else ("", "  "))
-            f.append(("class:selected" if sel else "class:action", info["name"].ljust(name_w)))
-            f.append(("class:hint", "   " + _saved(info)))
-            if sel:
-                f.append(("class:hint", "  (active)"))
-            f.append(("", "\n"))
-        f += [("", "\n")]
+            f.append(("class:tab.active" if sel else "class:tab", _chip(info)))
+            if i != len(infos) - 1:
+                f.append(("", "  "))
+        f += [("", "\n\n")]
+        # The active sorter's full saved-sort detail, below the bar.
+        f += [("class:hint", "  " + _saved(infos[tab[0]])), ("", "\n\n")]
         # Pipeline — a table
         f += [("class:section", "  Pipeline"), ("", "\n")]
         f += [("class:colhead", "  " + "stage".ljust(stage_w) + "   detail"), ("", "\n")]
@@ -403,20 +495,28 @@ def dashboard_menu(header, pipeline, infos, active: int = 0, actions=(), default
             f.append(("", "\n"))
         return f
 
-    pad = max(0, W - len(header) - 2)
-    rule_l, rule_r = "─" * (pad // 2), "─" * (pad - pad // 2)
+    # Reserve = body + footer (1) + the banner's own blank line and rule (2).
+    def _fit_logo():
+        cols, rows = _term_size()
+        return cols, pick_logo(cols, rows, reserve=body_rows + 3)
 
     def banner_ft():
+        cols, logo = _fit_logo()
         f = [("", "\n")]
-        for line in _LOGO:
+        for line in logo:
             f.append(("", "  "))
             f.extend(line)
             f.append(("", "\n"))
-        # Centred title rule (no full border).
+        # Centred title rule (no full border), sized to the body but never past the edge.
+        rule_w = min(W, max(len(header) + 2, cols - 1))
+        pad = max(0, rule_w - len(header) - 2)
+        rule_l, rule_r = "─" * (pad // 2), "─" * (pad - pad // 2)
         f += [("class:rule", rule_l + " "), ("class:header", header), ("class:rule", " " + rule_r)]
         return f
 
-    banner_win = Window(FormattedTextControl(banner_ft), height=len(_LOGO) + 2)
+    # Re-evaluated every render (incl. on resize), so the banner height tracks the
+    # chosen shield — full → compact → mini → none — as the window grows or shrinks.
+    banner_win = Window(FormattedTextControl(banner_ft), height=lambda: len(_fit_logo()[1]) + 2)
     body_win = Window(FormattedTextControl(body, focusable=True, show_cursor=False))
     footer_win = Window(
         FormattedTextControl(lambda: [("class:hint",
@@ -431,6 +531,9 @@ def dashboard_menu(header, pipeline, infos, active: int = 0, actions=(), default
         "rule": "#4a5058",
         "pointer": f"bold {a}",
         "selected": f"bold {a}",
+        "tab": "#7d8590",
+        "tab.active": f"bold {a} reverse",   # accent-filled pill = the active tab
+        "tabhint": f"bold {a}",
         "action": "#d0d7de",
         "stage": "#d0d7de",
         "hint": "#7d8590",
