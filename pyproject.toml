@@ -20,6 +20,7 @@ dependencies = [
     "rich",
     "prompt_toolkit>=3.0",
     "pyqtgraph",
+    "textual>=8.2.7",
 ]
 
 [project.optional-dependencies]
@@ -27,3 +28,13 @@ notebooks = ["jupyterlab", "ipywidgets", "ipympl"]
 
 [tool.uv]
 package = false
+
+[dependency-groups]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.4.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"

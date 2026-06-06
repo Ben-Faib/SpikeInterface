@@ -31,7 +31,8 @@ dependencies:
   - joblib
   - tqdm
   - rich              # structured/coloured terminal output in scripts/run_sorting.py
-  - prompt_toolkit    # arrow-key menu navigation in SpikeInterface_Menu.py (cross-platform)
+  - prompt_toolkit    # legacy/fallback menu in SpikeInterface_Menu.py (cross-platform)
+  - textual           # v2 full-screen menu app (scripts/menu_app.py)
   - matplotlib
   - h5py
   - pandas
