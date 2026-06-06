@@ -8,7 +8,7 @@ Kept for backwards compatibility; it just invokes the launcher's 'report'
 action with whatever flags you pass. For the full menu (sort / GUI / compare /
 trace browser / ...), run the launcher directly:
 
-    python SpikeInterface_Menu.py
+    uv run python SpikeInterface_Menu.py
 """
 from __future__ import annotations
 
