@@ -190,16 +190,16 @@ def _setup_body(report: dict, accent: str) -> Text:
     base = report.get("base")
     files = report.get("files", [])
     complete = bool(files) and all(f.get("present") for f in files)
+    missing = [f["ext"] for f in files if not f.get("present")]
     if report.get("present") and complete:
-        t.append("A complete recording was found", style="bold #3fb950")
+        t.append("A complete file set was found", style="bold #3fb950")
         t.append(f" in {data_dir}\n", style="dim")
         t.append("Base name: ", style="dim")
         t.append(f"{base}\n\n", style=f"bold {accent}")
-    elif report.get("present"):
-        missing = ", ".join(f["ext"] for f in files if not f.get("present"))
+    elif report.get("present") and missing:
         t.append("Incomplete recording set", style="bold #e3a008")
         t.append(f" in {data_dir}", style="dim")
-        t.append(f"  (missing {missing})\n", style="#e3a008")
+        t.append(f"  (missing {', '.join(missing)})\n", style="#e3a008")
         t.append("Base name: ", style="dim")
         t.append(f"{base}\n\n", style=f"bold {accent}")
     else:
@@ -270,7 +270,7 @@ class SpikeMenuApp(App):
     #titlebar { height: 1; content-align: left middle; }
 
     #banner {
-        height: auto; display: none; margin: 1 2 0 2; padding: 0 1;
+        height: 1; display: none; margin: 1 2 0 2; padding: 0 1;
         color: #ffd9d4; background: #5a1d1d; text-style: bold;
     }
 
@@ -354,7 +354,7 @@ class SpikeMenuApp(App):
         w, h = size.width, size.height
         stacked = w < NARROW_COLS
         self.query_one("#body").set_class(stacked, "stacked")
-        banner_on = self._update_banner()
+        banner_on = self._update_banner(w, h)
         # Shield yields rows for title + footer + a usable body (+ the banner when
         # it is showing), dropping full→compact→mini→hidden as the window shrinks.
         reserve = SHIELD_RESERVE + (3 if banner_on else 0)
@@ -370,25 +370,39 @@ class SpikeMenuApp(App):
             pipe.update(self._render_pipeline(w, stacked))
         self._refresh_footer(w)
 
-    def _update_banner(self) -> bool:
-        """Show/hide the top banner. Returns True while it occupies rows.
+    # Banner needs this much height before it is worth a row; below it (very short
+    # windows) it is suppressed so it can never push the body off-screen.
+    _BANNER_MIN_ROWS = 9
 
-        Three states: hidden (a complete set is present), red (nothing found),
-        amber (a set is present but missing one or more files). Kept path-free so
-        it never wraps — the Data Setup screen carries the full detail."""
+    def _update_banner(self, width: int, height: int) -> bool:
+        """Show/hide the one-row top banner. Returns True while it occupies rows.
+
+        States: hidden (a complete, readable set is present, or the window is too
+        short to spare a row), red (nothing found), amber (present-but-incomplete,
+        or present-but-unreadable). The text is truncated to one row — the Data
+        Setup screen carries the full detail."""
         dr = self.c.data_report
         files = dr.get("files", [])
         complete = bool(files) and all(f.get("present") for f in files)
+        # Files exist but the sortable broadband stream won't load (empty/corrupt).
+        bb = next((r for r in self.c.pipeline if "Broadband" in r.get("stage", "")), None)
+        unreadable = complete and bb is not None and bb.get("status") == "FAIL"
+        healthy = dr.get("present") and complete and not unreadable
         banner = self.query_one("#banner", Static)
-        if dr.get("present") and complete:
+        if healthy or height < self._BANNER_MIN_ROWS:
             banner.display = False
             return False
         banner.display = True
         if not dr.get("present"):
-            banner.update(Text("⚠  No recording found  —  press  d  for setup help"))
+            msg = "⚠  No recording found  —  press  d  for setup help"
+        elif unreadable:
+            msg = "⚠  Files present but unreadable  —  press  d  /  run Verify"
         else:
             missing = ", ".join(f["ext"] for f in files if not f.get("present"))
-            banner.update(Text(f"⚠  Incomplete set — missing {missing}  —  press  d  for help"))
+            msg = f"⚠  Incomplete set — missing {missing}  —  press  d  for help"
+        t = Text(msg)
+        t.truncate(max(1, width - 2), overflow="ellipsis")
+        banner.update(t)
         return True
 
     # -- rendering helpers ---------------------------------------------------- #
@@ -530,6 +544,11 @@ class SpikeMenuApp(App):
             self._open_theme()
         elif key == "data-setup":
             self.action_data_help()
+        elif self._needs_data(key) and not self.c.data_report.get("present"):
+            # Guarded BEFORE the sort branch so sort can't open its modal with no data.
+            self._last = Text("✗ ", style="bold #f85149") + Text(
+                f"{key} needs the recording files — press d for help")
+            self._refresh_footer()
         elif key == "sort":
             self.push_screen(
                 ChoiceModal("Sort how much?", [
@@ -538,10 +557,6 @@ class SpikeMenuApp(App):
                 ]),
                 self._after_sort_span,
             )
-        elif self._needs_data(key) and not self.c.data_report.get("present"):
-            self._last = Text("✗ ", style="bold #f85149") + Text(
-                f"{key} needs the recording files — press d for help")
-            self._refresh_footer()
         else:
             self._run(key, None)
 
@@ -583,10 +598,13 @@ class SpikeMenuApp(App):
         except Exception as e:  # noqa: BLE001 - keep the app alive, report the failure
             ok, message, changed = False, f"{key} failed: {e!r}", False
         self._last = Text(message, style="#3fb950" if ok else "#f85149")
-        if changed:
-            self.c.reload()
-            self._rebuild_sorters()
-            self._rebuild_actions()
+        try:
+            if changed:
+                self.c.reload()
+                self._rebuild_sorters()
+                self._rebuild_actions()
+        except Exception as e:  # noqa: BLE001 - a reload failure must not kill the app
+            self._last = Text(f"reload after {key} failed: {e!r}", style="#f85149")
         self._refresh_footer()
         self._relayout()
         self.refresh()

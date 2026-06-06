@@ -255,3 +255,42 @@ async def test_active_marker_and_incomplete_banner(make_controller):
         await pilot.pause()
         sorters = app.query_one("#sorters", OptionList)
         assert "ACTIVE" in sorters.get_option_at_index(0).prompt.plain
+
+
+async def test_missing_banner_never_clips_actions_on_tiny_windows(make_controller):
+    # The missing-data banner must not push the Actions/sorter off-screen at the
+    # shortest sizes (it is suppressed there instead of wrapping).
+    for size in [(40, 12), (30, 8), (30, 6), (24, 6), (20, 5)]:
+        app = _app(make_controller(present=False))
+        async with app.run_test(size=size) as pilot:
+            await pilot.pause()
+            for sel in ("#actions", "#sorters"):
+                w = app.query_one(sel, OptionList)
+                vis = w.region.intersection(app.screen.region)
+                assert vis.height > 0, f"{sel} off-screen at {size}"
+
+
+async def test_sort_blocked_without_data(make_controller):
+    # sort is data-dependent: with no data it must be refused BEFORE its span modal.
+    c = make_controller(present=False)
+    app = _app(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("2")          # sort
+        await pilot.pause()
+        assert not isinstance(app.screen, menu_app.ChoiceModal)
+        assert c.ran == []
+        assert "needs" in app.query_one("#footer", Static).render().plain.lower()
+
+
+async def test_unreadable_files_show_amber_banner(make_controller):
+    # A complete set whose broadband won't load surfaces an explicit warning,
+    # not a hidden/green "all good" banner.
+    c = make_controller(present=True)
+    c.pipeline[1]["status"] = "FAIL"   # Broadband (.ns5) row
+    app = _app(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        banner = app.query_one("#banner", Static)
+        assert banner.display is True
+        assert "unreadable" in banner.render().plain.lower()

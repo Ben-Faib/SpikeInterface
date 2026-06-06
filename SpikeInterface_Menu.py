@@ -6,14 +6,16 @@
     uv run python SpikeInterface_Menu.py --help
     REM Windows: double-click run.bat (or: run.bat report)
 
-Run with no action -> prints a pipeline-status dashboard and a numbered menu
-(friendly for everyone). Run with an action -> dispatches it directly (handy for
-scripting). Heavy SpikeInterface imports are lazy, so the menu stays responsive.
+Run with no action -> opens a responsive full-screen dashboard (the Textual app
+in scripts/menu_app.py; a typed menu is the fallback when Textual is absent or
+off-TTY). Run with an action -> dispatches it directly (handy for scripting).
+Heavy SpikeInterface imports are lazy, so the menu stays responsive.
 
-The dashboard shows BOTH sorters (with their saved-sort summary and an "active"
-marker) plus the sorter-independent pipeline status. The active sorter is what
-report / GUI / compare act on; switch it with 't', or just pick a sorter when you
-run a sort. Terminal styling mirrors scripts/run_sorting.py (see scripts/ui.py).
+The dashboard has a left Sorter sidebar (←/→ to focus it, ↑/↓ to choose; the
+active sorter — what report/GUI/compare act on — is marked and echoed in the
+footer) over a Pipeline status panel, and a right Actions list (Enter or 1-9 to
+run). It stays usable at any window size and guides you when the recording files
+are missing. Styling mirrors scripts/run_sorting.py (see scripts/ui.py).
 
 Actions:
     explore   quick static figures (LFP + .nev) via scripts/explore_data.py
@@ -122,8 +124,12 @@ def _data_report(data_dir) -> dict:
         err = str(e)
 
     def has(ext: str) -> bool:
-        # Presence is folder-wide (base-agnostic), so the checklist stays correct
-        # even if two recordings with different base names share the folder.
+        # Scoped to the resolved base so the checklist matches the exact files the
+        # loader would open — a folder-wide glob could falsely mark a *different*
+        # recording's file as part of this set (e.g. recA.nev + recB.ns5). Fall
+        # back to a folder-wide glob only when no base resolved.
+        if base is not None:
+            return base.with_suffix(ext).exists()
         return any(d.glob("*" + ext))
 
     files = [
