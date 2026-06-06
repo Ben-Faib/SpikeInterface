@@ -22,30 +22,30 @@ Spike sorting **is** possible because the raw broadband `.ns5` is present. Two f
 ## Commands
 
 ```bash
-conda activate si_env                  # env is conda, Python 3.12, named si_env
-python SpikeInterface_Menu.py          # ⭐ single front door: status dashboard + menu (explore/sort/report/gui/traces/compare/verify)
-python SpikeInterface_Menu.py report   # or run one action directly: explore|sort|report|gui|traces|compare|verify
-python SpikeInterface_Menu.py gui --sorter tridesclous2   # spikeinterface-gui (sigui) on the saved sort
-python scripts/verify_install.py       # smoke test — lib versions, LFP + broadband + sorters summary
-python scripts/explore_data.py         # writes lfp_traces.png / spike_raster.png / firing_rates.png to outputs/ (git-ignored)
-python scripts/explore_data.py --data-dir /path/to/other/recording
-python scripts/run_sorting.py          # sort .ns5 broadband with tridesclous2 -> outputs/<sorter>/
-python scripts/run_sorting.py --sorter spykingcircus2
-python scripts/run_sorting.py --duration 30    # quick smoke test: sort only first 30 s
-python scripts/run_sorting.py --verbosity normal    # step messages + table only, no progress bars
-python scripts/run_sorting.py --verbosity quiet     # only the final quality-metrics table
-python scripts/make_report.py          # thin shim -> SpikeInterface_Menu.py report (builds outputs/report.html)
-python scripts/make_report.py --data-dir /path/to/recording
-python scripts/compare.py              # agreement matrix between the two sorters -> outputs/comparison.html
-jupyter lab notebooks/01_explore_lfp_and_spikes.ipynb   # explore LFP + .nev units
-jupyter lab notebooks/02_spike_sorting.ipynb            # interactive sort of the .ns5 broadband
+uv sync                                # build .venv from uv.lock (Python 3.12 + all deps); conda fallback: conda env create -f environment.yml
+uv run python SpikeInterface_Menu.py   # ⭐ single front door: status dashboard + menu (explore/sort/report/gui/traces/compare/verify)
+uv run python SpikeInterface_Menu.py report   # or run one action directly: explore|sort|report|gui|traces|compare|verify
+uv run python SpikeInterface_Menu.py gui --sorter tridesclous2   # spikeinterface-gui (sigui) on the saved sort
+uv run python scripts/verify_install.py       # smoke test — lib versions, LFP + broadband + sorters summary
+uv run python scripts/explore_data.py         # writes lfp_traces.png / spike_raster.png / firing_rates.png to outputs/ (git-ignored)
+uv run python scripts/explore_data.py --data-dir /path/to/other/recording
+uv run python scripts/run_sorting.py          # sort .ns5 broadband with tridesclous2 -> outputs/<sorter>/
+uv run python scripts/run_sorting.py --sorter spykingcircus2
+uv run python scripts/run_sorting.py --duration 30    # quick smoke test: sort only first 30 s
+uv run python scripts/run_sorting.py --verbosity normal    # step messages + table only, no progress bars
+uv run python scripts/run_sorting.py --verbosity quiet     # only the final quality-metrics table
+uv run python scripts/make_report.py          # thin shim -> SpikeInterface_Menu.py report (builds outputs/report.html)
+uv run python scripts/make_report.py --data-dir /path/to/recording
+uv run python scripts/compare.py              # agreement matrix between the two sorters -> outputs/comparison.html
+uv run jupyter lab notebooks/01_explore_lfp_and_spikes.ipynb   # explore LFP + .nev units
+uv run jupyter lab notebooks/02_spike_sorting.ipynb            # interactive sort of the .ns5 broadband
 ```
 
 The raw recordings are **git-ignored** (`*.ns[1-6]`, `*.nev` — the `.ns5` is ~176 MB, over GitHub's 100 MB/file limit), so a fresh clone has no data. The `PFCM7_d0ephys_Block2.{ns2,ns5,nev}` set must sit in the repo root (or be pointed at with `--data-dir`); loaders auto-discover any Blackrock file set by base name, so a missing set surfaces as a clear `FileNotFoundError` from `find_blackrock_base()`.
 
-Env (re)creation: `conda env create -f environment.yml` (Option A) or `uv pip install -r requirements.txt` into a 3.12 venv (Option B). `verify_install.py` is the closest thing to a test — run it to confirm changes to the loaders still read the data.
+Env (re)creation: `uv sync` (Option A — primary; reads `pyproject.toml` + `uv.lock`, fetches Python 3.12) or `conda env create -f environment.yml` (Option B — conda fallback). `uv run python scripts/verify_install.py` is the closest thing to a test — run it to confirm changes to the loaders still read the data.
 
-**Use Python 3.12, not 3.13** — broadest prebuilt-wheel coverage across the whole dependency set on Windows, so the install never needs a C/C++ compiler (current `hdbscan` 0.8.44 *does* now ship 3.13 Windows wheels, but other deps may still lag, so 3.12 stays the tested choice). Pins that matter: `zarr<3` (SpikeInterface doesn't support zarr 3.x), `PySide6<6.8`.
+**Use Python 3.12, not 3.13** — broadest prebuilt-wheel coverage across the whole dependency set on Windows, so the install never needs a C/C++ compiler (current `hdbscan` 0.8.44 *does* now ship 3.13 Windows wheels, but other deps may still lag, so 3.12 stays the tested choice). uv enforces this via `requires-python = "==3.12.*"` in `pyproject.toml` + a `.python-version` file. Pins that matter (carried in `pyproject.toml`): `zarr<3` (SpikeInterface doesn't support zarr 3.x), `plotly<6` (report.py inlines `plotly.offline.get_plotlyjs`), and the PySide6 desktop GUI binding.
 
 ## Architecture
 
@@ -106,8 +106,9 @@ over the launcher's `report` action. `scripts/compare.py` builds a standalone
 `outputs/comparison.html` from `compare_two_sorters`; it refuses to draw a
 misleading matrix when the two sorts cover different windows (the launcher's
 `compare` action offers to re-sort both over a common window first). The Qt
-binding in `si_env` is **PyQt5** (the `PySide6<6.8` pin is satisfied by a pip
-install but the conda env resolves to PyQt5; either works).
+binding under uv is **PySide6** (pulled by `spikeinterface-gui[desktop]`); the
+conda fallback (`environment.yml`) resolves to **PyQt5** instead — either works,
+but don't install both into one env.
 
 Non-obvious behaviours baked into the loaders — preserve these when editing:
 
