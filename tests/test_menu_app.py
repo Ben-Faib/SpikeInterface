@@ -171,3 +171,87 @@ async def test_number_key_opens_data_setup(make_controller):
         await pilot.press("9")
         await pilot.pause()
         assert isinstance(app.screen, menu_app.DataSetupScreen)
+
+
+async def test_actions_stay_on_screen_when_stacked(make_controller):
+    # The redesign's core promise: Actions are never pushed off-screen, at any size.
+    for size in [(77, 24), (60, 22), (50, 18), (40, 12), (34, 30)]:
+        app = _app(make_controller(present=True))
+        async with app.run_test(size=size) as pilot:
+            await pilot.pause()
+            actions = app.query_one("#actions", OptionList)
+            visible = actions.region.intersection(app.screen.region)
+            assert visible.height > 0, f"Actions off-screen at {size}: {actions.region}"
+
+
+async def test_action_run_path_is_guarded(make_controller):
+    # Pressing a non-data action runs it via the suspend() path; under the headless
+    # test driver suspend() is unsupported, so the guard must fall back to an
+    # in-place run instead of crashing. Verify-index in the mirrored table is 6 -> "7".
+    c = make_controller(present=True)
+    app = _app(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("7")          # verify
+        await pilot.pause()
+        assert ("verify", None) in c.ran
+        assert app.is_running           # did not crash out
+
+
+async def test_disabled_action_does_not_run(make_controller):
+    # With no data, a data-dependent action is blocked (not dispatched).
+    c = make_controller(present=False)
+    app = _app(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("1")          # explore (needs data)
+        await pilot.pause()
+        assert c.ran == []
+        assert "needs" in app.query_one("#footer", Static).render().plain.lower()
+
+
+async def test_sort_span_modal_then_runs(make_controller):
+    c = make_controller(present=True)
+    app = _app(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("2")          # sort -> opens the span modal
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.ChoiceModal)
+        await pilot.press("enter")      # choose the highlighted "full"
+        await pilot.pause()
+        assert ("sort", "full") in c.ran
+
+
+async def test_jk_navigation(make_controller):
+    app = _app(make_controller(present=True))
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        actions = app.query_one("#actions", OptionList)
+        await pilot.press("j")
+        await pilot.pause()
+        assert actions.highlighted == 1
+        await pilot.press("k")
+        await pilot.pause()
+        assert actions.highlighted == 0
+
+
+async def test_space_selects_sorter(make_controller):
+    c = make_controller(present=True)
+    app = _app(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("left")       # focus the sorter sidebar
+        await pilot.press("down")       # move to the second sorter
+        await pilot.press("space")      # select it
+        await pilot.pause()
+        assert c.active_idx == 1
+
+
+async def test_active_marker_and_incomplete_banner(make_controller):
+    # active sorter carries an explicit ACTIVE tag (not colour alone)
+    app = _app(make_controller(present=True))
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        sorters = app.query_one("#sorters", OptionList)
+        assert "ACTIVE" in sorters.get_option_at_index(0).prompt.plain

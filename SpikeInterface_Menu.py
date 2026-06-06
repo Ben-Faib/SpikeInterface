@@ -122,9 +122,9 @@ def _data_report(data_dir) -> dict:
         err = str(e)
 
     def has(ext: str) -> bool:
-        if base is not None:
-            return base.with_suffix(ext).exists()
-        return bool(list(d.glob("*" + ext)))
+        # Presence is folder-wide (base-agnostic), so the checklist stays correct
+        # even if two recordings with different base names share the folder.
+        return any(d.glob("*" + ext))
 
     files = [
         {"ext": ".ns2", "label": "LFP — analog @ 1 kHz", "present": has(".ns2")},
@@ -315,6 +315,8 @@ _ACTIONS = [
     ("data-setup", "Data files & setup help", "what's expected and where it goes",           False),
     ("quit",       "Quit",                    "exit the menu (or press q)",                  False),
 ]
+# Keys that need a recording present (so the fallback menu can refuse them cleanly).
+_DATA_ACTIONS = {k for k, _t, _h, needs in _ACTIONS if needs}
 
 
 class MenuController:
@@ -399,15 +401,16 @@ def _menu(args) -> int:
     theme = _apply_saved_theme(cfg)
 
     try:
-        import menu_app  # noqa: F401 - imports textual; ImportError -> fallback
+        import menu_app  # imports textual; any failure -> typed fallback
         have_textual = True
-    except ImportError:
+    except Exception:  # noqa: BLE001 - missing/broken textual must degrade, not crash
         have_textual = False
 
     if have_textual:
         controller = MenuController(args, cfg)
-        menu_app.SpikeMenuApp(controller).run()
-        return 0
+        app = menu_app.SpikeMenuApp(controller)
+        app.run()
+        return app.return_code or 0
     return _menu_fallback(args, cfg, theme)
 
 
@@ -435,6 +438,10 @@ def _menu_fallback(args, cfg: dict, theme: str) -> int:
             active_idx = (active_idx + 1) % len(SORTERS)
             continue
         cursor = next((n for n, a in enumerate(actions) if a[0] == action), 0)
+        if action in _DATA_ACTIONS and not report["present"]:
+            ui.warn(f"{action} needs the recording files (see the setup notes above).")
+            last = f"✗ {action} needs data"
+            continue
         if action == "theme":
             names = list(ui.THEMES)
             choice = ui.select("Accent colour  (saved for next time)",

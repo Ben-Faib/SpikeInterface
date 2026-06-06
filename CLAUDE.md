@@ -91,16 +91,18 @@ the actions are never clipped. **Navigation:** ←/→ (or Tab/Shift-Tab) move f
 **between** the Sorter and Actions panes (the focused pane shows an accent
 border); ↑/↓ (or j/k) move within it; Enter on a sorter makes it active, Enter on
 an action runs it; **1–9** jump-run an action, **t** cycles the active sorter,
-**d** opens data-setup help, `q`/Ctrl-C quit. The active sorter stays marked
+**d** opens data-setup help, `q`/Esc/Ctrl-C quit (j/k and Space also work). The active sorter stays marked
 independently of focus and is echoed in the footer. Actions run via Textual's
 **`suspend()`** (the app drops out of the alt-screen so the action's own stdout
 scrolls normally, then resumes and re-renders) — the sort-span and theme picks
 use in-app **modal** screens, while compare's conditional re-sort prompt still
-uses `ui.select` during the suspend. **Missing data:** when no `.nev/.nsX` set is
-found (`_data_report()`), the app shows a red **banner**, dims the data-dependent
-actions, and offers a **Data Setup** screen (`d`, or the *Data files* action)
-listing each expected file (`.ns2` LFP / `.ns5` broadband / `.nev` events) as a
-present/missing checklist with the exact folder it belongs in. Off-TTY / without
+uses `ui.select` during the suspend. **Missing data:** `_data_report()`
+classifies the data dir as complete / incomplete / absent; the app shows a red
+**banner** when nothing is found (and dims the data-dependent actions) or an amber
+*incomplete set* banner when only some files are present, and offers a **Data
+Setup** screen (`d`, or the *Data files* action) listing each expected file
+(`.ns2` LFP / `.ns5` broadband / `.nev` events) as a present/missing checklist
+with the exact folder it belongs in. Off-TTY / without
 Textual installed it falls back to the legacy `ui.dashboard_menu()`
 (prompt_toolkit full-screen, else a typed numbered menu), which prepends the same
 missing-data guidance in plain text.
