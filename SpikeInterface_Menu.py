@@ -142,6 +142,55 @@ def _load_dashboard(data_dir, active: str, sorter_list, docker: bool):
     return pipeline, infos
 
 
+def _saved_summary(sorter: str):
+    """(present, units, duration) for a sorter's saved analyzer; best-effort.
+
+    Short-circuits cheaply when there is no analyzer dir (the common case), so
+    probing all ~22 sorters stays fast. Never raises.
+    """
+    d = _analyzer_dir(sorter)
+    if not d.exists():
+        return False, 0, 0.0
+    try:
+        import spikeinterface.full as si
+
+        a = si.load_sorting_analyzer(d)
+        return True, len(a.unit_ids), float(a.get_total_duration())
+    except Exception:  # noqa: BLE001 - unreadable analyzer -> treat as absent
+        return False, 0, 0.0
+
+
+def _catalog(active: str, use_docker: bool) -> list[dict]:
+    """Full sidebar catalog over EVERY sorter (not just runnable).
+
+    Group is membership-precedence (stable); runnable is the dynamic, Docker-aware
+    set. Saved-sort summary is filled where an analyzer exists.
+    """
+    inst = set(sorter_registry.installed())
+    docker = sorter_registry.docker_available()
+    runnable = set(sorter_registry.runnable(use_docker))
+    out = []
+    for name in sorter_registry.available():
+        present, units, duration = _saved_summary(name)
+        out.append({
+            "name": name,
+            "group": sorter_registry.group_of(name, installed_set=inst),
+            "status": sorter_registry.status(name, installed_set=inst, docker=docker),
+            "runnable": name in runnable,
+            "recommended": name == sorter_registry.RECOMMENDED,
+            "description": sorter_registry.description(name),
+            "present": present, "units": units, "duration": duration,
+            "active": name == active,
+        })
+    return out
+
+
+def _pipeline_rows(data_dir, active: str) -> list[dict]:
+    """The sorter-independent pipeline status rows (LFP/Broadband/.nev)."""
+    _objects, status = report._gather(data_dir, _analyzer_dir(active))
+    return [r for r in status if not r["stage"].startswith("Saved sort")]
+
+
 def _data_report(data_dir) -> dict:
     """Which recording files are present/missing and where they belong.
 
@@ -534,18 +583,34 @@ class MenuController:
         self.sorter_params = dict(cfg.get("sorter_params", {}))
         self.sorters = sorter_registry.runnable(self.use_docker) or [sorter_registry.default_sorter()]
         want = args.sorter if args.sorter else sorter_registry.default_sorter()
-        self.active_idx = self.sorters.index(want) if want in self.sorters else 0
+        self.active_sorter = want if want in self.sorters else self.sorters[0]
+        self.args.sorter = self.active_sorter
+        self.want_welcome = not bool(cfg.get("seen_welcome", False))
+        self.active_idx = 0
         self.reload()
 
-    @property
-    def active_sorter(self) -> str:
-        return self.sorters[self.active_idx]
+    def set_active_by_name(self, name: str) -> bool:
+        """Activate a runnable sorter by id. False (no change) if not runnable."""
+        if name not in self.sorters:
+            return False
+        self.active_sorter = name
+        self.args.sorter = name
+        self._mark_active()
+        return True
 
-    def set_active(self, idx: int) -> None:
-        self.active_idx = idx % len(self.sorters)
-        self.args.sorter = self.active_sorter
-        for i, info in enumerate(self.infos):
-            info["active"] = (i == self.active_idx)
+    def cycle_active(self) -> None:
+        """`t` key: advance to the next *runnable* sorter (skips non-runnable rows)."""
+        if self.active_sorter in self.sorters:
+            i = (self.sorters.index(self.active_sorter) + 1) % len(self.sorters)
+        else:
+            i = 0
+        self.set_active_by_name(self.sorters[i])
+
+    def _mark_active(self) -> None:
+        for n, info in enumerate(self.infos):
+            info["active"] = (info["name"] == self.active_sorter)
+            if info["active"]:
+                self.active_idx = n   # index into the full catalog (footer reads this)
 
     def set_theme(self, name: str) -> str:
         ui.set_accent(ui.THEMES[name])
@@ -556,10 +621,9 @@ class MenuController:
         return self.accent
 
     def reload(self) -> None:
-        self.pipeline, self.infos = _load_dashboard(
-            self.args.data_dir, self.active_sorter, self.sorters, self.use_docker)
-        for i, info in enumerate(self.infos):
-            info["active"] = (i == self.active_idx)
+        self.pipeline = _pipeline_rows(self.args.data_dir, self.active_sorter)
+        self.infos = _catalog(self.active_sorter, self.use_docker)
+        self._mark_active()
         self.data_report = _data_report(self.args.data_dir)
 
     def toggle_docker(self) -> bool:
@@ -567,9 +631,9 @@ class MenuController:
         self.use_docker = not self.use_docker
         self.cfg["use_docker"] = self.use_docker
         _save_config(self.cfg)
-        active_name = self.active_sorter
+        prev = self.active_sorter
         self.sorters = sorter_registry.runnable(self.use_docker) or [sorter_registry.default_sorter()]
-        self.active_idx = self.sorters.index(active_name) if active_name in self.sorters else 0
+        self.active_sorter = prev if prev in self.sorters else self.sorters[0]
         self.args.sorter = self.active_sorter
         self.reload()
         return self.use_docker
@@ -594,6 +658,25 @@ class MenuController:
         else:
             self.sorter_params.pop(sorter, None)
         self.cfg["sorter_params"] = self.sorter_params
+        _save_config(self.cfg)
+
+    def docker_status(self, refresh: bool = False) -> dict:
+        """{state, running, text} for the Docker confirm dialog (plain language)."""
+        state = sorter_registry.docker_state(refresh=refresh)
+        text = {
+            "running": "✓ Docker is running",
+            "installed_not_running": "✗ Docker is installed but not started",
+            "not_installed": "You don't have Docker yet",
+        }[state]
+        return {"state": state, "running": state == "running", "text": text}
+
+    def start_docker(self) -> bool:
+        """Best-effort: launch Docker Desktop. The dialog polls docker_status()."""
+        return sorter_registry.start_docker()
+
+    def mark_welcome_seen(self) -> None:
+        self.want_welcome = False
+        self.cfg["seen_welcome"] = True
         _save_config(self.cfg)
 
     def saved_sorters(self) -> list[str]:
