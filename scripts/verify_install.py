@@ -13,6 +13,7 @@ install is good.
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -24,6 +25,13 @@ import blackrock_io as bio  # noqa: E402
 
 def main() -> int:
     bio.use_utf8_stdout()  # so the final "✓" line can't crash on a Windows console
+    parser = argparse.ArgumentParser(description=__doc__,
+                                     formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument("--data-dir", default=None,
+                        help="Folder with the .nev/.nsX files (default: repo root).")
+    args = parser.parse_args()
+    data_dir = args.data_dir
+
     print("=== Library versions ===")
     import spikeinterface as si
 
@@ -35,24 +43,30 @@ def main() -> int:
 
     print(f"probeinterface {probeinterface.__version__}")
 
-    base = bio.find_blackrock_base()
+    try:
+        base = bio.find_blackrock_base(data_dir)
+    except FileNotFoundError as err:
+        print(f"\n✗ {err}")
+        return 1
     print(f"\nData file set: {base.name}.*  (in {base.parent})")
 
     print("\n=== Analog (nsX) streams ===")
-    for name, sid in bio.list_streams():
-        print(f"  id={sid!r}  name={name!r}")
+    for name, sid in bio.list_streams(data_dir):
+        print(f"  id={str(sid)!r}  name={str(name)!r}")
 
     print("\n=== LFP recording (.ns2) ===")
-    rec = bio.read_lfp()
+    rec = bio.read_lfp(data_dir)
     print(f"  channels        : {rec.get_num_channels()}")
     print(f"  sampling rate   : {rec.get_sampling_frequency()} Hz")
     print(f"  duration        : {rec.get_total_duration():.2f} s")
-    print(f"  first channels  : {list(rec.get_channel_ids()[:8])}")
+    print(f"  first channels  : {[str(c) for c in rec.get_channel_ids()[:8]]}")
 
     print("\n=== Broadband recording (.ns5/.ns6 — spike-sortable) ===")
     try:
-        bb = bio.read_broadband(attach_probe=False)
-        print(f"  channels        : {bb.get_num_channels()}")
+        bb = bio.read_broadband(data_dir, attach_probe=False)
+        n_neural = len(bio.neural_channel_ids(bb))
+        print(f"  channels        : {bb.get_num_channels()} ({n_neural} neural + "
+              f"{bb.get_num_channels() - n_neural} analog aux)")
         print(f"  sampling rate   : {bb.get_sampling_frequency()} Hz")
         print(f"  duration        : {bb.get_total_duration():.2f} s")
         print("  -> raw broadband present; you can run scripts/run_sorting.py")
@@ -66,21 +80,21 @@ def main() -> int:
     print(f"  {ss.installed_sorters()}")
 
     print("\n=== Spike units (.nev) ===")
-    sorting = bio.read_spikes()
-    unit_ids = list(sorting.get_unit_ids())
+    sorting = bio.read_spikes(data_dir)
+    unit_ids = [int(u) for u in sorting.get_unit_ids()]
     print(f"  sampling rate   : {sorting.get_sampling_frequency()} Hz")
     print(f"  number of units : {len(unit_ids)}")
     print(f"  unit ids        : {unit_ids[:20]}{' ...' if len(unit_ids) > 20 else ''}")
-    total_spikes = sum(len(sorting.get_unit_spike_train(u)) for u in unit_ids)
+    total_spikes = sum(len(sorting.get_unit_spike_train(u)) for u in sorting.get_unit_ids())
     print(f"  total spikes    : {total_spikes}")
 
     print("\n=== Digital/serial events (.nev) ===")
     try:
-        events = bio.read_events()
+        events = bio.read_events(data_dir)
         if not events:
             print("  (no event channels)")
         for ev in events:
-            print(f"  {ev['name']!r}: {len(ev['times'])} events")
+            print(f"  {str(ev['name'])!r}: {len(ev['times'])} events")
     except Exception as err:  # event parsing is best-effort
         print(f"  (could not read events: {err})")
 

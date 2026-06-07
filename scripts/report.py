@@ -4,8 +4,9 @@
     uv run python -c "import sys; sys.path.insert(0,'scripts'); import report; report.build_report()"
 
 Writes outputs/report.html — one offline file (Plotly JS inlined) covering loader
-health, LFP, .nev online units, the tridesclous2 sort, quality metrics and
-events. Read-only with respect to the data; it only writes the HTML.
+health, LFP, .nev online units, the saved sort (the most complete saved analyzer
+by default), quality metrics and events. Read-only with respect to the data; it
+only writes the HTML.
 
 Single source of truth for the sort = the saved SortingAnalyzer (sorting +
 templates + quality_metrics all come from it, so they can never disagree). The
@@ -14,6 +15,7 @@ loose outputs/<sorter>/sorting/ folder and quality_metrics.csv are ignored.
 from __future__ import annotations
 
 import html
+import json
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -29,6 +31,71 @@ OUTPUT_DIR = bio.REPO_ROOT / "outputs"
 DEFAULT_ANALYZER_DIR = OUTPUT_DIR / "tridesclous2" / "analyzer"
 LFP_WINDOW_S = 10.0
 LFP_MAX_CHANNELS = 8
+
+
+def _run_info(analyzer_dir) -> dict:
+    """Read outputs/<sorter>/run_info.json (sort provenance). {} if absent."""
+    try:
+        return json.loads((Path(analyzer_dir).parent / "run_info.json").read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 - provenance is optional
+        return {}
+
+
+def _analyzer_window_seconds(analyzer_dir) -> float:
+    """The sorted window length of a saved analyzer (its own total duration).
+
+    Prefers the cheap run_info.json value; falls back to loading the analyzer.
+    Returns -1.0 if neither is readable (so it ranks below any real sort).
+    """
+    eff = _run_info(analyzer_dir).get("effective_seconds")
+    if isinstance(eff, (int, float)):
+        return float(eff)
+    try:
+        import spikeinterface.full as si
+        return float(si.load_sorting_analyzer(analyzer_dir).get_total_duration())
+    except Exception:  # noqa: BLE001 - unreadable analyzer
+        return -1.0
+
+
+def _pick_default_analyzer() -> Path:
+    """Choose the saved analyzer to report when none is given.
+
+    Prefers the **most complete** sort — the largest sorted window, tie-broken by
+    recency — so a bare ``build_report()`` shows a full-recording sort rather than
+    whichever sorter happens to be hardcoded or a leftover short ``--duration``
+    smoke test. Falls back to the legacy path when nothing is saved.
+    """
+    candidates = []
+    for d in sorted(OUTPUT_DIR.glob("*/analyzer")):
+        if not d.is_dir():
+            continue
+        try:
+            mtime = d.stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        candidates.append((_analyzer_window_seconds(d), mtime, d))
+    if not candidates:
+        return DEFAULT_ANALYZER_DIR
+    candidates.sort(key=lambda c: (c[0], c[1]))  # largest window, then most recent
+    return candidates[-1][2]
+
+
+def _getting_started_html(data_dir) -> str:
+    """Prominent fresh-clone guidance shown when no recording is present."""
+    folder = str(Path(data_dir).expanduser().resolve()) if data_dir else str(bio.REPO_ROOT)
+    rows = "".join(
+        f"<li><code>&lt;RECORDING&gt;{ext}</code> — {html.escape(label)}</li>"
+        for ext, label in (
+            (".ns2", "LFP — analog @ 1 kHz"),
+            (".ns5", "Broadband — raw @ 30 kHz (spike-sortable)"),
+            (".nev", "Spike events + digital markers"),
+        )
+    )
+    return ('<div class="caveat"><strong>No recording found — nothing to report yet.</strong> '
+            'Drop a Blackrock file set (three files sharing one base name) into '
+            f'<code>{html.escape(folder)}</code> (or pass <code>--data-dir</code>):'
+            f'<ul>{rows}</ul>'
+            'The raw <code>.ns5/.ns2/.nev</code> are git-ignored, so a fresh clone has none.</div>')
 
 
 # --------------------------------------------------------------------------- #
@@ -152,13 +219,18 @@ def _html_document(title, sections) -> str:
 # --------------------------------------------------------------------------- #
 # Section renderers (each returns inner HTML; wrapped by _safe_section)
 # --------------------------------------------------------------------------- #
-def _render_status(status) -> str:
+def _render_status(status, data_dir=None) -> str:
+    # When no raw data loaded at all (fresh clone / wrong folder), lead with
+    # actionable guidance instead of a wall of FileNotFoundError reprs.
+    data_stages = [r for r in status if r["stage"] in ("LFP (.ns2)", "Broadband (.ns5)", ".nev online units")]
+    intro = _getting_started_html(data_dir) if data_stages and all(r["status"] != "PASS" for r in data_stages) else ""
     rows = "".join(
         f'<tr><td><span class="badge {r["status"]}">{r["status"]}</span></td>'
         f'<td>{html.escape(r["stage"])}</td><td>{html.escape(r["detail"])}</td></tr>'
         for r in status
     )
-    return ('<p class="note">One row per pipeline stage — PASS means it loaded, '
+    return (intro
+            + '<p class="note">One row per pipeline stage — PASS means it loaded, '
             'SKIP means optional/absent, FAIL means broken.</p>'
             f'<table><thead><tr><th>Status</th><th>Stage</th><th>Detail</th></tr></thead>'
             f'<tbody>{rows}</tbody></table>')
@@ -175,8 +247,9 @@ def _render_footer(status) -> str:
     return (f'<p class="note">{html.escape(" · ".join(versions))}</p>'
             '<div class="caveat">Geometry caveat: the Blackrock files carry no electrode map, '
             'so sorting uses a placeholder independent-channel probe — per-unit results are valid, '
-            'but cross-channel spatial information is not physical. The broadband stream also mixes '
-            '16 neural channels (raw 1–16) with 6 analog aux channels (analog 1–6).</div>')
+            'but cross-channel spatial information is not physical. The broadband stream mixes '
+            '16 neural channels (raw 1–16) with 6 analog aux channels (analog 1–6); the sort '
+            'excludes the analog aux channels by default.</div>')
 
 
 def _render_lfp(lfp) -> str:
@@ -261,7 +334,7 @@ def _render_nev(nev) -> str:
             + _fig_html(raster) + _fig_html(rate))
 
 
-def _render_sorted(analyzer, sorter_label) -> str:
+def _render_sorted(analyzer, sorter_label, info=None) -> str:
     if analyzer is None:
         return ('<p class="skip">No saved analyzer found — run a sort from the launcher '
                 '(<code>python scripts/make_report.py</code>).</p>')
@@ -289,10 +362,26 @@ def _render_sorted(analyzer, sorter_label) -> str:
                      xaxis_title="time relative to spike (ms)", yaxis_title="amplitude (a.u.)",
                      height=440, margin=dict(t=40, b=40))
 
+    # Partial-sort caveat: a --duration smoke test sorts a window far shorter than
+    # the full recording the LFP/.nev sections above cover. Flag it loudly so a
+    # reader never conflates a 20 s sort with the 132 s recording.
+    info = info or {}
+    eff, tot = info.get("effective_seconds"), info.get("total_seconds")
+    partial = isinstance(eff, (int, float)) and isinstance(tot, (int, float)) and eff < tot - 1.0
+    partial_html = (
+        f'<div class="caveat"><strong>Partial sort:</strong> only the first {eff:.0f}s of the '
+        f'{tot:.0f}s recording were sorted (e.g. a quick <code>--duration</code> test). The LFP '
+        f'and .nev sections above cover the full recording — unit counts are not comparable '
+        f'across different windows.</div>' if partial else "")
+    n_drop = info.get("n_dropped_analog")
+    probe_html = ('<div class="caveat">Placeholder independent-channel probe — cross-channel '
+                  'spatial structure (depth / probe map) is not physical.'
+                  + (f' {n_drop} non-neural analog aux channel(s) were excluded from the sort.'
+                     if n_drop else '')
+                  + '</div>')
     return (f'<p class="note">Sorted with {sorter_label} over {dur:.1f}s sorted data, '
             f'{len(unit_ids)} units. Toggle units via the legend.</p>'
-            '<div class="caveat">Placeholder independent-channel probe + 6 analog aux channels '
-            'are included — cross-channel spatial structure is not physical.</div>'
+            + partial_html + probe_html
             + _fig_html(raster) + _fig_html(rate) + _fig_html(wf))
 
 
@@ -363,17 +452,18 @@ def _render_events(events) -> str:
 # Public entry point
 # --------------------------------------------------------------------------- #
 def build_report(data_dir=None, analyzer_dir=None, out_path=None, sorter_label=None) -> Path:
-    analyzer_dir = Path(analyzer_dir) if analyzer_dir else DEFAULT_ANALYZER_DIR
+    analyzer_dir = Path(analyzer_dir) if analyzer_dir else _pick_default_analyzer()
     sorter_label = sorter_label or analyzer_dir.parent.name
     out_path = Path(out_path) if out_path else (OUTPUT_DIR / "report.html")
     OUTPUT_DIR.mkdir(exist_ok=True)
 
+    info = _run_info(analyzer_dir)
     objects, status = _gather(data_dir, analyzer_dir)
     sections = [
-        _safe_section("status", "Status & provenance", _render_status, status),
+        _safe_section("status", "Status & provenance", _render_status, status, data_dir),
         _safe_section("lfp", "LFP (.ns2 @ 1 kHz)", _render_lfp, objects.get("lfp")),
         _safe_section("nev", ".nev online units", _render_nev, objects.get("nev")),
-        _safe_section("sorted", f"Sorted units ({sorter_label})", _render_sorted, objects.get("analyzer"), sorter_label),
+        _safe_section("sorted", f"Sorted units ({sorter_label})", _render_sorted, objects.get("analyzer"), sorter_label, info),
         _safe_section("qc", "Quality metrics", _render_qc, objects.get("analyzer")),
         _safe_section("events", "Events", _render_events, objects.get("events")),
         _safe_section("footer", "About", _render_footer, status),

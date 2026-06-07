@@ -120,16 +120,32 @@ double-click `run.bat`).
 The simplest way in is the single launcher at the repo root:
 
 ```bash
-uv run python SpikeInterface_Menu.py        # status dashboard + a numbered menu
+uv run python SpikeInterface_Menu.py        # full-screen status dashboard + menu
 ```
 
 On **Windows** you can instead double-click **`run.bat`** (or run `run.bat` /
 `.\run.ps1` from a terminal) — it wraps the same command.
 
-Pick a number to explore the data, run a sort, build & open the interactive HTML
-report, open the `spikeinterface-gui` inspector, scroll raw traces, or compare
-the two sorters. Power users can run a single action directly, e.g.
-`uv run python SpikeInterface_Menu.py report` or `uv run python SpikeInterface_Menu.py gui`.
+This opens a responsive two-pane dashboard: on the left a **Sorter** sidebar
+(which sorter the report/GUI/compare act on) over a **Pipeline** status panel
+(LFP / broadband / .nev / events, ✓/–/✗); on the right the **Actions** list —
+explore the data, run a sort, build & open the interactive HTML report, open the
+`spikeinterface-gui` inspector, scroll raw traces, or compare the two sorters.
+
+Navigate with the **arrow keys** (↑/↓ move within a pane, ←/→ or Tab switch
+between the Sorter and Actions panes), **Enter** to run the highlighted action
+(or activate the highlighted sorter); the number keys **1–9** jump-run an action,
+**t** switches the active sorter, **d** opens the data-setup help, and **q**
+quits. If a recording file is missing the menu says so and shows exactly which
+file goes where. It resizes from a wide desktop down to a short editor pane, and
+falls back to a plain typed menu when [Textual](https://textual.textualize.io) is
+absent or output isn't a terminal.
+
+Power users can run a single action directly (handy for scripting), e.g.
+`uv run python SpikeInterface_Menu.py report`,
+`uv run python SpikeInterface_Menu.py gui --sorter spykingcircus2`, or
+`… gui --gui-mode web` for a browser-based inspector on a headless box. Every
+action accepts `--data-dir /path/to/folder`.
 
 The whole workflow, in order:
 
@@ -177,11 +193,18 @@ By default they read the repo root; pass `data_dir="..."` to point elsewhere.
 ├── uv.lock              # locked, reproducible resolution
 ├── environment.yml      # conda environment (fallback)
 ├── run.bat / run.ps1    # Windows launchers (uv run …)
+├── SpikeInterface_Menu.py # ⭐ single front door: dashboard + menu, or `… <action>`
 ├── scripts/
 │   ├── blackrock_io.py    # reusable loaders (read_lfp / read_broadband / read_spikes / read_events)
 │   ├── verify_install.py  # smoke test
 │   ├── explore_data.py    # save exploratory figures to outputs/
-│   └── run_sorting.py     # spike-sort the .ns5 broadband -> outputs/<sorter>/
+│   ├── run_sorting.py     # spike-sort the .ns5 broadband -> outputs/<sorter>/
+│   ├── report.py          # build the self-contained interactive HTML report
+│   ├── compare.py         # two-sorter agreement matrix -> outputs/comparison.html
+│   ├── make_report.py     # thin shim -> the menu's `report` action
+│   ├── menu_app.py        # the Textual v2 dashboard (SpikeMenuApp)
+│   └── ui.py              # shared rich styling, the Pitt shield + theme palette
+├── tests/                 # Textual Pilot tests for the menu (uv run python -m pytest)
 ├── notebooks/
 │   ├── 01_explore_lfp_and_spikes.ipynb
 │   └── 02_spike_sorting.ipynb   # interactive sorting of the .ns5 broadband

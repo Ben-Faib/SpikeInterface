@@ -106,6 +106,14 @@ def main() -> int:
 
     OUTPUT_DIR.mkdir(exist_ok=True)
 
+    # Fail clean (one actionable line, not a raw traceback) if the data is absent —
+    # matching how the report/menu degrade for the same missing-files case.
+    try:
+        bio.find_blackrock_base(args.data_dir)
+    except FileNotFoundError as err:
+        print(f"✗ {err}")
+        return 1
+
     print("Reading LFP recording (.ns2) ...")
     recording = bio.read_lfp(args.data_dir)
     print(

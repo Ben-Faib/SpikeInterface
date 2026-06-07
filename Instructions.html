@@ -248,6 +248,7 @@
       <div class="cmd"><code><span class="tok">uv</span> run python SpikeInterface_Menu.py</code><button class="copy" type="button">Copy</button></div>
       <p class="sub">Run one action directly (skip the menu), e.g. build the HTML report:</p>
       <div class="cmd"><code><span class="tok">.\run.bat</span> report</code><button class="copy" type="button">Copy</button></div>
+      <p class="sub">Data in another folder? Add <code class="inline">--data-dir</code> to any command, e.g. <code class="inline">.\run.bat report --data-dir C:\path\to\recording</code>.</p>
     </div>
   </div>
 
@@ -261,7 +262,7 @@
     <div class="action"><b>compare</b><span>Agreement between sorters</span></div>
     <div class="action"><b>verify</b><span>Environment smoke test</span></div>
   </div>
-  <p class="sub" style="margin-top:12px;color:var(--muted)">Move with <kbd>↑</kbd>/<kbd>↓</kbd>, press <kbd>Enter</kbd> to run the highlighted action, or type its number. <kbd>q</kbd> quits.</p>
+  <p class="sub" style="margin-top:12px;color:var(--muted)">Move with <kbd>↑</kbd>/<kbd>↓</kbd>; switch between the Sorter and Actions panes with <kbd>←</kbd>/<kbd>→</kbd> or <kbd>Tab</kbd>. <kbd>Enter</kbd> runs the highlighted action (or activates the highlighted sorter); the number keys <kbd>1</kbd>–<kbd>9</kbd> jump-run an action. <kbd>t</kbd> switches the active sorter, <kbd>d</kbd> opens the data-setup help, <kbd>q</kbd> quits.</p>
 
   <h2 class="section">Notes &amp; troubleshooting</h2>
   <div class="note">

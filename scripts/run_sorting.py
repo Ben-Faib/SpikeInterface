@@ -12,14 +12,17 @@ and library/native warnings (probe, OpenMP, numba, resource_tracker) are muted.
 The default 'verbose' shows the aligned progress bars + per-step sorter prints.
 
 Pipeline: read broadband (.ns5) -> attach placeholder independent-channel probe
--> bandpass 300-6000 Hz -> common median reference -> run sorter -> save +
-(optionally) compute quality metrics.
+-> drop non-neural 'analog N' aux channels (keep with --keep-analog) -> bandpass
+300-6000 Hz -> common median reference -> run sorter -> save + (optionally)
+compute quality metrics and the GUI-inspector curation extensions.
 
 Outputs (git-ignored) land in outputs/<sorter>/:
     sorter_output/        raw sorter working folder
     sorting/              saved SI Sorting   (reload: si.load(".../sorting"))
     analyzer/             SortingAnalyzer    (open in spikeinterface-gui, or reload)
     quality_metrics.csv   per-unit firing rate / SNR / ISI-violation table
+    run_info.json         provenance: sorter, window (effective vs total), band,
+                          channels sorted, unit count, versions, timestamp
 
 GEOMETRY CAVEAT: the Blackrock files carry no electrode map, so a placeholder
 "independent channels" probe is attached (see blackrock_io.attach_dummy_probe).
@@ -35,10 +38,12 @@ from __future__ import annotations
 
 import argparse
 import gc
+import json
 import re
 import shutil
 import sys
 import time
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -164,6 +169,11 @@ class ConsoleUI:
             return
         self._emit(f"    [bold]{text}[/]", f"    {text}")
 
+    def warn(self, text: str) -> None:
+        """A safety/caution line. Shown at *every* level (even quiet) — these flag
+        things like overwriting a previous sort, which the user must not miss."""
+        self._emit(f"[{self.PALETTE['warn']}]! {text}[/]", f"! {text}")
+
     def metrics(self, df, csv_path: Path) -> None:
         """Render the quality-metrics dataframe as a boxed table (always shown)."""
         if self._c is not None:
@@ -244,6 +254,84 @@ def _robust_rmtree(path: Path, attempts: int = 5, delay: float = 0.5) -> None:
             time.sleep(delay)
 
 
+# SortingAnalyzer extensions that the spikeinterface-gui inspector needs for its
+# manual-curation views: correlograms (refractory violations), ISI histograms,
+# spike amplitudes (drift/amplitude-cutoff), spike locations (depth view),
+# template similarity (merge suggestions) and PCA (ND-scatter separability).
+# Without these precomputed, those inspector panels open blank. They are cheap on
+# this dataset (~5 s on the full 132 s recording) so we compute them at sort time.
+_CURATION_EXTENSIONS = [
+    "unit_locations",        # probe / unit-position view (placeholder geometry — see caveat)
+    "correlograms",
+    "isi_histograms",
+    "spike_amplitudes",
+    "spike_locations",
+    "template_similarity",
+    "principal_components",
+]
+
+
+def _compute_curation_extensions(analyzer, ui: "ConsoleUI") -> None:
+    """Best-effort compute the inspector-facing extensions; never fail the sort.
+
+    Each extension is computed independently so that one that errors on an
+    unusual sort (e.g. too few spikes for PCA) just prints a skip note and leaves
+    the rest — the core sorting + quality metrics are already saved by now.
+    """
+    ui.detail("computing GUI-inspector extensions (correlograms, ISI, amplitudes, "
+              "locations, similarity, PCA) …")
+    for ext in _CURATION_EXTENSIONS:
+        try:
+            analyzer.compute(ext)
+        except Exception as e:  # noqa: BLE001 - optional curation data, keep going
+            ui.detail(f"  skipped {ext} ({type(e).__name__})")
+
+
+def _write_run_info(out: Path, args, **fields) -> None:
+    """Write outputs/<sorter>/run_info.json so a sort is self-identifying.
+
+    Records the sorter, the effective vs total recording window, the band, the
+    channels actually sorted and the unit count — so downstream tools (and the
+    report) can tell a short ``--duration`` smoke test apart from a full run
+    instead of silently presenting one as the other.
+    """
+    info = {
+        "created": datetime.now().isoformat(timespec="seconds"),
+        "command": "run_sorting.py",
+        "duration_arg": args.duration,
+        "keep_analog": args.keep_analog,
+        "n_jobs": args.n_jobs,
+        **fields,
+    }
+    try:
+        (out / "run_info.json").write_text(json.dumps(info, indent=2), encoding="utf-8")
+    except Exception:  # noqa: BLE001 - provenance is best-effort
+        pass
+
+
+def _warn_existing_sort(out: Path, ui: "ConsoleUI") -> None:
+    """Warn (don't block) before overwriting an existing sort in ``out``.
+
+    The sort overwrites outputs/<sorter>/ in place, so a previous full run can be
+    silently replaced by a quick ``--duration`` smoke test. Surface what is about
+    to be lost; the run still proceeds (this is a CLI, not an interactive prompt).
+    """
+    info_path = out / "run_info.json"
+    if info_path.exists():
+        try:
+            prev = json.loads(info_path.read_text(encoding="utf-8"))
+            eff = prev.get("effective_seconds")
+            span = f"{eff:.0f}s" if isinstance(eff, (int, float)) else "?s"
+            ui.warn(f"overwriting previous {prev.get('sorter', '?')} sort "
+                    f"({prev.get('n_units', '?')} units over {span}, "
+                    f"created {prev.get('created', '?')})")
+            return
+        except Exception:  # noqa: BLE001 - fall through to the generic warning
+            pass
+    if (out / "analyzer").exists() or (out / "sorting").exists():
+        ui.warn(f"overwriting an existing sort in {out}")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
@@ -254,6 +342,13 @@ def main() -> int:
     parser.add_argument("--duration", type=float, default=None, help="Sort only the first N seconds (quick test).")
     parser.add_argument("--freq-min", type=float, default=300.0, help="Bandpass low cutoff (Hz).")
     parser.add_argument("--freq-max", type=float, default=6000.0, help="Bandpass high cutoff (Hz).")
+    parser.add_argument("--n-jobs", type=int, default=1, help="Parallel workers for waveforms/metrics/sorting (default 1).")
+    parser.add_argument(
+        "--keep-analog",
+        action="store_true",
+        help="Keep non-neural 'analog N' aux channels in the sort (default: drop them — "
+        "they pollute the common reference and can produce spurious units).",
+    )
     parser.add_argument("--no-metrics", action="store_true", help="Skip the SortingAnalyzer / quality-metrics step.")
     parser.add_argument(
         "--verbosity",
@@ -265,6 +360,15 @@ def main() -> int:
     )
     args = parser.parse_args()
 
+    # Validate args up front — before the heavy SpikeInterface import and the
+    # 174 MB broadband read — so a typo fails in milliseconds, not minutes.
+    if args.freq_min >= args.freq_max:
+        parser.error(f"--freq-min ({args.freq_min:g}) must be below --freq-max ({args.freq_max:g})")
+    if args.duration is not None and args.duration <= 0:
+        parser.error("--duration must be positive")
+    if args.n_jobs < 1:
+        parser.error("--n-jobs must be >= 1")
+
     # Configure output BEFORE importing spikeinterface so env vars / the tqdm
     # patch land before OpenMP/Numba/the sorters initialise.
     show_bars = configure_output(args.verbosity)
@@ -275,19 +379,33 @@ def main() -> int:
     import spikeinterface.preprocessing as spre
     import spikeinterface.sorters as ss
 
-    si.set_global_job_kwargs(progress_bar=show_bars)
+    si.set_global_job_kwargs(n_jobs=args.n_jobs, progress_bar=show_bars)
 
     out = Path(args.output_dir) if args.output_dir else (bio.REPO_ROOT / "outputs" / args.sorter)
     out.mkdir(parents=True, exist_ok=True)
 
     ui.banner(args.sorter)
+    _warn_existing_sort(out, ui)  # flag (don't block) before we overwrite it
 
     ui.phase("Read broadband", "(.ns5)")
     rec = bio.read_broadband(args.data_dir)  # placeholder independent-channel probe attached
+    total_seconds = rec.get_total_duration()
     ui.detail(
         f"{rec.get_num_channels()} channels · {rec.get_sampling_frequency():g} Hz · "
-        f"{rec.get_total_duration():.1f}s"
+        f"{total_seconds:.1f}s"
     )
+
+    # Drop non-neural analog aux channels (ids 10241+, 'analog N') before sorting:
+    # left in, they corrupt the common median reference and can spawn fake units.
+    n_dropped = 0
+    if not args.keep_analog:
+        neural = bio.neural_channel_ids(rec)
+        n_dropped = rec.get_num_channels() - len(neural)
+        if 0 < len(neural) < rec.get_num_channels():
+            rec = bio.select_channels(rec, neural)
+            rec = bio.attach_dummy_probe(rec)  # re-size the placeholder probe to the kept channels
+            ui.detail(f"excluded {n_dropped} non-neural analog aux channel(s) → "
+                      f"sorting {len(neural)} electrode(s)")
 
     fs = rec.get_sampling_frequency()
     freq_max = min(args.freq_max, 0.49 * fs)  # keep the high cutoff below Nyquist
@@ -298,12 +416,11 @@ def main() -> int:
     rec = spre.bandpass_filter(rec, freq_min=args.freq_min, freq_max=freq_max)
     rec = spre.common_reference(rec, reference="global", operator="median")
     if args.duration is not None:
-        if args.duration <= 0:
-            parser.error("--duration must be positive")
         n_samples = rec.get_num_samples()
         end = min(int(args.duration * fs), n_samples)
         rec = rec.frame_slice(0, end)
         ui.detail(f"limited to first {end / fs:g}s of {n_samples / fs:g}s")
+    effective_seconds = rec.get_total_duration()
 
     ui.phase("Sort", args.sorter)
     sorting = ss.run_sorter(
@@ -329,6 +446,14 @@ def main() -> int:
         qm = analyzer.get_extension("quality_metrics").get_data()
         qm.to_csv(out / "quality_metrics.csv")
         ui.metrics(qm, out / "quality_metrics.csv")
+        _compute_curation_extensions(analyzer, ui)
+
+    _write_run_info(
+        out, args, si_version=si.__version__, sorter=args.sorter,
+        n_units=len(sorting.get_unit_ids()), channel_ids=list(rec.get_channel_ids()),
+        n_dropped_analog=n_dropped, total_seconds=total_seconds,
+        effective_seconds=effective_seconds, freq_min=args.freq_min, freq_max=freq_max,
+    )
 
     ui.done(out)
     return 0

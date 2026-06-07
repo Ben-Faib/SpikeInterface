@@ -194,6 +194,34 @@ def attach_dummy_probe(recording, pitch_um: float = 250.0):
     return recording.set_probe(probe)
 
 
+def neural_channel_ids(recording):
+    """Return only the genuine electrode channel ids from a broadband recording.
+
+    Blackrock/Ripple stores non-neural **analog auxiliary** inputs (sync pulses,
+    foot pedals, etc.) in the same broadband stream as the electrodes, labelled
+    ``analog N`` (channel ids 10241+ on this rig). They must **not** be spike
+    sorted: feeding them through the common median reference pollutes the median
+    that every neural channel is referenced against, and the sorter can emit
+    spurious "units" on them. This keeps the channels whose name does *not* start
+    with ``analog`` (case-insensitive). If the recording carries no channel names
+    it conservatively returns every channel (nothing is dropped blindly).
+    """
+    names = recording.get_property("channel_name")
+    ids = list(recording.get_channel_ids())
+    if names is None:
+        return ids
+    keep = [cid for cid, nm in zip(ids, names)
+            if not str(nm).strip().lower().startswith("analog")]
+    return keep or ids  # never strip every channel
+
+
+def select_channels(recording, channel_ids):
+    """Restrict a recording to ``channel_ids`` (SpikeInterface-version-agnostic)."""
+    if hasattr(recording, "select_channels"):
+        return recording.select_channels(channel_ids)
+    return recording.channel_slice(channel_ids)  # older SpikeInterface
+
+
 def read_broadband(
     data_dir: "Path | str | None" = None,
     stream_id: "str | None" = None,
