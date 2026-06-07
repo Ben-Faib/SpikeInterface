@@ -84,12 +84,21 @@ class Controller(Protocol):
     theme_name: str
     quick_seconds: int                  # span for the "quick" sort modal choice
     pipeline: list[dict]                # {stage,status,detail} (sorter-independent)
-    infos: list[dict]                   # {name,present,units,duration,active}
+    infos: list[dict]                   # full catalog: {name,group,status,runnable,
+                                        # recommended,description,present,units,
+                                        # duration,active}
     data_report: dict                   # see SpikeInterface_Menu._data_report
+    use_docker: bool
+    want_welcome: bool
 
-    def set_active(self, idx: int) -> None: ...
+    def set_active_by_name(self, name: str) -> bool: ...
+    def cycle_active(self) -> None: ...
     def set_theme(self, name: str) -> str: ...      # returns the new accent hex
     def reload(self) -> None: ...                   # refresh pipeline/infos/data_report
+    def toggle_docker(self) -> bool: ...
+    def docker_status(self, refresh: bool = False) -> dict: ...
+    def start_docker(self) -> bool: ...
+    def mark_welcome_seen(self) -> None: ...
     def run(self, key: str, span: str | None) -> tuple[bool, str, bool]: ...
 
 
@@ -409,6 +418,7 @@ class SpikeMenuApp(App):
         self.c = controller
         self._accent = controller.accent
         self._last = None
+        self._sorter_hint = None
         super().__init__()
 
     # -- CSS variable plumbing: $accentcolor follows the live theme ----------- #
@@ -519,13 +529,23 @@ class SpikeMenuApp(App):
         ol = self.query_one("#sorters", OptionList)
         keep = ol.highlighted
         ol.clear_options()
-        # Row 0 is the Docker toggle; sorter rows follow (offset by 1).
         ol.add_option(Option(self._docker_row_text(), id="__docker__"))
-        for i, info in enumerate(self.c.infos):
-            ol.add_option(Option(self._sorter_text(info, i == self.c.active_idx), id=info["name"]))
-        # keep cursor on the active sorter (its option index is active_idx + 1)
-        target = self.c.active_idx + 1
-        ol.highlighted = keep if (keep is not None and keep < ol.option_count) else target
+        active_row = 0
+        by_group: dict[str, list[dict]] = {}
+        for info in self.c.infos:
+            by_group.setdefault(info.get("group", "unavailable"), []).append(info)
+        for group in self._GROUP_ORDER:
+            members = by_group.get(group)
+            if not members:                      # omit empty groups
+                continue
+            ol.add_option(Option(Text(self._GROUP_LABEL[group], style="dim bold"),
+                                  id=f"__grp_{group}__", disabled=True))
+            for info in members:
+                ol.add_option(Option(self._sorter_text(info), id=info["name"]))
+                if info.get("active"):
+                    active_row = ol.option_count - 1
+        ol.highlighted = (keep if (keep is not None and keep < ol.option_count)
+                          else active_row)
 
     def _docker_row_text(self) -> Text:
         on = getattr(self.c, "use_docker", False)
@@ -534,19 +554,32 @@ class SpikeMenuApp(App):
         t.append("on" if on else "off", style=f"bold {self._accent}" if on else "dim")
         return t
 
-    # status glyph: ◇ = runs in Docker, (none) = local. GPU rows aren't offered.
-    _STATUS_GLYPH = {"docker": "◇", "gpu": "·"}
+    # Group order + headers for the grouped sidebar. Empty groups are omitted.
+    _GROUP_ORDER = ["ready", "docker", "gpu", "unavailable"]
+    _GROUP_LABEL = {
+        "ready": "READY TO USE",
+        "docker": "DOCKER SORTERS (heavier)",
+        "gpu": "NEEDS A GPU",
+        "unavailable": "NOT AVAILABLE",
+    }
+    # Per-group row glyph: ◇ = runs via Docker, · = gpu/unavailable, (none) = ready.
+    _GROUP_GLYPH = {"docker": "◇", "gpu": "·", "unavailable": "·"}
 
-    def _sorter_text(self, info: dict, active: bool) -> Text:
-        # Compact so it never wraps the 36-col sidebar: a filled ● + bold name mark
-        # the active sorter; an optional ◇ flags a Docker (container) sorter. The
-        # footer carries its full units · duration.
+    def _sorter_text(self, info: dict) -> Text:
+        # Compact for the 36-col sidebar. ★ recommended, ●/○ active, group glyph,
+        # name, saved-unit count; dim when not runnable. Footer carries the
+        # description + full units · duration.
+        active = info.get("active", False)
+        runnable = info.get("runnable", False)
         t = Text()
+        t.append("★ " if info.get("recommended") else "  ",
+                 style=f"bold {self._accent}" if info.get("recommended") else "")
         t.append("● " if active else "○ ", style=self._accent if active else "dim")
-        glyph = self._STATUS_GLYPH.get(info.get("status", "local"))
+        glyph = self._GROUP_GLYPH.get(info.get("group"))
         if glyph:
             t.append(glyph + " ", style="dim")
-        t.append(info["name"], style=f"bold {self._accent}" if active else "")
+        name_style = f"bold {self._accent}" if active else ("" if runnable else "dim")
+        t.append(info["name"], style=name_style)
         t.append(f"  {info['units']}u" if info.get("present") else "  —", style="dim")
         if active:
             t.append("  ACTIVE", style=f"bold {self._accent}")
@@ -607,7 +640,11 @@ class SpikeMenuApp(App):
         line1.append("Active sorter: ", style="dim")
         line1.append(info["name"], style=f"bold {self._accent}")
         line1.append(f"  ({summary})", style="dim")
-        if self._last:
+        hint = getattr(self, "_sorter_hint", None)
+        if hint is not None:
+            line1.append("    ")
+            line1.append(hint)
+        elif self._last:
             line1.append("    ")
             line1.append(self._last if isinstance(self._last, Text) else Text(str(self._last)))
         # Width-aware key hint, so a fixed 2-row footer never wraps and steals rows.
@@ -623,6 +660,14 @@ class SpikeMenuApp(App):
         line2.truncate(cap, overflow="ellipsis")
         self.query_one("#footer", Static).update(line1 + Text("\n") + line2)
 
+    def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        if event.option_list is not self.query_one("#sorters", OptionList):
+            return
+        oid = event.option.id
+        info = next((i for i in self.c.infos if i["name"] == oid), None)
+        self._sorter_hint = Text(info["description"], style="dim") if info else None
+        self._refresh_footer()
+
     # -- focus / sorter actions ---------------------------------------------- #
     def action_focus_sorter(self) -> None:
         self.query_one("#sorters", OptionList).focus()
@@ -631,7 +676,9 @@ class SpikeMenuApp(App):
         self.query_one("#actions", OptionList).focus()
 
     def action_cycle_sorter(self) -> None:
-        self._set_active((self.c.active_idx + 1) % len(self.c.sorters))
+        self.c.cycle_active()
+        self._rebuild_sorters()
+        self._refresh_footer()
 
     def action_data_help(self) -> None:
         self.push_screen(DataSetupScreen(self.c.data_report, self._accent))
@@ -640,23 +687,39 @@ class SpikeMenuApp(App):
         if 0 <= i < len(self.c.actions):
             self._activate_action(self.c.actions[i]["key"])
 
-    def _set_active(self, idx: int) -> None:
-        self.c.set_active(idx)
-        self._rebuild_sorters()
-        self._refresh_footer()
+    def _set_active_by_name(self, name: str) -> None:
+        if self.c.set_active_by_name(name):
+            self._rebuild_sorters()
+            self._refresh_footer()
 
     # -- list selection ------------------------------------------------------- #
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         if event.option_list is self.query_one("#sorters", OptionList):
-            if event.option.id == "__docker__":
+            oid = event.option.id
+            if oid == "__docker__":
                 self._toggle_docker()
+            elif oid and oid.startswith("__grp_"):
+                return
             else:
-                # sorter rows are offset by 1 (row 0 is the Docker toggle)
-                self._set_active(event.option_index - 1)
+                self._select_sorter(oid)
         elif event.option_list is self.query_one("#actions", OptionList):
             self._activate_action(event.option.id)
 
-    def _toggle_docker(self) -> None:
+    def _select_sorter(self, name: str) -> None:
+        info = next((i for i in self.c.infos if i["name"] == name), None)
+        if info is None:
+            return
+        if info.get("runnable"):
+            self._set_active_by_name(name)
+        elif info.get("group") == "docker":
+            self._toggle_docker(offer_from=name)     # offer to enable Docker
+        else:
+            hint = ("needs a GPU build installed — see Help" if info.get("group") == "gpu"
+                    else "not available on this computer")
+            self._last = Text(f"{name}: {hint}", style="#f0883e")
+            self._refresh_footer()
+
+    def _toggle_docker(self, offer_from: str | None = None) -> None:
         on = self.c.toggle_docker()
         self._rebuild_sorters()
         self._rebuild_actions()
@@ -666,6 +729,7 @@ class SpikeMenuApp(App):
         self._relayout()
 
     def _activate_action(self, key: str) -> None:
+        self._sorter_hint = None   # an action result takes the footer over the highlight hint
         if key == "quit":
             self.exit()
         elif key == "theme":
@@ -718,7 +782,7 @@ class SpikeMenuApp(App):
         self._refresh_footer()
 
     def _open_params(self) -> None:
-        sorter = self.c.sorters[self.c.active_idx]
+        sorter = self.c.active_sorter
         try:
             defaults = self.c.default_params(sorter)
             descs = self.c.param_descriptions(sorter)

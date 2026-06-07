@@ -14,19 +14,25 @@ def _app(controller):
     return menu_app.SpikeMenuApp(controller)
 
 
+def _sorter_row(app, name):
+    ol = app.query_one("#sorters", OptionList)
+    for i in range(ol.option_count):
+        if ol.get_option_at_index(i).id == name:
+            return i
+    raise AssertionError(f"sorter row {name!r} not found")
+
+
 async def test_boots_with_lists_and_focus(make_controller):
     app = _app(make_controller(present=True))
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
         sorters = app.query_one("#sorters", OptionList)
         actions = app.query_one("#actions", OptionList)
-        # one Docker-toggle row + two sorter rows
-        assert sorters.option_count == 3
+        assert sorters.get_option_at_index(0).id == "__docker__"
         assert actions.option_count == 11
-        # a visible cursor from the start, focus on the actions pane
         assert actions.highlighted == 0
-        # sorter cursor sits on the active sorter (row 0 is the Docker toggle)
-        assert sorters.highlighted == 1
+        # the cursor sits on the active sorter row
+        assert sorters.highlighted == _sorter_row(app, "tridesclous2")
         assert app.focused is actions
 
 
@@ -64,14 +70,13 @@ async def test_enter_on_sorter_sets_active(make_controller):
     app = _app(c)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        await pilot.press("left")      # focus the sorter sidebar
-        await pilot.press("down")      # move to the second sorter
-        await pilot.press("enter")     # make it active
+        sorters = app.query_one("#sorters", OptionList)
+        sorters.highlighted = _sorter_row(app, "spykingcircus2")
+        app.set_focus(sorters)
+        await pilot.press("enter")
         await pilot.pause()
-        assert c.active_idx == 1
-        # footer echoes the active sorter
-        footer = app.query_one("#footer", Static)
-        assert "spykingcircus2" in footer.render().plain
+        assert c.active_sorter == "spykingcircus2"
+        assert "spykingcircus2" in app.query_one("#footer", Static).render().plain
 
 
 async def test_t_cycles_sorter(make_controller):
@@ -79,12 +84,13 @@ async def test_t_cycles_sorter(make_controller):
     app = _app(c)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
+        assert c.active_sorter == "tridesclous2"
         await pilot.press("t")
         await pilot.pause()
-        assert c.active_idx == 1
+        assert c.active_sorter == "spykingcircus2"
         await pilot.press("t")
         await pilot.pause()
-        assert c.active_idx == 0
+        assert c.active_sorter == "tridesclous2"
 
 
 async def test_tiny_window_stacks_and_keeps_actions(make_controller):
@@ -243,21 +249,22 @@ async def test_space_selects_sorter(make_controller):
     app = _app(c)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        await pilot.press("left")       # focus the sorter sidebar
-        await pilot.press("down")       # move to the second sorter
-        await pilot.press("space")      # select it
+        sorters = app.query_one("#sorters", OptionList)
+        sorters.highlighted = _sorter_row(app, "spykingcircus2")
+        app.set_focus(sorters)
+        await pilot.press("space")
         await pilot.pause()
-        assert c.active_idx == 1
+        assert c.active_sorter == "spykingcircus2"
 
 
 async def test_active_marker_and_incomplete_banner(make_controller):
-    # active sorter carries an explicit ACTIVE tag (not colour alone)
     app = _app(make_controller(present=True))
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
         sorters = app.query_one("#sorters", OptionList)
-        # row 0 is the Docker toggle; the active sorter (with its ACTIVE tag) is row 1
-        assert "ACTIVE" in sorters.get_option_at_index(1).prompt.plain
+        row = _sorter_row(app, "tridesclous2")
+        assert "ACTIVE" in sorters.get_option_at_index(row).prompt.plain
+        assert "★" in sorters.get_option_at_index(row).prompt.plain   # recommended badge
 
 
 async def test_missing_banner_never_clips_actions_on_tiny_windows(make_controller):
@@ -306,13 +313,13 @@ async def test_docker_toggle_row_is_first_and_toggles(make_controller):
         await pilot.pause()
         sorters = app.query_one("#sorters", OptionList)
         assert sorters.get_option_at_index(0).id == "__docker__"
-        n_before = sorters.option_count
-        await pilot.press("left")       # focus the sorter sidebar (cursor on active sorter)
-        await pilot.press("up")         # move up to the Docker toggle row
-        await pilot.press("enter")      # toggle docker on
+        assert next(i for i in c.infos if i["name"] == "mountainsort5")["runnable"] is False
+        sorters.highlighted = 0           # the Docker toggle row
+        app.set_focus(sorters)
+        await pilot.press("enter")
         await pilot.pause()
         assert c.use_docker is True
-        assert app.query_one("#sorters", OptionList).option_count == n_before + 1
+        assert next(i for i in c.infos if i["name"] == "mountainsort5")["runnable"] is True
 
 
 async def test_toggle_does_not_change_active_sorter_index(make_controller):
@@ -320,11 +327,12 @@ async def test_toggle_does_not_change_active_sorter_index(make_controller):
     app = _app(c)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        await pilot.press("left")
-        await pilot.press("up")         # move up to the docker row
-        await pilot.press("enter")      # toggle (cursor is on the docker row)
+        sorters = app.query_one("#sorters", OptionList)
+        sorters.highlighted = 0
+        app.set_focus(sorters)
+        await pilot.press("enter")        # toggle docker
         await pilot.pause()
-        assert c.active_idx == 0         # toggling didn't reassign the active sorter
+        assert c.active_sorter == "tridesclous2"   # active sorter unchanged
 
 
 async def test_param_editor_saves_only_changed_keys(make_controller):

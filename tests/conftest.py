@@ -44,16 +44,32 @@ class FakeController:
     def __init__(self, present: bool = True):
         self.theme_name = "periwinkle"
         self.accent = self.themes[self.theme_name]
-        self.active_idx = 0
         self.use_docker = False
         self.sorters = ["tridesclous2", "spykingcircus2"]
+        self.active_sorter = "tridesclous2"
+        self.active_idx = 0
         self.sorter_params: dict[str, dict] = {}
         self.actions = [dict(key=k, title=t, hint=h, needs_data=nd) for k, t, h, nd in ACTIONS]
         self.ran: list[tuple[str, str | None]] = []
         self.ran_compare = None
         self.params_set = None
+        self.docker_state = "running"   # tests flip this to exercise the dialog
+        self.started_docker = False
+        self.want_welcome = False       # off by default so boot tests see no modal
+        self.welcome_seen = False
         self._present = present
         self.reload()
+
+    # A small fake universe spanning all four groups. READY sorters come first so
+    # the active sorter sits at infos index 0/1 (mirrors the real catalog order).
+    _UNIVERSE = [
+        # name, group, units (None = no saved sort)
+        ("tridesclous2", "ready", 12),
+        ("spykingcircus2", "ready", 7),
+        ("mountainsort5", "docker", None),
+        ("herdingspikes", "docker", None),
+        ("kilosort4", "gpu", None),
+    ]
 
     def reload(self) -> None:
         st = "PASS" if self._present else "FAIL"
@@ -62,15 +78,22 @@ class FakeController:
             {"stage": "Broadband (.ns5)", "status": st, "detail": "22 ch, 132s @ 30000 Hz"},
             {"stage": ".nev online units", "status": st, "detail": "8 units"},
         ]
-        rows = [("tridesclous2", True, 12, 132.0), ("spykingcircus2", True, 7, 132.0),
-                ("mountainsort5", False, 0, 0.0)]
-        self.infos = [
-            {"name": n, "present": p, "units": u, "duration": d, "active": False,
-             "status": "docker" if n == "mountainsort5" else "local"}
-            for n, p, u, d in rows if n in self.sorters
-        ]
-        for i, info in enumerate(self.infos):
-            info["active"] = (i == self.active_idx)
+        runnable = set(self.sorters)
+        self.infos = []
+        for name, group, units in self._UNIVERSE:
+            present = units is not None
+            self.infos.append({
+                "name": name, "group": group,
+                "status": ("docker" if group == "docker" else
+                           "gpu" if group == "gpu" else "local"),
+                "runnable": name in runnable,
+                "recommended": name == "tridesclous2",
+                "description": f"{name} description.",
+                "present": present, "units": units or 0,
+                "duration": 132.0 if present else 0.0,
+                "active": name == self.active_sorter,
+            })
+        self._mark_active()
         self.data_report = {
             "present": self._present,
             "data_dir": "/data/recordings",
@@ -83,10 +106,22 @@ class FakeController:
             "error": None if self._present else "No Blackrock .nev/.nsX files found in '/data/recordings'.",
         }
 
-    def set_active(self, idx: int) -> None:
-        self.active_idx = idx % len(self.sorters)
-        for i, info in enumerate(self.infos):
-            info["active"] = (i == self.active_idx)
+    def _mark_active(self) -> None:
+        for n, info in enumerate(self.infos):
+            info["active"] = (info["name"] == self.active_sorter)
+            if info["active"]:
+                self.active_idx = n
+
+    def set_active_by_name(self, name: str) -> bool:
+        if name not in self.sorters:
+            return False
+        self.active_sorter = name
+        self._mark_active()
+        return True
+
+    def cycle_active(self) -> None:
+        i = (self.sorters.index(self.active_sorter) + 1) % len(self.sorters)
+        self.set_active_by_name(self.sorters[i])
 
     def set_theme(self, name: str) -> str:
         self.theme_name = name
@@ -95,13 +130,27 @@ class FakeController:
 
     def toggle_docker(self) -> bool:
         self.use_docker = not self.use_docker
-        # simulate the runnable list growing/shrinking with Docker
-        self.sorters = (["tridesclous2", "spykingcircus2", "mountainsort5"]
+        self.sorters = (["tridesclous2", "spykingcircus2", "mountainsort5", "herdingspikes"]
                         if self.use_docker else ["tridesclous2", "spykingcircus2"])
-        if self.active_idx >= len(self.sorters):
-            self.active_idx = 0
+        if self.active_sorter not in self.sorters:
+            self.active_sorter = self.sorters[0]
         self.reload()
         return self.use_docker
+
+    def docker_status(self, refresh: bool = False) -> dict:
+        text = {"running": "✓ Docker is running",
+                "installed_not_running": "✗ Docker is installed but not started",
+                "not_installed": "You don't have Docker yet"}[self.docker_state]
+        return {"state": self.docker_state, "running": self.docker_state == "running",
+                "text": text}
+
+    def start_docker(self) -> bool:
+        self.started_docker = True
+        return True
+
+    def mark_welcome_seen(self) -> None:
+        self.want_welcome = False
+        self.welcome_seen = True
 
     def default_params(self, sorter: str) -> dict:
         return {"detect_threshold": 5.0, "freq_min": 300.0, "apply_preprocessing": True}
