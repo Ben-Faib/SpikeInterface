@@ -309,6 +309,41 @@ def status_table(rows) -> None:
     _C.print(t)
 
 
+_CATALOG_LABEL = {"ready": "READY TO USE", "docker": "DOCKER SORTERS (heavier)",
+                  "gpu": "NEEDS A GPU", "unavailable": "NOT AVAILABLE"}
+_CATALOG_ORDER = ["ready", "docker", "gpu", "unavailable"]
+
+
+def print_catalog(catalog) -> None:
+    """Plain grouped sorter listing for the typed fallback (read-only overview)."""
+    by = {}
+    for info in catalog:
+        by.setdefault(info.get("group", "unavailable"), []).append(info)
+    for group in _CATALOG_ORDER:
+        members = by.get(group)
+        if not members:
+            continue
+        say(f"\n[bold {ACCENT}]{_CATALOG_LABEL[group]}[/]")
+        for info in members:
+            star = "★ " if info.get("recommended") else "  "
+            units = f"{info['units']}u" if info.get("present") else "—"
+            dim = "" if info.get("runnable") else f"[{MUTED}]"
+            dimend = "" if info.get("runnable") else "[/]"
+            say(f"  {dim}{star}{info['name']:18} {units:>5}   "
+                f"{info.get('description', '')}{dimend}")
+
+
+def docker_confirm_text(state: str) -> str:
+    """One-line plain-language Docker guidance for the typed fallback, per state."""
+    return {
+        "running": "Docker is running. Enable extra sorters?",
+        "installed_not_running":
+            "Docker is installed but not started — start Docker Desktop, then retry.",
+        "not_installed":
+            "You don't have Docker — download Docker Desktop (docker.com), then retry.",
+    }.get(state, "Enable Docker sorters?")
+
+
 def _select_typed(title, options, default):
     """Numbered typed fallback for select() (no prompt_toolkit / not a TTY)."""
     say(f"\n[bold]{title}[/]")

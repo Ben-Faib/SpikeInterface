@@ -537,6 +537,7 @@ _MENU = [
     ("8", "docker",  "Toggle Docker sorters",   "show/hide not-installed CPU sorters"),
     ("9", "verify",  "Verify install",          "environment smoke test"),
     ("10", "theme",  "Change colour theme",     "pick an accent colour (saved for next time)"),
+    ("11", "help",   "Help",                    "what each step does · sorters · Docker · data"),
 ]
 
 # v2 (Textual) action table — (key, title, hint, needs_data). ``needs_data`` dims
@@ -820,6 +821,13 @@ def _menu_fallback(args, cfg: dict, theme: str) -> int:
         _print_setup_plain(report)
 
     use_docker = bool(cfg.get("use_docker", False))
+    if not cfg.get("seen_welcome", False):
+        ui.note("Welcome! This finds neurons in your recording in 3 steps: "
+                "Explore → Sort → Report.  Put your files in the data folder.")
+        cfg["seen_welcome"] = True
+        _save_config(cfg)
+    catalog = _catalog(args.sorter or sorter_registry.default_sorter(), use_docker)
+    ui.print_catalog(catalog)
     sorter_list = sorter_registry.runnable(use_docker) or [sorter_registry.default_sorter()]
     if not args.sorter or args.sorter not in sorter_list:
         args.sorter = sorter_list[0]
@@ -858,7 +866,21 @@ def _menu_fallback(args, cfg: dict, theme: str) -> int:
                 last = f"Theme → {theme}"
             continue
         if action == "docker":
-            use_docker = not bool(cfg.get("use_docker", False))
+            turning_on = not bool(cfg.get("use_docker", False))
+            if turning_on:
+                state = sorter_registry.docker_state(refresh=True)
+                ui.note(ui.docker_confirm_text(state))
+                if state == "not_installed":
+                    if ui.prompt("Open the Docker download page? [y/N] ").strip().lower().startswith("y"):
+                        webbrowser.open("https://www.docker.com/products/docker-desktop/")
+                elif state == "installed_not_running":
+                    if ui.prompt("Start Docker Desktop now? [y/N] ").strip().lower().startswith("y"):
+                        sorter_registry.start_docker()
+                        ui.note("Starting Docker… give it ~30–60s, then toggle again.")
+                if ui.prompt("Enable Docker sorters? [y/N] ").strip().lower() != "y":
+                    last = "Docker sorters unchanged"
+                    continue
+            use_docker = not use_docker
             cfg["use_docker"] = use_docker
             _save_config(cfg)
             sorter_list = sorter_registry.runnable(use_docker) or [sorter_registry.default_sorter()]
@@ -871,6 +893,22 @@ def _menu_fallback(args, cfg: dict, theme: str) -> int:
         if action == "params":
             _edit_params_typed(args.sorter, cfg)
             last = f"Edited {args.sorter} parameters"
+            continue
+        if action == "help":
+            topics = [(k, t, "") for k, t, _b in ui.HELP_TOPICS]
+            while True:
+                topic = ui.select("Help — choose a topic", topics + [("__done__", "Back", "")],
+                                  default=0)
+                if topic in (None, "__done__"):
+                    break
+                if topic == "data":
+                    _print_setup_plain(_data_report(args.data_dir))
+                    continue
+                title, lines = next((t, b) for k, t, b in ui.HELP_TOPICS if k == topic)
+                ui.say(f"\n[bold {ui.ACCENT}]{title}[/]")
+                for ln in lines:
+                    ui.say(f"  {ln}")
+            last = "Closed help"
             continue
         if action == "compare":
             pair = _pick_compare_pair(args.data_dir)
