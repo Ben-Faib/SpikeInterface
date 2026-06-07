@@ -20,11 +20,13 @@ async def test_boots_with_lists_and_focus(make_controller):
         await pilot.pause()
         sorters = app.query_one("#sorters", OptionList)
         actions = app.query_one("#actions", OptionList)
-        assert sorters.option_count == 2
-        assert actions.option_count == 10
+        # one Docker-toggle row + two sorter rows
+        assert sorters.option_count == 3
+        assert actions.option_count == 11
         # a visible cursor from the start, focus on the actions pane
         assert actions.highlighted == 0
-        assert sorters.highlighted == 0
+        # sorter cursor sits on the active sorter (row 0 is the Docker toggle)
+        assert sorters.highlighted == 1
         assert app.focused is actions
 
 
@@ -92,7 +94,7 @@ async def test_tiny_window_stacks_and_keeps_actions(make_controller):
         # narrow -> panes stack; short -> shield hidden; actions still all present
         assert app.query_one("#body").has_class("stacked")
         assert app.query_one("#shield").display is False
-        assert app.query_one("#actions", OptionList).option_count == 10
+        assert app.query_one("#actions", OptionList).option_count == 11
 
 
 async def test_very_short_window_does_not_crash(make_controller):
@@ -100,7 +102,7 @@ async def test_very_short_window_does_not_crash(make_controller):
     async with app.run_test(size=(30, 6)) as pilot:
         await pilot.pause()
         # still alive and the actions list exists (scrolls within its box)
-        assert app.query_one("#actions", OptionList).option_count == 10
+        assert app.query_one("#actions", OptionList).option_count == 11
         await pilot.press("down")
         await pilot.pause()
 
@@ -163,14 +165,14 @@ async def test_theme_modal_changes_accent(make_controller):
         assert app._accent == c.accent
 
 
-async def test_number_key_opens_data_setup(make_controller):
-    # action index 8 (1-based "9") is data-setup in the mirrored table
+async def test_number_key_opens_param_editor(make_controller):
+    # action index 6 (1-based "7") is "Edit sorter parameters" in the mirrored table
     app = _app(make_controller(present=True))
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        await pilot.press("9")
+        await pilot.press("7")
         await pilot.pause()
-        assert isinstance(app.screen, menu_app.DataSetupScreen)
+        assert isinstance(app.screen, menu_app.ParamEditorScreen)
 
 
 async def test_actions_stay_on_screen_when_stacked(make_controller):
@@ -187,12 +189,12 @@ async def test_actions_stay_on_screen_when_stacked(make_controller):
 async def test_action_run_path_is_guarded(make_controller):
     # Pressing a non-data action runs it via the suspend() path; under the headless
     # test driver suspend() is unsupported, so the guard must fall back to an
-    # in-place run instead of crashing. Verify-index in the mirrored table is 6 -> "7".
+    # in-place run instead of crashing. Verify-index in the mirrored table is 7 -> "8".
     c = make_controller(present=True)
     app = _app(c)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        await pilot.press("7")          # verify
+        await pilot.press("8")          # verify
         await pilot.pause()
         assert ("verify", None) in c.ran
         assert app.is_running           # did not crash out
@@ -254,7 +256,8 @@ async def test_active_marker_and_incomplete_banner(make_controller):
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
         sorters = app.query_one("#sorters", OptionList)
-        assert "ACTIVE" in sorters.get_option_at_index(0).prompt.plain
+        # row 0 is the Docker toggle; the active sorter (with its ACTIVE tag) is row 1
+        assert "ACTIVE" in sorters.get_option_at_index(1).prompt.plain
 
 
 async def test_missing_banner_never_clips_actions_on_tiny_windows(make_controller):
@@ -294,3 +297,105 @@ async def test_unreadable_files_show_amber_banner(make_controller):
         banner = app.query_one("#banner", Static)
         assert banner.display is True
         assert "unreadable" in banner.render().plain.lower()
+
+
+async def test_docker_toggle_row_is_first_and_toggles(make_controller):
+    c = make_controller(present=True)
+    app = _app(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        sorters = app.query_one("#sorters", OptionList)
+        assert sorters.get_option_at_index(0).id == "__docker__"
+        n_before = sorters.option_count
+        await pilot.press("left")       # focus the sorter sidebar (cursor on active sorter)
+        await pilot.press("up")         # move up to the Docker toggle row
+        await pilot.press("enter")      # toggle docker on
+        await pilot.pause()
+        assert c.use_docker is True
+        assert app.query_one("#sorters", OptionList).option_count == n_before + 1
+
+
+async def test_toggle_does_not_change_active_sorter_index(make_controller):
+    c = make_controller(present=True)
+    app = _app(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("left")
+        await pilot.press("up")         # move up to the docker row
+        await pilot.press("enter")      # toggle (cursor is on the docker row)
+        await pilot.pause()
+        assert c.active_idx == 0         # toggling didn't reassign the active sorter
+
+
+async def test_param_editor_saves_only_changed_keys(make_controller):
+    from textual.widgets import Input
+    c = make_controller(present=True)
+    app = _app(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        app._open_params()
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.ParamEditorScreen)
+        field = app.screen.query_one("#w_detect_threshold", Input)
+        field.value = "6.5"
+        app.screen.action_save()
+        await pilot.pause()
+        assert c.params_set is not None
+        sorter, overrides = c.params_set
+        assert sorter == "tridesclous2"
+        assert overrides == {"detect_threshold": 6.5}  # only the changed key
+
+
+async def test_param_editor_reset_clears_overrides(make_controller):
+    c = make_controller(present=True)
+    c.sorter_params["tridesclous2"] = {"detect_threshold": 9.0}
+    app = _app(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        app._open_params()
+        await pilot.pause()
+        app.screen.action_reset()
+        await pilot.pause()
+        assert c.params_set == ("tridesclous2", {})
+
+
+async def test_param_editor_bad_value_shows_error_and_stays(make_controller):
+    from textual.widgets import Input, Static
+    c = make_controller(present=True)
+    app = _app(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        app._open_params()
+        await pilot.pause()
+        app.screen.query_one("#w_freq_min", Input).value = "notanumber"
+        app.screen.action_save()
+        await pilot.pause()
+        # still on the editor, with an error message; nothing saved
+        assert isinstance(app.screen, menu_app.ParamEditorScreen)
+        assert "freq_min" in app.screen.query_one("#perror", Static).render().plain
+        assert c.params_set is None
+
+
+async def test_compare_opens_picker_when_two_saved(make_controller):
+    c = make_controller(present=True)   # both sorters present in the fake
+    app = _app(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("6")          # compare
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.ChoiceModal)
+
+
+async def test_compare_picks_pair_and_runs(make_controller):
+    c = make_controller(present=True)
+    app = _app(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("6")          # compare -> first picker
+        await pilot.pause()
+        await pilot.press("enter")      # choose highlighted (tridesclous2)
+        await pilot.pause()
+        await pilot.press("enter")      # choose highlighted of the remaining
+        await pilot.pause()
+        assert c.ran_compare is not None
+        assert len(c.ran_compare) == 2 and c.ran_compare[0] != c.ran_compare[1]

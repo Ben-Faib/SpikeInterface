@@ -31,6 +31,16 @@ MATCH_SCORE = 0.5     # min agreement to call two units matched
 DURATION_TOLERANCE_S = 1.0
 
 
+def saved_sorters() -> list[str]:
+    """Sorter names under outputs/ that have a saved analyzer, sorted."""
+    if not OUTPUT_DIR.exists():
+        return []
+    return sorted(
+        p.name for p in OUTPUT_DIR.iterdir()
+        if (p / "analyzer").exists()
+    )
+
+
 def _load(sorter: str):
     """Return (sorting, duration_s) from outputs/<sorter>/analyzer, or (None, None)."""
     import spikeinterface.full as si
@@ -90,9 +100,12 @@ def _match_table(cmp) -> str:
             f'</tr></thead><tbody>' + rows + '</tbody></table>')
 
 
-def build_comparison(data_dir=None, sorters=DEFAULT_SORTERS, out_path=None) -> Path:
+def build_comparison(data_dir=None, sorters=None, out_path=None) -> Path:
     out_path = Path(out_path) if out_path else (OUTPUT_DIR / "comparison.html")
     OUTPUT_DIR.mkdir(exist_ok=True)
+    if sorters is None:
+        found = saved_sorters()
+        sorters = tuple(found[:2]) if len(found) >= 2 else DEFAULT_SORTERS
     s1_name, s2_name = sorters
 
     s1, d1 = _load(s1_name)

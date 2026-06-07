@@ -74,10 +74,20 @@ def main() -> int:
         print(f"  (no broadband stream: {err})")
         print("  -> only LFP present; add a .ns5/.ns6 to enable spike sorting")
 
-    print("\n=== Installed sorters ===")
-    import spikeinterface.sorters as ss
+    print("\n=== Sorters (availability on this machine) ===")
+    import sorters as sorter_registry
 
-    print(f"  {ss.installed_sorters()}")
+    rows = sorter_registry.status_table()
+    label = {"local": "local", "docker": "docker", "gpu": "GPU-only", "unavailable": "—"}
+    for r in rows:
+        print(f"  {r['name']:18} {label.get(r['status'], r['status']):9} "
+              f"{r['n_params']:>3} params")
+    n_local = sum(r["status"] == "local" for r in rows)
+    n_dock = sum(r["status"] == "docker" for r in rows)
+    n_gpu = sum(r["status"] == "gpu" for r in rows)
+    print(f"  -> {n_local} local · {n_dock} container-capable · {n_gpu} GPU-only")
+    if not sorter_registry.docker_available():
+        print("     (Docker not detected — container sorters need Docker running)")
 
     print("\n=== Spike units (.nev) ===")
     sorting = bio.read_spikes(data_dir)

@@ -30,8 +30,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
+import tempfile
 import webbrowser
 from pathlib import Path
 
@@ -40,14 +42,39 @@ SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import blackrock_io as bio  # noqa: E402
 import report  # noqa: E402
+import sorters as sorter_registry  # noqa: E402  (registry: discovery/status/params/run)
 import ui  # noqa: E402  (rich styling shared-look with run_sorting.py)
-from run_sorting import SORTERS  # noqa: E402  (single-source the sorter list)
 
 QUICK_SECONDS = 30
 ACTIONS = ["explore", "sort", "report", "gui", "traces", "compare", "verify"]
 # Actions that open a blocking Qt window: the menu launches them in a fresh
 # child process so the menu survives and Qt gets a clean process each time.
 QT_ACTIONS = {"gui", "traces"}
+
+
+def _effective_params(sorter: str, overrides: dict) -> dict:
+    """Keep only the keys in ``overrides`` that differ from the sorter defaults.
+
+    Storing diffs (not full param dicts) keeps .si_menu.json small and robust to
+    SpikeInterface default changes across versions.
+    """
+    try:
+        defaults = sorter_registry.default_params(sorter)
+    except Exception:  # noqa: BLE001 - if introspection fails, keep overrides as-is
+        return dict(overrides)
+    return {k: v for k, v in overrides.items() if k not in defaults or defaults[k] != v}
+
+
+def _write_params_file(overrides: dict) -> "str | None":
+    """Write overrides to a temp JSON file for run_sorting --params-file; None if empty."""
+    if not overrides:
+        return None
+    fd, path = tempfile.mkstemp(prefix="si_params_", suffix=".json")
+    import os
+
+    with os.fdopen(fd, "w", encoding="utf-8") as fh:
+        json.dump(overrides, fh)
+    return path
 
 
 CONFIG_PATH = bio.REPO_ROOT / ".si_menu.json"  # local, git-ignored user prefs
@@ -83,7 +110,7 @@ def _analyzer_dir(sorter: str) -> Path:
 # --------------------------------------------------------------------------- #
 # Dashboard data (loaded once, refreshed only after a state-changing action)
 # --------------------------------------------------------------------------- #
-def _sorter_info(sorter: str, analyzer, active: bool) -> dict:
+def _sorter_info(sorter: str, analyzer, active: bool, status: str = "local") -> dict:
     """Saved-sort summary for one sorter. Pass a pre-loaded analyzer or None."""
     if analyzer is None and _analyzer_dir(sorter).exists():
         try:
@@ -93,17 +120,25 @@ def _sorter_info(sorter: str, analyzer, active: bool) -> dict:
         except Exception:  # noqa: BLE001 - unreadable analyzer -> treat as absent
             analyzer = None
     if analyzer is None:
-        return {"name": sorter, "present": False, "units": 0, "duration": 0.0, "active": active}
+        return {"name": sorter, "present": False, "units": 0, "duration": 0.0,
+                "active": active, "status": status}
     return {"name": sorter, "present": True, "units": len(analyzer.unit_ids),
-            "duration": float(analyzer.get_total_duration()), "active": active}
+            "duration": float(analyzer.get_total_duration()), "active": active,
+            "status": status}
 
 
-def _load_dashboard(data_dir, active: str):
+def _load_dashboard(data_dir, active: str, sorter_list, docker: bool):
     """Return (pipeline_rows, sorter_infos). Heavy: loads the data + analyzers."""
     objects, status = report._gather(data_dir, _analyzer_dir(active))
     pipeline = [r for r in status if not r["stage"].startswith("Saved sort")]
-    infos = [_sorter_info(s, objects.get("analyzer") if s == active else None, s == active)
-             for s in SORTERS]
+    inst = set(sorter_registry.installed())
+    infos = [
+        _sorter_info(
+            s, objects.get("analyzer") if s == active else None, s == active,
+            sorter_registry.status(s, installed_set=inst, docker=docker),
+        )
+        for s in sorter_list
+    ]
     return pipeline, infos
 
 
@@ -137,7 +172,8 @@ def _data_report(data_dir) -> dict:
         {"ext": ".ns5", "label": "Broadband — raw @ 30 kHz (sortable)", "present": has(".ns5")},
         {"ext": ".nev", "label": "Spike events + digital markers", "present": has(".nev")},
     ]
-    return {"present": present, "data_dir": str(d),
+    return {"present": present, "complete": present and all(f["present"] for f in files),
+            "data_dir": str(d),
             "base": (base.name if base is not None else None), "files": files, "error": err}
 
 
@@ -173,6 +209,8 @@ def _self(action: str, args) -> bool:
     cmd = [sys.executable, str(ROOT / "SpikeInterface_Menu.py"), action, "--sorter", args.sorter]
     if args.data_dir:
         cmd += ["--data-dir", args.data_dir]
+    if action == "gui" and getattr(args, "gui_mode", "auto") != "auto":
+        cmd += ["--gui-mode", args.gui_mode]
     ui.note(f"$ {' '.join(cmd)}")
     return subprocess.run(cmd).returncode == 0
 
@@ -191,13 +229,18 @@ def action_sort(args) -> bool:
     flags = ["--sorter", args.sorter]
     if args.duration is not None:
         flags += ["--duration", str(args.duration)]
+    if getattr(args, "docker", False):
+        flags += ["--docker"]
+    if getattr(args, "params_file", None):
+        flags += ["--params-file", args.params_file]
     if args.data_dir:
         flags += ["--data-dir", args.data_dir]
     return _shell("run_sorting.py", *flags)
 
 
 def action_verify(args) -> bool:
-    return _shell("verify_install.py")  # takes no flags
+    flags = ["--data-dir", args.data_dir] if args.data_dir else []
+    return _shell("verify_install.py", *flags)
 
 
 def _open_in_browser(uri: str) -> None:
@@ -219,6 +262,105 @@ def action_report(args) -> bool:
     return True
 
 
+# The Blackrock files carry no electrode geometry, so a placeholder
+# independent-channel probe is attached (see blackrock_io.attach_dummy_probe).
+# Surface this before any spatial view so the user isn't misled into reading
+# placeholder channel positions / depths as real anatomy.
+_GEOMETRY_CAVEAT = (
+    "Placeholder electrode geometry (independent-channel dummy probe — the "
+    "Blackrock files carry no map). The probe map, unit-location and depth views "
+    "are NOT physical; per-unit metrics, waveforms, correlograms and amplitudes "
+    "ARE valid."
+)
+
+
+def _has_display() -> bool:
+    """Best-effort check for a desktop/window server (for the blocking Qt GUIs)."""
+    if sys.platform.startswith("linux"):
+        return bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY"))
+    return True  # macOS (Quartz) / Windows always present a window server
+
+
+def _resolve_gui_mode(mode: str) -> str:
+    """Map a requested gui mode ('auto'/'desktop'/'web') to a concrete one."""
+    if mode == "auto":
+        return "desktop" if _has_display() else "web"
+    return mode
+
+
+def _sigui_events(data_dir):
+    """Convert bio.read_events() into the ``{name: {'times': ...}}`` dict sigui wants.
+
+    Returns None (so the event view stays cleanly empty) for a marker-less
+    recording or any read error — the GUI must open regardless.
+    """
+    try:
+        evs = bio.read_events(data_dir)
+    except Exception:  # noqa: BLE001 - events are best-effort
+        return None
+    out = {}
+    for ev in evs or []:
+        times = ev.get("times")
+        if times is not None and len(times):
+            out[str(ev["name"])] = {"times": times}
+    return out or None
+
+
+def _harden_sigui_scatterview() -> None:
+    """Make spikeinterface-gui's scatter views survive degenerate units.
+
+    sigui 0.13's ``BaseScatterView.get_unit_data`` computes
+    ``np.min(np.diff(np.unique(spike_data)))`` with only a ``len == 1`` special
+    case. A unit whose amplitude/depth/PC values are **empty or all-identical**
+    (common for online-detected noise units or very short recordings) reduces an
+    empty array → ``ValueError: zero-size array to reduction`` and the whole
+    window dies on construction — but only once the spike_amplitudes /
+    spike_locations / principal_components extensions exist (which we now compute
+    at sort time). Wrap the method so such a unit degrades to a flat single-value
+    band (or is skipped if it has no spikes at all). Idempotent; a no-op if the
+    library's internals have changed. (Upstream: the np.min/np.max reductions
+    should guard against size-0 arrays.)
+    """
+    try:
+        import numpy as np
+        from spikeinterface_gui import basescatterview as _bsv
+    except Exception:  # noqa: BLE001 - GUI not importable; the caller handles that
+        return
+    cls = _bsv.BaseScatterView
+    if getattr(cls, "_si_menu_hardened", False):
+        return
+    _orig = cls.get_unit_data
+
+    def _safe_get_unit_data(self, unit_id, segment_index=0):
+        try:
+            result = _orig(self, unit_id, segment_index=segment_index)
+        except ValueError:  # np.min over empty array — degenerate (empty / all-equal) spike_data
+            inds = self.controller.get_spike_indices(unit_id, segment_index=segment_index)
+            spike_indices = self.controller.spikes["sample_index"][inds]
+            spike_times = self.controller.sample_index_to_time(spike_indices)
+            spike_data = self.spike_data[inds]
+            if len(spike_data) == 0:  # nothing to plot -> caller skips on empty spike_times
+                empty = np.array([])
+                return empty, empty, np.array([1]), np.array([0.0, 1.0]), 0.0, 1.0, inds
+            v = float(spike_data[0])
+            pad = abs(v) * 0.1 or 1.0
+            return (spike_times, spike_data, np.array([1]),
+                    np.array([v - pad, v + pad]), v - pad, v + pad, inds)
+        # Success path: a unit with a tiny value spread can yield a zero-bin
+        # histogram, which then crashes the caller's np.max(hist_count). Coerce
+        # an empty histogram to a single flat bin so the view renders instead.
+        spike_times, spike_data, hist_count, hist_bins, ymin, ymax, inds = result
+        if np.asarray(hist_count).size == 0:
+            if ymin == ymax:
+                ymin, ymax = ymin - 1.0, ymax + 1.0
+            result = (spike_times, spike_data, np.array([1]),
+                      np.array([ymin, ymax]), ymin, ymax, inds)
+        return result
+
+    cls.get_unit_data = _safe_get_unit_data
+    cls._si_menu_hardened = True
+
+
 def action_gui(args) -> bool:
     analyzer_dir = _analyzer_dir(args.sorter)
     if not analyzer_dir.exists():
@@ -230,11 +372,36 @@ def action_gui(args) -> bool:
     except Exception as e:  # noqa: BLE001
         ui.warn(f"Could not import the GUI ({e!r}). Try: python scripts/verify_install.py")
         return False
-    ui.say(f"[{ui.ACCENT}]Opening spikeinterface-gui[/] on {analyzer_dir} "
-           f"[{ui.MUTED}](close the window to return) ...[/]")
+    _harden_sigui_scatterview()  # guard the amplitude/depth/PCA views against degenerate units
+
+    mode = _resolve_gui_mode(getattr(args, "gui_mode", "auto"))
+    if mode == "web" and not _can_serve_web():
+        ui.warn("No display detected and web mode is unavailable (the 'panel' package "
+                "is not installed). Run locally, use X forwarding (ssh -X), or "
+                "`uv pip install panel` to enable the browser-based inspector.")
+        return False
+
     analyzer = si.load_sorting_analyzer(analyzer_dir)
-    sigui.run_mainwindow(analyzer, mode="desktop")  # blocks until the window closes
+    events = _sigui_events(args.data_dir)  # .nev markers -> the GUI's event view
+    ui.warn(_GEOMETRY_CAVEAT)
+    if mode == "web":
+        ui.say(f"[{ui.ACCENT}]Opening spikeinterface-gui (web mode)[/] — no display "
+               f"detected; a local browser server will start [{ui.MUTED}](Ctrl-C to return) ...[/]")
+        sigui.run_mainwindow(analyzer, mode="web", events=events,
+                             address="localhost", port=0)  # blocks until you stop the server
+    else:
+        ui.say(f"[{ui.ACCENT}]Opening spikeinterface-gui[/] on {analyzer_dir} "
+               f"[{ui.MUTED}](close the window to return) ...[/]")
+        sigui.run_mainwindow(analyzer, mode="desktop", events=events)  # blocks until closed
     return True
+
+
+def _can_serve_web() -> bool:
+    try:
+        import panel  # noqa: F401  (sigui web mode is a Panel/Bokeh server)
+        return True
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def action_traces(args) -> bool:
@@ -243,6 +410,12 @@ def action_traces(args) -> bool:
     except Exception as e:  # noqa: BLE001
         ui.warn(f"Could not import the trace viewer ({e!r}). Try: python scripts/verify_install.py")
         return False
+    if not _has_display():  # ephyviewer is desktop-only — fail with guidance, not a raw Qt error
+        ui.warn("No display detected — the ephyviewer trace browser needs a desktop/X "
+                "session. Use X forwarding (ssh -X) or run locally. (The GUI inspector "
+                "has a browser-based web mode; the trace browser does not.)")
+        return False
+    ui.warn(_GEOMETRY_CAVEAT)
     ui.say(f"[{ui.ACCENT}]Opening ephyviewer[/] on the broadband recording "
            f"[{ui.MUTED}](close the window to return) ...[/]")
     rec = bio.read_broadband(args.data_dir)
@@ -250,14 +423,10 @@ def action_traces(args) -> bool:
     return True
 
 
-def action_compare(args) -> bool:
+def _compare_pair(args, sorters) -> bool:
+    """Build the comparison HTML for a chosen pair, offering a re-sort on mismatch."""
     import compare  # lazy: pulls in spikeinterface
 
-    other = [s for s in SORTERS if s != args.sorter]
-    sorters = (args.sorter, other[0]) if other else tuple(SORTERS[:2])
-
-    # Surface a duration mismatch and (interactively) offer to make the two sorts
-    # commensurate by re-sorting both over a common window before comparing.
     durations = {}
     for s in sorters:
         a_dir = _analyzer_dir(s)
@@ -288,6 +457,19 @@ def action_compare(args) -> bool:
     return True
 
 
+def action_compare(args) -> bool:
+    """CLI compare: pick the active sorter + the first other saved sort (or defaults)."""
+    import compare  # lazy
+
+    found = compare.saved_sorters()
+    if args.sorter in found:
+        other = [s for s in found if s != args.sorter]
+        pair = (args.sorter, other[0]) if other else tuple(found[:2])
+    else:
+        pair = tuple(found[:2]) if len(found) >= 2 else compare.DEFAULT_SORTERS
+    return _compare_pair(args, pair)
+
+
 DISPATCH = {
     "explore": action_explore, "sort": action_sort, "report": action_report,
     "gui": action_gui, "traces": action_traces, "compare": action_compare,
@@ -297,13 +479,15 @@ DISPATCH = {
 # (key, action, title, hint)
 _MENU = [
     ("1", "explore", "Explore raw data",        "static figures (LFP + .nev), no sort needed"),
-    ("2", "sort",    "Run / re-run sorting",    "sorts the active sorter tab; pick full or quick"),
+    ("2", "sort",    "Run / re-run sorting",    "sorts the active sorter; pick full or quick"),
     ("3", "report",  "Build & open report",     "interactive HTML → browser"),
     ("4", "gui",     "Open GUI inspector",      "spikeinterface-gui on the active sort"),
     ("5", "traces",  "Scroll raw traces",       "ephyviewer trace browser"),
-    ("6", "compare", "Compare the two sorters", "agreement matrix → comparison.html"),
-    ("7", "verify",  "Verify install",          "environment smoke test"),
-    ("8", "theme",   "Change colour theme",     "pick an accent colour (saved for next time)"),
+    ("6", "compare", "Compare sorters",         "pick two saved sorts → comparison.html"),
+    ("7", "params",  "Edit sorter parameters",  "tune the active sorter (saved)"),
+    ("8", "docker",  "Toggle Docker sorters",   "show/hide not-installed CPU sorters"),
+    ("9", "verify",  "Verify install",          "environment smoke test"),
+    ("10", "theme",  "Change colour theme",     "pick an accent colour (saved for next time)"),
 ]
 
 # v2 (Textual) action table — (key, title, hint, needs_data). ``needs_data`` dims
@@ -315,7 +499,8 @@ _ACTIONS = [
     ("report",     "Build & open report",     "interactive HTML → browser",                  True),
     ("gui",        "Open GUI inspector",      "spikeinterface-gui on the active sort",       True),
     ("traces",     "Scroll raw traces",       "ephyviewer trace browser",                    True),
-    ("compare",    "Compare the two sorters", "agreement matrix → comparison.html",          True),
+    ("compare",    "Compare sorters",         "pick two saved sorts → comparison.html",      True),
+    ("params",     "Edit sorter parameters",  "tune the active sorter (saved)",              False),
     ("verify",     "Verify install",          "environment smoke test",                      False),
     ("theme",      "Change colour theme",     "pick an accent colour (saved)",               False),
     ("data-setup", "Data files & setup help", "what's expected and where it goes",           False),
@@ -339,14 +524,17 @@ class MenuController:
         self.args = args
         self.cfg = cfg
         self.header = HEADER
-        self.sorters = list(SORTERS)
         self.themes = dict(ui.THEMES)
         self.actions = [dict(key=k, title=t, hint=h, needs_data=nd) for k, t, h, nd in _ACTIONS]
         self.theme_name = cfg.get("theme", ui.DEFAULT_THEME)
         if self.theme_name not in ui.THEMES:
             self.theme_name = ui.DEFAULT_THEME
         self.accent = ui.THEMES[self.theme_name]
-        self.active_idx = self.sorters.index(args.sorter) if args.sorter in self.sorters else 0
+        self.use_docker = bool(cfg.get("use_docker", False))
+        self.sorter_params = dict(cfg.get("sorter_params", {}))
+        self.sorters = sorter_registry.runnable(self.use_docker) or [sorter_registry.default_sorter()]
+        want = args.sorter if args.sorter else sorter_registry.default_sorter()
+        self.active_idx = self.sorters.index(want) if want in self.sorters else 0
         self.reload()
 
     @property
@@ -368,26 +556,93 @@ class MenuController:
         return self.accent
 
     def reload(self) -> None:
-        self.pipeline, self.infos = _load_dashboard(self.args.data_dir, self.active_sorter)
+        self.pipeline, self.infos = _load_dashboard(
+            self.args.data_dir, self.active_sorter, self.sorters, self.use_docker)
         for i, info in enumerate(self.infos):
             info["active"] = (i == self.active_idx)
         self.data_report = _data_report(self.args.data_dir)
 
+    def toggle_docker(self) -> bool:
+        """Flip Docker mode, persist it, and rebuild the runnable sorter list."""
+        self.use_docker = not self.use_docker
+        self.cfg["use_docker"] = self.use_docker
+        _save_config(self.cfg)
+        active_name = self.active_sorter
+        self.sorters = sorter_registry.runnable(self.use_docker) or [sorter_registry.default_sorter()]
+        self.active_idx = self.sorters.index(active_name) if active_name in self.sorters else 0
+        self.args.sorter = self.active_sorter
+        self.reload()
+        return self.use_docker
+
+    def default_params(self, sorter: str) -> dict:
+        return sorter_registry.default_params(sorter)
+
+    def param_descriptions(self, sorter: str) -> dict:
+        try:
+            return sorter_registry.param_descriptions(sorter)
+        except Exception:  # noqa: BLE001 - descriptions are optional
+            return {}
+
+    def get_overrides(self, sorter: str) -> dict:
+        return dict(self.sorter_params.get(sorter, {}))
+
+    def set_params(self, sorter: str, overrides: dict) -> None:
+        """Persist per-sorter overrides (stored as diffs from defaults)."""
+        diffs = _effective_params(sorter, overrides)
+        if diffs:
+            self.sorter_params[sorter] = diffs
+        else:
+            self.sorter_params.pop(sorter, None)
+        self.cfg["sorter_params"] = self.sorter_params
+        _save_config(self.cfg)
+
+    def saved_sorters(self) -> list[str]:
+        """Sorters that currently have a saved analyzer (for the compare picker)."""
+        return [i["name"] for i in self.infos if i.get("present")]
+
+    def run_compare(self, pair) -> tuple[bool, str, bool]:
+        """Compare a user-chosen pair of saved sorts (mismatch caveat handled in action)."""
+        self.args.sorter = pair[0]
+        try:
+            ok = _compare_pair(self.args, tuple(pair))
+        except Exception as e:  # noqa: BLE001
+            ui.warn(f"compare failed: {e!r}")
+            ok = False
+        return ok, _last_message("compare", self.args.sorter, ok), True
+
     def run(self, key: str, span: str | None) -> tuple[bool, str, bool]:
         self.args.sorter = self.active_sorter
+        params_path = None
         if key == "sort":
             self.args.duration = QUICK_SECONDS if span == "quick" else None
+            self.args.docker = self.use_docker
+            params_path = _write_params_file(self.get_overrides(self.active_sorter))
+            self.args.params_file = params_path
         try:
             ok = _self(key, self.args) if key in QT_ACTIONS else DISPATCH[key](self.args)
         except Exception as e:  # noqa: BLE001 - surface, keep the app alive
             ui.warn(f"{key} failed: {e!r}")
             ok = False
+        finally:
+            if params_path:
+                from pathlib import Path as _P
+
+                _P(params_path).unlink(missing_ok=True)
+                self.args.params_file = None
         return ok, _last_message(key, self.args.sorter, ok), key in ("sort", "compare")
 
 
 def _print_setup_plain(report: dict) -> None:
-    """Plain-text missing-data guidance for the typed fallback menu."""
-    ui.warn(f"No recording found in {report['data_dir']}")
+    """Plain-text missing-data guidance for the typed fallback menu.
+
+    Handles both 'nothing found' and 'incomplete set' (e.g. the sortable .ns5 is
+    absent) so the no-Textual / off-TTY path warns just like the Textual app.
+    """
+    if not report["present"]:
+        ui.warn(f"No recording found in {report['data_dir']}")
+    else:
+        missing = ", ".join(f["ext"] for f in report["files"] if not f["present"])
+        ui.warn(f"Incomplete recording set in {report['data_dir']} (missing {missing})")
     ui.note("Expected one file set sharing a base name:")
     for f in report["files"]:
         mark = "[bold green]✓[/]" if f["present"] else "[bold red]✗[/]"
@@ -395,6 +650,61 @@ def _print_setup_plain(report: dict) -> None:
         ui.say(f"  {mark} {name:32} [dim]{f['label']}[/]")
     ui.note(f"Drop the set into {report['data_dir']} (or pass --data-dir).")
     ui.note("The raw .ns5/.ns2/.nev are git-ignored, so a fresh clone has none.")
+
+
+def _edit_params_typed(sorter: str, cfg: dict) -> None:
+    """Typed per-sorter parameter editor: pick a param, enter a value, repeat."""
+    try:
+        defaults = sorter_registry.default_params(sorter)
+    except Exception as e:  # noqa: BLE001
+        ui.warn(f"can't read {sorter} parameters: {e!r}")
+        return
+    overrides = dict(cfg.get("sorter_params", {}).get(sorter, {}))
+    descs = sorter_registry.param_descriptions(sorter) if hasattr(sorter_registry, "param_descriptions") else {}
+    while True:
+        opts = [(k, k, f"{overrides.get(k, defaults[k])}") for k in defaults]
+        opts.append(("__done__", "Done — save & return", ""))
+        key = ui.select(f"Edit which parameter of {sorter}?", opts, default=len(opts) - 1)
+        if key in (None, "__done__"):
+            break
+        ui.note(descs.get(key, ""))
+        raw = ui.prompt(f"{key} [{overrides.get(key, defaults[key])}] = ").strip()
+        if raw == "":
+            continue
+        try:
+            val = sorter_registry.coerce_param(defaults[key], raw)
+        except ValueError as e:
+            ui.warn(str(e))
+            continue
+        if val == defaults[key]:
+            overrides.pop(key, None)
+        else:
+            overrides[key] = val
+    sp = dict(cfg.get("sorter_params", {}))
+    if overrides:
+        sp[sorter] = overrides
+    else:
+        sp.pop(sorter, None)
+    cfg["sorter_params"] = sp
+    _save_config(cfg)
+
+
+def _pick_compare_pair(data_dir):
+    """Pick two saved sorts to compare (typed/arrow select); None if <2 or cancelled."""
+    import compare
+
+    found = compare.saved_sorters()
+    if len(found) < 2:
+        ui.warn("Need two saved sorts to compare — run 'sort' for two sorters first.")
+        return None
+    first = ui.select("Compare which sorter?", [(s, s, "") for s in found], default=0)
+    if first is None:
+        return None
+    rest = [s for s in found if s != first]
+    second = ui.select(f"…compared against?  (vs {first})", [(s, s, "") for s in rest], default=0)
+    if second is None:
+        return None
+    return (first, second)
 
 
 def _menu(args) -> int:
@@ -423,11 +733,15 @@ def _menu(args) -> int:
 def _menu_fallback(args, cfg: dict, theme: str) -> int:
     """Typed / prompt_toolkit dashboard used when Textual is unavailable."""
     report = _data_report(args.data_dir)
-    if not report["present"]:
+    if not report["complete"]:  # nothing found OR an incomplete set (e.g. no sortable .ns5)
         _print_setup_plain(report)
 
-    pipeline, infos = _load_dashboard(args.data_dir, args.sorter)
-    active_idx = SORTERS.index(args.sorter)
+    use_docker = bool(cfg.get("use_docker", False))
+    sorter_list = sorter_registry.runnable(use_docker) or [sorter_registry.default_sorter()]
+    if not args.sorter or args.sorter not in sorter_list:
+        args.sorter = sorter_list[0]
+    pipeline, infos = _load_dashboard(args.data_dir, args.sorter, sorter_list, use_docker)
+    active_idx = sorter_list.index(args.sorter)
     cursor = 0
     last = None
     actions = [(action, title, hint) for _k, action, title, hint in _MENU] + [("__quit__", "Quit", "")]
@@ -435,13 +749,13 @@ def _menu_fallback(args, cfg: dict, theme: str) -> int:
         # One pinned, in-place view: header + sorter tabs + pipeline + last action + menu.
         action, active_idx = ui.dashboard_menu(HEADER, pipeline, infos, active_idx, actions,
                                                default=cursor, last=last)
-        args.sorter = SORTERS[active_idx]          # the active tab IS the sorter
+        args.sorter = sorter_list[active_idx]       # the active tab IS the sorter
         for i in infos:
             i["active"] = i["name"] == args.sorter
         if action in (None, "__quit__"):
             return 0
         if action == "__sorter__":  # typed-fallback only: cycle to the next sorter
-            active_idx = (active_idx + 1) % len(SORTERS)
+            active_idx = (active_idx + 1) % len(sorter_list)
             continue
         cursor = next((n for n, a in enumerate(actions) if a[0] == action), 0)
         if action in _DATA_ACTIONS and not report["present"]:
@@ -460,6 +774,31 @@ def _menu_fallback(args, cfg: dict, theme: str) -> int:
                 _save_config(cfg)
                 last = f"Theme → {theme}"
             continue
+        if action == "docker":
+            use_docker = not bool(cfg.get("use_docker", False))
+            cfg["use_docker"] = use_docker
+            _save_config(cfg)
+            sorter_list = sorter_registry.runnable(use_docker) or [sorter_registry.default_sorter()]
+            if args.sorter not in sorter_list:
+                args.sorter = sorter_list[0]
+            pipeline, infos = _load_dashboard(args.data_dir, args.sorter, sorter_list, use_docker)
+            active_idx = sorter_list.index(args.sorter)
+            last = f"Docker sorters {'on' if use_docker else 'off'}"
+            continue
+        if action == "params":
+            _edit_params_typed(args.sorter, cfg)
+            last = f"Edited {args.sorter} parameters"
+            continue
+        if action == "compare":
+            pair = _pick_compare_pair(args.data_dir)
+            if pair is None:
+                last = "Compare cancelled (need two saved sorts)"
+                continue
+            ok = _compare_pair(args, pair)
+            last = _last_message("compare", args.sorter, ok)
+            pipeline, infos = _load_dashboard(args.data_dir, args.sorter, sorter_list, use_docker)
+            active_idx = sorter_list.index(args.sorter) if args.sorter in sorter_list else 0
+            continue
         if action == "sort":
             span = ui.select("Sort how much?",
                              [("full", "Full recording", ""),
@@ -469,11 +808,18 @@ def _menu_fallback(args, cfg: dict, theme: str) -> int:
                 last = "Sort cancelled"
                 continue
             args.duration = QUICK_SECONDS if span == "quick" else None
+            args.docker = use_docker
+            params_path = _write_params_file(_load_config().get("sorter_params", {}).get(args.sorter, {}))
+            args.params_file = params_path
+            ok = DISPATCH["sort"](args)
+            if params_path:
+                Path(params_path).unlink(missing_ok=True)
+            last = _last_message("sort", args.sorter, ok)
+            pipeline, infos = _load_dashboard(args.data_dir, args.sorter, sorter_list, use_docker)
+            active_idx = sorter_list.index(args.sorter) if args.sorter in sorter_list else 0
+            continue
         ok = _self(action, args) if action in QT_ACTIONS else DISPATCH[action](args)
         last = _last_message(action, args.sorter, ok)
-        if action in ("sort", "compare"):  # only these can change saved-sort state
-            pipeline, infos = _load_dashboard(args.data_dir, args.sorter)
-            active_idx = SORTERS.index(args.sorter)
 
 
 def main() -> int:
@@ -484,8 +830,12 @@ def main() -> int:
     parser.add_argument("action", nargs="?", choices=ACTIONS, default=None,
                         help="Run one action directly (default: interactive menu).")
     parser.add_argument("--data-dir", default=None, help="Folder with the .nev/.nsX (default: repo root).")
-    parser.add_argument("--sorter", choices=SORTERS, default=SORTERS[0], help="Active sorter.")
+    parser.add_argument("--sorter", default=None, help="Active sorter (default: auto).")
     parser.add_argument("--duration", type=float, default=None, help="For 'sort': first N seconds only.")
+    parser.add_argument("--docker", action="store_true",
+                        help="For 'sort': run the sorter in its Docker image.")
+    parser.add_argument("--gui-mode", choices=["auto", "desktop", "web"], default="auto",
+                        help="For 'gui': desktop window, browser (web), or auto-detect (default).")
     args = parser.parse_args()
 
     if args.action is None:

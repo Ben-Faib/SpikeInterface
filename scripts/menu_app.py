@@ -41,7 +41,7 @@ from textual.app import App, ComposeResult, SuspendNotSupported
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import OptionList, Static
+from textual.widgets import Checkbox, Input, Label, OptionList, Static
 from textual.widgets.option_list import Option
 
 import ui  # shield art + theme palette + plain helpers (single source)
@@ -111,6 +111,7 @@ class ChoiceModal(ModalScreen):
     ChoiceModal #dialogtitle { text-style: bold; color: $accentcolor; padding: 0 0 1 0; }
     ChoiceModal OptionList { height: auto; max-height: 12; background: $surface; border: none; }
     ChoiceModal OptionList:focus { border: none; }
+    ChoiceModal #choicefoot { color: $text-muted; padding: 1 0 0 0; }
     """
 
     BINDINGS = [Binding("escape", "cancel", "Cancel")]
@@ -125,6 +126,7 @@ class ChoiceModal(ModalScreen):
         with Vertical(id="dialog"):
             yield Static(self._title, id="dialogtitle")
             yield NavList(*opts, id="choicelist")
+            yield Static("Enter to choose · Esc to cancel", id="choicefoot")
 
     def _opt_text(self, main: str, hint: str) -> Text:
         t = Text(main)
@@ -181,6 +183,97 @@ class DataSetupScreen(ModalScreen):
 
     def action_close(self) -> None:
         self.dismiss(None)
+
+
+class ParamEditorScreen(ModalScreen):
+    """Edit one sorter's parameters. Scalars get an inline field/checkbox; complex
+    values (dict/list/None) are edited as JSON. Save stores only changed keys."""
+
+    DEFAULT_CSS = """
+    ParamEditorScreen { align: center middle; }
+    ParamEditorScreen > #dialog {
+        width: 92; max-width: 96%; height: 90%; max-height: 36;
+        border: round $accentcolor; background: $surface; padding: 1 2;
+    }
+    ParamEditorScreen #ptitle { text-style: bold; color: $accentcolor; height: 1; }
+    ParamEditorScreen #pscroll { height: 1fr; }
+    ParamEditorScreen .prow { height: auto; padding: 0 0 1 0; }
+    ParamEditorScreen .pname { color: $accentcolor; text-style: bold; }
+    ParamEditorScreen .pdesc { color: $text-muted; }
+    ParamEditorScreen Input { width: 100%; }
+    ParamEditorScreen #perror { color: #f85149; height: auto; }
+    ParamEditorScreen #pfoot { color: $text-muted; height: 1; padding: 1 0 0 0; }
+    """
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+        Binding("ctrl+s", "save", "Save"),
+        Binding("ctrl+r", "reset", "Reset"),
+    ]
+
+    def __init__(self, sorter, defaults, descs, overrides, accent):
+        super().__init__()
+        self._sorter = sorter
+        self._defaults = defaults
+        self._descs = descs or {}
+        self._overrides = overrides or {}
+        self._accent = accent
+        self._widgets: dict = {}  # key -> (kind, widget)
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Static(f"Parameters · {self._sorter}", id="ptitle")
+            with VerticalScroll(id="pscroll"):
+                for key, default in self._defaults.items():
+                    cur = self._overrides.get(key, default)
+                    with Vertical(classes="prow"):
+                        yield Label(key, classes="pname")
+                        desc = self._descs.get(key)
+                        if desc:
+                            yield Label(str(desc), classes="pdesc")
+                        if isinstance(default, bool):
+                            w = Checkbox("enabled", value=bool(cur), id=f"w_{key}")
+                            self._widgets[key] = ("bool", w)
+                            yield w
+                        elif isinstance(default, (int, float, str)) or default is None:
+                            w = Input(value=_param_to_str(cur), id=f"w_{key}")
+                            self._widgets[key] = ("scalar", w)
+                            yield w
+                        else:  # dict / list -> JSON
+                            import json as _json
+                            w = Input(value=_json.dumps(cur), id=f"w_{key}")
+                            self._widgets[key] = ("json", w)
+                            yield w
+            yield Static("", id="perror")
+            yield Static("Ctrl+S save · Ctrl+R reset to defaults · Esc cancel", id="pfoot")
+
+    def on_mount(self) -> None:
+        self.query_one("#pscroll").focus()
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def action_reset(self) -> None:
+        self.dismiss((self._sorter, {}))  # empty overrides -> controller clears them
+
+    def action_save(self) -> None:
+        import sorters as _sorters
+
+        overrides = {}
+        for key, (kind, w) in self._widgets.items():
+            default = self._defaults[key]
+            if kind == "bool":
+                val = bool(w.value)
+            else:
+                raw = w.value
+                try:
+                    val = _sorters.coerce_param(default, raw)
+                except ValueError as e:
+                    self.query_one("#perror", Static).update(f"{key}: {e}")
+                    return
+            if val != default:
+                overrides[key] = val
+        self.dismiss((self._sorter, overrides))
 
 
 def _setup_body(report: dict, accent: str) -> Text:
@@ -289,7 +382,9 @@ class SpikeMenuApp(App):
     #sorters { height: auto; max-height: 5; border: round #3a3f47; padding: 0 1; }
     #pipeline { height: auto; border: round #3a3f47; padding: 0 1; margin: 1 0 0 0; }
     #actions { height: 1fr; min-height: 3; border: round #3a3f47; padding: 0 1; }
-    OptionList:focus { border: round $accentcolor; }
+    /* Focused pane: accent colour AND a heavier border, so the focus cue
+       survives on NO_COLOR / monochrome terminals (shape, not colour alone). */
+    OptionList:focus { border: heavy $accentcolor; }
 
     /* Pinned to the bottom at a fixed 2 rows so a long key-hint can never wrap and
        steal body rows from the Actions pane. */
@@ -424,19 +519,36 @@ class SpikeMenuApp(App):
         ol = self.query_one("#sorters", OptionList)
         keep = ol.highlighted
         ol.clear_options()
+        # Row 0 is the Docker toggle; sorter rows follow (offset by 1).
+        ol.add_option(Option(self._docker_row_text(), id="__docker__"))
         for i, info in enumerate(self.c.infos):
             ol.add_option(Option(self._sorter_text(info, i == self.c.active_idx), id=info["name"]))
-        ol.highlighted = keep if (keep is not None and keep < ol.option_count) else self.c.active_idx
+        # keep cursor on the active sorter (its option index is active_idx + 1)
+        target = self.c.active_idx + 1
+        ol.highlighted = keep if (keep is not None and keep < ol.option_count) else target
+
+    def _docker_row_text(self) -> Text:
+        on = getattr(self.c, "use_docker", False)
+        t = Text()
+        t.append("⊞ Docker sorters: ", style="dim")
+        t.append("on" if on else "off", style=f"bold {self._accent}" if on else "dim")
+        return t
+
+    # status glyph: ◇ = runs in Docker, (none) = local. GPU rows aren't offered.
+    _STATUS_GLYPH = {"docker": "◇", "gpu": "·"}
 
     def _sorter_text(self, info: dict, active: bool) -> Text:
         # Compact so it never wraps the 36-col sidebar: a filled ● + bold name mark
-        # the active sorter (shape + weight cues, not colour alone); the footer
-        # carries its full units · duration. Inactive rows show ○ + unit count.
+        # the active sorter; an optional ◇ flags a Docker (container) sorter. The
+        # footer carries its full units · duration.
         t = Text()
         t.append("● " if active else "○ ", style=self._accent if active else "dim")
+        glyph = self._STATUS_GLYPH.get(info.get("status", "local"))
+        if glyph:
+            t.append(glyph + " ", style="dim")
         t.append(info["name"], style=f"bold {self._accent}" if active else "")
         t.append(f"  {info['units']}u" if info.get("present") else "  —", style="dim")
-        if active:  # explicit text tag, not colour alone (spec: unmistakable)
+        if active:
             t.append("  ACTIVE", style=f"bold {self._accent}")
         return t
 
@@ -450,11 +562,14 @@ class SpikeMenuApp(App):
             disabled = bool(a.get("needs_data")) and not present
             if not disabled and first_enabled is None:
                 first_enabled = n
-            ol.add_option(Option(self._action_text(a, disabled), id=a["key"], disabled=disabled))
+            ol.add_option(Option(self._action_text(a, disabled, n), id=a["key"], disabled=disabled))
         ol.highlighted = keep if (keep is not None and keep < ol.option_count) else first_enabled
 
-    def _action_text(self, a: dict, disabled: bool) -> Text:
+    def _action_text(self, a: dict, disabled: bool, index: int) -> Text:
         t = Text()
+        # Prefix the first nine rows with their jump-key so 1-9 is self-documenting
+        # at every width (the footer hint is dropped on narrow terminals).
+        t.append(f"{index + 1}  " if index < 9 else "   ", style="dim")
         t.append(a["title"], style="dim" if disabled else "")
         if a.get("hint"):
             t.append(f"   {a['hint']}", style="dim")
@@ -533,9 +648,22 @@ class SpikeMenuApp(App):
     # -- list selection ------------------------------------------------------- #
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
         if event.option_list is self.query_one("#sorters", OptionList):
-            self._set_active(event.option_index)
+            if event.option.id == "__docker__":
+                self._toggle_docker()
+            else:
+                # sorter rows are offset by 1 (row 0 is the Docker toggle)
+                self._set_active(event.option_index - 1)
         elif event.option_list is self.query_one("#actions", OptionList):
             self._activate_action(event.option.id)
+
+    def _toggle_docker(self) -> None:
+        on = self.c.toggle_docker()
+        self._rebuild_sorters()
+        self._rebuild_actions()
+        self._last = Text(f"Docker sorters {'on' if on else 'off'}",
+                          style=f"bold {self._accent}")
+        self._refresh_footer()
+        self._relayout()
 
     def _activate_action(self, key: str) -> None:
         if key == "quit":
@@ -544,6 +672,8 @@ class SpikeMenuApp(App):
             self._open_theme()
         elif key == "data-setup":
             self.action_data_help()
+        elif key == "params":
+            self._open_params()
         elif self._needs_data(key) and not self.c.data_report.get("present"):
             # Guarded BEFORE the sort branch so sort can't open its modal with no data.
             self._last = Text("✗ ", style="bold #f85149") + Text(
@@ -557,6 +687,8 @@ class SpikeMenuApp(App):
                 ]),
                 self._after_sort_span,
             )
+        elif key == "compare":
+            self._open_compare_picker()
         else:
             self._run(key, None)
 
@@ -585,6 +717,87 @@ class SpikeMenuApp(App):
         self._last = Text(f"Theme → {name}", style=f"bold {self._accent}")
         self._refresh_footer()
 
+    def _open_params(self) -> None:
+        sorter = self.c.sorters[self.c.active_idx]
+        try:
+            defaults = self.c.default_params(sorter)
+            descs = self.c.param_descriptions(sorter)
+        except Exception as e:  # noqa: BLE001 - introspection failure -> report, no crash
+            self._last = Text(f"can't read {sorter} params: {e!r}", style="#f85149")
+            self._refresh_footer()
+            return
+        overrides = self.c.get_overrides(sorter)
+        self.push_screen(
+            ParamEditorScreen(sorter, defaults, descs, overrides, self._accent),
+            self._after_params,
+        )
+
+    def _after_params(self, result) -> None:
+        if result is None:
+            self._last = Text("Parameter edit cancelled", style="dim")
+        else:
+            sorter, overrides = result
+            self.c.set_params(sorter, overrides)
+            n = len(overrides)
+            self._last = Text(
+                f"{sorter}: {n} override{'s' if n != 1 else ''} saved" if n
+                else f"{sorter}: parameters reset to defaults",
+                style=f"bold {self._accent}")
+        self._refresh_footer()
+
+    def _open_compare_picker(self) -> None:
+        if self._needs_data("compare") and not self.c.data_report.get("present"):
+            self._last = Text("✗ ", style="bold #f85149") + Text(
+                "compare needs the recording files — press d for help")
+            self._refresh_footer()
+            return
+        saved = self.c.saved_sorters()
+        if len(saved) < 2:
+            self._last = Text(
+                "Need two saved sorts to compare — run 'sort' for two sorters first.",
+                style="#f0883e")
+            self._refresh_footer()
+            return
+        opts = [(s, s, "") for s in saved]
+        self.push_screen(ChoiceModal("Compare which sorter?", opts), self._after_compare_first)
+
+    def _after_compare_first(self, first) -> None:
+        if first is None:
+            self._last = Text("Compare cancelled", style="dim")
+            self._refresh_footer()
+            return
+        self._compare_first = first
+        rest = [(s, s, "") for s in self.c.saved_sorters() if s != first]
+        self.push_screen(ChoiceModal(f"…compared against?  (vs {first})", rest),
+                         self._after_compare_second)
+
+    def _after_compare_second(self, second) -> None:
+        if second is None:
+            self._last = Text("Compare cancelled", style="dim")
+            self._refresh_footer()
+            return
+        self._run_compare((self._compare_first, second))
+
+    def _run_compare(self, pair) -> None:
+        try:
+            with self.suspend():
+                ok, message, changed = self.c.run_compare(pair)
+        except SuspendNotSupported:
+            ok, message, changed = self.c.run_compare(pair)
+        except Exception as e:  # noqa: BLE001
+            ok, message, changed = False, f"compare failed: {e!r}", False
+        self._last = Text(message, style="#3fb950" if ok else "#f85149")
+        if changed:
+            try:
+                self.c.reload()
+                self._rebuild_sorters()
+                self._rebuild_actions()
+            except Exception as e:  # noqa: BLE001
+                self._last = Text(f"reload after compare failed: {e!r}", style="#f85149")
+        self._refresh_footer()
+        self._relayout()
+        self.refresh()
+
     # -- the suspend-and-run path -------------------------------------------- #
     def _run(self, key: str, span: str | None) -> None:
         # Drop out of the alt-screen so the action's own stdout scrolls; if the
@@ -612,3 +825,10 @@ class SpikeMenuApp(App):
 
 def _trunc(text: str, n: int) -> str:
     return text if len(text) <= n else text[: max(0, n - 1)] + "…"
+
+
+def _param_to_str(value) -> str:
+    """Render a scalar/None default for an Input field ('' for None)."""
+    if value is None:
+        return ""
+    return str(value)

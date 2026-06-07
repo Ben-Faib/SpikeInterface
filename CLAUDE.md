@@ -17,7 +17,7 @@ There is no package, no test suite, and no build step — it's loader code (`scr
 Spike sorting **is** possible because the raw broadband `.ns5` is present. Two facts shape how it's done here:
 
 - **No electrode geometry.** The Blackrock files carry no probe/channel map (`get_probe()` raises; there are no channel locations), and the real physical layout is unknown. `read_broadband()` therefore attaches a **placeholder "independent-channel" probe** (`attach_dummy_probe()` — channels laid out in a column 250 µm apart so no two are spatial neighbours). Per-unit results are valid; cross-channel *spatial* info is not physical until a real map is supplied — to swap it in, build a `probeinterface.Probe` and call `recording.set_probe(...)`. Don't tell the user sorting is blocked on geometry; it runs without it.
-- **Installed sorters are CPU-only:** `tridesclous2` and `spykingcircus2` (both bundled in `spikeinterface[full]`, no GPU/extra install). `run_sorting.py` exposes both via `--sorter`. Kilosort4 etc. are **not** installed and need an NVIDIA GPU + PyTorch (absent here).
+- **Sorters are discovered dynamically** via `scripts/sorters.py` (the registry — single source of truth). `installed_sorters()` runnable locally today: `tridesclous2`, `spykingcircus2`, `lupin`, `simple`. Not-installed **CPU** sorters (mountainsort5, herdingspikes, spykingcircus, waveclus, combinato, …) can run via **opt-in Docker** (`run_sorter(..., docker_image=True)`) — Docker is detected at runtime. **GPU sorters** (kilosort*, pykilosort, yass) are shown but never offered: no NVIDIA GPU here, and Docker-on-Mac has no GPU passthrough. `sorters.status(name)` → `local`/`docker`/`gpu`/`unavailable`.
 
 ## Commands
 
@@ -35,6 +35,10 @@ uv run python scripts/run_sorting.py --sorter spykingcircus2
 uv run python scripts/run_sorting.py --duration 30    # quick smoke test: sort only first 30 s
 uv run python scripts/run_sorting.py --verbosity normal    # step messages + table only, no progress bars
 uv run python scripts/run_sorting.py --verbosity quiet     # only the final quality-metrics table
+uv run python scripts/run_sorting.py --list-sorters          # availability table for every SI sorter
+uv run python scripts/run_sorting.py --sorter mountainsort5 --docker   # run a not-installed CPU sorter via Docker
+uv run python scripts/run_sorting.py --param detect_threshold=6.5 --param freq_min=250   # per-run param overrides
+uv run python scripts/run_sorting.py --params-file my_params.json       # overrides from a JSON file
 uv run python scripts/make_report.py          # thin shim -> SpikeInterface_Menu.py report (builds outputs/report.html)
 uv run python scripts/make_report.py --data-dir /path/to/recording
 uv run python scripts/compare.py              # agreement matrix between the two sorters -> outputs/comparison.html
@@ -63,6 +67,17 @@ bio.list_streams()                # (stream_name, stream_id) tuples for the nsX 
 ```
 
 All loaders default to reading the repo root and accept `data_dir=...` to point elsewhere.
+
+`scripts/sorters.py` is the **sorter registry** — the single source of truth for
+which spike sorters are usable (replacing the old hardcoded two-element list).
+`available()`/`installed()` wrap SpikeInterface; `docker_available()` probes the
+Docker daemon; `status(name)` classifies each sorter `local`/`docker`/`gpu`/
+`unavailable`; `runnable(use_docker)` is what the menu offers (installed always,
+container CPU sorters when Docker is on); `default_params`/`param_descriptions`/
+`coerce_param`/`merge_params` back the parameter editor; and `run(...)` wraps
+`run_sorter` with `docker_image=` + `sorter_params=`. Heavy SpikeInterface imports
+stay lazy, so importing the registry is cheap. `GPU_SORTERS` and `CONTAINERIZED`
+are curated constants.
 
 `scripts/run_sorting.py` is the sorting entry point built on these loaders: `read_broadband()` → `bandpass_filter(300–6000)` → `common_reference(median)` → `run_sorter(--sorter)` → save Sorting + `SortingAnalyzer` quality metrics under `outputs/<sorter>/`. Use `--duration N` to sort only the first N seconds as a smoke test.
 
@@ -135,6 +150,16 @@ misleading matrix when the two sorts cover different windows (the launcher's
 binding under uv is **PySide6** (pulled by `spikeinterface-gui[desktop]`); the
 conda fallback (`environment.yml`) resolves to **PyQt5** instead — either works,
 but don't install both into one env.
+The **Sorter sidebar** is now dynamic over `sorters.runnable(use_docker)` with a
+`⊞ Docker sorters: off/on` **toggle row at the top** (↑/↓ to reach it, Enter to
+flip — it re-lists the container sorters); each sorter row shows a `◇` glyph when
+it runs via Docker. An **"Edit sorter parameters"** action opens a Param Editor
+modal for the active sorter (scalars inline, bool as a checkbox, dict/None as
+JSON; Ctrl+S saves only the changed keys, Ctrl+R resets). **Compare** now opens a
+two-step picker to choose which saved sorts to compare. Docker on/off and
+per-sorter parameter **overrides** (diffs from defaults) persist to `.si_menu.json`
+(`use_docker`, `sorter_params`). The typed fallback menu offers the same via
+`ui.select`/prompts.
 
 Non-obvious behaviours baked into the loaders — preserve these when editing:
 

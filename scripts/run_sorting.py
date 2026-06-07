@@ -48,8 +48,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import blackrock_io as bio  # noqa: E402
+import sorters  # noqa: E402  (sorter registry: discovery / status / params / run)
 
-SORTERS = ["tridesclous2", "spykingcircus2"]
 VERBOSITY_LEVELS = ["quiet", "normal", "verbose"]
 
 # Width the tqdm description is padded/truncated to, so every progress bar's
@@ -332,12 +332,98 @@ def _warn_existing_sort(out: Path, ui: "ConsoleUI") -> None:
         ui.warn(f"overwriting an existing sort in {out}")
 
 
+def resolve_sorter(name: str, use_docker: bool) -> str:
+    """Validate a requested sorter against what's runnable; exit clearly if not.
+
+    ``--sorter`` is not a fixed argparse ``choices`` because the runnable set
+    depends on ``--docker`` and what's installed; this resolves it after parsing.
+    """
+    runnable = sorters.runnable(use_docker)
+    if name in runnable:
+        return name
+    st = sorters.status(name)
+    reason = {
+        "gpu": "needs an NVIDIA GPU (not available here)",
+        "docker": "is a container sorter — re-run with --docker (and start Docker)",
+        "unavailable": "is not installed and has no usable container image",
+        "local": "is installed",  # unreachable (would be in runnable)
+    }.get(st, "is not available")
+    raise SystemExit(
+        f"Sorter {name!r} {reason}.\nRunnable now: {', '.join(runnable) or '(none)'}."
+        "\nSee all sorters with: python scripts/run_sorting.py --list-sorters"
+    )
+
+
+def resolve_overrides(sorter: str, param_kv: list[str], params_file: "str | None") -> dict:
+    """Build the override dict: defaults < --params-file < repeated --param.
+
+    Values are coerced to each default's type; unknown keys / bad values exit with
+    a clear message (before any sorting starts).
+    """
+    defaults = sorters.default_params(sorter)
+    overrides: dict = {}
+    if params_file:
+        try:
+            file_over = json.loads(Path(params_file).read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError) as e:
+            raise SystemExit(f"--params-file {params_file!r}: {e}")
+        if not isinstance(file_over, dict):
+            raise SystemExit(f"--params-file {params_file!r} must contain a JSON object.")
+        overrides.update(file_over)
+    for item in param_kv:
+        if "=" not in item:
+            raise SystemExit(f"--param expects NAME=VALUE, got {item!r}")
+        key, raw = item.split("=", 1)
+        key = key.strip()
+        if key not in defaults:
+            raise SystemExit(
+                f"unknown parameter {key!r} for {sorter}. valid keys: {sorted(defaults)}")
+        try:
+            overrides[key] = sorters.coerce_param(defaults[key], raw)
+        except ValueError as e:
+            raise SystemExit(f"--param {key}: {e}")
+    # validate any keys that came from the file too
+    unknown = set(overrides) - set(defaults)
+    if unknown:
+        raise SystemExit(
+            f"unknown parameter(s) for {sorter}: {sorted(unknown)}. "
+            f"valid keys: {sorted(defaults)}")
+    return overrides
+
+
+def print_sorter_table() -> None:
+    """Print the availability of every SpikeInterface sorter, then return."""
+    rows = sorters.status_table()
+    label = {"local": "local", "docker": "docker", "gpu": "GPU-only", "unavailable": "—"}
+    print("Sorters known to SpikeInterface (status on this machine):\n")
+    for r in rows:
+        print(f"  {r['name']:18} {label.get(r['status'], r['status']):9} "
+              f"{r['n_params']:>3} params")
+    n_local = sum(r["status"] == "local" for r in rows)
+    n_dock = sum(r["status"] == "docker" for r in rows)
+    n_gpu = sum(r["status"] == "gpu" for r in rows)
+    print(f"\n{n_local} local · {n_dock} container-capable · {n_gpu} GPU-only.")
+    if not sorters.docker_available():
+        print("(Docker not detected — container sorters need Docker running.)")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser.add_argument("--data-dir", default=None, help="Folder with the .ns5/.nev (default: repo root).")
-    parser.add_argument("--sorter", default="tridesclous2", choices=SORTERS, help="Which sorter to run.")
+    parser.add_argument("--sorter", default=None,
+                        help="Which sorter to run (default: tridesclous2 if installed). "
+                             "See all with --list-sorters.")
+    parser.add_argument("--docker", action="store_true",
+                        help="Run the sorter in its SpikeInterface Docker image "
+                             "(lets you run not-installed CPU sorters).")
+    parser.add_argument("--param", action="append", default=[], metavar="NAME=VALUE",
+                        help="Override one sorter parameter (repeatable).")
+    parser.add_argument("--params-file", default=None,
+                        help="JSON file of sorter parameter overrides.")
+    parser.add_argument("--list-sorters", action="store_true",
+                        help="Print every sorter and its availability, then exit.")
     parser.add_argument("--output-dir", default=None, help="Where to write results (default: outputs/<sorter>/).")
     parser.add_argument("--duration", type=float, default=None, help="Sort only the first N seconds (quick test).")
     parser.add_argument("--freq-min", type=float, default=300.0, help="Bandpass low cutoff (Hz).")
@@ -368,6 +454,16 @@ def main() -> int:
         parser.error("--duration must be positive")
     if args.n_jobs < 1:
         parser.error("--n-jobs must be >= 1")
+
+    if args.list_sorters:
+        configure_output("quiet")  # mute import chatter; we only want the table
+        print_sorter_table()
+        return 0
+
+    if args.sorter is None:
+        args.sorter = sorters.default_sorter()
+    args.sorter = resolve_sorter(args.sorter, args.docker)
+    overrides = resolve_overrides(args.sorter, args.param, args.params_file)
 
     # Configure output BEFORE importing spikeinterface so env vars / the tqdm
     # patch land before OpenMP/Numba/the sorters initialise.
@@ -422,12 +518,17 @@ def main() -> int:
         ui.detail(f"limited to first {end / fs:g}s of {n_samples / fs:g}s")
     effective_seconds = rec.get_total_duration()
 
-    ui.phase("Sort", args.sorter)
-    sorting = ss.run_sorter(
+    ui.phase("Sort", args.sorter + ("  (docker)" if args.docker else ""))
+    if overrides:
+        ui.detail("overrides: " + ", ".join(f"{k}={v}" for k, v in overrides.items()))
+    if args.docker:
+        ui.detail("first Docker run pulls the sorter image — this can take a while")
+    sorting = sorters.run(
         args.sorter,
         rec,
-        folder=str(out / "sorter_output"),
-        remove_existing_folder=True,
+        out / "sorter_output",
+        params=overrides,
+        use_docker=args.docker,
         verbose=show_bars,
     )
     ui.result(f"{len(sorting.get_unit_ids())} units found")
