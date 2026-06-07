@@ -1447,6 +1447,45 @@ def action_compare(args) -> bool:
     return _compare_pair(args, pair)
 ```
 
+3j. Add the **"Edit sorter parameters"** action to the v2 Textual action table so the
+real app shows it (the tests mirror this in `conftest.ACTIONS`). Find:
+
+```python
+_ACTIONS = [
+    ("explore",    "Explore raw data",        "static figures (LFP + .nev), no sort needed", True),
+    ("sort",       "Run / re-run sorting",    "sort the active sorter; full or quick",       True),
+    ("report",     "Build & open report",     "interactive HTML → browser",                  True),
+    ("gui",        "Open GUI inspector",      "spikeinterface-gui on the active sort",       True),
+    ("traces",     "Scroll raw traces",       "ephyviewer trace browser",                    True),
+    ("compare",    "Compare the two sorters", "agreement matrix → comparison.html",          True),
+    ("verify",     "Verify install",          "environment smoke test",                      False),
+    ("theme",      "Change colour theme",     "pick an accent colour (saved)",               False),
+    ("data-setup", "Data files & setup help", "what's expected and where it goes",           False),
+    ("quit",       "Quit",                    "exit the menu (or press q)",                  False),
+]
+```
+
+Replace with:
+
+```python
+_ACTIONS = [
+    ("explore",    "Explore raw data",        "static figures (LFP + .nev), no sort needed", True),
+    ("sort",       "Run / re-run sorting",    "sort the active sorter; full or quick",       True),
+    ("report",     "Build & open report",     "interactive HTML → browser",                  True),
+    ("gui",        "Open GUI inspector",      "spikeinterface-gui on the active sort",       True),
+    ("traces",     "Scroll raw traces",       "ephyviewer trace browser",                    True),
+    ("compare",    "Compare sorters",         "pick two saved sorts → comparison.html",      True),
+    ("params",     "Edit sorter parameters",  "tune the active sorter (saved)",              False),
+    ("verify",     "Verify install",          "environment smoke test",                      False),
+    ("theme",      "Change colour theme",     "pick an accent colour (saved)",               False),
+    ("data-setup", "Data files & setup help", "what's expected and where it goes",           False),
+    ("quit",       "Quit",                    "exit the menu (or press q)",                  False),
+]
+```
+
+(`_DATA_ACTIONS` is derived from this table by the existing comprehension, so
+`params` — `needs_data=False` — is correctly excluded; no change needed there.)
+
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_menu_controller.py -q`
@@ -1543,7 +1582,8 @@ Replace with:
         self.reload()
 ```
 
-Add `"status"` to each info dict in `reload`. Find:
+Add `"status"` to each info dict in `reload`, and keep `infos` in sync with
+`self.sorters` (so Docker-on shows a third, container, sorter). Find:
 
 ```python
         self.infos = [
@@ -1555,14 +1595,17 @@ Add `"status"` to each info dict in `reload`. Find:
 Replace with:
 
 ```python
+        rows = [("tridesclous2", True, 12, 132.0), ("spykingcircus2", True, 7, 132.0),
+                ("mountainsort5", False, 0, 0.0)]
         self.infos = [
-            {"name": n, "present": p, "units": u, "duration": d, "active": False, "status": "local"}
-            for n, p, u, d in [("tridesclous2", True, 12, 132.0),
-                               ("spykingcircus2", True, 7, 132.0)]
-        ][: len(self.sorters)]
+            {"name": n, "present": p, "units": u, "duration": d, "active": False,
+             "status": "docker" if n == "mountainsort5" else "local"}
+            for n, p, u, d in rows if n in self.sorters
+        ]
 ```
 
-(Both present so the compare picker has two choices.)
+(tridesclous2 + spykingcircus2 are both present so the compare picker has two
+choices; mountainsort5 appears only after the Docker toggle grows `self.sorters`.)
 
 Add the new methods to `FakeController`, just after `set_theme`:
 
@@ -1600,20 +1643,8 @@ Add the new methods to `FakeController`, just after `set_theme`:
         return True, f"✓ compared {pair}", True
 ```
 
-The `reload` must keep `infos` length in sync with `self.sorters` when docker grows
-it. Add a third info when needed — update the list comprehension in `reload` to:
-
-```python
-        rows = [("tridesclous2", True, 12, 132.0), ("spykingcircus2", True, 7, 132.0),
-                ("mountainsort5", False, 0, 0.0)]
-        self.infos = [
-            {"name": n, "present": p, "units": u, "duration": d, "active": False,
-             "status": "docker" if n == "mountainsort5" else "local"}
-            for n, p, u, d in rows if n in self.sorters
-        ]
-```
-
-(Replace the earlier two-row version with this so docker-on shows three sorters.)
+(The `reload` edit above already keeps `infos` in sync with `self.sorters`, so
+toggling Docker on surfaces the third — container — sorter.)
 
 - [ ] **Step 2: Update existing index-based tests in `tests/test_menu_app.py`**
 
