@@ -17,7 +17,7 @@ There is no package, no test suite, and no build step — it's loader code (`scr
 Spike sorting **is** possible because the raw broadband `.ns5` is present. Two facts shape how it's done here:
 
 - **No electrode geometry.** The Blackrock files carry no probe/channel map (`get_probe()` raises; there are no channel locations), and the real physical layout is unknown. `read_broadband()` therefore attaches a **placeholder "independent-channel" probe** (`attach_dummy_probe()` — channels laid out in a column 250 µm apart so no two are spatial neighbours). Per-unit results are valid; cross-channel *spatial* info is not physical until a real map is supplied — to swap it in, build a `probeinterface.Probe` and call `recording.set_probe(...)`. Don't tell the user sorting is blocked on geometry; it runs without it.
-- **Sorters are discovered dynamically** via `scripts/sorters.py` (the registry — single source of truth). `installed_sorters()` runnable locally today: `tridesclous2`, `spykingcircus2`, `lupin`, `simple`. Not-installed **CPU** sorters (mountainsort5, herdingspikes, spykingcircus, waveclus, combinato, …) can run via **opt-in Docker** (`run_sorter(..., docker_image=True)`) — Docker is detected at runtime. **GPU sorters** (kilosort*, pykilosort, yass) are shown but never offered: no NVIDIA GPU here, and Docker-on-Mac has no GPU passthrough. `sorters.status(name)` → `local`/`docker`/`gpu`/`unavailable`.
+- **Sorters are discovered dynamically** via `scripts/sorters.py` (the registry — single source of truth). `installed_sorters()` runnable locally today: `tridesclous2`, `spykingcircus2`, `lupin`, `simple`. Not-installed **CPU** sorters (mountainsort5, herdingspikes, spykingcircus, waveclus, combinato, …) can run via **opt-in Docker** (`run_sorter(..., docker_image=True)`) — Docker is detected at runtime. **GPU sorters** (kilosort*, pykilosort, yass) are shown but never offered here: no NVIDIA GPU, and Docker-on-Mac has no GPU passthrough. `sorters.status(name)` → `local`/`docker`/`gpu`/`unavailable`. For the newcomer-friendly menu the registry also exposes `RECOMMENDED` (the badged `★` default = `tridesclous2`), `DESCRIPTIONS`/`description(name)` (one-line plain-language blurb per sorter, generic fallback for unknowns), and `group_of(name)` → `ready`/`docker`/`gpu`/`unavailable` (a **membership-precedence** group that, unlike `status()`, does *not* depend on the live Docker daemon, so a sorter never jumps groups when Docker starts/stops — installed wins first, so an installed GPU sorter on a GPU box lands in `ready`).
 
 ## Commands
 
@@ -70,16 +70,25 @@ All loaders default to reading the repo root and accept `data_dir=...` to point 
 
 `scripts/sorters.py` is the **sorter registry** — the single source of truth for
 which spike sorters are usable (replacing the old hardcoded two-element list).
-`available()`/`installed()` wrap SpikeInterface; `docker_available()` probes the
-Docker daemon; `status(name)` classifies each sorter `local`/`docker`/`gpu`/
-`unavailable`; `runnable(use_docker)` is what the menu offers (installed always,
+`available()`/`installed()` wrap SpikeInterface; `status(name)` classifies each
+sorter `local`/`docker`/`gpu`/`unavailable`; `group_of(name)` is the **stable**
+sidebar grouping (`ready`/`docker`/`gpu`/`unavailable`, daemon-independent);
+`runnable(use_docker)` is what the menu offers as *selectable* (installed always,
 container CPU sorters when Docker is on); `default_params`/`param_descriptions`/
 `coerce_param`/`merge_params` back the parameter editor; and `run(...)` wraps
-`run_sorter` with `docker_image=` + `sorter_params=`. Heavy SpikeInterface imports
-stay lazy, so importing the registry is cheap. `GPU_SORTERS` and `CONTAINERIZED`
-are curated constants.
+`run_sorter` with `docker_image=` + `sorter_params=`. **Docker is three-state:**
+`docker_state(refresh=)` → `running`/`installed_not_running`/`not_installed`
+(cached per process, never raises; `refresh=True` re-probes — the confirm dialog
+does this); `docker_available()` is just `docker_state() == "running"`; and
+`start_docker()` best-effort launches Docker Desktop (`open -a Docker` on macOS,
+the install path / `start` on Windows, `systemctl --user start docker-desktop` on
+Linux), returning whether a launch command was *issued* (the caller polls
+`docker_state(refresh=True)` until `running`). `RECOMMENDED` + `DESCRIPTIONS`/
+`description(name)` give the badged default and per-sorter blurbs. Heavy
+SpikeInterface imports stay lazy, so importing the registry is cheap. `GPU_SORTERS`
+and `CONTAINERIZED` are curated constants.
 
-`scripts/run_sorting.py` is the sorting entry point built on these loaders: `read_broadband()` → `bandpass_filter(300–6000)` → `common_reference(median)` → `run_sorter(--sorter)` → save Sorting + `SortingAnalyzer` quality metrics under `outputs/<sorter>/`. Use `--duration N` to sort only the first N seconds as a smoke test.
+`scripts/run_sorting.py` is the sorting entry point built on these loaders: `read_broadband()` → `bandpass_filter(300–6000)` → `common_reference(median)` → `run_sorter(--sorter)` → save Sorting + `SortingAnalyzer` quality metrics under `outputs/<sorter>/`. Use `--duration N` to sort only the first N seconds as a smoke test. With `--docker` it prints a clear first-run note ("first Docker run downloads the sorter image (~1 GB, one time only)"), and a Docker daemon failure is caught and re-phrased as a friendly hint ("Docker isn't running — open Docker Desktop and try again.") instead of a raw traceback.
 
 **Terminal presentation** (`run_sorting.py` only) is layered: `--verbosity {quiet,normal,verbose}` (default `verbose`) picks how much shows — `verbose` = numbered phase headers + per-step sorter prints + progress bars, `normal` = headers + final table (no bars), `quiet` = final table only.
 - `configure_output()` runs **before** importing SpikeInterface (so env vars/the tqdm patch land before OpenMP/Numba/the sorters init). It mutes chatter at *every* level: sets `KMP_WARNINGS`/`PYTHONWARNINGS` (kills the OpenMP banner + covers worker subprocesses), filters the probe/resource_tracker/non-persistent `UserWarning`s, and mutes `NumbaWarning` by **category** (a message regex misses it — numba prepends ANSI codes to the message).
@@ -97,27 +106,36 @@ usable at **any window size**, from a wide desktop down to a short VS Code pane.
 The launcher builds a `MenuController` (the bridge to dashboard data + action
 running) and runs the app; the app is a pure view that calls back into the
 controller. Layout is **two-pane and responsive**: a left **Sorter** sidebar (a
-focusable list, one row per sorter with a `● … ACTIVE` marker + `Nu · Ns`
-saved-sort summary) above a compact **Pipeline** panel (LFP/Broadband/.nev/Events
+focusable **grouped** list over the *full* sorter catalog with a `★` recommended
+badge, `● … ACTIVE` marker, group glyph + saved-unit count) above a compact
+**Pipeline** panel (LFP/Broadband/.nev/Events
 with ✓/–/✗), and a right **Actions** list. On narrow terminals (`< NARROW_COLS`,
 ≈78) the panes **stack**; on short terminals the shield collapses
 (full→compact→mini→hidden) and **both lists scroll** — so the active sorter and
 the actions are never clipped. **Navigation:** ←/→ (or Tab/Shift-Tab) move focus
 **between** the Sorter and Actions panes (the focused pane shows an accent
 border); ↑/↓ (or j/k) move within it; Enter on a sorter makes it active, Enter on
-an action runs it; **1–9** jump-run an action, **t** cycles the active sorter,
-**d** opens data-setup help, `q`/Esc/Ctrl-C quit (j/k and Space also work). The active sorter stays marked
-independently of focus and is echoed in the footer. Actions run via Textual's
+an action runs it; **1–9** jump-run an action, **t** cycles the active sorter
+(skipping non-runnable rows), **?** opens **Help** and **d** jumps to its *Data
+files* topic, `q`/Esc/Ctrl-C quit (j/k and Space also work). The active sorter stays marked
+independently of focus and is echoed in the footer (which also shows the
+highlighted sorter's one-line `description`). A one-time **WelcomeScreen** greets
+first-time users (gated by `seen_welcome` in `.si_menu.json`). Actions run via Textual's
 **`suspend()`** (the app drops out of the alt-screen so the action's own stdout
 scrolls normally, then resumes and re-renders) — the sort-span and theme picks
 use in-app **modal** screens, while compare's conditional re-sort prompt still
-uses `ui.select` during the suspend. **Missing data:** `_data_report()`
-classifies the data dir as complete / incomplete / absent; the app shows a red
-**banner** when nothing is found (and dims the data-dependent actions) or an amber
-*incomplete set* banner when only some files are present, and offers a **Data
-Setup** screen (`d`, or the *Data files* action) listing each expected file
-(`.ns2` LFP / `.ns5` broadband / `.nev` events) as a present/missing checklist
-with the exact folder it belongs in. Off-TTY / without
+uses `ui.select` during the suspend. The modal screens now include
+**`DockerConfirmScreen`** (the guided Docker dialog), **`WelcomeScreen`** (first-run
+greeting), and **`HelpScreen`** (the unified interactive help). **Missing data:**
+`_data_report()` classifies the data dir as complete / incomplete / absent; the app
+shows a red **banner** when nothing is found (and dims the data-dependent actions)
+or an amber *incomplete set* banner when only some files are present. The expected-
+files checklist (`.ns2` LFP / `.ns5` broadband / `.nev` events, each present/missing
+with the folder it belongs in) is now the **Data files** topic of the unified
+**HelpScreen** (reached via the *Help* action, **`?`**, or **`d`**), which replaces
+the old standalone Data-Setup screen/action — its topics come from `ui.HELP_TOPICS`
+(overview / 3 steps / sorters / Docker / data / keyboard), with the `data` body
+rendered live from the data report. Off-TTY / without
 Textual installed it falls back to the legacy `ui.dashboard_menu()`
 (prompt_toolkit full-screen, else a typed numbered menu), which prepends the same
 missing-data guidance in plain text.
@@ -150,16 +168,31 @@ misleading matrix when the two sorts cover different windows (the launcher's
 binding under uv is **PySide6** (pulled by `spikeinterface-gui[desktop]`); the
 conda fallback (`environment.yml`) resolves to **PyQt5** instead — either works,
 but don't install both into one env.
-The **Sorter sidebar** is now dynamic over `sorters.runnable(use_docker)` with a
-`⊞ Docker sorters: off/on` **toggle row at the top** (↑/↓ to reach it, Enter to
-flip — it re-lists the container sorters); each sorter row shows a `◇` glyph when
-it runs via Docker. An **"Edit sorter parameters"** action opens a Param Editor
-modal for the active sorter (scalars inline, bool as a checkbox, dict/None as
-JSON; Ctrl+S saves only the changed keys, Ctrl+R resets). **Compare** now opens a
-two-step picker to choose which saved sorts to compare. Docker on/off and
-per-sorter parameter **overrides** (diffs from defaults) persist to `.si_menu.json`
-(`use_docker`, `sorter_params`). The typed fallback menu offers the same via
-`ui.select`/prompts.
+The **Sorter sidebar** lists the **full catalog** (`sorters.available()`, built by
+the controller's `_catalog()`), grouped by `group_of()` into **READY TO USE** /
+**DOCKER SORTERS** / **NEEDS A GPU** / **NOT AVAILABLE** (empty groups omitted, with
+dim non-selectable header rows), so newcomers see every sorter and *why* it is or
+isn't usable. Each catalog entry is a dict with the stable keys
+`name/group/status/runnable/recommended/description/present/units/duration/active`;
+`★` marks the recommended default, a group glyph (`◇` Docker / `·` gpu·unavailable)
+prefixes the name, non-runnable rows are dimmed, and the footer shows the
+highlighted sorter's `description`. **Activation is by name** (`set_active_by_name`,
+`cycle_active` for `t`) — selecting a non-runnable Docker sorter offers to enable
+Docker; a GPU/unavailable one shows a hint. A `⊞ Docker sorters: off/on` **toggle
+row at the top** (↑/↓ to reach it, Enter to flip) opens the guided
+**`DockerConfirmScreen`** when turning *on* (turning off is immediate): it reads
+`docker_status()`'s three-state and adapts — *running* → just **[e] Enable**;
+*installed-not-running* → **[s] Start Docker for me** (calls `start_docker()`) +
+**[r] Re-check**; *not-installed* → **[o] Open download page** + **[r] Re-check**;
+Enable is always allowed (container sorters appear once Docker is up). An **"Edit
+sorter parameters"** action opens a Param Editor modal for the active sorter
+(scalars inline, bool as a checkbox, dict/None as JSON; Ctrl+S saves only the
+changed keys, Ctrl+R resets). **Compare** opens a two-step picker to choose which
+saved sorts to compare. Docker on/off, per-sorter parameter **overrides** (diffs
+from defaults), the colour theme, and the **`seen_welcome`** one-time-welcome flag
+persist to `.si_menu.json` (`use_docker`, `sorter_params`, `theme`, `seen_welcome`).
+The typed fallback menu offers the same at parity via `ui.select`/prompts +
+`ui.print_catalog()`/`ui.docker_confirm_text()`.
 
 Non-obvious behaviours baked into the loaders — preserve these when editing:
 
