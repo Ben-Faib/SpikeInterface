@@ -94,24 +94,58 @@ def installed() -> list[str]:
     return sorted(ss.installed_sorters())
 
 
-def docker_available(refresh: bool = False) -> bool:
-    """True if the ``docker`` CLI is on PATH and the daemon answers.
+def docker_state(refresh: bool = False) -> str:
+    """'running' | 'installed_not_running' | 'not_installed'. Never raises.
 
     Cached per process (the daemon state rarely flips mid-session); pass
-    ``refresh=True`` to re-check.
+    ``refresh=True`` to re-probe (the Docker confirm dialog does this).
     """
-    if not refresh and "ok" in _docker_cache:
-        return _docker_cache["ok"]
-    ok = False
-    if shutil.which("docker"):
+    if not refresh and "state" in _docker_cache:
+        return _docker_cache["state"]
+    if not shutil.which("docker"):
+        state = "not_installed"
+    else:
         try:
             ok = subprocess.run(
                 ["docker", "info"], capture_output=True, timeout=8
             ).returncode == 0
-        except Exception:  # noqa: BLE001 - daemon down / timeout -> not available
+        except Exception:  # noqa: BLE001 - daemon down / timeout
             ok = False
-    _docker_cache["ok"] = ok
-    return ok
+        state = "running" if ok else "installed_not_running"
+    _docker_cache["state"] = state
+    return state
+
+
+def docker_available(refresh: bool = False) -> bool:
+    """True iff the Docker daemon is reachable (i.e. docker_state() == 'running')."""
+    return docker_state(refresh=refresh) == "running"
+
+
+def start_docker() -> bool:
+    """Best-effort launch of Docker Desktop. Never raises.
+
+    Returns whether a launch command was issued — NOT whether Docker finished
+    booting (the caller polls docker_state(refresh=True) until 'running').
+    """
+    import os
+    import sys
+
+    if sys.platform == "darwin":
+        cmd = ["open", "-a", "Docker"]
+    elif sys.platform.startswith("win"):
+        candidates = [
+            os.path.expandvars(r"%ProgramFiles%\Docker\Docker\Docker Desktop.exe"),
+            os.path.expandvars(r"%LocalAppData%\Docker\Docker Desktop.exe"),
+        ]
+        exe = next((c for c in candidates if os.path.exists(c)), None)
+        cmd = [exe] if exe else ["cmd", "/c", "start", "", "Docker Desktop"]
+    else:  # Linux: best effort (Docker Desktop or the daemon)
+        cmd = ["systemctl", "--user", "start", "docker-desktop"]
+    try:
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return True
+    except Exception:  # noqa: BLE001 - no known launcher / permission denied
+        return False
 
 
 def status(name: str, installed_set=None, docker=None) -> str:

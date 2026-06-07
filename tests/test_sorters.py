@@ -206,3 +206,54 @@ def test_group_of_uses_live_installed_when_omitted(monkeypatch):
     monkeypatch.setattr(sorters, "installed", lambda: ["tridesclous2"])
     assert sorters.group_of("tridesclous2") == "ready"
     assert sorters.group_of("mountainsort5") == "docker"
+
+
+import subprocess as _subprocess
+
+
+class _Ret:
+    def __init__(self, rc):
+        self.returncode = rc
+
+
+def test_docker_state_not_installed(monkeypatch):
+    sorters._docker_cache.clear()
+    monkeypatch.setattr(sorters.shutil, "which", lambda _n: None)
+    assert sorters.docker_state(refresh=True) == "not_installed"
+    assert sorters.docker_available(refresh=True) is False
+
+
+def test_docker_state_installed_not_running(monkeypatch):
+    sorters._docker_cache.clear()
+    monkeypatch.setattr(sorters.shutil, "which", lambda _n: "/usr/bin/docker")
+    monkeypatch.setattr(sorters.subprocess, "run", lambda *a, **k: _Ret(1))
+    assert sorters.docker_state(refresh=True) == "installed_not_running"
+    assert sorters.docker_available(refresh=True) is False
+
+
+def test_docker_state_running(monkeypatch):
+    sorters._docker_cache.clear()
+    monkeypatch.setattr(sorters.shutil, "which", lambda _n: "/usr/bin/docker")
+    monkeypatch.setattr(sorters.subprocess, "run", lambda *a, **k: _Ret(0))
+    assert sorters.docker_state(refresh=True) == "running"
+    assert sorters.docker_available(refresh=True) is True
+
+
+def test_start_docker_never_raises(monkeypatch):
+    called = {}
+
+    def _popen(cmd, *a, **k):
+        called["cmd"] = cmd
+        class _P:  # noqa: D401 - dummy Popen
+            pass
+        return _P()
+
+    monkeypatch.setattr(sorters.subprocess, "Popen", _popen)
+    assert sorters.start_docker() is True
+    assert called["cmd"]  # a launch command was issued
+
+    def _boom(*a, **k):
+        raise OSError("no such app")
+
+    monkeypatch.setattr(sorters.subprocess, "Popen", _boom)
+    assert sorters.start_docker() is False   # swallowed, returns False
