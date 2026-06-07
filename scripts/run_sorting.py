@@ -332,6 +332,14 @@ def _warn_existing_sort(out: Path, ui: "ConsoleUI") -> None:
         ui.warn(f"overwriting an existing sort in {out}")
 
 
+def _friendly_sort_error(exc: Exception) -> str:
+    """Turn a sort failure into a one-line, actionable message (no traceback)."""
+    text = str(exc)
+    if "daemon" in text.lower() or "docker" in text.lower():
+        return "Docker isn't running — open Docker Desktop and try again."
+    return f"Sorting failed: {text}"
+
+
 def resolve_sorter(name: str, use_docker: bool) -> str:
     """Validate a requested sorter against what's runnable; exit clearly if not.
 
@@ -522,15 +530,19 @@ def main() -> int:
     if overrides:
         ui.detail("overrides: " + ", ".join(f"{k}={v}" for k, v in overrides.items()))
     if args.docker:
-        ui.detail("first Docker run pulls the sorter image — this can take a while")
-    sorting = sorters.run(
-        args.sorter,
-        rec,
-        out / "sorter_output",
-        params=overrides,
-        use_docker=args.docker,
-        verbose=show_bars,
-    )
+        ui.detail("first Docker run downloads the sorter image (~1 GB, one time only)")
+    try:
+        sorting = sorters.run(
+            args.sorter,
+            rec,
+            out / "sorter_output",
+            params=overrides,
+            use_docker=args.docker,
+            verbose=show_bars,
+        )
+    except RuntimeError as e:
+        ui.warn(_friendly_sort_error(e))
+        return 1
     ui.result(f"{len(sorting.get_unit_ids())} units found")
 
     _robust_rmtree(out / "sorting")  # retry past Windows GUI file-locks before overwrite

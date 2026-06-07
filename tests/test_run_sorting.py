@@ -52,3 +52,9 @@ def test_resolve_overrides_unknown_key_exits(fake):
 def test_resolve_overrides_bad_value_exits(fake):
     with pytest.raises(SystemExit):
         rs.resolve_overrides("tridesclous2", ["n_peaks=notint"], None)
+
+
+def test_friendly_message_when_docker_not_running():
+    msg = rs._friendly_sort_error(
+        RuntimeError("Docker was requested but the Docker daemon isn't reachable."))
+    assert "Docker" in msg and "try again" in msg.lower()
