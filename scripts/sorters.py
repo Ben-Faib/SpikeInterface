@@ -42,6 +42,41 @@ CONTAINERIZED = frozenset({
 # Preferred default when it is installed; otherwise the first installed sorter.
 _PREFERRED_DEFAULT = "tridesclous2"
 
+# The badged ★ default in the menu. Keep consistent with default_sorter().
+RECOMMENDED = "tridesclous2"
+
+# One-line, plain-language descriptions shown in the sidebar footer + Help. Covers
+# the local sorters, the common container sorters, and the kilosort family; any
+# other sorter gets the generic fallback in description().
+DESCRIPTIONS = {
+    "tridesclous2":   "Fast, reliable, CPU-only. Good default for most recordings.",
+    "spykingcircus2": "Template-matching CPU sorter; strong on dense activity.",
+    "simple":         "Minimal threshold-based sorter; handy for a quick smoke test.",
+    "lupin":          "Lightweight CPU sorter.",
+    "mountainsort5":  "Fast density-based clustering; a solid general CPU sorter.",
+    "mountainsort4":  "Older MountainSort; superseded by mountainsort5.",
+    "herdingspikes":  "Scales to many channels; built for large dense arrays.",
+    "spykingcircus":  "Original SpyKING CIRCUS (v1); CPU, template matching.",
+    "tridesclous":    "Original Tridesclous (v1); CPU.",
+    "waveclus":       "Wavelet + superparamagnetic clustering (MATLAB-based image).",
+    "combinato":      "Clustering aimed at human single-unit / long recordings.",
+    "hdsort":         "Dense-array sorter (MATLAB-based image).",
+    "ironclust":      "Fast density-based sorter (CPU or GPU).",
+    "kilosort4":      "State-of-the-art; needs an NVIDIA GPU. Great on Neuropixels.",
+    "kilosort3":      "Kilosort 3; needs an NVIDIA GPU.",
+    "kilosort2_5":    "Kilosort 2.5; needs an NVIDIA GPU.",
+    "kilosort2":      "Kilosort 2; needs an NVIDIA GPU.",
+    "kilosort":       "Kilosort 1; needs an NVIDIA GPU + MATLAB.",
+    "pykilosort":     "Python Kilosort; needs an NVIDIA GPU.",
+    "yass":           "Yet Another Spike Sorter; needs an NVIDIA GPU.",
+}
+
+
+def description(name: str) -> str:
+    """One-line plain-language description; generic fallback for unknown sorters."""
+    return DESCRIPTIONS.get(name, "A spike-sorting algorithm.")
+
+
 _docker_cache: dict = {}
 
 

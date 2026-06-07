@@ -177,3 +177,15 @@ def test_status_table_shape(fake_env, fake_params):
     assert by["kilosort4"]["status"] == "gpu"
     assert by["mountainsort5"]["status"] == "docker"
     assert all("n_params" in r for r in rows)
+
+
+def test_recommended_is_the_preferred_default():
+    # The badged ★ sorter must match what default_sorter() prefers.
+    assert sorters.RECOMMENDED == "tridesclous2"
+
+
+def test_description_known_and_fallback():
+    assert "GPU" not in sorters.description("tridesclous2")  # local sorter, no GPU mention
+    assert sorters.description("tridesclous2")               # non-empty
+    # an unknown sorter gets the generic fallback, never a KeyError
+    assert sorters.description("totally_made_up_sorter") == "A spike-sorting algorithm."
