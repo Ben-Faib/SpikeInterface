@@ -387,6 +387,41 @@ class DockerConfirmScreen(ModalScreen):
             return
 
 
+class WelcomeScreen(ModalScreen):
+    """First-launch onboarding (shown once; re-openable from Help)."""
+
+    DEFAULT_CSS = """
+    WelcomeScreen { align: center middle; }
+    WelcomeScreen > #dialog {
+        width: 60; max-width: 92%; height: auto;
+        border: round $accentcolor; background: $surface; padding: 1 2;
+    }
+    WelcomeScreen #wtitle { text-style: bold; color: $accentcolor; padding: 0 0 1 0; }
+    WelcomeScreen #wfoot { color: $text-muted; padding: 1 0 0 0; }
+    """
+
+    BINDINGS = [
+        Binding("enter", "start", "Get started"),
+        Binding("escape", "start", "Get started", show=False),
+    ]
+
+    def compose(self) -> ComposeResult:
+        body = Text()
+        body.append("This finds neurons in your recording, in 3 steps:\n\n")
+        body.append("  1. Explore", style="bold"); body.append("  – see your data\n", style="dim")
+        body.append("  2. Sort", style="bold");    body.append("     – detect neurons\n", style="dim")
+        body.append("  3. Report", style="bold");  body.append("   – view results\n\n", style="dim")
+        body.append("Put your recording files in this folder ", style="")
+        body.append("(press d for help).", style="dim")
+        with Vertical(id="dialog"):
+            yield Static("Welcome to the Spike Sorter", id="wtitle")
+            yield Static(body)
+            yield Static("[ Get started ]  ·  Enter", id="wfoot")
+
+    def action_start(self) -> None:
+        self.dismiss(None)
+
+
 def _setup_body(report: dict, accent: str) -> Text:
     """Render the present/missing checklist + where the files belong."""
     t = Text()
@@ -551,6 +586,11 @@ class SpikeMenuApp(App):
         self._refresh_footer()
         self._relayout()
         self.query_one("#actions", OptionList).focus()
+        if getattr(self.c, "want_welcome", False):
+            self.push_screen(WelcomeScreen(), self._after_welcome)
+
+    def _after_welcome(self, _result) -> None:
+        self.c.mark_welcome_seen()
 
     def on_resize(self, event) -> None:
         # self.size lags during a resize event; event.size carries the new size.

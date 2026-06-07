@@ -488,3 +488,24 @@ async def test_compare_picks_pair_and_runs(make_controller):
         await pilot.pause()
         assert c.ran_compare is not None
         assert len(c.ran_compare) == 2 and c.ran_compare[0] != c.ran_compare[1]
+
+
+async def test_welcome_shows_when_wanted(make_controller):
+    c = make_controller(present=True)
+    c.want_welcome = True
+    app = _app(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.WelcomeScreen)
+        await pilot.press("enter")        # [Get started] dismisses + marks seen
+        await pilot.pause()
+        assert not isinstance(app.screen, menu_app.WelcomeScreen)
+        assert c.welcome_seen is True
+
+
+async def test_welcome_hidden_when_seen(make_controller):
+    c = make_controller(present=True)   # want_welcome defaults False
+    app = _app(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        assert not isinstance(app.screen, menu_app.WelcomeScreen)
