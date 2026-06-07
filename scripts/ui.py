@@ -28,6 +28,32 @@ DEFAULT_THEME = "periwinkle"
 # change takes effect on the next render. MUTED/OK/WARN/BAD are fixed.
 ACCENT, MUTED, OK, WARN, BAD = THEMES[DEFAULT_THEME], "dim", "bold green", "#e3a008", "bold red"
 
+# Shared, plain-language Help content (single source for the Textual HelpScreen
+# AND the typed-fallback help). Each entry is (topic_key, title, body_lines).
+HELP_TOPICS = [
+    ("overview", "Overview",
+     ["This tool finds neurons (spike sorting) in a Blackrock/Ripple recording.",
+      "Put your recording files in the data folder, then: Explore → Sort → Report."]),
+    ("steps", "The 3 steps",
+     ["Explore  – quick static figures of your raw data (no sorting needed).",
+      "Sort     – detect neurons in the broadband signal with a chosen sorter.",
+      "Report   – build an interactive HTML report of the sorted results."]),
+    ("sorters", "Sorters",
+     ["A 'sorter' is the algorithm that detects neurons. tridesclous2 is the ★",
+      "recommended default: fast, reliable, needs no GPU. Others appear in the",
+      "sidebar grouped by what your computer can run right now."]),
+    ("docker", "Docker (optional)",
+     ["Docker lets you run extra sorters your computer doesn't have installed,",
+      "without installing them yourself. It's optional — the ★ recommended sorter",
+      "needs no Docker. Turning it on downloads a large image the first time and",
+      "runs a bit slower; the menu can start Docker Desktop for you."]),
+    ("data", "Data files",
+     []),   # filled at render time from the live data report (present/missing checklist)
+    ("keys", "Keyboard",
+     ["↑/↓ or j/k move · ←/→ or Tab switch panes · Enter run/activate · 1-9 jump",
+      "t switch sorter · ? help · d data files · q quit"]),
+]
+
 
 def set_accent(color: str) -> None:
     """Set the UI accent colour (any rich/prompt_toolkit colour, e.g. a hex)."""

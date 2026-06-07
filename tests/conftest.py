@@ -28,7 +28,7 @@ ACTIONS = [
     ("params", "Edit sorter parameters", "tune the active sorter", False),
     ("verify", "Verify install", "smoke test", False),
     ("theme", "Change colour theme", "accent", False),
-    ("data-setup", "Data files & setup help", "where files go", False),
+    ("help", "Help", "what each step does · sorters · Docker · data files", False),
     ("quit", "Quit", "exit", False),
 ]
 

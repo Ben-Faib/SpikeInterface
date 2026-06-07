@@ -540,8 +540,8 @@ _MENU = [
 ]
 
 # v2 (Textual) action table — (key, title, hint, needs_data). ``needs_data`` dims
-# the action and blocks it when no recording is present; data-setup/theme/verify/
-# quit always work. ``data-setup`` and ``quit`` are handled in-app, not by DISPATCH.
+# the action and blocks it when no recording is present; help/theme/verify/
+# quit always work. ``help`` and ``quit`` are handled in-app, not by DISPATCH.
 _ACTIONS = [
     ("explore",    "Explore raw data",        "static figures (LFP + .nev), no sort needed", True),
     ("sort",       "Run / re-run sorting",    "sort the active sorter; full or quick",       True),
@@ -552,7 +552,7 @@ _ACTIONS = [
     ("params",     "Edit sorter parameters",  "tune the active sorter (saved)",              False),
     ("verify",     "Verify install",          "environment smoke test",                      False),
     ("theme",      "Change colour theme",     "pick an accent colour (saved)",               False),
-    ("data-setup", "Data files & setup help", "what's expected and where it goes",           False),
+    ("help",       "Help",                    "what each step does · sorters · Docker · data files", False),
     ("quit",       "Quit",                    "exit the menu (or press q)",                  False),
 ]
 # Keys that need a recording present (so the fallback menu can refuse them cleanly).

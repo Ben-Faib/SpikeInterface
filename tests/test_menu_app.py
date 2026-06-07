@@ -133,27 +133,52 @@ async def test_missing_data_shows_banner(make_controller):
         banner = app.query_one("#banner", Static)
         assert banner.display is True
         assert "No recording found" in banner.render().plain
-        # data-dependent actions are disabled, data-setup/verify/theme/quit are not
+        # data-dependent actions are disabled, help/verify/theme/quit are not
         actions = app.query_one("#actions", OptionList)
         by_id = {o.id: o for o in actions._options}
         assert by_id["explore"].disabled is True
         assert by_id["verify"].disabled is False
-        assert by_id["data-setup"].disabled is False
+        assert by_id["help"].disabled is False
 
 
-async def test_data_setup_screen_lists_files(make_controller):
+async def test_help_screen_opens_via_d_at_data_topic(make_controller):
     app = _app(make_controller(present=False))
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        await pilot.press("d")
+        await pilot.press("d")            # d -> Help, jumped to the Data files topic
         await pilot.pause()
-        assert isinstance(app.screen, menu_app.DataSetupScreen)
-        body = app.screen.query_one("#setupbody", Static).render().plain
+        assert isinstance(app.screen, menu_app.HelpScreen)
+        body = app.screen.query_one("#helpbody", Static).render().plain
         assert ".ns5" in body and ".ns2" in body and ".nev" in body
-        assert "Where to put them" in body
         await pilot.press("escape")
         await pilot.pause()
-        assert not isinstance(app.screen, menu_app.DataSetupScreen)
+        assert not isinstance(app.screen, menu_app.HelpScreen)
+
+
+async def test_help_screen_opens_via_question_mark(make_controller):
+    app = _app(make_controller(present=True))
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("question_mark")   # the ? key
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.HelpScreen)
+        # overview topic by default
+        assert "spike sorting" in app.screen.query_one("#helpbody", Static).render().plain.lower()
+
+
+async def test_help_action_runs(make_controller):
+    c = make_controller(present=True)
+    app = _app(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        # 'help' is the action at index 9 (number keys only reach 1-9, so open via the list)
+        actions = app.query_one("#actions", OptionList)
+        idx = next(i for i in range(actions.option_count)
+                   if actions.get_option_at_index(i).id == "help")
+        actions.highlighted = idx
+        await pilot.press("enter")
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.HelpScreen)
 
 
 async def test_theme_modal_changes_accent(make_controller):

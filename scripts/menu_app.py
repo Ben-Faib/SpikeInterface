@@ -422,6 +422,84 @@ class WelcomeScreen(ModalScreen):
         self.dismiss(None)
 
 
+class HelpScreen(ModalScreen):
+    """Interactive Help: a topic list (left) ↔ scrollable content (right). Absorbs
+    the old data-setup checklist as the 'Data files' topic."""
+
+    DEFAULT_CSS = """
+    HelpScreen { align: center middle; }
+    HelpScreen > #dialog {
+        width: 90; max-width: 96%; height: 90%; max-height: 34;
+        border: round $accentcolor; background: $surface; padding: 1 2;
+    }
+    HelpScreen #htitle { text-style: bold; color: $accentcolor; height: 1; }
+    HelpScreen #hrow { height: 1fr; }
+    HelpScreen #htopics { width: 24; height: 1fr; border: round #3a3f47; }
+    HelpScreen #hscroll { width: 1fr; height: 1fr; padding: 0 1; }
+    HelpScreen #helpbody { height: auto; }
+    HelpScreen #hfoot { color: $text-muted; height: 1; padding: 1 0 0 0; }
+    HelpScreen.stacked #hrow { layout: vertical; }
+    HelpScreen.stacked #htopics { width: 1fr; height: auto; max-height: 30%; }
+    """
+
+    BINDINGS = [
+        Binding("escape", "close", "Close"),
+        Binding("q", "close", "Close", show=False),
+    ]
+
+    def __init__(self, controller, accent: str, topic: str = "overview"):
+        super().__init__()
+        self._c = controller
+        self._accent = accent
+        self._topic = topic
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Static("Help", id="htitle")
+            with Horizontal(id="hrow"):
+                topics = NavList(
+                    *[Option(title, id=key) for key, title, _body in ui.HELP_TOPICS],
+                    id="htopics")
+                yield topics
+                with VerticalScroll(id="hscroll"):
+                    yield Static(id="helpbody")
+            yield Static("↑/↓ choose topic · Esc to close", id="hfoot")
+
+    def on_mount(self) -> None:
+        topics = self.query_one("#htopics", OptionList)
+        start = next((n for n, (k, _t, _b) in enumerate(ui.HELP_TOPICS) if k == self._topic), 0)
+        topics.highlighted = start
+        topics.focus()
+        self._show(self._topic)
+        self._relayout()
+
+    def on_resize(self, event) -> None:
+        self._relayout(event.size)
+
+    def _relayout(self, size=None) -> None:
+        size = size if size is not None else self.size
+        self.set_class(size.width < NARROW_COLS, "stacked")
+
+    def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
+        if event.option.id:
+            self._show(event.option.id)
+
+    def _show(self, key: str) -> None:
+        title, lines = next(((t, b) for k, t, b in ui.HELP_TOPICS if k == key),
+                            ("Help", []))
+        if key == "data":
+            body = _setup_body(self._c.data_report, self._accent)
+        else:
+            body = Text()
+            body.append(title + "\n\n", style=f"bold {self._accent}")
+            for ln in lines:
+                body.append(ln + "\n")
+        self.query_one("#helpbody", Static).update(body)
+
+    def action_close(self) -> None:
+        self.dismiss(None)
+
+
 def _setup_body(report: dict, accent: str) -> Text:
     """Render the present/missing checklist + where the files belong."""
     t = Text()
@@ -541,7 +619,8 @@ class SpikeMenuApp(App):
         Binding("left", "focus_sorter", "Sorter", show=False),
         Binding("right", "focus_actions", "Actions", show=False),
         Binding("t", "cycle_sorter", "Switch sorter", show=False),
-        Binding("d", "data_help", "Data help", show=False),
+        Binding("d", "data_help", "Data files", show=False),
+        Binding("question_mark", "help", "Help", show=False),
         Binding("q", "quit", "Quit", show=False),
         Binding("escape", "quit", "Quit", show=False),
         Binding("ctrl+c", "quit", "Quit", show=False),
@@ -823,7 +902,10 @@ class SpikeMenuApp(App):
         self._refresh_footer()
 
     def action_data_help(self) -> None:
-        self.push_screen(DataSetupScreen(self.c.data_report, self._accent))
+        self.push_screen(HelpScreen(self.c, self._accent, topic="data"))
+
+    def action_help(self) -> None:
+        self.push_screen(HelpScreen(self.c, self._accent, topic="overview"))
 
     def action_run_index(self, i: int) -> None:
         if 0 <= i < len(self.c.actions):
@@ -890,8 +972,8 @@ class SpikeMenuApp(App):
             self.exit()
         elif key == "theme":
             self._open_theme()
-        elif key == "data-setup":
-            self.action_data_help()
+        elif key == "help":
+            self.action_help()
         elif key == "params":
             self._open_params()
         elif self._needs_data(key) and not self.c.data_report.get("present"):
