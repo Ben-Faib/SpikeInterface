@@ -316,7 +316,9 @@ async def test_docker_toggle_row_is_first_and_toggles(make_controller):
         assert next(i for i in c.infos if i["name"] == "mountainsort5")["runnable"] is False
         sorters.highlighted = 0           # the Docker toggle row
         app.set_focus(sorters)
-        await pilot.press("enter")
+        await pilot.press("enter")        # opens the confirm dialog (state defaults to running)
+        await pilot.pause()
+        app.screen.action_enable()
         await pilot.pause()
         assert c.use_docker is True
         assert next(i for i in c.infos if i["name"] == "mountainsort5")["runnable"] is True
@@ -333,6 +335,85 @@ async def test_toggle_does_not_change_active_sorter_index(make_controller):
         await pilot.press("enter")        # toggle docker
         await pilot.pause()
         assert c.active_sorter == "tridesclous2"   # active sorter unchanged
+
+
+async def test_docker_enable_opens_confirm_when_running(make_controller):
+    c = make_controller(present=True)
+    c.docker_state = "running"
+    app = _app(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        sorters = app.query_one("#sorters", OptionList)
+        sorters.highlighted = 0
+        app.set_focus(sorters)
+        await pilot.press("enter")        # turning ON -> confirm dialog
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.DockerConfirmScreen)
+        assert "running" in app.screen.query_one("#dstatus", Static).render().plain.lower()
+        assert c.use_docker is False      # not enabled until confirmed
+
+
+async def test_docker_confirm_enable_turns_on(make_controller):
+    c = make_controller(present=True)
+    c.docker_state = "running"
+    app = _app(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        sorters = app.query_one("#sorters", OptionList)
+        sorters.highlighted = 0
+        app.set_focus(sorters)
+        await pilot.press("enter")
+        await pilot.pause()
+        app.screen.action_enable()        # the [Enable] button/action
+        await pilot.pause()
+        assert c.use_docker is True
+
+
+async def test_docker_confirm_not_installed_shows_download(make_controller):
+    c = make_controller(present=True)
+    c.docker_state = "not_installed"
+    app = _app(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        sorters = app.query_one("#sorters", OptionList)
+        sorters.highlighted = 0
+        app.set_focus(sorters)
+        await pilot.press("enter")
+        await pilot.pause()
+        body = app.screen.query_one("#dstatus", Static).render().plain.lower()
+        assert "don't have docker" in body or "download" in body
+
+
+async def test_docker_confirm_start_calls_controller(make_controller):
+    c = make_controller(present=True)
+    c.docker_state = "installed_not_running"
+    app = _app(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        sorters = app.query_one("#sorters", OptionList)
+        sorters.highlighted = 0
+        app.set_focus(sorters)
+        await pilot.press("enter")
+        await pilot.pause()
+        app.screen.action_start_docker()  # [Start Docker for me]
+        await pilot.pause()
+        assert c.started_docker is True
+
+
+async def test_docker_off_is_immediate(make_controller):
+    c = make_controller(present=True)
+    c.toggle_docker()                     # turn ON first (no dialog needed off->on in fake)
+    app = _app(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        assert c.use_docker is True
+        sorters = app.query_one("#sorters", OptionList)
+        sorters.highlighted = 0
+        app.set_focus(sorters)
+        await pilot.press("enter")        # turning OFF -> immediate, no dialog
+        await pilot.pause()
+        assert c.use_docker is False
+        assert not isinstance(app.screen, menu_app.DockerConfirmScreen)
 
 
 async def test_param_editor_saves_only_changed_keys(make_controller):

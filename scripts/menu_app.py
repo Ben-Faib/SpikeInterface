@@ -285,6 +285,108 @@ class ParamEditorScreen(ModalScreen):
         self.dismiss((self._sorter, overrides))
 
 
+class DockerConfirmScreen(ModalScreen):
+    """Guided 'enable Docker?' dialog. Reads the live three-state status from the
+    controller and adapts: running → just Enable; installed-not-running → Start
+    Docker for me + Re-check; not-installed → Open download page + Re-check. Enable
+    is always allowed (container sorters appear once Docker is up). Dismisses
+    'enable' or None."""
+
+    DOWNLOAD_URL = "https://www.docker.com/products/docker-desktop/"
+
+    DEFAULT_CSS = """
+    DockerConfirmScreen { align: center middle; }
+    DockerConfirmScreen > #dialog {
+        width: 64; max-width: 92%; height: auto; max-height: 90%;
+        border: round $accentcolor; background: $surface; padding: 1 2;
+    }
+    DockerConfirmScreen #dtitle { text-style: bold; color: $accentcolor; padding: 0 0 1 0; }
+    DockerConfirmScreen #dstatus { height: auto; }
+    DockerConfirmScreen #dfoot { color: $text-muted; padding: 1 0 0 0; }
+    """
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel"),
+        Binding("e", "enable", "Enable"),
+        Binding("s", "start_docker", "Start Docker"),
+        Binding("o", "open_download", "Open download"),
+        Binding("r", "recheck", "Re-check"),
+        Binding("enter", "enable", "Enable", show=False),
+    ]
+
+    def __init__(self, controller, accent: str):
+        super().__init__()
+        self._c = controller
+        self._accent = accent
+        self._polls = 0
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Static("Enable Docker sorters?", id="dtitle")
+            yield Static("", id="dstatus")
+            yield Static("", id="dfoot")
+
+    def on_mount(self) -> None:
+        self._render_status()
+
+    def _render_status(self) -> None:
+        st = self._c.docker_status(refresh=False)
+        t = Text()
+        t.append("These run extra sorters your computer doesn't have installed.\n", style="")
+        t.append("• First run downloads a large image (~1 GB) and is slower.\n", style="dim")
+        t.append("• Needs Docker Desktop running.\n\n", style="dim")
+        colour = "#3fb950" if st["running"] else "#f0883e"
+        t.append(st["text"] + "\n", style=f"bold {colour}")
+        if st["state"] == "not_installed":
+            t.append("It's a free app that unlocks extra sorters.\n", style="dim")
+        self.query_one("#dstatus", Static).update(t)
+        self.query_one("#dfoot", Static).update(self._foot_text(st["state"]))
+
+    def _foot_text(self, state: str) -> Text:
+        f = Text()
+        if state == "not_installed":
+            f.append("[o] open download page   ", style="dim")
+        elif state == "installed_not_running":
+            f.append("[s] start Docker for me   ", style="dim")
+        f.append("[r] re-check   [e] enable   [Esc] cancel", style="dim")
+        return f
+
+    def action_enable(self) -> None:
+        self.dismiss("enable")
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def action_open_download(self) -> None:
+        import webbrowser
+        try:
+            webbrowser.open(self.DOWNLOAD_URL)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def action_recheck(self) -> None:
+        self._c.docker_status(refresh=True)
+        self._render_status()
+
+    def action_start_docker(self) -> None:
+        self._c.start_docker()
+        self.query_one("#dstatus", Static).update(
+            Text("Starting Docker…  (~30–60s — press [r] to re-check)", style="dim"))
+        self._polls = 0
+        self.set_interval(2.0, self._poll)
+
+    def _poll(self) -> None:
+        self._polls += 1
+        st = self._c.docker_status(refresh=True)
+        if st["running"]:
+            self._render_status()                # advances to the 'running' view
+            return
+        if self._polls >= 45:                    # ~90s timeout -> manual fallback
+            self.query_one("#dstatus", Static).update(
+                Text("Still not ready — open Docker Desktop, then press [r].", style="#f0883e"))
+            return
+
+
 def _setup_body(report: dict, accent: str) -> Text:
     """Render the present/missing checklist + where the files belong."""
     t = Text()
@@ -720,6 +822,20 @@ class SpikeMenuApp(App):
             self._refresh_footer()
 
     def _toggle_docker(self, offer_from: str | None = None) -> None:
+        if self.c.use_docker and offer_from is None:
+            self._apply_docker_toggle()          # turning OFF is immediate
+            return
+        self.push_screen(DockerConfirmScreen(self.c, self._accent), self._after_docker_confirm)
+
+    def _after_docker_confirm(self, result) -> None:
+        if result != "enable":
+            self._last = Text("Docker sorters unchanged", style="dim")
+            self._refresh_footer()
+            return
+        if not self.c.use_docker:
+            self._apply_docker_toggle()
+
+    def _apply_docker_toggle(self) -> None:
         on = self.c.toggle_docker()
         self._rebuild_sorters()
         self._rebuild_actions()
