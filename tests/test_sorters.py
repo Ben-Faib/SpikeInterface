@@ -189,3 +189,20 @@ def test_description_known_and_fallback():
     assert sorters.description("tridesclous2")               # non-empty
     # an unknown sorter gets the generic fallback, never a KeyError
     assert sorters.description("totally_made_up_sorter") == "A spike-sorting algorithm."
+
+
+def test_group_of_membership_precedence(monkeypatch):
+    inst = {"tridesclous2", "kilosort4"}   # note: kilosort4 installed -> READY, not GPU
+    monkeypatch.setattr(sorters, "installed", lambda: sorted(inst))
+    g = lambda n: sorters.group_of(n, installed_set=inst)
+    assert g("tridesclous2") == "ready"      # installed
+    assert g("kilosort4") == "ready"         # installed beats GPU membership (Windows+GPU target)
+    assert g("kilosort3") == "gpu"           # GPU family, not installed
+    assert g("mountainsort5") == "docker"    # containerized, not installed
+    assert g("totally_made_up_sorter") == "unavailable"
+
+
+def test_group_of_uses_live_installed_when_omitted(monkeypatch):
+    monkeypatch.setattr(sorters, "installed", lambda: ["tridesclous2"])
+    assert sorters.group_of("tridesclous2") == "ready"
+    assert sorters.group_of("mountainsort5") == "docker"

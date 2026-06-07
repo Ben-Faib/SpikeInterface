@@ -132,6 +132,26 @@ def status(name: str, installed_set=None, docker=None) -> str:
     return "unavailable"
 
 
+def group_of(name: str, installed_set=None) -> str:
+    """Stable sidebar group for ``name`` by set-membership precedence.
+
+    'ready' (installed → runnable locally) | 'gpu' (NVIDIA GPU family, not
+    installed) | 'docker' (has a CPU container image) | 'unavailable'. Unlike
+    status(), this does NOT depend on the live Docker daemon, so a sorter never
+    jumps groups when Docker Desktop starts/stops — only its *selectability*
+    (runnable()) does. Installed wins first, so an installed kilosort on a GPU box
+    lands in 'ready'.
+    """
+    inst = installed_set if installed_set is not None else installed()
+    if name in inst:
+        return "ready"
+    if name in GPU_SORTERS:
+        return "gpu"
+    if name in CONTAINERIZED:
+        return "docker"
+    return "unavailable"
+
+
 def runnable(use_docker: bool) -> list[str]:
     """Sorters the menu should offer: installed first, then (optionally) containers.
 
