@@ -15,10 +15,6 @@ def _app(controller):
     return menu_app.SpikeMenuApp(controller)
 
 
-def _has_braille(s: str) -> bool:
-    return any(0x2800 <= ord(c) <= 0x28FF for c in s)
-
-
 def _sorter_row(app, name):
     ol = app.query_one("#sorters", OptionList)
     for i in range(ol.option_count):
@@ -738,13 +734,41 @@ def test_neuron_fire_has_spark():
     assert ui.NEURON_SPARK in styles
 
 
-async def test_dashboard_crest_is_the_brain(make_controller):
+async def test_dashboard_crest_is_the_neuron(make_controller):
     app = _app(make_controller(present=True))
     async with app.run_test(size=(110, 45)) as pilot:
         await pilot.pause()
         crest = app.query_one("#crest", menu_app.CrestWidget)
         assert crest.display is True
-        assert _has_braille(crest.render().plain)      # the brain, not the shield
+        plain = crest.render().plain
+        assert "━" in plain and "█" in plain        # axon + soma, not the shield
+
+
+async def test_crest_advances_phase_when_animated(make_controller):
+    c = make_controller(present=True)
+    c.animate = True
+    app = _app(c)
+    async with app.run_test(size=(110, 45)) as pilot:
+        await pilot.pause()
+        crest = app.query_one("#crest", menu_app.CrestWidget)
+        assert crest._animate is True
+        p0 = crest._phase
+        crest._tick(); crest._tick()
+        assert crest._phase != p0                    # the timer callback walks phase
+
+
+async def test_crest_static_when_disabled(make_controller):
+    c = make_controller(present=True)
+    c.animate = False
+    app = _app(c)
+    async with app.run_test(size=(110, 45)) as pilot:
+        await pilot.pause()
+        crest = app.query_one("#crest", menu_app.CrestWidget)
+        assert crest._animate is False
+        before = crest.render().plain
+        crest._tick()                                # no-op while disabled
+        assert crest._phase == 0.0
+        assert crest.render().plain == before
 
 
 async def test_welcome_screen_shows_pitt_shield(make_controller):

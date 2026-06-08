@@ -84,6 +84,11 @@ SHIELD_RESERVE = 24
 # Unfocused panel border colour (focus uses the live accent).
 _BORDER_DIM = "#3a3f47"
 
+# Crest animation: a slow, subtle receive->fire->rest loop. ~6 fps over a ~6 s
+# cycle; most of the cycle is the (memoised) rest frame, so idle cost is ~nil.
+_CREST_FPS = 6
+_CREST_CYCLE_S = 6.0
+
 
 # --------------------------------------------------------------------------- #
 # Controller contract (implemented by SpikeInterface_Menu.MenuController)
@@ -668,21 +673,55 @@ def _crest_text(rows) -> Text:
 
 
 class CrestWidget(Static):
-    """A responsive top crest, sized to the live window: the brain on the
-    dashboard (``ui.pick_brain``) or the Pitt shield elsewhere (``ui.pick_logo``).
+    """The dashboard's animated firing-neuron crest. ``fit(cols, rows)`` picks the
+    largest tier that fits the live window (and hides the widget when even mini
+    won't). A slow timer walks ``phase`` (receive -> fire -> rest); identical rest
+    frames are memoised away. Honours the controller's ``animate`` flag."""
 
-    ``fit(cols, rows)`` (called from the app's relayout) picks the largest tier
-    that fits and hides the widget entirely when even the mini tier won't."""
-
-    def __init__(self, picker=ui.pick_brain, **kw) -> None:
+    def __init__(self, **kw) -> None:
         super().__init__(**kw)
-        self._picker = picker
+        self._tier = None
+        self._phase = 0.0
+        self._animate = True
+        self._last = None
+        self._timer = None
+
+    def on_mount(self) -> None:
+        self._animate = bool(getattr(self.app.c, "animate", True))
+        self._timer = self.set_interval(
+            1.0 / _CREST_FPS, self._tick, pause=not self._animate
+        )
 
     def fit(self, cols: int, rows: int, reserve: int = SHIELD_RESERVE) -> None:
-        art = self._picker(cols - 4, rows, reserve=reserve)
-        self.display = bool(art)
-        if art:
-            self.update(_crest_text(art))
+        tier = ui.pick_neuron(cols - 4, rows, reserve=reserve)
+        self.display = bool(tier)
+        self._tier = tier or None
+        self._repaint()
+
+    def set_animate(self, on: bool) -> None:
+        self._animate = bool(on)
+        if self._timer is not None:
+            self._timer.resume() if on else self._timer.pause()
+        if not on:
+            self._phase = 0.0
+        self._repaint()
+
+    def _tick(self) -> None:
+        if not self._animate or not self.display or self._tier is None:
+            return
+        self._phase = (self._phase + 1.0 / (_CREST_FPS * _CREST_CYCLE_S)) % 1.0
+        self._repaint()
+
+    # NB: deliberately NOT named ``_render`` — that collides with Textual's
+    # ``Widget._render`` (the layout engine calls it expecting a Visual).
+    def _repaint(self) -> None:
+        if self._tier is None:
+            return
+        phase = self._phase if self._animate else ui.NEURON_REST_PHASE
+        rows = ui.neuron_frame(self._tier, phase)
+        if rows != self._last:
+            self._last = rows
+            self.update(_crest_text(rows))
 
 
 # --------------------------------------------------------------------------- #
@@ -784,7 +823,7 @@ class SpikeMenuApp(App):
 
     # -- layout --------------------------------------------------------------- #
     def compose(self) -> ComposeResult:
-        yield CrestWidget(ui.pick_brain, id="crest")
+        yield CrestWidget(id="crest")
         yield Static(id="titlebar")
         yield Static(id="statusline")
         yield Static(id="activebar")            # the action-mode fold (hidden until then)
