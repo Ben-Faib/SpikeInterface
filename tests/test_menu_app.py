@@ -7,11 +7,16 @@ actions, and clear missing-data guidance.
 from __future__ import annotations
 
 import menu_app
+import ui
 from textual.widgets import OptionList, Static
 
 
 def _app(controller):
     return menu_app.SpikeMenuApp(controller)
+
+
+def _has_braille(s: str) -> bool:
+    return any(0x2800 <= ord(c) <= 0x28FF for c in s)
 
 
 def _sorter_row(app, name):
@@ -97,9 +102,9 @@ async def test_tiny_window_stacks_and_keeps_actions(make_controller):
     app = _app(make_controller(present=True))
     async with app.run_test(size=(40, 12)) as pilot:
         await pilot.pause()
-        # narrow -> panes stack; short -> shield hidden; actions still all present
+        # narrow -> panes stack; short -> crest hidden; actions still all present
         assert app.query_one("#body").has_class("stacked")
-        assert app.query_one("#shield").display is False
+        assert app.query_one("#crest").display is False
         assert app.query_one("#actions", OptionList).option_count == 11
 
 
@@ -589,3 +594,45 @@ def test_result_style_amber_for_warning():
     assert menu_app._result_style(True, "✓ Sorted x (5 units)") == "#3fb950"
     assert menu_app._result_style(True, "⚠ x: no units found") == "#f0883e"
     assert menu_app._result_style(False, "✗ Sorted x") == "#f85149"
+
+
+# --- brain hero crest + preserved Pitt shield ----------------------------- #
+
+def test_brain_art_rows_equal_width():
+    # Regression guard: every row in each brain tier must be the same width
+    # (code points) or Textual's centred layout shifts; and each tier is Braille.
+    for tier in (ui._BRAIN_FULL, ui._BRAIN_COMPACT, ui._BRAIN_MINI):
+        widths = {len(row) for row in tier}
+        assert len(widths) == 1, f"ragged brain tier widths: {widths}"
+        assert _has_braille(tier[0])
+
+
+async def test_dashboard_crest_is_the_brain(make_controller):
+    app = _app(make_controller(present=True))
+    async with app.run_test(size=(110, 45)) as pilot:
+        await pilot.pause()
+        crest = app.query_one("#crest", menu_app.CrestWidget)
+        assert crest.display is True
+        assert _has_braille(crest.render().plain)      # the brain, not the shield
+
+
+async def test_welcome_screen_shows_pitt_shield(make_controller):
+    c = make_controller(present=True)
+    c.want_welcome = True                              # first-launch greeting
+    app = _app(c)
+    async with app.run_test(size=(110, 45)) as pilot:
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.WelcomeScreen)
+        crest = app.screen.query_one("#wcrest", Static).render().plain
+        assert "█" in crest                            # blue+gold shield (block art)
+
+
+async def test_help_about_topic_shows_pitt_shield(make_controller):
+    c = make_controller(present=True)
+    app = _app(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        app.push_screen(menu_app.HelpScreen(c, c.accent, topic="about"))
+        await pilot.pause()
+        body = app.screen.query_one("#helpbody", Static).render().plain
+        assert "█" in body and "University of Pittsburgh" in body

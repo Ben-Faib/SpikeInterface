@@ -468,6 +468,7 @@ class WelcomeScreen(ModalScreen):
         width: 60; max-width: 92%; height: auto;
         border: round $accentcolor; background: $surface; padding: 1 2;
     }
+    WelcomeScreen #wcrest { height: auto; content-align: center top; padding: 0 0 1 0; }
     WelcomeScreen #wtitle { text-style: bold; color: $accentcolor; padding: 0 0 1 0; }
     WelcomeScreen #wfoot { color: $text-muted; padding: 1 0 0 0; }
     """
@@ -486,6 +487,7 @@ class WelcomeScreen(ModalScreen):
         body.append("Put your recording files in this folder ", style="")
         body.append("(press d for help, f to pick a different folder).", style="dim")
         with Vertical(id="dialog"):
+            yield Static(_crest_text(ui.SHIELD_FULL), id="wcrest")
             yield Static("Welcome to the Spike Sorter", id="wtitle")
             yield Static(body)
             yield Static("[ Get started ]  ·  Enter", id="wfoot")
@@ -561,6 +563,14 @@ class HelpScreen(ModalScreen):
                             ("Help", []))
         if key == "data":
             body = _setup_body(self._c.data_report, self._accent)
+        elif key == "about":
+            # The Pitt shield lives here (and on Welcome): the dashboard's top
+            # crest is now the brain, so the crest still has a home in the app.
+            body = _crest_text(ui.SHIELD_COMPACT)
+            body.append("\n\n")
+            body.append(title + "\n\n", style=f"bold {self._accent}")
+            for ln in lines:
+                body.append(ln + "\n")
         else:
             body = Text()
             body.append(title + "\n\n", style=f"bold {self._accent}")
@@ -624,25 +634,34 @@ def _setup_body(report: dict, accent: str) -> Text:
 # --------------------------------------------------------------------------- #
 # Responsive Pitt shield
 # --------------------------------------------------------------------------- #
-class ShieldWidget(Static):
-    """The blue+gold University of Pittsburgh crest, sized to the live window.
+def _crest_text(rows) -> Text:
+    """Build a Text from built crest rows (each row = a list of (style, seg)).
+    Works for both the brain (one pink fragment/row) and the blue+gold shield."""
+    t = Text()
+    for n, line in enumerate(rows):
+        if n:
+            t.append("\n")
+        for style, seg in line:
+            t.append(seg, style=style or None)
+    return t
 
-    ``fit(cols, rows)`` (called from the app's relayout) picks the largest shield
-    that fits and hides the widget entirely when even the mini crest won't."""
+
+class CrestWidget(Static):
+    """A responsive top crest, sized to the live window: the brain on the
+    dashboard (``ui.pick_brain``) or the Pitt shield elsewhere (``ui.pick_logo``).
+
+    ``fit(cols, rows)`` (called from the app's relayout) picks the largest tier
+    that fits and hides the widget entirely when even the mini tier won't."""
+
+    def __init__(self, picker=ui.pick_brain, **kw) -> None:
+        super().__init__(**kw)
+        self._picker = picker
 
     def fit(self, cols: int, rows: int, reserve: int = SHIELD_RESERVE) -> None:
-        logo = ui.pick_logo(cols - 4, rows, reserve=reserve)
-        if not logo:
-            self.display = False
-            return
-        t = Text()
-        for n, line in enumerate(logo):
-            if n:
-                t.append("\n")
-            for style, seg in line:
-                t.append(seg, style=style or None)
-        self.update(t)
-        self.display = True
+        art = self._picker(cols - 4, rows, reserve=reserve)
+        self.display = bool(art)
+        if art:
+            self.update(_crest_text(art))
 
 
 # --------------------------------------------------------------------------- #
@@ -655,7 +674,7 @@ class SpikeMenuApp(App):
     CSS = """
     Screen { background: $background; }
 
-    #shield { height: auto; content-align: center top; padding: 1 0 0 0; }
+    #crest { height: auto; content-align: center top; padding: 1 0 0 0; }
     #titlebar { height: 1; content-align: left middle; }
 
     #banner {
@@ -735,7 +754,7 @@ class SpikeMenuApp(App):
 
     # -- layout --------------------------------------------------------------- #
     def compose(self) -> ComposeResult:
-        yield ShieldWidget(id="shield")
+        yield CrestWidget(ui.pick_brain, id="crest")
         yield Static(id="titlebar")
         yield Static(id="banner")
         with Horizontal(id="body"):
@@ -776,10 +795,10 @@ class SpikeMenuApp(App):
         stacked = w < NARROW_COLS
         self.query_one("#body").set_class(stacked, "stacked")
         banner_on = self._update_banner(w, h)
-        # Shield yields rows for title + footer + a usable body (+ the banner when
-        # it is showing), dropping full→compact→mini→hidden as the window shrinks.
+        # The brain crest yields rows for title + footer + a usable body (+ the
+        # banner when showing), dropping full→compact→mini→hidden as it shrinks.
         reserve = SHIELD_RESERVE + (3 if banner_on else 0)
-        self.query_one("#shield", ShieldWidget).fit(w, h, reserve)
+        self.query_one("#crest", CrestWidget).fit(w, h, reserve)
         self.query_one("#titlebar", Static).update(self._render_titlerule(w))
         # Priority on short windows: drop the secondary panels so the sorter list +
         # actions always stay on screen. The Selected-sorter card (the per-sorter
