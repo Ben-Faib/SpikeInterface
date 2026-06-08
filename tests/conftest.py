@@ -179,6 +179,33 @@ class FakeController:
     def saved_sorters(self) -> list[str]:
         return [i["name"] for i in self.infos if i.get("present")]
 
+    def action_explain(self, key: str) -> dict:
+        info = self.infos[self.active_idx]
+        present = self._present
+        n_saved = len(self.saved_sorters())
+        table = {
+            "explore": ("Make quick static figures.",
+                        [("recording files", present)], "outputs/*.png"),
+            "sort": ("Detect neurons in the broadband signal.",
+                     [("broadband .ns5", present)], "outputs/<sorter>/"),
+            "report": ("Build an interactive HTML report.",
+                       [("recording files", present)], "outputs/report.html"),
+            "gui": ("Inspect saved units.",
+                    [(f"a saved {self.active_sorter} sort", bool(info.get("present")))],
+                    "a desktop window"),
+            "traces": ("Scroll raw traces.",
+                       [("broadband .ns5", present)], "a desktop window"),
+            "compare": ("Agreement matrix between two sorts.",
+                        [("two saved sorts", n_saved >= 2)], "outputs/comparison.html"),
+        }
+        what, needs, output = table.get(key, (key, [], None))
+        out = {"what": what, "needs": [{"label": l, "ok": ok} for l, ok in needs]}
+        if output:
+            out["output"] = output
+        if key == "sort" and info.get("present"):
+            out["caveat"] = f"Re-running replaces the saved {info['name']} sort ({info['units']}u)."
+        return out
+
     def run_compare(self, pair) -> tuple[bool, str, bool]:
         self.ran_compare = tuple(pair)
         return True, f"✓ compared {pair}", True

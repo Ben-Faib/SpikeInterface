@@ -605,6 +605,36 @@ _ACTIONS = [
 # Keys that need a recording present (so the fallback menu can refuse them cleanly).
 _DATA_ACTIONS = {k for k, _t, _h, needs in _ACTIONS if needs}
 
+# Rich per-action explanation for the dashboard's explanation pane. ``needs`` keys
+# are requirement names resolved against live state in
+# ``MenuController.action_explain`` (see the resolver table there); needs-nothing
+# actions omit the Needs/Output footer entirely.
+_ACTION_DETAIL = {
+    "explore": {"what": "Make quick static figures (LFP traces, spike raster, "
+                        "firing rates) from your raw data. No sorting required.",
+                "needs": ["data"], "output": "outputs/*.png"},
+    "sort":    {"what": "Detect neurons in the broadband (.ns5) signal with the "
+                        "active sorter.",
+                "choose": "full recording, or a quick 30 s test",
+                "needs": ["broadband", "sort_docker"], "output": "outputs/<sorter>/"},
+    "report":  {"what": "Build a single interactive HTML report of the sorted "
+                        "results (run Sort first for unit results).",
+                "needs": ["data"], "output": "outputs/report.html"},
+    "gui":     {"what": "Open spikeinterface-gui to inspect the active sorter's "
+                        "saved units.",
+                "needs": ["saved_sort"], "output": "a desktop window"},
+    "traces":  {"what": "Scroll the raw broadband traces in ephyviewer "
+                        "(needs a desktop display).",
+                "needs": ["broadband"], "output": "a desktop window"},
+    "compare": {"what": "Build an agreement matrix between two saved sorts.",
+                "needs": ["two_sorts"], "output": "outputs/comparison.html"},
+    "params":  {"what": "Tune the active sorter's parameters (saved per sorter)."},
+    "verify":  {"what": "Run an environment smoke test (library versions, loaders)."},
+    "theme":   {"what": "Pick an accent colour for the menu (saved for next time)."},
+    "help":    {"what": "What each step does, sorters, Docker, and data files."},
+    "quit":    {"what": "Leave the menu."},
+}
+
 
 class MenuController:
     """Bridge between the Textual dashboard (view) and this launcher's logic.
@@ -757,6 +787,48 @@ class MenuController:
     def saved_sorters(self) -> list[str]:
         """Sorters that currently have a saved analyzer (for the compare picker)."""
         return [i["name"] for i in self.infos if i.get("present")]
+
+    def action_explain(self, key: str) -> dict:
+        """Resolve an action's static metadata against live state.
+
+        Returns ``{what, choose?, caveat?, needs:[{label, ok}], output?}`` for the
+        dashboard's explanation pane. ``needs`` requirement keys are evaluated
+        against the current data report / saved sorts / Docker state; needs-nothing
+        actions get an empty ``needs`` list and no ``output``.
+        """
+        meta = _ACTION_DETAIL.get(key, {"what": key})
+        info = self.infos[self.active_idx]
+        present = bool(self.data_report.get("present"))
+        bb = next((r for r in self.pipeline if "Broadband" in r.get("stage", "")), None)
+        broadband_ok = present and (bb is None or bb.get("status") != "FAIL")
+        n_saved = len(self.saved_sorters())
+        resolvers = {
+            "data":       ("recording files", present),
+            "broadband":  ("broadband .ns5", broadband_ok),
+            "saved_sort": (f"a saved {self.active_sorter} sort", bool(info.get("present"))),
+            "two_sorts":  ("two saved sorts", n_saved >= 2),
+            "sort_docker": ("Docker running", not self.active_blocked_on_docker()),
+        }
+        needs = []
+        for nkey in meta.get("needs", []):
+            # The docker-running requirement is only meaningful for a Docker sorter;
+            # an installed/native active sorter never uses a container, so skip it.
+            if nkey == "sort_docker" and not sorter_registry.uses_docker(
+                    self.active_sorter, self.use_docker):
+                continue
+            label, ok = resolvers[nkey]
+            needs.append({"label": label, "ok": ok})
+        out = {"what": meta["what"], "needs": needs}
+        if meta.get("choose"):
+            out["choose"] = meta["choose"]
+        if meta.get("output"):
+            out["output"] = meta["output"]
+        if key == "sort" and info.get("present"):
+            out["caveat"] = (f"Re-running replaces the saved {info['name']} sort "
+                             f"({info['units']}u).")
+        if key == "gui" and not info.get("present"):
+            out["caveat"] = "No saved sort yet — run Sort first."
+        return out
 
     def run_compare(self, pair) -> tuple[bool, str, bool]:
         """Compare a user-chosen pair of saved sorts (mismatch caveat handled in action)."""

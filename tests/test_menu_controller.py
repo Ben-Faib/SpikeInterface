@@ -97,6 +97,42 @@ def test_docker_status_text_per_state(monkeypatch, tmp_path):
     assert c.docker_status(refresh=True)["running"] is False
 
 
+def _ctrl_with_two_sorters(monkeypatch, tmp_path):
+    import sorters as reg
+    monkeypatch.setattr(reg, "installed", lambda: ["tridesclous2", "spykingcircus2"])
+    monkeypatch.setattr(reg, "available", lambda: sorted(
+        ["tridesclous2", "spykingcircus2", "mountainsort5"]))
+    monkeypatch.setattr(reg, "docker_available", lambda *a, **k: False)
+    # Saved-sort detection reads the repo's outputs/<sorter>/ analyzers, which a
+    # developer's machine may already have from prior runs; pin it to "nothing
+    # saved" so "fresh tmp -> 0 saved sorts" holds regardless of local state.
+    monkeypatch.setattr(M, "_saved_summary", lambda name: (False, 0, 0.0))
+    return _controller(monkeypatch, tmp_path, use_docker=False)
+
+
+def test_action_explain_explore_needs_data(monkeypatch, tmp_path):
+    c = _ctrl_with_two_sorters(monkeypatch, tmp_path)
+    ex = c.action_explain("explore")
+    assert ex["what"]                                   # has a description
+    needs = {n["label"]: n["ok"] for n in ex["needs"]}
+    assert any("recording" in k.lower() or "data" in k.lower() for k in needs)
+
+
+def test_action_explain_compare_needs_two_saved_sorts(monkeypatch, tmp_path):
+    c = _ctrl_with_two_sorters(monkeypatch, tmp_path)   # fresh tmp -> 0 saved sorts
+    ex = c.action_explain("compare")
+    needs = {n["label"]: n["ok"] for n in ex["needs"]}
+    assert any("two" in k.lower() or "second" in k.lower() for k in needs)
+    assert all(v is False for v in needs.values())      # nothing saved yet
+
+
+def test_action_explain_no_need_actions_have_empty_needs(monkeypatch, tmp_path):
+    c = _ctrl_with_two_sorters(monkeypatch, tmp_path)
+    for key in ("params", "verify", "theme", "help", "quit"):
+        ex = c.action_explain(key)
+        assert ex["needs"] == [] and not ex.get("output")
+
+
 def test_welcome_shown_once_and_persisted(monkeypatch, tmp_path):
     import sorters as reg
     monkeypatch.setattr(reg, "installed", lambda: ["tridesclous2"])
