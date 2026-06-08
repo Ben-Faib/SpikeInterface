@@ -636,6 +636,22 @@ _ACTION_DETAIL = {
 }
 
 
+def _fallback_action_hint(key: str, fallback: str, active_info: dict | None = None) -> str:
+    """Per-action hint for the typed fallback menu.
+
+    Surfaces the same plain-language ``what`` the Textual explanation pane shows
+    (falling back to the legacy ``_MENU`` hint), and — for ``sort`` when the active
+    sorter already has a saved sort — appends the destructive re-run caveat so the
+    typed menu still warns before overwriting. This is intentionally NON-parity with
+    the Textual app (no accordion / explanation pane): a richer one-line hint only.
+    """
+    hint = _ACTION_DETAIL.get(key, {}).get("what") or fallback
+    if key == "sort" and active_info and active_info.get("present"):
+        hint += (f"  ⚠ replaces the saved {active_info['name']} sort "
+                 f"({active_info['units']}u).")
+    return hint
+
+
 class MenuController:
     """Bridge between the Textual dashboard (view) and this launcher's logic.
 
@@ -862,22 +878,28 @@ class MenuController:
         return ok, _last_message(key, self.args.sorter, ok), key in ("sort", "compare")
 
 
-def _print_setup_plain(report: dict) -> None:
+def _print_setup_plain(report: dict, pipeline=None) -> None:
     """Plain-text missing-data guidance for the typed fallback menu.
 
     Handles both 'nothing found' and 'incomplete set' (e.g. the sortable .ns5 is
-    absent) so the no-Textual / off-TTY path warns just like the Textual app.
+    absent) so the no-Textual / off-TTY path warns just like the Textual app. When
+    ``pipeline`` rows are supplied, each present file also shows its per-stream
+    channels/rate/duration (via ``ui.stream_detail``), matching the ``d`` Data-files
+    help so the typed fallback reads the same load detail as the Textual app.
     """
     if not report["present"]:
         ui.warn(f"No recording found in {report['data_dir']}")
     else:
         missing = ", ".join(f["ext"] for f in report["files"] if not f["present"])
         ui.warn(f"Incomplete recording set in {report['data_dir']} (missing {missing})")
+    detail = ui.stream_detail(report["files"], pipeline)
     ui.note("Expected one file set sharing a base name:")
     for f in report["files"]:
         mark = "[bold green]✓[/]" if f["present"] else "[bold red]✗[/]"
         name = (report["base"] or "<RECORDING_NAME>") + f["ext"]
-        ui.say(f"  {mark} {name:32} [dim]{f['label']}[/]")
+        det = detail.get(f["ext"])
+        tail = f"   [dim]· {det}[/]" if det else ""
+        ui.say(f"  {mark} {name:32} [dim]{f['label']}[/]{tail}")
     ui.note(f"Drop the set into {report['data_dir']} (or pass --data-dir).")
     ui.note("The raw .ns5/.ns2/.nev are git-ignored, so a fresh clone has none.")
 
@@ -985,8 +1007,14 @@ def _menu_fallback(args, cfg: dict, theme: str) -> int:
     active_idx = sorter_list.index(args.sorter)
     cursor = 0
     last = None
-    actions = [(action, title, hint) for _k, action, title, hint in _MENU] + [("__quit__", "Quit", "")]
     while True:
+        # Rebuild the action hints each loop so the active sorter's destructive-sort
+        # caveat tracks the currently-selected tab (the typed fallback is intentionally
+        # non-parity with the Textual accordion, but it surfaces the same `what`/caveat).
+        active_name = sorter_list[active_idx]
+        active_info = next((i for i in infos if i["name"] == active_name), None)
+        actions = [(action, title, _fallback_action_hint(action, hint, active_info))
+                   for _k, action, title, hint in _MENU] + [("__quit__", "Quit", "")]
         # One pinned, in-place view: header + sorter tabs + pipeline + last action + menu.
         action, active_idx = ui.dashboard_menu(HEADER, pipeline, infos, active_idx, actions,
                                                default=cursor, last=last)
@@ -1052,7 +1080,7 @@ def _menu_fallback(args, cfg: dict, theme: str) -> int:
                 if topic in (None, "__done__"):
                     break
                 if topic == "data":
-                    _print_setup_plain(_data_report(args.data_dir))
+                    _print_setup_plain(_data_report(args.data_dir), pipeline)
                     continue
                 title, lines = next((t, b) for k, t, b in ui.HELP_TOPICS if k == topic)
                 ui.say(f"\n[bold {ui.ACCENT}]{title}[/]")
