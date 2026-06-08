@@ -28,6 +28,8 @@ def _sorter_row(app, name):
 
 
 async def test_boots_with_lists_and_focus(make_controller):
+    # Launch state is SORTER mode: the sorter list is shown + focused, the actions
+    # list is hidden (but its options are not cleared — option_count stays 11).
     app = _app(make_controller(present=True))
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
@@ -35,26 +37,39 @@ async def test_boots_with_lists_and_focus(make_controller):
         actions = app.query_one("#actions", OptionList)
         assert sorters.get_option_at_index(0).id == "__docker__"
         assert actions.option_count == 11
-        assert actions.highlighted == 0
+        assert sorters.display is True
+        assert actions.display is False
         # the cursor sits on the active sorter row
         assert sorters.highlighted == _sorter_row(app, "tridesclous2")
-        assert app.focused is actions
+        assert app.focused is sorters
 
 
 async def test_left_right_switch_focus(make_controller):
+    # →/Tab enters action mode (sorter list hidden, actions shown + focused,
+    # #activebar visible); ←/Shift-Tab restores sorter mode.
     app = _app(make_controller(present=True))
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
         sorters = app.query_one("#sorters", OptionList)
         actions = app.query_one("#actions", OptionList)
-        await pilot.press("left")
-        await pilot.pause()
-        assert app.focused is sorters
+        activebar = app.query_one("#activebar", Static)
+        # boot = sorter mode
+        assert app.focused is sorters and activebar.display is False
         await pilot.press("right")
         await pilot.pause()
         assert app.focused is actions
-        # Tab also toggles focus between the two panes
+        assert sorters.display is False and actions.display is True
+        assert activebar.display is True
+        await pilot.press("left")
+        await pilot.pause()
+        assert app.focused is sorters
+        assert sorters.display is True and actions.display is False
+        assert activebar.display is False
+        # Tab also enters action mode; Shift-Tab restores sorter mode.
         await pilot.press("tab")
+        await pilot.pause()
+        assert app.focused is actions
+        await pilot.press("shift+tab")
         await pilot.pause()
         assert app.focused is sorters
 
@@ -62,6 +77,8 @@ async def test_left_right_switch_focus(make_controller):
 async def test_down_moves_action_highlight(make_controller):
     app = _app(make_controller(present=True))
     async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("right")        # enter action mode
         await pilot.pause()
         actions = app.query_one("#actions", OptionList)
         assert actions.highlighted == 0
@@ -71,6 +88,7 @@ async def test_down_moves_action_highlight(make_controller):
 
 
 async def test_enter_on_sorter_sets_active(make_controller):
+    # Enter on a runnable sorter activates it AND auto-advances into action mode.
     c = make_controller(present=True)
     app = _app(c)
     async with app.run_test(size=(110, 40)) as pilot:
@@ -81,7 +99,10 @@ async def test_enter_on_sorter_sets_active(make_controller):
         await pilot.press("enter")
         await pilot.pause()
         assert c.active_sorter == "spykingcircus2"
-        assert "spykingcircus2" in app.query_one("#footer", Static).render().plain
+        # auto-advanced into action mode, #activebar names the now-active sorter
+        assert app.query_one("#actions", OptionList).display is True
+        bar = app.query_one("#activebar", Static)
+        assert bar.display is True and "spykingcircus2" in bar.render().plain
 
 
 async def test_t_cycles_sorter(make_controller):
@@ -102,6 +123,8 @@ async def test_tiny_window_stacks_and_keeps_actions(make_controller):
     app = _app(make_controller(present=True))
     async with app.run_test(size=(40, 12)) as pilot:
         await pilot.pause()
+        await pilot.press("right")        # enter action mode -> actions list shown
+        await pilot.pause()
         # narrow -> panes stack; short -> crest hidden; actions still all present
         assert app.query_one("#body").has_class("stacked")
         assert app.query_one("#crest").display is False
@@ -111,6 +134,8 @@ async def test_tiny_window_stacks_and_keeps_actions(make_controller):
 async def test_very_short_window_does_not_crash(make_controller):
     app = _app(make_controller(present=True))
     async with app.run_test(size=(30, 6)) as pilot:
+        await pilot.pause()
+        await pilot.press("right")        # enter action mode
         await pilot.pause()
         # still alive and the actions list exists (scrolls within its box)
         assert app.query_one("#actions", OptionList).option_count == 11
@@ -135,9 +160,11 @@ async def test_missing_data_shows_banner(make_controller):
     app = _app(make_controller(present=False))
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        banner = app.query_one("#banner", Static)
+        banner = app.query_one("#statusline", Static)
         assert banner.display is True
-        assert "No recording found" in banner.render().plain
+        plain = banner.render().plain
+        assert "No recording found" in plain
+        assert "⚠" in plain and "┌" in plain          # loud = bordered ⚠ banner
         # data-dependent actions are disabled, help/verify/theme/quit are not
         actions = app.query_one("#actions", OptionList)
         by_id = {o.id: o for o in actions._options}
@@ -176,6 +203,8 @@ async def test_help_action_runs(make_controller):
     app = _app(c)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
+        await pilot.press("right")        # enter action mode so Enter hits #actions
+        await pilot.pause()
         # 'help' is the action at index 9 (number keys only reach 1-9, so open via the list)
         actions = app.query_one("#actions", OptionList)
         idx = next(i for i in range(actions.option_count)
@@ -212,10 +241,13 @@ async def test_number_key_opens_param_editor(make_controller):
 
 
 async def test_actions_stay_on_screen_when_stacked(make_controller):
-    # The redesign's core promise: Actions are never pushed off-screen, at any size.
+    # The redesign's core promise: the active list is never pushed off-screen, at
+    # any size. Enter action mode so #actions is the shown list, then assert.
     for size in [(77, 24), (60, 22), (50, 18), (40, 12), (34, 30)]:
         app = _app(make_controller(present=True))
         async with app.run_test(size=size) as pilot:
+            await pilot.pause()
+            await pilot.press("right")        # action mode -> #actions shown
             await pilot.pause()
             actions = app.query_one("#actions", OptionList)
             visible = actions.region.intersection(app.screen.region)
@@ -265,6 +297,8 @@ async def test_jk_navigation(make_controller):
     app = _app(make_controller(present=True))
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
+        await pilot.press("right")        # enter action mode
+        await pilot.pause()
         actions = app.query_one("#actions", OptionList)
         await pilot.press("j")
         await pilot.pause()
@@ -298,16 +332,22 @@ async def test_active_marker_and_incomplete_banner(make_controller):
 
 
 async def test_missing_banner_never_clips_actions_on_tiny_windows(make_controller):
-    # The missing-data banner must not push the Actions/sorter off-screen at the
-    # shortest sizes (it is suppressed there instead of wrapping).
+    # The loud missing-data banner must not push the active list off-screen at the
+    # shortest sizes (it is suppressed there instead of wrapping). Check both modes'
+    # lists by switching focus.
     for size in [(40, 12), (30, 8), (30, 6), (24, 6), (20, 5)]:
         app = _app(make_controller(present=False))
         async with app.run_test(size=size) as pilot:
             await pilot.pause()
-            for sel in ("#actions", "#sorters"):
-                w = app.query_one(sel, OptionList)
-                vis = w.region.intersection(app.screen.region)
-                assert vis.height > 0, f"{sel} off-screen at {size}"
+            # sorter mode: #sorters is the shown list
+            w = app.query_one("#sorters", OptionList)
+            vis = w.region.intersection(app.screen.region)
+            assert vis.height > 0, f"#sorters off-screen at {size}"
+            await pilot.press("right")        # action mode: #actions is the shown list
+            await pilot.pause()
+            w = app.query_one("#actions", OptionList)
+            vis = w.region.intersection(app.screen.region)
+            assert vis.height > 0, f"#actions off-screen at {size}"
 
 
 async def test_sort_blocked_without_data(make_controller):
@@ -324,16 +364,48 @@ async def test_sort_blocked_without_data(make_controller):
 
 
 async def test_unreadable_files_show_amber_banner(make_controller):
-    # A complete set whose broadband won't load surfaces an explicit warning,
-    # not a hidden/green "all good" banner.
+    # A complete set whose broadband won't load surfaces an explicit loud banner,
+    # not a hidden/quiet "all good" line.
     c = make_controller(present=True)
     c.pipeline[1]["status"] = "FAIL"   # Broadband (.ns5) row
     app = _app(c)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        banner = app.query_one("#banner", Static)
+        banner = app.query_one("#statusline", Static)
         assert banner.display is True
-        assert "unreadable" in banner.render().plain.lower()
+        plain = banner.render().plain
+        assert "⚠" in plain and "┌" in plain                 # loud = bordered ⚠
+        assert "Broadband" in plain and "won't load" in plain
+
+
+async def test_healthy_status_is_quiet_no_banner(make_controller):
+    # A complete, readable set: quiet borderless ✓ line, no bordered ⚠ banner.
+    app = _app(make_controller(present=True))
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        line = app.query_one("#statusline", Static).render().plain
+        assert "✓" in line and "Recording loaded" in line
+        assert "┌" not in line and "⚠" not in line           # quiet = no border
+
+
+async def test_active_sorter_visible_in_action_mode_bar(make_controller):
+    app = _app(make_controller(present=True))
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("right")                 # -> action mode
+        await pilot.pause()
+        bar = app.query_one("#activebar", Static)
+        assert bar.display is True and "tridesclous2" in bar.render().plain
+
+
+async def test_action_explain_shows_in_action_mode(make_controller):
+    app = _app(make_controller(present=True))
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("right")
+        await pilot.pause()
+        ex = app.query_one("#explainbody", Static).render().plain
+        assert "figures" in ex.lower() or "explore" in ex.lower()   # row 0 = explore
 
 
 async def test_docker_toggle_row_is_first_and_toggles(make_controller):
