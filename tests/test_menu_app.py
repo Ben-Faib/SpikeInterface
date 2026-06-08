@@ -534,3 +534,58 @@ async def test_welcome_hidden_when_seen(make_controller):
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
         assert not isinstance(app.screen, menu_app.WelcomeScreen)
+
+
+async def test_escape_does_not_quit_the_app(make_controller):
+    app = _app(make_controller(present=True))
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+        assert app.is_running           # Esc no longer hard-quits the dashboard
+
+
+async def test_f_opens_data_folder_picker_and_sets_dir(make_controller):
+    from textual.widgets import Input
+    c = make_controller(present=True)
+    app = _app(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("f")
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.DataFolderScreen)
+        app.screen.query_one("#dfinput", Input).value = ""    # blank -> repo root
+        await pilot.press("enter")
+        await pilot.pause()
+        assert not isinstance(app.screen, menu_app.DataFolderScreen)
+        assert getattr(c, "data_dir_set", "unset") is None    # "" coerced to None
+
+
+async def test_sort_modal_warns_before_overwriting(make_controller):
+    # active sorter (tridesclous2) already has a saved sort in the fake universe.
+    app = _app(make_controller(present=True))
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("2")          # action 2 = sort -> span modal
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.ChoiceModal)
+        note = app.screen.query_one("#dialognote", Static).render().plain
+        assert "already has a saved sort" in note
+
+
+async def test_sort_blocked_when_active_needs_docker_thats_down(make_controller):
+    c = make_controller(present=True)
+    c.active_blocked_on_docker = lambda: True       # container sorter, daemon down
+    app = _app(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("2")          # sort
+        await pilot.pause()
+        assert not isinstance(app.screen, menu_app.ChoiceModal)   # guarded, no modal
+        assert app._last is not None and "Docker" in app._last.plain
+
+
+def test_result_style_amber_for_warning():
+    assert menu_app._result_style(True, "✓ Sorted x (5 units)") == "#3fb950"
+    assert menu_app._result_style(True, "⚠ x: no units found") == "#f0883e"
+    assert menu_app._result_style(False, "✗ Sorted x") == "#f85149"

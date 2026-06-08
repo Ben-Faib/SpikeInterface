@@ -37,11 +37,13 @@ PyTorch, which is not installed here.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import gc
 import json
 import re
 import shutil
 import sys
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -332,12 +334,106 @@ def _warn_existing_sort(out: Path, ui: "ConsoleUI") -> None:
         ui.warn(f"overwriting an existing sort in {out}")
 
 
-def _friendly_sort_error(exc: Exception) -> str:
+def _friendly_sort_error(exc: Exception, use_docker: bool = False) -> str:
     """Turn a sort failure into a one-line, actionable message (no traceback)."""
     text = str(exc)
-    if "daemon" in text.lower() or "docker" in text.lower():
+    # Decide "Docker is down" by asking the daemon, not by string-matching the
+    # message — the old substring check mislabelled unrelated failures (e.g. a
+    # missing SDK or a sorter crash that merely mentions "docker") as a dead daemon.
+    if use_docker and not sorters.docker_available(refresh=True):
         return "Docker isn't running — open Docker Desktop and try again."
+    if use_docker:
+        return ("Docker sort failed — the sorter's container image may be "
+                f"incompatible, or still downloading. Details:\n{text}")
     return f"Sorting failed: {text}"
+
+
+def _quality_summary(qm) -> "tuple[int, int | None]":
+    """Rule-of-thumb count of 'good-looking' units: SNR ≥ 5 and few ISI violations.
+
+    Returns ``(n_total, n_good)``; ``n_good`` is None if the expected columns are
+    missing. This is a sanity signal to orient a newcomer ("did anything good come
+    out?"), NOT a substitute for manual curation.
+    """
+    try:
+        good = (qm["snr"] >= 5.0) & (qm["isi_violations_ratio"] <= 0.5)
+        return len(qm), int(good.sum())
+    except Exception:  # noqa: BLE001 - metric columns can vary; degrade gracefully
+        return len(qm), None
+
+
+def _prepare_docker_image(ui: "ConsoleUI", sorter: str) -> None:
+    """Pre-download the sorter's Docker image with a live progress bar.
+
+    Otherwise the first containerised run fetches ~1-2 GB behind a single terse
+    'pulling image' line and a long silent gap — so it looks hung. Pulling it
+    ourselves first turns that into a real progress bar (bytes + % + elapsed).
+    Best-effort: on any hiccup we fall back to letting SpikeInterface pull it.
+    """
+    image = sorters.default_docker_image(sorter)
+    if not image:
+        return
+    if sorters.docker_image_present(image):
+        ui.detail(f"Docker image already downloaded ({image}) — using the cached copy.")
+        return
+    ui.detail(f"Downloading the {sorter} Docker image: {image}")
+    ui.detail("One-time ~1–2 GB download — this can take a few minutes.")
+    console = getattr(ui, "_c", None)
+    if console is None or ui.quiet:
+        ok = sorters.pull_docker_image(image)        # no bar (rich missing / quiet)
+    else:
+        from rich.progress import (BarColumn, DownloadColumn, Progress,
+                                    SpinnerColumn, TextColumn, TimeElapsedColumn)
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[cyan]{task.description}[/]"),
+            BarColumn(),
+            DownloadColumn(),
+            TimeElapsedColumn(),
+            console=console, transient=True,
+        ) as prog:
+            task = prog.add_task("downloading", total=None)
+
+            def on_progress(done, total):
+                prog.update(task, completed=done, total=total or None)
+
+            def on_status(status):
+                prog.update(task, description=status.lower())
+
+            ok = sorters.pull_docker_image(image, on_progress=on_progress, on_status=on_status)
+    if ok:
+        ui.result("✓ image downloaded")
+    else:
+        ui.detail("Couldn't pre-download with a progress bar — "
+                  "SpikeInterface will fetch the image during the run.")
+
+
+class _Heartbeat:
+    """Periodic 'still working' line so a long, silent container step (image setup,
+    in-container install, the sort itself) never looks frozen. No-op when quiet."""
+
+    def __init__(self, ui: "ConsoleUI", label: str, every: float = 25.0):
+        self.ui, self.label, self.every = ui, label, every
+        self._stop = threading.Event()
+        self._t: "threading.Thread | None" = None
+        self._t0 = 0.0
+
+    def __enter__(self):
+        if not self.ui.quiet:
+            self._t0 = time.monotonic()
+            self._t = threading.Thread(target=self._run, daemon=True)
+            self._t.start()
+        return self
+
+    def _run(self) -> None:
+        while not self._stop.wait(self.every):
+            el = int(time.monotonic() - self._t0)
+            self.ui.detail(f"… {self.label} — still working ({el // 60}m{el % 60:02d}s elapsed)")
+
+    def __exit__(self, *exc) -> None:
+        self._stop.set()
+        if self._t is not None:
+            self._t.join(timeout=0.2)
 
 
 def resolve_sorter(name: str, use_docker: bool) -> str:
@@ -526,29 +622,57 @@ def main() -> int:
         ui.detail(f"limited to first {end / fs:g}s of {n_samples / fs:g}s")
     effective_seconds = rec.get_total_duration()
 
-    ui.phase("Sort", args.sorter + ("  (docker)" if args.docker else ""))
+    use_container = sorters.uses_docker(args.sorter, args.docker)
+    ui.phase("Sort", args.sorter + ("  (docker)" if use_container else ""))
+    if args.docker and not use_container:
+        ui.detail(f"{args.sorter} is installed — running it natively (no Docker needed)")
     if overrides:
         ui.detail("overrides: " + ", ".join(f"{k}={v}" for k, v in overrides.items()))
-    if args.docker:
-        ui.detail("first Docker run downloads the sorter image (~1 GB, one time only)")
+    if use_container:
+        try:
+            _prepare_docker_image(ui, args.sorter)
+        except Exception:  # noqa: BLE001 - pre-pull is best-effort; SI will pull if needed
+            ui.detail("(couldn't pre-download with a progress bar — SpikeInterface "
+                      "will fetch the image during the run.)")
+        ui.detail("Starting the container and running the sorter. On the first run "
+                  "SpikeInterface also installs itself inside the container "
+                  "(1–3 min, little output) — the lines below come from it.")
+    # A heartbeat reassures during long silent stretches: always for Docker (the
+    # sort runs out-of-process in the container), and for a native sort whenever
+    # progress bars are off (normal/quiet) so a multi-minute sort never looks hung.
+    if use_container:
+        hb = _Heartbeat(ui, f"{args.sorter} in Docker")
+    elif not show_bars:
+        hb = _Heartbeat(ui, args.sorter)
+    else:
+        hb = contextlib.nullcontext()
     try:
-        sorting = sorters.run(
-            args.sorter,
-            rec,
-            out / "sorter_output",
-            params=overrides,
-            use_docker=args.docker,
-            verbose=show_bars,
-        )
-    except RuntimeError as e:
-        ui.warn(_friendly_sort_error(e))
+        with hb:
+            sorting = sorters.run(
+                args.sorter,
+                rec,
+                out / "sorter_output",
+                params=overrides,
+                use_docker=args.docker,
+                verbose=show_bars,
+            )
+    except Exception as e:  # noqa: BLE001 - show a friendly message, not a traceback
+        # Use whether a container was ACTUALLY used (not the raw --docker flag): a
+        # native sort that failed while Docker happens to be down isn't a Docker problem.
+        ui.warn(_friendly_sort_error(e, use_docker=use_container))
         return 1
-    ui.result(f"{len(sorting.get_unit_ids())} units found")
+    n_units = len(sorting.get_unit_ids())
+    if n_units == 0:
+        ui.warn("No units detected. Try lowering 'detect_threshold' (Edit sorter "
+                "parameters), sorting more data (drop --duration), or another sorter.")
+    else:
+        ui.result(f"{n_units} units found")
 
     _robust_rmtree(out / "sorting")  # retry past Windows GUI file-locks before overwrite
     sorting = sorting.save(folder=str(out / "sorting"), overwrite=True)
 
-    if not args.no_metrics:
+    n_high_quality = None
+    if not args.no_metrics and n_units > 0:
         ui.phase("Quality metrics", "(SortingAnalyzer)")
         _robust_rmtree(out / "analyzer")  # retry past Windows GUI file-locks before overwrite
         analyzer = si.create_sorting_analyzer(
@@ -559,16 +683,37 @@ def main() -> int:
         qm = analyzer.get_extension("quality_metrics").get_data()
         qm.to_csv(out / "quality_metrics.csv")
         ui.metrics(qm, out / "quality_metrics.csv")
+        n_total, n_high_quality = _quality_summary(qm)
+        if n_high_quality is not None:
+            ui.result(f"{n_high_quality} of {n_total} units look high-quality "
+                      "(SNR ≥ 5 and few ISI violations — a rough signal, not a substitute "
+                      "for manual curation)")
         _compute_curation_extensions(analyzer, ui)
 
     _write_run_info(
         out, args, si_version=si.__version__, sorter=args.sorter,
-        n_units=len(sorting.get_unit_ids()), channel_ids=list(rec.get_channel_ids()),
+        n_units=n_units, n_high_quality=n_high_quality,
+        channel_ids=list(rec.get_channel_ids()),
         n_dropped_analog=n_dropped, total_seconds=total_seconds,
         effective_seconds=effective_seconds, freq_min=args.freq_min, freq_max=freq_max,
     )
 
+    # The container-only binary copy of the recording is no longer needed.
+    _robust_rmtree(out / "recording_for_docker")
+    if n_units == 0:
+        # Don't leave a previous run's analyzer/metrics behind — they'd report a
+        # stale unit count while the saved sorting says 0 (sidebar/report read them).
+        _robust_rmtree(out / "analyzer")
+        (out / "quality_metrics.csv").unlink(missing_ok=True)
+        ui.warn(f"Saved to {out}, but no units were found — adjust parameters and re-run.")
+        return 0
     ui.done(out)
+    ui.detail("saved: sorting/ · analyzer/ · quality_metrics.csv")
+    ui.detail("next: build a report, open the inspector GUI, or compare sorters "
+              "(from the menu, or scripts/make_report.py).")
+    if args.duration is not None:
+        ui.detail(f"note: this sorted only the first {args.duration:g}s — "
+                  "re-run without --duration for the full recording.")
     return 0
 
 

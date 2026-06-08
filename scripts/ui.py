@@ -27,6 +27,11 @@ DEFAULT_THEME = "periwinkle"
 # ACCENT is mutated by set_accent(); functions read it at call time so a theme
 # change takes effect on the next render. MUTED/OK/WARN/BAD are fixed.
 ACCENT, MUTED, OK, WARN, BAD = THEMES[DEFAULT_THEME], "dim", "bold green", "#e3a008", "bold red"
+# Three-tier neutral text ramp so "secondary but readable" (unit counts, sorter
+# descriptions, action hints) is distinct from "disabled" (MUTED/dim). SECONDARY is
+# a mid grey (~7:1 contrast on the dark bg) and theme-independent; PRIMARY = "" is
+# the terminal's default foreground. Under NO_COLOR both flatten to the default fg.
+PRIMARY, SECONDARY = "", "#9aa0a6"
 
 # Shared, plain-language Help content (single source for the Textual HelpScreen
 # AND the typed-fallback help). Each entry is (topic_key, title, body_lines).
@@ -50,8 +55,9 @@ HELP_TOPICS = [
     ("data", "Data files",
      []),   # filled at render time from the live data report (present/missing checklist)
     ("keys", "Keyboard",
-     ["↑/↓ or j/k move · ←/→ or Tab switch panes · Enter run/activate · 1-9 jump",
-      "t switch sorter · ? help · d data files · q quit"]),
+     ["↑/↓ or j/k move · ←/→ or Tab/Shift-Tab switch panes · Enter run/activate",
+      "1-9 jump to an action · t switch sorter · ? help · d data files",
+      "f choose data folder · q or Ctrl-C quit  (Esc cancels a dialog, not the app)"]),
 ]
 
 
@@ -372,6 +378,8 @@ def select(title, options, default: int = 0, _input=None, _output=None):
     typed numbered prompt when prompt_toolkit is unavailable or stdin is not a
     TTY, so piping/CI still work. ``_input``/``_output`` are test injection hooks.
     """
+    if not options:                       # nothing to choose -> treat as a cancel
+        return None
     default = max(0, min(default, len(options) - 1))
     interactive = _input is not None or (_PT and sys.stdin.isatty())
     if not interactive:

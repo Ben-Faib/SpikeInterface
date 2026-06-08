@@ -63,8 +63,11 @@ NARROW_COLS = 78
 # Rows the shield must leave for title + footer + a usable body, so it drops
 # full→compact→mini→hidden well before it would crowd the menu off a short window.
 # (The shield ladder itself is 17 / 11 / 7 rows tall — see ui._LOGOS.) The
-# missing-data banner adds 2 more (passed through from _relayout).
-SHIELD_RESERVE = 21
+# missing-data banner adds 2 more (passed through from _relayout). Tuned so the
+# big crest is deferential: it only claims the full 17 rows on a tall (≈41+ row)
+# terminal, dropping to the compact crest on the common 35–40 row window so the
+# sorter list + the Selected-sorter card get the vertical room they need to read.
+SHIELD_RESERVE = 24
 # Unfocused panel border colour (focus uses the live accent).
 _BORDER_DIM = "#3a3f47"
 
@@ -95,9 +98,11 @@ class Controller(Protocol):
     def cycle_active(self) -> None: ...
     def set_theme(self, name: str) -> str: ...      # returns the new accent hex
     def reload(self) -> None: ...                   # refresh pipeline/infos/data_report
+    def set_data_dir(self, path: str | None) -> bool: ...   # repoint + reload; found?
     def toggle_docker(self) -> bool: ...
     def docker_status(self, refresh: bool = False) -> dict: ...
     def start_docker(self) -> bool: ...
+    def active_blocked_on_docker(self) -> bool: ...
     def mark_welcome_seen(self) -> None: ...
     def run(self, key: str, span: str | None) -> tuple[bool, str, bool]: ...
 
@@ -118,6 +123,7 @@ class ChoiceModal(ModalScreen):
         border: round $accentcolor; background: $surface; padding: 1 2;
     }
     ChoiceModal #dialogtitle { text-style: bold; color: $accentcolor; padding: 0 0 1 0; }
+    ChoiceModal #dialognote { color: #f0883e; padding: 0 0 1 0; }
     ChoiceModal OptionList { height: auto; max-height: 12; background: $surface; border: none; }
     ChoiceModal OptionList:focus { border: none; }
     ChoiceModal #choicefoot { color: $text-muted; padding: 1 0 0 0; }
@@ -125,15 +131,18 @@ class ChoiceModal(ModalScreen):
 
     BINDINGS = [Binding("escape", "cancel", "Cancel")]
 
-    def __init__(self, title: str, options: list[tuple[str, str, str]]):
+    def __init__(self, title: str, options: list[tuple[str, str, str]], note: str | None = None):
         super().__init__()
         self._title = title
         self._options = options
+        self._note = note          # optional amber caution line under the title
 
     def compose(self) -> ComposeResult:
         opts = [Option(self._opt_text(m, h), id=k) for k, m, h in self._options]
         with Vertical(id="dialog"):
             yield Static(self._title, id="dialogtitle")
+            if self._note:
+                yield Static(self._note, id="dialognote")
             yield NavList(*opts, id="choicelist")
             yield Static("Enter to choose · Esc to cancel", id="choicefoot")
 
@@ -191,6 +200,57 @@ class DataSetupScreen(ModalScreen):
             yield Static("Press Esc to close", id="setupfoot")
 
     def action_close(self) -> None:
+        self.dismiss(None)
+
+
+class DataFolderScreen(ModalScreen):
+    """Point the dashboard at a different recording folder without relaunching —
+    so a wrong-folder start is fixable in-app instead of quit-and-relaunch.
+    Dismisses with the chosen path, '' for the repo root, or None to cancel."""
+
+    DEFAULT_CSS = """
+    DataFolderScreen { align: center middle; }
+    DataFolderScreen > #dialog {
+        width: 80; max-width: 96%; height: auto;
+        border: round $accentcolor; background: $surface; padding: 1 2;
+    }
+    DataFolderScreen #dftitle { text-style: bold; color: $accentcolor; padding: 0 0 1 0; }
+    DataFolderScreen #dfabove { color: $text-muted; padding: 0 0 1 0; }
+    DataFolderScreen #dferr { color: #f85149; height: auto; padding: 1 0 0 0; }
+    DataFolderScreen #dffoot { color: $text-muted; padding: 1 0 0 0; }
+    """
+
+    BINDINGS = [Binding("escape", "cancel", "Cancel")]
+
+    def __init__(self, current: str | None):
+        super().__init__()
+        self._current = current or ""
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dialog"):
+            yield Static("Choose data folder", id="dftitle")
+            yield Static("Folder holding the .ns5 / .ns2 / .nev set "
+                         "(leave blank for the repo root).", id="dfabove")
+            yield Input(value=self._current, placeholder="/path/to/recording", id="dfinput")
+            yield Static("", id="dferr")
+            yield Static("Enter to use this folder · Esc to cancel", id="dffoot")
+
+    def on_mount(self) -> None:
+        self.query_one("#dfinput", Input).focus()
+
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        raw = (event.value or "").strip()
+        if not raw:
+            self.dismiss("")            # blank -> repo root (data_dir = None)
+            return
+        from pathlib import Path
+        p = Path(raw).expanduser()
+        if not p.is_dir():
+            self.query_one("#dferr", Static).update(Text(f"Not a folder: {p}", style="#f85149"))
+            return
+        self.dismiss(str(p))
+
+    def action_cancel(self) -> None:
         self.dismiss(None)
 
 
@@ -373,15 +433,27 @@ class DockerConfirmScreen(ModalScreen):
         self.query_one("#dstatus", Static).update(
             Text("Starting Docker…  (~30–60s — press [r] to re-check)", style="dim"))
         self._polls = 0
-        self.set_interval(2.0, self._poll)
+        self._stop_poll()                        # cancel any prior poll loop first
+        self._poll_timer = self.set_interval(2.0, self._poll)
+
+    def on_unmount(self) -> None:
+        self._stop_poll()                        # never leave a 2s probe running
+
+    def _stop_poll(self) -> None:
+        timer = getattr(self, "_poll_timer", None)
+        if timer is not None:
+            timer.stop()
+            self._poll_timer = None
 
     def _poll(self) -> None:
         self._polls += 1
         st = self._c.docker_status(refresh=True)
         if st["running"]:
+            self._stop_poll()                    # done — don't keep probing every 2s
             self._render_status()                # advances to the 'running' view
             return
         if self._polls >= 45:                    # ~90s timeout -> manual fallback
+            self._stop_poll()
             self.query_one("#dstatus", Static).update(
                 Text("Still not ready — open Docker Desktop, then press [r].", style="#f0883e"))
             return
@@ -412,7 +484,7 @@ class WelcomeScreen(ModalScreen):
         body.append("  2. Sort", style="bold");    body.append("     – detect neurons\n", style="dim")
         body.append("  3. Report", style="bold");  body.append("   – view results\n\n", style="dim")
         body.append("Put your recording files in this folder ", style="")
-        body.append("(press d for help).", style="dim")
+        body.append("(press d for help, f to pick a different folder).", style="dim")
         with Vertical(id="dialog"):
             yield Static("Welcome to the Spike Sorter", id="wtitle")
             yield Static(body)
@@ -597,18 +669,34 @@ class SpikeMenuApp(App):
     /* Two-pane: fixed sidebar + flexible actions. Stacked (narrow): the sidebar is
        capped at half the body so the Actions pane is ALWAYS at least half-height
        and never starved off-screen. */
-    #sidebar { width: 36; height: 1fr; }
-    #body.stacked #sidebar { width: 1fr; height: auto; max-height: 50%; }
+    #sidebar { width: 38; height: 1fr; }
+    #body.stacked #sidebar { width: 1fr; height: 1fr; max-height: 50%; }
     #mainpane { width: 1fr; height: 1fr; min-height: 6; }
 
     .sectionlabel { text-style: bold; color: $accentcolor; padding: 0 0 0 1; }
 
-    #sorters { height: auto; max-height: 5; border: round #3a3f47; padding: 0 1; }
-    #pipeline { height: auto; border: round #3a3f47; padding: 0 1; margin: 1 0 0 0; }
+    /* The sorter list FLEXES to fill the sidebar (height: 1fr) so most of the ~27-row
+       catalog is visible instead of crammed into 5 rows; the detail card + pipeline
+       below it stay compact (fixed max-heights) and the list takes the slack. */
+    #sorters { height: 1fr; min-height: 5; border: round #3a3f47; padding: 0 1; }
+    #sorterdetail { height: auto; max-height: 5; border: round $accentcolor 40%; padding: 0 1; margin: 1 0 0 0; }
+    #pipeline { height: auto; max-height: 6; border: round #3a3f47; padding: 0 1; margin: 1 0 0 0; }
     #actions { height: 1fr; min-height: 3; border: round #3a3f47; padding: 0 1; }
     /* Focused pane: accent colour AND a heavier border, so the focus cue
        survives on NO_COLOR / monochrome terminals (shape, not colour alone). */
     OptionList:focus { border: heavy $accentcolor; }
+
+    /* The sorter CURSOR (where up/down is) must read differently from the ACTIVE
+       sorter (the persistent left-bar + reverse chip drawn in the row text). Focused:
+       a faint accent wash + default fg. Blurred (the boot state, list unfocused): no
+       filled bar at all — just an underline — so the cursor never masquerades as the
+       active selection. Underline is a shape cue, so it survives NO_COLOR too. */
+    #sorters:focus > .option-list--option-highlighted {
+        background: $accentcolor 25%; color: $foreground; text-style: none;
+    }
+    #sorters > .option-list--option-highlighted {
+        background: transparent; text-style: underline;
+    }
 
     /* Pinned to the bottom at a fixed 2 rows so a long key-hint can never wrap and
        steal body rows from the Actions pane. */
@@ -620,9 +708,12 @@ class SpikeMenuApp(App):
         Binding("right", "focus_actions", "Actions", show=False),
         Binding("t", "cycle_sorter", "Switch sorter", show=False),
         Binding("d", "data_help", "Data files", show=False),
+        Binding("f", "choose_folder", "Data folder", show=False),
         Binding("question_mark", "help", "Help", show=False),
         Binding("q", "quit", "Quit", show=False),
-        Binding("escape", "quit", "Quit", show=False),
+        # NOTE: Esc is deliberately NOT bound to quit — a reflexive "go back" press
+        # should never hard-exit the dashboard and lose the user's place. Modals
+        # keep their own Esc=cancel; q / Ctrl-C still quit the app.
         Binding("ctrl+c", "quit", "Quit", show=False),
         # number-key jump: 1..9 -> action index 0..8
         *[Binding(str(n), f"run_index({n - 1})", show=False) for n in range(1, 10)],
@@ -634,7 +725,6 @@ class SpikeMenuApp(App):
         self.c = controller
         self._accent = controller.accent
         self._last = None
-        self._sorter_hint = None
         super().__init__()
 
     # -- CSS variable plumbing: $accentcolor follows the live theme ----------- #
@@ -652,6 +742,11 @@ class SpikeMenuApp(App):
             with Vertical(id="sidebar"):
                 yield Static("SORTER", classes="sectionlabel")
                 yield NavList(id="sorters")
+                # Persistent "Selected sorter" card: name + saved units, the
+                # plain-language reason it is / isn't usable, and its description —
+                # so the per-sorter info reads at a glance instead of flickering in
+                # the footer. Hidden on short/narrow windows (gated in _relayout).
+                yield Static(id="sorterdetail")
                 yield Static("PIPELINE", id="l-pipeline", classes="sectionlabel")
                 yield Static(id="pipeline")
             with Vertical(id="mainpane"):
@@ -660,7 +755,7 @@ class SpikeMenuApp(App):
         yield Static(id="footer")
 
     def on_mount(self) -> None:
-        self._rebuild_sorters()
+        self._rebuild_sorters()   # also paints the Selected-sorter card
         self._rebuild_actions()
         self._refresh_footer()
         self._relayout()
@@ -686,8 +781,15 @@ class SpikeMenuApp(App):
         reserve = SHIELD_RESERVE + (3 if banner_on else 0)
         self.query_one("#shield", ShieldWidget).fit(w, h, reserve)
         self.query_one("#titlebar", Static).update(self._render_titlerule(w))
-        # Priority on short windows: drop the (secondary) pipeline so the active
-        # sorter + actions always stay on screen.
+        # Priority on short windows: drop the secondary panels so the sorter list +
+        # actions always stay on screen. The Selected-sorter card (the per-sorter
+        # info the user reads) survives a little longer than the pipeline, and only
+        # in two-pane mode where the sidebar has room for it.
+        show_detail = h >= 20 and not stacked and bool(self.c.infos)
+        detail = self.query_one("#sorterdetail", Static)
+        detail.display = show_detail
+        if show_detail:
+            self._refresh_detail(self._highlighted_info())
         show_pipe = h >= 22 and bool(self.c.pipeline)
         self.query_one("#l-pipeline", Static).display = show_pipe
         pipe = self.query_one("#pipeline", Static)
@@ -720,12 +822,12 @@ class SpikeMenuApp(App):
             return False
         banner.display = True
         if not dr.get("present"):
-            msg = "⚠  No recording found  —  press  d  for setup help"
+            msg = "⚠  No recording found  —  press  d  for help, or  f  to pick a folder"
         elif unreadable:
             msg = "⚠  Files present but unreadable  —  press  d  /  run Verify"
         else:
             missing = ", ".join(f["ext"] for f in files if not f.get("present"))
-            msg = f"⚠  Incomplete set — missing {missing}  —  press  d  for help"
+            msg = f"⚠  Incomplete set — missing {missing}  —  d help · f folder"
         t = Text(msg)
         t.truncate(max(1, width - 2), overflow="ellipsis")
         banner.update(t)
@@ -759,7 +861,10 @@ class SpikeMenuApp(App):
             members = by_group.get(group)
             if not members:                      # omit empty groups
                 continue
-            ol.add_option(Option(Text(self._GROUP_LABEL[group], style="dim bold"),
+            # Header brighter than its rows (was "dim bold", which read as just
+            # another disabled item) so the grouping reads as structure.
+            ol.add_option(Option(Text(self._GROUP_LABEL[group],
+                                       style=f"bold {self._GROUP_COLOR[group]}"),
                                   id=f"__grp_{group}__", disabled=True))
             for info in members:
                 ol.add_option(Option(self._sorter_text(info), id=info["name"]))
@@ -767,11 +872,25 @@ class SpikeMenuApp(App):
                     active_row = ol.option_count - 1
         ol.highlighted = (keep if (keep is not None and keep < ol.option_count)
                           else active_row)
+        # Now that the list flexes (height: 1fr) it can scroll — keep the cursor (and,
+        # on a fresh build, the active sorter) in view so "which sorter is active" is
+        # never scrolled off. Guarded: a no-op under the headless test driver.
+        if ol.highlighted is not None:
+            try:
+                ol.scroll_to_highlight()
+            except Exception:  # noqa: BLE001 - cosmetic only
+                pass
+        # Keep the Selected-sorter card in sync after any rebuild (cycle/activate/
+        # docker toggle/post-run reload) so the ACTIVE chip + saved counts are current.
+        self._refresh_detail(self._highlighted_info())
 
     def _docker_row_text(self) -> Text:
+        # A [x]/[ ] checkbox affordance reads as a toggle on any font and under
+        # NO_COLOR; the old ⊞ (U+229E) has patchy monospace coverage (often tofu).
         on = getattr(self.c, "use_docker", False)
         t = Text()
-        t.append("⊞ Docker sorters: ", style="dim")
+        t.append("[x] " if on else "[ ] ", style=f"bold {self._accent}" if on else "dim")
+        t.append("Docker sorters: ", style=ui.SECONDARY)
         t.append("on" if on else "off", style=f"bold {self._accent}" if on else "dim")
         return t
 
@@ -783,28 +902,103 @@ class SpikeMenuApp(App):
         "gpu": "NEEDS A GPU",
         "unavailable": "NOT AVAILABLE",
     }
-    # Per-group row glyph: ◇ = runs via Docker, · = gpu/unavailable, (none) = ready.
-    _GROUP_GLYPH = {"docker": "◇", "gpu": "·", "unavailable": "·"}
+    # Plain-language "why is this sorter here" reason per group, for the detail card.
+    _GROUP_REASON = {
+        "ready": "Ready to run",
+        "docker": "Runs via Docker (~1 GB)",
+        "gpu": "Needs an NVIDIA GPU",
+        "unavailable": "Not installed here",
+    }
+    # Semantic colour per readiness tier, so the group headers signal go/caution/no
+    # at a glance (degrades to bold text under NO_COLOR).
+    _GROUP_COLOR = {
+        "ready": "#3fb950",         # green  — go
+        "docker": "#d29922",        # amber  — works, but heavier
+        "gpu": "#f0883e",           # orange — needs hardware you don't have
+        "unavailable": "#6e7681",   # grey   — not an option here
+    }
+    # Compact inline tag on a NON-runnable row so the block reason is scannable
+    # without moving the cursor to read the detail card.
+    _GROUP_ROW_TAG = {"docker": "docker", "gpu": "GPU", "unavailable": "n/a"}
 
     def _sorter_text(self, info: dict) -> Text:
-        # Compact for the 36-col sidebar. ★ recommended, ●/○ active, group glyph,
-        # name, saved-unit count; dim when not runnable. Footer carries the
-        # description + full units · duration.
+        # A persistent left accent BAR + bold name + reverse ACTIVE chip mark the
+        # active sorter as a SHAPE: it reads at a glance regardless of focus or where
+        # the cursor sits, and is structurally different from the cursor highlight
+        # (so active ≠ cursor). Survives NO_COLOR (▌ is a filled block, `reverse`
+        # swaps fg/bg). ★ = recommended; the section header already says the group, so
+        # the old per-row ◇/· glyph is gone. The SELECTED card carries the full info.
         active = info.get("active", False)
         runnable = info.get("runnable", False)
         t = Text()
+        t.append("▌ " if active else "  ", style=self._accent if active else "")
         t.append("★ " if info.get("recommended") else "  ",
                  style=f"bold {self._accent}" if info.get("recommended") else "")
-        t.append("● " if active else "○ ", style=self._accent if active else "dim")
-        glyph = self._GROUP_GLYPH.get(info.get("group"))
-        if glyph:
-            t.append(glyph + " ", style="dim")
-        name_style = f"bold {self._accent}" if active else ("" if runnable else "dim")
+        # No accent fg on the name: when the cursor lands on the active row, the
+        # cursor's own foreground keeps it legible (accent-on-cursor was low-contrast).
+        name_style = "bold" if active else ("" if runnable else ui.SECONDARY)
         t.append(info["name"], style=name_style)
-        t.append(f"  {info['units']}u" if info.get("present") else "  —", style="dim")
+        # Saved-unit count: readable secondary grey (real info), em-dash when none.
+        t.append(f"  {info['units']}u" if info.get("present") else "  —",
+                 style=ui.SECONDARY if info.get("present") else "dim")
         if active:
-            t.append("  ACTIVE", style=f"bold {self._accent}")
+            t.append("  ")
+            t.append(" ACTIVE ", style=f"reverse bold {self._accent}")
+        elif not runnable:
+            # Why this row can't be picked, inline (docker off / GPU / not installed).
+            tag = self._GROUP_ROW_TAG.get(info.get("group"))
+            if tag:
+                t.append(f"  ·{tag}", style="dim")
         return t
+
+    def _highlighted_info(self) -> dict:
+        """The catalog info dict for the row the cursor is on (header/docker/unknown
+        rows fall back to the active sorter), for the Selected-sorter card."""
+        try:
+            ol = self.query_one("#sorters", OptionList)
+            if ol.highlighted is not None:
+                oid = ol.get_option_at_index(ol.highlighted).id
+                info = next((i for i in self.c.infos if i["name"] == oid), None)
+                if info is not None:
+                    return info
+        except Exception:  # noqa: BLE001 - fall back to the active sorter
+            pass
+        return self.c.infos[self.c.active_idx]
+
+    def _render_sorter_detail(self, info: dict) -> Text:
+        """The SELECTED-sorter card: name (+ ACTIVE chip) and saved summary on line
+        1, the plain-language group reason (+ any custom-param count) on line 2, and
+        the one-line description on line 3 — the per-sorter info the user reads, given
+        a stable home next to the list instead of a flickering footer hint."""
+        inner = 33  # text width inside the 38-col sidebar box (border + padding ≈ 5)
+        active = info.get("active", False)
+        l1 = Text()
+        l1.append(info["name"], style=f"bold {self._accent}")
+        if active:
+            l1.append(" ")
+            l1.append(" ACTIVE ", style=f"reverse bold {self._accent}")
+        if info.get("present"):
+            l1.append(f"  {info['units']}u·{info['duration']:.0f}s", style=ui.SECONDARY)
+        else:
+            l1.append("  not sorted yet", style="dim")
+        l1.truncate(inner, overflow="ellipsis")
+        reason = self._GROUP_REASON.get(info.get("group"), "")
+        n_over = info.get("overrides", 0)
+        if n_over:
+            reason += f" · {n_over} custom param" + ("s" if n_over != 1 else "")
+        l2 = Text(_trunc(reason, inner), style=ui.SECONDARY)
+        l3 = Text(_trunc(info.get("description", ""), inner), style=ui.SECONDARY)
+        return l1 + Text("\n") + l2 + Text("\n") + l3
+
+    def _refresh_detail(self, info: dict | None = None) -> None:
+        """Repaint the Selected-sorter card for ``info`` (defaults to the active
+        sorter). No-op if the card isn't mounted/visible yet."""
+        if info is None:
+            info = self.c.infos[self.c.active_idx]
+        try:
+            self.query_one("#sorterdetail", Static).update(self._render_sorter_detail(info))
+        except Exception:  # noqa: BLE001 - card may be hidden on short windows
+            pass
 
     def _rebuild_actions(self) -> None:
         ol = self.query_one("#actions", OptionList)
@@ -858,14 +1052,12 @@ class SpikeMenuApp(App):
         summary = (f"{info['units']}u · {info['duration']:.0f}s" if info.get("present")
                    else "no saved sort")
         line1 = Text()
-        line1.append("Active sorter: ", style="dim")
+        line1.append("Active sorter: ", style=ui.SECONDARY)
         line1.append(info["name"], style=f"bold {self._accent}")
-        line1.append(f"  ({summary})", style="dim")
-        hint = getattr(self, "_sorter_hint", None)
-        if hint is not None:
-            line1.append("    ")
-            line1.append(hint)
-        elif self._last:
+        line1.append(f"  ({summary})", style=ui.SECONDARY)
+        # The per-sorter description now lives in the Selected-sorter card; the footer
+        # just confirms the ACTIVE sorter and echoes the last action's result.
+        if self._last:
             line1.append("    ")
             line1.append(self._last if isinstance(self._last, Text) else Text(str(self._last)))
         # Width-aware key hint, so a fixed 2-row footer never wraps and steals rows.
@@ -886,8 +1078,9 @@ class SpikeMenuApp(App):
             return
         oid = event.option.id
         info = next((i for i in self.c.infos if i["name"] == oid), None)
-        self._sorter_hint = Text(info["description"], style="dim") if info else None
-        self._refresh_footer()
+        # Update the Selected-sorter card to whatever the cursor is on; header/docker
+        # rows (info is None) fall back to the active sorter inside _refresh_detail.
+        self._refresh_detail(info)
 
     # -- focus / sorter actions ---------------------------------------------- #
     def action_focus_sorter(self) -> None:
@@ -903,6 +1096,21 @@ class SpikeMenuApp(App):
 
     def action_data_help(self) -> None:
         self.push_screen(HelpScreen(self.c, self._accent, topic="data"))
+
+    def action_choose_folder(self) -> None:
+        self.push_screen(DataFolderScreen(self.c.data_report.get("data_dir")),
+                         self._after_choose_folder)
+
+    def _after_choose_folder(self, result) -> None:
+        if result is None:
+            return                                  # cancelled
+        found = self.c.set_data_dir(result or None)
+        self._rebuild_sorters()
+        self._rebuild_actions()
+        self._last = (Text("Data folder updated ✓", style="bold #3fb950") if found
+                      else Text("⚠ No recording found in that folder", style="#f0883e"))
+        self._refresh_footer()
+        self._relayout()
 
     def action_help(self) -> None:
         self.push_screen(HelpScreen(self.c, self._accent, topic="overview"))
@@ -961,13 +1169,15 @@ class SpikeMenuApp(App):
         on = self.c.toggle_docker()
         self._rebuild_sorters()
         self._rebuild_actions()
-        self._last = Text(f"Docker sorters {'on' if on else 'off'}",
-                          style=f"bold {self._accent}")
+        if on:
+            self._last = Text("Docker sorters on ✓ — pick one, then run a sort to use it",
+                              style=f"bold {self._accent}")
+        else:
+            self._last = Text("Docker sorters off", style="dim")
         self._refresh_footer()
         self._relayout()
 
     def _activate_action(self, key: str) -> None:
-        self._sorter_hint = None   # an action result takes the footer over the highlight hint
         if key == "quit":
             self.exit()
         elif key == "theme":
@@ -982,11 +1192,25 @@ class SpikeMenuApp(App):
                 f"{key} needs the recording files — press d for help")
             self._refresh_footer()
         elif key == "sort":
+            # Active sorter needs a container but Docker isn't running (e.g. it was
+            # stopped after the sorter was picked) — guide instead of failing mid-sort.
+            if self.c.active_blocked_on_docker():
+                self._last = Text(
+                    f"{self.c.active_sorter} runs in Docker, which isn't running. "
+                    "Start Docker (the Docker row) or pick a READY sorter.",
+                    style="#f0883e")
+                self._refresh_footer()
+                return
+            info = self.c.infos[self.c.active_idx]
+            note = None
+            if info.get("present"):     # warn before silently replacing a saved sort
+                note = (f"⚠ {info['name']} already has a saved sort "
+                        f"({info['units']}u · {info['duration']:.0f}s) — running again replaces it.")
             self.push_screen(
                 ChoiceModal("Sort how much?", [
                     ("full", "Full recording", ""),
                     ("quick", f"Quick test — first {self.c.quick_seconds}s", ""),
-                ]),
+                ], note=note),
                 self._after_sort_span,
             )
         elif key == "compare":
@@ -1088,7 +1312,7 @@ class SpikeMenuApp(App):
             ok, message, changed = self.c.run_compare(pair)
         except Exception as e:  # noqa: BLE001
             ok, message, changed = False, f"compare failed: {e!r}", False
-        self._last = Text(message, style="#3fb950" if ok else "#f85149")
+        self._last = Text(message, style=_result_style(ok, message))
         if changed:
             try:
                 self.c.reload()
@@ -1112,7 +1336,7 @@ class SpikeMenuApp(App):
             ok, message, changed = self.c.run(key, span)
         except Exception as e:  # noqa: BLE001 - keep the app alive, report the failure
             ok, message, changed = False, f"{key} failed: {e!r}", False
-        self._last = Text(message, style="#3fb950" if ok else "#f85149")
+        self._last = Text(message, style=_result_style(ok, message))
         try:
             if changed:
                 self.c.reload()
@@ -1123,6 +1347,15 @@ class SpikeMenuApp(App):
         self._refresh_footer()
         self._relayout()
         self.refresh()
+
+
+def _result_style(ok: bool, message) -> str:
+    """Colour for a 'last action' line: red on failure, amber for a succeeded-but-
+    check-this outcome (message starts with '⚠', e.g. a sort that found 0 units),
+    green otherwise."""
+    if not ok:
+        return "#f85149"
+    return "#f0883e" if str(message).lstrip().startswith("⚠") else "#3fb950"
 
 
 def _trunc(text: str, n: int) -> str:

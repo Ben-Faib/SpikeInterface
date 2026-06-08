@@ -21,6 +21,7 @@ dependencies = [
     "prompt_toolkit>=3.0",
     "pyqtgraph",
     "textual>=8.2.7",
+    "docker",
 ]
 
 [project.optional-dependencies]

@@ -153,20 +153,130 @@ def test_run_passes_docker_and_params(fake_params, monkeypatch):
     monkeypatch.setitem(sys.modules, "spikeinterface", types.SimpleNamespace(sorters=fake_ss))
     monkeypatch.setitem(sys.modules, "spikeinterface.sorters", fake_ss)
     monkeypatch.setattr(sorters, "docker_available", lambda *a, **k: True)
+    # Docker is a fallback for NOT-installed sorters, so the container path only
+    # triggers when the sorter isn't installed locally.
+    monkeypatch.setattr(sorters, "installed", lambda: [])
+    # the Docker path dumps the recording to binary first; that needs a real
+    # recording, so bypass it here to focus on parameter passing.
+    monkeypatch.setattr(sorters, "_as_container_recording", lambda rec, folder: rec)
 
-    out = sorters.run("tridesclous2", "REC", "/tmp/out",
+    out = sorters.run("mountainsort5", "REC", "/tmp/out",
                       params={"detect_threshold": 6.0}, use_docker=True, verbose=False)
     assert out == "SORTING"
-    assert calls["name"] == "tridesclous2"
+    assert calls["name"] == "mountainsort5"
     assert calls["kw"]["docker_image"] is True
-    assert calls["kw"]["sorter_params"] == {"detect_threshold": 6.0}
+    # SpikeInterface takes sorter params as **kwargs, NOT a sorter_params= keyword.
+    assert calls["kw"]["detect_threshold"] == 6.0
+    assert "sorter_params" not in calls["kw"]
     assert calls["kw"]["remove_existing_folder"] is True
 
 
+def test_run_installed_sorter_runs_native_even_with_docker_on(fake_params, monkeypatch):
+    """An installed sorter runs natively even when Docker mode is on (Docker is a
+    fallback only — there's no image for the local-only sorters)."""
+    calls = {}
+
+    class FakeSS:
+        def run_sorter(self, name, recording, **kw):
+            calls["recording"] = recording
+            calls["kw"] = kw
+            return "SORTING"
+
+    import types
+    fake_ss = FakeSS()
+    monkeypatch.setitem(sys.modules, "spikeinterface", types.SimpleNamespace(sorters=fake_ss))
+    monkeypatch.setitem(sys.modules, "spikeinterface.sorters", fake_ss)
+    monkeypatch.setattr(sorters, "installed", lambda: ["tridesclous2"])
+    monkeypatch.setattr(sorters, "docker_available", lambda *a, **k: True)
+
+    def _boom(rec, folder):
+        raise AssertionError("an installed sorter must not be containerised")
+    monkeypatch.setattr(sorters, "_as_container_recording", _boom)
+
+    sorters.run("tridesclous2", "REC", "/tmp/out", use_docker=True)
+    assert calls["recording"] == "REC"          # not the binary-dumped recording
+    assert calls["kw"]["docker_image"] is False
+
+
+def test_uses_docker_only_for_not_installed():
+    inst = ["tridesclous2", "spykingcircus2"]
+    assert sorters.uses_docker("tridesclous2", True, installed_set=inst) is False
+    assert sorters.uses_docker("mountainsort5", True, installed_set=inst) is True
+    assert sorters.uses_docker("mountainsort5", False, installed_set=inst) is False
+
+
+def test_default_docker_image_uses_sorter_map():
+    # Exact image+tag SpikeInterface would pull (names aren't always <sorter>-base).
+    assert sorters.default_docker_image("mountainsort5") == "spikeinterface/mountainsort5-base:latest"
+    assert sorters.default_docker_image("spykingcircus") == "spikeinterface/spyking-circus-base:latest"
+    assert sorters.default_docker_image("definitely_not_a_sorter") is None
+
+
+def test_run_local_passes_flat_params_and_no_binary_dump(fake_params, monkeypatch):
+    """Non-docker run sends params as **kwargs and never touches the binary dump."""
+    calls = {}
+
+    class FakeSS:
+        def run_sorter(self, name, recording, **kw):
+            calls["recording"] = recording
+            calls["kw"] = kw
+            return "SORTING"
+
+    import types
+    fake_ss = FakeSS()
+    monkeypatch.setitem(sys.modules, "spikeinterface", types.SimpleNamespace(sorters=fake_ss))
+    monkeypatch.setitem(sys.modules, "spikeinterface.sorters", fake_ss)
+
+    def _boom(rec, folder):
+        raise AssertionError("binary dump must not run on a local (non-docker) sort")
+    monkeypatch.setattr(sorters, "_as_container_recording", _boom)
+
+    sorters.run("tridesclous2", "REC", "/tmp/out",
+                params={"detect_threshold": 6.0}, use_docker=False)
+    assert calls["recording"] == "REC"
+    assert calls["kw"]["docker_image"] is False
+    assert calls["kw"]["detect_threshold"] == 6.0
+    assert "sorter_params" not in calls["kw"]
+
+
+def test_run_param_named_like_run_sorter_kwarg_does_not_collide(fake_params, monkeypatch):
+    """A sorter param sharing run_sorter's own name (e.g. herdingspikes 'verbose')
+    must override our default, not raise 'multiple values for keyword argument'."""
+    calls = {}
+
+    class FakeSS:
+        def run_sorter(self, name, recording, **kw):
+            calls["kw"] = kw
+            return "SORTING"
+
+    import types
+    fake_ss = FakeSS()
+    monkeypatch.setitem(sys.modules, "spikeinterface", types.SimpleNamespace(sorters=fake_ss))
+    monkeypatch.setitem(sys.modules, "spikeinterface.sorters", fake_ss)
+    monkeypatch.setattr(sorters, "installed", lambda: ["herdingspikes"])
+    monkeypatch.setattr(sorters, "default_params",
+                        lambda n: {"verbose": True, "detect_threshold": 5.0})
+
+    sorters.run("herdingspikes", "REC", "/tmp/out", params={"verbose": False}, use_docker=False)
+    assert calls["kw"]["verbose"] is False          # the user's sorter-verbose wins
+    assert calls["kw"]["docker_image"] is False
+    assert calls["kw"]["folder"] == "/tmp/out"
+
+
+def test_coerce_none_default_empty_means_none():
+    # Empty field for a None-default param (e.g. tridesclous2 seed) -> None, not error.
+    assert sorters.coerce_param(None, "") is None
+    assert sorters.coerce_param(None, "   ") is None
+    assert sorters.coerce_param(None, "42") == 42   # a real value still parses
+
+
 def test_run_docker_requested_but_unavailable_raises(fake_params, monkeypatch):
+    # Docker only matters for a NOT-installed sorter; with the daemon down that
+    # must raise rather than silently fall through.
+    monkeypatch.setattr(sorters, "installed", lambda: [])
     monkeypatch.setattr(sorters, "docker_available", lambda *a, **k: False)
     with pytest.raises(RuntimeError):
-        sorters.run("tridesclous2", "REC", "/tmp/out", use_docker=True)
+        sorters.run("mountainsort5", "REC", "/tmp/out", use_docker=True)
 
 
 def test_status_table_shape(fake_env, fake_params):

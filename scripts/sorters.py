@@ -148,6 +148,78 @@ def start_docker() -> bool:
         return False
 
 
+def default_docker_image(name: str) -> "str | None":
+    """The exact image (with tag) SpikeInterface pulls for ``name``, or None.
+
+    Mirrors SpikeInterface's ``SORTER_DOCKER_MAP`` so we can pre-pull *precisely*
+    the image the sort will use — the names aren't always ``<name>-base`` (e.g.
+    spykingcircus -> spyking-circus-base, waveclus -> waveclus-compiled-base), and
+    pre-pulling the wrong name would just double the download.
+    """
+    try:
+        from spikeinterface.sorters.runsorter import SORTER_DOCKER_MAP
+    except Exception:  # noqa: BLE001 - SI layout changed / import failure
+        return None
+    repo = SORTER_DOCKER_MAP.get(name)
+    if not repo:
+        return None
+    last = repo.rsplit("/", 1)[-1]
+    return repo if ":" in last else f"{repo}:latest"
+
+
+def docker_image_present(image: str) -> bool:
+    """True iff ``image`` is already in the local Docker image cache. Never raises."""
+    try:
+        import docker
+
+        docker.from_env().images.get(image)
+        return True
+    except Exception:  # noqa: BLE001 - missing image / no SDK / daemon down
+        return False
+
+
+def pull_docker_image(image: str, on_progress=None, on_status=None) -> bool:
+    """Pull ``image`` via the Docker SDK, streaming progress. Never raises.
+
+    ``on_progress(downloaded_bytes, total_bytes)`` fires as layers download;
+    ``on_status(text)`` fires when the high-level step changes (Extracting, …).
+    Returns True on success, False on any failure — the caller can then fall back
+    to letting SpikeInterface pull the image during the run.
+    """
+    try:
+        import docker
+    except Exception:  # noqa: BLE001 - no SDK
+        return False
+    last = image.rsplit("/", 1)[-1]
+    if ":" in last:
+        repository, tag = image.rsplit(":", 1)
+    else:
+        repository, tag = image, "latest"
+    try:
+        client = docker.from_env()
+        downloading: dict = {}      # layer id -> (current, total) while downloading
+        last_status = None
+        for ev in client.api.pull(repository, tag=tag, stream=True, decode=True):
+            if "error" in ev:
+                return False
+            status_text = ev.get("status") or ""
+            lid = ev.get("id")
+            det = ev.get("progressDetail") or {}
+            if status_text == "Downloading" and lid and "total" in det:
+                downloading[lid] = (det.get("current", 0), det.get("total", 0))
+                if on_progress:
+                    done = sum(c for c, _ in downloading.values())
+                    total = sum(t for _, t in downloading.values())
+                    on_progress(done, total)
+            elif status_text and status_text != last_status:
+                last_status = status_text
+                if on_status:
+                    on_status(status_text)
+        return True
+    except Exception:  # noqa: BLE001 - daemon / network failure mid-pull
+        return False
+
+
 def status(name: str, installed_set=None, docker=None) -> str:
     """Classify one sorter: 'local' | 'docker' | 'gpu' | 'unavailable'.
 
@@ -204,6 +276,22 @@ def runnable(use_docker: bool) -> list[str]:
     return result
 
 
+def uses_docker(name: str, use_docker: bool, installed_set=None) -> bool:
+    """Whether a run of ``name`` will *actually* use a container.
+
+    Docker is only a **fallback** for sorters you don't have locally: an installed
+    sorter always runs natively. There is no container image for the local-only
+    sorters (e.g. ``tridesclous2`` — pulling ``spikeinterface/tridesclous2-base``
+    404s), and containerising one you already have just adds a slow, failure-prone
+    round trip. So this is True only when Docker is requested AND ``name`` is not
+    installed.
+    """
+    if not use_docker:
+        return False
+    inst = installed_set if installed_set is not None else installed()
+    return name not in inst
+
+
 def default_sorter() -> str:
     """Preferred default sorter: tridesclous2 if installed, else first installed."""
     inst = installed()
@@ -252,6 +340,8 @@ def coerce_param(default_value, raw: str):
             raise ValueError(f"expected a number, got {raw!r}")
     if isinstance(default_value, str):
         return raw
+    if default_value is None and raw.strip() == "":
+        return None        # empty field for a None-default param means "leave unset"
     try:  # None / dict / list / anything else -> JSON
         return json.loads(raw)
     except json.JSONDecodeError as e:
@@ -275,6 +365,25 @@ def merge_params(name: str, overrides: dict) -> dict:
     return merged
 
 
+def _as_container_recording(recording, folder):
+    """Dump ``recording`` to a binary folder so a container can reconstruct it.
+
+    The official SpikeInterface sorter images often lag the host SI version. A
+    native extractor (e.g. the Blackrock recording, whose serialised dict carries
+    host-only kwargs like ``gap_tolerance_ms``) then fails to deserialise inside
+    the older container. Saving to a plain binary recording first sidesteps the
+    skew: the container reloads a version-agnostic ``BinaryFolderRecording``.
+    Returns the reloaded recording.
+    """
+    from pathlib import Path
+
+    bin_folder = Path(folder).parent / "recording_for_docker"
+    if bin_folder.exists():
+        shutil.rmtree(bin_folder, ignore_errors=True)
+    return recording.save(folder=str(bin_folder), format="binary",
+                          progress_bar=False, verbose=False)
+
+
 def run(name, recording, folder, *, params=None, use_docker=False, verbose=False):
     """Run sorter ``name`` on ``recording``, writing to ``folder``.
 
@@ -287,20 +396,29 @@ def run(name, recording, folder, *, params=None, use_docker=False, verbose=False
     params = params or {}
     if params:
         merge_params(name, params)  # validate keys; raises ValueError on unknown
-    if use_docker and not docker_available():
+    # Docker is a fallback for sorters you don't have — an installed sorter runs
+    # natively even with Docker mode on (else it would chase a nonexistent image).
+    use_container = uses_docker(name, use_docker)
+    if use_container and not docker_available():
         raise RuntimeError(
             "Docker was requested but the Docker daemon isn't reachable. "
             "Start Docker Desktop, or run without Docker."
         )
-    return ss.run_sorter(
-        name,
-        recording,
-        folder=str(folder),
-        remove_existing_folder=True,
-        docker_image=True if use_docker else False,
-        sorter_params=params,
-        verbose=verbose,
-    )
+    if use_container:
+        recording = _as_container_recording(recording, folder)
+    # SpikeInterface's run_sorter takes sorter parameters as **kwargs — there is no
+    # ``sorter_params=`` keyword (passing one makes it a bogus param named
+    # "sorter_params"). Build the call explicitly: the control kwargs
+    # (folder/remove/docker) are always ours, while a sorter param that happens to
+    # share run_sorter's own name — e.g. herdingspikes' ``verbose`` — overrides our
+    # default instead of raising "multiple values for keyword argument". ``params``
+    # is already validated against the defaults above.
+    call_kwargs = dict(params)
+    call_kwargs.setdefault("verbose", verbose)
+    call_kwargs["folder"] = str(folder)
+    call_kwargs["remove_existing_folder"] = True
+    call_kwargs["docker_image"] = use_container
+    return ss.run_sorter(name, recording, **call_kwargs)
 
 
 def _n_params(name: str) -> int:

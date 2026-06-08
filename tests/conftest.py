@@ -92,6 +92,7 @@ class FakeController:
                 "present": present, "units": units or 0,
                 "duration": 132.0 if present else 0.0,
                 "active": name == self.active_sorter,
+                "overrides": len(self.sorter_params.get(name, {})),
             })
         self._mark_active()
         self.data_report = {
@@ -147,6 +148,14 @@ class FakeController:
     def start_docker(self) -> bool:
         self.started_docker = True
         return True
+
+    def active_blocked_on_docker(self) -> bool:
+        return False
+
+    def set_data_dir(self, path) -> bool:
+        self.data_dir_set = path
+        self.reload()
+        return self.data_report.get("present", False)
 
     def mark_welcome_seen(self) -> None:
         self.want_welcome = False

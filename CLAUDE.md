@@ -106,20 +106,40 @@ usable at **any window size**, from a wide desktop down to a short VS Code pane.
 The launcher builds a `MenuController` (the bridge to dashboard data + action
 running) and runs the app; the app is a pure view that calls back into the
 controller. Layout is **two-pane and responsive**: a left **Sorter** sidebar (a
-focusable **grouped** list over the *full* sorter catalog with a `★` recommended
-badge, `● … ACTIVE` marker, group glyph + saved-unit count) above a compact
-**Pipeline** panel (LFP/Broadband/.nev/Events
-with ✓/–/✗), and a right **Actions** list. On narrow terminals (`< NARROW_COLS`,
-≈78) the panes **stack**; on short terminals the shield collapses
-(full→compact→mini→hidden) and **both lists scroll** — so the active sorter and
-the actions are never clipped. **Navigation:** ←/→ (or Tab/Shift-Tab) move focus
+focusable **grouped** list over the *full* sorter catalog) that **flexes to fill
+the sidebar** (`#sorters { height: 1fr }`, so most of the ~27-row catalog is
+visible instead of being crammed into a fixed 5-row box) and **auto-scrolls the
+active/highlighted row into view** on every rebuild. The **active sorter is marked
+as a shape, not just colour**: a persistent left accent **bar `▌`** + a bold name +
+a **reverse `ACTIVE` chip** (the `★` recommended badge and saved-unit count round
+out the row) — so it reads at a glance regardless of focus and is structurally
+distinct from the cursor highlight (no more per-row `◇/·` group glyph; the section
+header already names the group). Below the list sits a persistent **Selected-sorter
+card** (`#sorterdetail`) showing the *highlighted* sorter's name (+ `ACTIVE` chip),
+saved units · duration, the plain-language **group reason** (`Ready to run` /
+`Runs via Docker (~1 GB)` / `Needs an NVIDIA GPU` / `Not installed here`) with any
+`· N custom params` override count, and its one-line description — this is where
+per-sorter info now lives (it no longer flickers in the footer). Under that, a
+compact **Pipeline** panel (LFP/Broadband/.nev/Events with ✓/–/✗), and a right
+**Actions** list. The cursor highlight is themed to read as *cursor* (focused: a
+faint accent wash; blurred: an underline, no filled bar) so it never masquerades as
+the active selection. On narrow terminals (`< NARROW_COLS`, ≈78) the panes
+**stack** (the Selected-sorter card is hidden there); on short terminals the shield
+collapses (full→compact→mini→hidden, and `SHIELD_RESERVE` keeps the big crest to
+tall ≈41+ row windows so the lists get vertical room) and the secondary panels drop
+in priority order (**pipeline** first at `h<22`, then the **Selected-sorter card**
+at `h<20`) while **both lists scroll** — so the active sorter and the actions are
+never clipped. A neutral three-tier text ramp (`ui.PRIMARY`/`ui.SECONDARY`/`dim`)
+keeps real info (unit counts, descriptions, action hints) readable and distinct
+from disabled rows. **Navigation:** ←/→ (or Tab/Shift-Tab) move focus
 **between** the Sorter and Actions panes (the focused pane shows an accent
 border); ↑/↓ (or j/k) move within it; Enter on a sorter makes it active, Enter on
 an action runs it; **1–9** jump-run an action, **t** cycles the active sorter
 (skipping non-runnable rows), **?** opens **Help** and **d** jumps to its *Data
 files* topic, `q`/Esc/Ctrl-C quit (j/k and Space also work). The active sorter stays marked
-independently of focus and is echoed in the footer (which also shows the
-highlighted sorter's one-line `description`). A one-time **WelcomeScreen** greets
+independently of focus and is echoed in the footer (which now just confirms the
+**active** sorter + its saved summary and echoes the last action's result — the
+per-sorter description moved to the Selected-sorter card). A one-time **WelcomeScreen** greets
 first-time users (gated by `seen_welcome` in `.si_menu.json`). Actions run via Textual's
 **`suspend()`** (the app drops out of the alt-screen so the action's own stdout
 scrolls normally, then resumes and re-renders) — the sort-span and theme picks
@@ -171,14 +191,16 @@ but don't install both into one env.
 The **Sorter sidebar** lists the **full catalog** (`sorters.available()`, built by
 the controller's `_catalog()`), grouped by `group_of()` into **READY TO USE** /
 **DOCKER SORTERS** / **NEEDS A GPU** / **NOT AVAILABLE** (empty groups omitted, with
-dim non-selectable header rows), so newcomers see every sorter and *why* it is or
-isn't usable. Each catalog entry is a dict with the stable keys
-`name/group/status/runnable/recommended/description/present/units/duration/active`;
-`★` marks the recommended default, a group glyph (`◇` Docker / `·` gpu·unavailable)
-prefixes the name, non-runnable rows are dimmed, and the footer shows the
-highlighted sorter's `description`. **Activation is by name** (`set_active_by_name`,
+header rows (brighter than their rows — `bold ui.SECONDARY` — so the grouping reads
+as structure), so newcomers see every sorter and *why* it is or isn't usable. Each
+catalog entry is a dict with the stable keys
+`name/group/status/runnable/recommended/description/present/units/duration/active/overrides`
+(`overrides` = count of saved per-sorter param diffs, filled in `MenuController.reload`);
+`★` marks the recommended default, the active row gets the `▌` bar + reverse `ACTIVE`
+chip, non-runnable rows use the secondary-grey name, and the Selected-sorter card
+shows the highlighted sorter's full info. **Activation is by name** (`set_active_by_name`,
 `cycle_active` for `t`) — selecting a non-runnable Docker sorter offers to enable
-Docker; a GPU/unavailable one shows a hint. A `⊞ Docker sorters: off/on` **toggle
+Docker; a GPU/unavailable one shows a hint. A `[ ]/[x] Docker sorters: off/on` **toggle
 row at the top** (↑/↓ to reach it, Enter to flip) opens the guided
 **`DockerConfirmScreen`** when turning *on* (turning off is immediate): it reads
 `docker_status()`'s three-state and adapts — *running* → just **[e] Enable**;

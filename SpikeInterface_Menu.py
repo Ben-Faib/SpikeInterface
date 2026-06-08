@@ -229,18 +229,49 @@ def _data_report(data_dir) -> dict:
 HEADER = "University of Pittsburgh · SpikeInterface"
 
 
+def _read_run_info(sorter: str) -> dict:
+    """Load outputs/<sorter>/run_info.json (unit counts etc.); {} if unreadable."""
+    try:
+        return json.loads((_analyzer_dir(sorter).parent / "run_info.json")
+                          .read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 - provenance is best-effort
+        return {}
+
+
 def _last_message(action: str, sorter: str, ok: bool) -> str:
-    """One-line 'what just happened' shown at the top of the dashboard next loop."""
+    """One-line 'what just happened' shown at the top of the dashboard next loop.
+
+    A leading '⚠' marks a *succeeded-but-check-this* outcome (e.g. a sort that
+    found no units) so the view can colour it amber rather than green.
+    """
+    if not ok:
+        verb = {
+            "explore": "Saved exploratory figures → outputs/",
+            "sort": f"Sorted {sorter}", "report": f"Built report ({sorter})",
+            "gui": "Opened the GUI inspector", "traces": "Opened the trace viewer",
+            "compare": "Built sorter comparison", "verify": "Ran the install check",
+        }.get(action, action)
+        return f"✗ {verb}"
+    if action == "sort":
+        info = _read_run_info(sorter)
+        n, hq = info.get("n_units"), info.get("n_high_quality")
+        if n == 0:
+            return f"⚠ {sorter}: no units found — lower detect_threshold (Edit parameters) and re-run"
+        bits = []
+        if isinstance(n, int):
+            bits.append(f"{n} units")
+        if isinstance(hq, int):
+            bits.append(f"{hq} high-quality")
+        return f"✓ Sorted {sorter}" + (f" ({', '.join(bits)})" if bits else "")
     verb = {
         "explore": "Saved exploratory figures → outputs/",
-        "sort": f"Sorted {sorter}",
         "report": f"Built report ({sorter}) → outputs/report.html",
         "gui": "Closed the GUI inspector",
         "traces": "Closed the trace viewer",
         "compare": "Built sorter comparison → outputs/comparison.html",
         "verify": "Ran the install check",
     }.get(action, action)
-    return f"{'✓' if ok else '✗'} {verb}"
+    return f"✓ {verb}"
 
 
 # --------------------------------------------------------------------------- #
@@ -302,11 +333,13 @@ def _open_in_browser(uri: str) -> None:
 
 
 def action_report(args) -> bool:
+    ui.note(f"Building the report for {args.sorter}…")
     out = report.build_report(data_dir=args.data_dir, analyzer_dir=_analyzer_dir(args.sorter),
                               sorter_label=args.sorter)
     uri = out.resolve().as_uri()
     ui.done(f"Report written → {out}")
     ui.link("Open it:", uri)
+    ui.note("Opening it in your browser…")
     _open_in_browser(uri)
     return True
 
@@ -433,15 +466,21 @@ def action_gui(args) -> bool:
     analyzer = si.load_sorting_analyzer(analyzer_dir)
     events = _sigui_events(args.data_dir)  # .nev markers -> the GUI's event view
     ui.warn(_GEOMETRY_CAVEAT)
-    if mode == "web":
-        ui.say(f"[{ui.ACCENT}]Opening spikeinterface-gui (web mode)[/] — no display "
-               f"detected; a local browser server will start [{ui.MUTED}](Ctrl-C to return) ...[/]")
-        sigui.run_mainwindow(analyzer, mode="web", events=events,
-                             address="localhost", port=0)  # blocks until you stop the server
-    else:
-        ui.say(f"[{ui.ACCENT}]Opening spikeinterface-gui[/] on {analyzer_dir} "
-               f"[{ui.MUTED}](close the window to return) ...[/]")
-        sigui.run_mainwindow(analyzer, mode="desktop", events=events)  # blocks until closed
+    try:
+        if mode == "web":
+            ui.say(f"[{ui.ACCENT}]Opening spikeinterface-gui (web mode)[/] — no display "
+                   f"detected; a local browser server will start [{ui.MUTED}](Ctrl-C to return) ...[/]")
+            sigui.run_mainwindow(analyzer, mode="web", events=events,
+                                 address="localhost", port=0)  # blocks until you stop the server
+        else:
+            ui.say(f"[{ui.ACCENT}]Opening spikeinterface-gui[/] on {analyzer_dir} "
+                   f"[{ui.MUTED}](close the window to return) ...[/]")
+            sigui.run_mainwindow(analyzer, mode="desktop", events=events)  # blocks until closed
+    except Exception as e:  # noqa: BLE001 - a GUI runtime failure is actionable, not a crash
+        ui.warn(f"The GUI inspector couldn't open ({type(e).__name__}: {e}). "
+                "On a remote/headless machine try web mode (--gui-mode web) or 'ssh -X'; "
+                "otherwise run 'python scripts/verify_install.py' to check the install.")
+        return False
     return True
 
 
@@ -468,7 +507,12 @@ def action_traces(args) -> bool:
     ui.say(f"[{ui.ACCENT}]Opening ephyviewer[/] on the broadband recording "
            f"[{ui.MUTED}](close the window to return) ...[/]")
     rec = bio.read_broadband(args.data_dir)
-    sw.plot_traces({"broadband": rec}, backend="ephyviewer", show_channel_ids=True)  # blocks
+    try:
+        sw.plot_traces({"broadband": rec}, backend="ephyviewer", show_channel_ids=True)  # blocks
+    except Exception as e:  # noqa: BLE001 - actionable hint instead of a raw Qt traceback
+        ui.warn(f"The trace browser couldn't open ({type(e).__name__}: {e}). "
+                "It needs a desktop session — run locally or use 'ssh -X'.")
+        return False
     return True
 
 
@@ -498,10 +542,12 @@ def _compare_pair(args, sorters) -> bool:
                 _shell("run_sorting.py", "--sorter", s, "--duration", str(QUICK_SECONDS),
                        *(["--data-dir", args.data_dir] if args.data_dir else []))
 
+    ui.note(f"Building the comparison ({sorters[0]} vs {sorters[1]})…")
     out = compare.build_comparison(data_dir=args.data_dir, sorters=sorters)
     uri = out.resolve().as_uri()
     ui.done(f"Comparison written → {out}")
     ui.link("Open it:", uri)
+    ui.note("Opening it in your browser…")
     _open_in_browser(uri)
     return True
 
@@ -624,14 +670,34 @@ class MenuController:
     def reload(self) -> None:
         self.pipeline = _pipeline_rows(self.args.data_dir, self.active_sorter)
         self.infos = _catalog(self.active_sorter, self.use_docker)
+        # Surface the count of saved per-sorter param overrides so the dashboard's
+        # Selected-sorter card can show "· N custom params" (invisible until now once
+        # the save toast faded).
+        for info in self.infos:
+            info["overrides"] = len(self.sorter_params.get(info["name"], {}))
         self._mark_active()
         self.data_report = _data_report(self.args.data_dir)
+
+    def set_data_dir(self, path: "str | None") -> bool:
+        """Point the dashboard at a different recording folder and reload.
+
+        Lets a wrong-folder launch be corrected in-app (``--data-dir`` is otherwise
+        launch-only). Returns whether a recording set was found there.
+        """
+        self.args.data_dir = path
+        self.reload()
+        return bool(self.data_report.get("present"))
 
     def toggle_docker(self) -> bool:
         """Flip Docker mode, persist it, and rebuild the runnable sorter list."""
         self.use_docker = not self.use_docker
         self.cfg["use_docker"] = self.use_docker
         _save_config(self.cfg)
+        if self.use_docker:
+            # Re-probe the daemon so a Docker started (by us or externally) after
+            # launch is picked up at once — otherwise runnable() reads the stale
+            # "down" cache and shows zero container sorters despite Docker being up.
+            sorter_registry.docker_state(refresh=True)
         prev = self.active_sorter
         self.sorters = sorter_registry.runnable(self.use_docker) or [sorter_registry.default_sorter()]
         self.active_sorter = prev if prev in self.sorters else self.sorters[0]
@@ -670,6 +736,14 @@ class MenuController:
             "not_installed": "You don't have Docker yet",
         }[state]
         return {"state": state, "running": state == "running", "text": text}
+
+    def active_blocked_on_docker(self) -> bool:
+        """True if the active sorter would need a container but the daemon isn't
+        running (e.g. Docker was stopped after the sorter was selected). Re-probes
+        the daemon so a mid-session stop is caught."""
+        if not sorter_registry.uses_docker(self.active_sorter, self.use_docker):
+            return False
+        return not sorter_registry.docker_available(refresh=True)
 
     def start_docker(self) -> bool:
         """Best-effort: launch Docker Desktop. The dialog polls docker_status()."""
@@ -807,6 +881,10 @@ def _menu(args) -> int:
         have_textual = False
 
     if have_textual:
+        # The controller loads the recording + every saved analyzer before the app
+        # paints its first frame, so without this the launch looks like a multi-
+        # second black screen. One line keeps it alive.
+        ui.note("Loading recording and saved sorts…")
         controller = MenuController(args, cfg)
         app = menu_app.SpikeMenuApp(controller)
         app.run()
