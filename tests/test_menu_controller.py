@@ -133,6 +133,39 @@ def test_action_explain_no_need_actions_have_empty_needs(monkeypatch, tmp_path):
         assert ex["needs"] == [] and not ex.get("output")
 
 
+def test_action_explain_sort_shows_docker_block(monkeypatch, tmp_path):
+    # Active sorter is a not-installed CONTAINERIZED sorter with Docker requested but
+    # down: action_explain('sort') must surface the docker-block as an unmet need, so
+    # #explain never reads 'ready' while Enter would immediately bounce (matches the
+    # active_blocked_on_docker guard in _activate_action).
+    import argparse
+    import report
+    import sorters as reg
+    monkeypatch.setattr(reg, "installed", lambda: ["tridesclous2"])
+    monkeypatch.setattr(reg, "available", lambda: sorted(["tridesclous2", "mountainsort5"]))
+    # Daemon was up when the sorter was picked (runnable() probes it with refresh=False),
+    # then went down — active_blocked_on_docker re-probes with refresh=True. Model both:
+    # available unless a fresh re-probe is requested.
+    monkeypatch.setattr(reg, "docker_available", lambda *a, **k: not k.get("refresh", False))
+    monkeypatch.setattr(report, "_gather", lambda *a, **k: ({}, []))
+    monkeypatch.setattr(M, "_save_config", lambda cfg: None)
+    monkeypatch.setattr(M, "_saved_summary", lambda name: (False, 0, 0.0))
+    args = argparse.Namespace(data_dir=str(tmp_path), sorter="mountainsort5",
+                              duration=None, docker=False, params_file=None, gui_mode="auto")
+    c = M.MenuController(args, {"use_docker": True})
+    assert c.active_sorter == "mountainsort5"            # runnable via the Docker fallback
+    needs = {n["label"]: n["ok"] for n in c.action_explain("sort")["needs"]}
+    docker_label = next(k for k in needs if "docker" in k.lower())
+    assert needs[docker_label] is False                 # Docker required but not running
+
+
+def test_action_explain_sort_no_docker_need_for_native(monkeypatch, tmp_path):
+    # An installed/native active sorter must NOT show a docker need at all.
+    c = _ctrl_with_two_sorters(monkeypatch, tmp_path)   # tridesclous2 active, installed
+    labels = [n["label"].lower() for n in c.action_explain("sort")["needs"]]
+    assert not any("docker" in l for l in labels)
+
+
 def test_welcome_shown_once_and_persisted(monkeypatch, tmp_path):
     import sorters as reg
     monkeypatch.setattr(reg, "installed", lambda: ["tridesclous2"])

@@ -662,6 +662,45 @@ async def test_sort_blocked_when_active_needs_docker_thats_down(make_controller)
         assert app._last is not None and "Docker" in app._last.plain
 
 
+async def test_nonrunnable_sorter_shows_block_reason_in_explain(make_controller):
+    # Highlighting a non-runnable (Docker) sorter must show WHY it can't run in the
+    # explanation pane (priority 2: info about the sorter) — spec State A.
+    app = _app(make_controller(present=True))
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        sorters = app.query_one("#sorters", OptionList)
+        sorters.highlighted = _sorter_row(app, "mountainsort5")   # group=docker, not runnable
+        await pilot.pause()
+        body = app.query_one("#explainbody", Static).render().plain
+        assert "Docker" in body                                   # the block reason / how to enable
+
+
+async def test_explain_hidden_on_extreme_short_wide(make_controller):
+    # Side-by-side panes are co-equal height, so on an extreme-short WIDE window the
+    # explanation pane is dropped to give the active list the full width.
+    app = _app(make_controller(present=True))
+    async with app.run_test(size=(100, 14)) as pilot:
+        await pilot.pause()
+        assert not app.query_one("#body").has_class("stacked")    # wide, not stacked
+        assert app.query_one("#explain").has_class("hidden")
+
+
+async def test_stacked_keeps_activebar_and_caps_explain(make_controller):
+    # Narrow -> panes stack; the active list keeps the majority (#explain capped at
+    # 40%) and, in action mode, #activebar stays visible as the mode's shape cue.
+    app = _app(make_controller(present=True))
+    async with app.run_test(size=(60, 40)) as pilot:
+        await pilot.pause()
+        assert app.query_one("#body").has_class("stacked")
+        await pilot.press("right")                                # -> action mode
+        await pilot.pause()
+        bar = app.query_one("#activebar", Static)
+        assert bar.display is True and "tridesclous2" in bar.render().plain
+        explain = app.query_one("#explain")
+        activepane = app.query_one("#activepane")
+        assert explain.region.height <= activepane.region.height  # list keeps the majority
+
+
 def test_result_style_amber_for_warning():
     assert menu_app._result_style(True, "✓ Sorted x (5 units)") == "#3fb950"
     assert menu_app._result_style(True, "⚠ x: no units found") == "#f0883e"

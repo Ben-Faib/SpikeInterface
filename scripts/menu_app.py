@@ -1323,6 +1323,9 @@ class SpikeMenuApp(App):
         actions = self.query_one("#actions", OptionList)
         sorters.display = mode == "sorter"
         actions.display = mode == "action"
+        # Invariant (spec): exactly one of the two lists is shown (the accordion).
+        # A cheap regression guard so a future edit can't reveal/hide both at once.
+        assert sorters.display != actions.display
         self.query_one("#panelabel", Static).update(
             "SORTERS" if mode == "sorter" else "ACTIONS")
         self._render_explain_for_mode()
