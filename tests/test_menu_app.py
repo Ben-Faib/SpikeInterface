@@ -636,3 +636,13 @@ async def test_help_about_topic_shows_pitt_shield(make_controller):
         await pilot.pause()
         body = app.screen.query_one("#helpbody", Static).render().plain
         assert "█" in body and "University of Pittsburgh" in body
+
+
+async def test_data_help_shows_stream_detail(make_controller):
+    app = _app(make_controller(present=True))
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("d")
+        await pilot.pause()
+        body = app.screen.query_one("#helpbody", Static).render().plain
+        assert "30000 Hz" in body or "22 ch" in body     # per-stream detail present

@@ -562,7 +562,7 @@ class HelpScreen(ModalScreen):
         title, lines = next(((t, b) for k, t, b in ui.HELP_TOPICS if k == key),
                             ("Help", []))
         if key == "data":
-            body = _setup_body(self._c.data_report, self._accent)
+            body = _setup_body(self._c.data_report, self._accent, self._c.pipeline)
         elif key == "about":
             # The Pitt shield lives here (and on Welcome): the dashboard's top
             # crest is now the brain, so the crest still has a home in the app.
@@ -582,9 +582,14 @@ class HelpScreen(ModalScreen):
         self.dismiss(None)
 
 
-def _setup_body(report: dict, accent: str) -> Text:
-    """Render the present/missing checklist + where the files belong."""
+def _setup_body(report: dict, accent: str, pipeline=None) -> Text:
+    """Render the present/missing checklist + where the files belong.
+
+    ``pipeline`` (the controller's sorter-independent status rows) is optional: when
+    given, each present file gets its per-stream channels/rate/duration detail
+    appended (relocated here from the removed dashboard pipeline panel)."""
     t = Text()
+    detail = ui.stream_detail(report.get("files", []), pipeline)
     data_dir = report.get("data_dir", "")
     base = report.get("base")
     files = report.get("files", [])
@@ -613,6 +618,9 @@ def _setup_body(report: dict, accent: str) -> Text:
         t.append(f"  {glyph} ", style=gstyle)
         t.append(f"{name}{f['ext']}".ljust(34))
         t.append(f"{f['label']}\n", style="dim")
+        info = detail.get(f["ext"])
+        if info:                                   # ch/rate/duration for a loaded stream
+            t.append(f"      {info}\n", style="dim")
     t.append("\nWhere to put them\n", style=f"bold {accent}")
     t.append(f"  Drop the file set into:  ")
     t.append(f"{data_dir}\n", style="bold")

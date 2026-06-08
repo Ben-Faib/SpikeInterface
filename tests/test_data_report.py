@@ -57,3 +57,12 @@ def test_two_recordings_one_folder_is_base_scoped(tmp_path):
     by = _by_ext(r)
     assert by[".ns2"] is True and by[".nev"] is True
     assert by[".ns5"] is False, "folder-wide glob leaked recB.ns5 into recA's set"
+
+
+def test_stream_detail_merges_pipeline_into_files():
+    import ui
+    files = [{"ext": ".ns5", "label": "Broadband — raw @ 30 kHz", "present": True}]
+    pipeline = [{"stage": "Broadband (.ns5)", "status": "PASS",
+                 "detail": "22 ch, 132.0s @ 30000 Hz"}]
+    out = ui.stream_detail(files, pipeline)
+    assert ".ns5" in out and "22 ch" in out[".ns5"] and "30000 Hz" in out[".ns5"]

@@ -416,6 +416,19 @@ def print_catalog(catalog) -> None:
                 f"{info.get('description', '')}{dimend}")
 
 
+def stream_detail(files, pipeline):
+    """Map each present file's ext -> the pipeline detail string (ch/rate/duration),
+    matching by extension so the 'd' help (and the fallback) can show load detail
+    even though the dashboard no longer renders the pipeline panel. Best-effort."""
+    out = {}
+    for f in files or []:
+        ext = f.get("ext", "")
+        row = next((r for r in (pipeline or []) if ext in r.get("stage", "")), None)
+        if f.get("present") and row and row.get("detail"):
+            out[ext] = row["detail"]
+    return out
+
+
 def docker_confirm_text(state: str) -> str:
     """One-line plain-language Docker guidance for the typed fallback, per state."""
     return {
