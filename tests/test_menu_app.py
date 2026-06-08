@@ -709,13 +709,33 @@ def test_result_style_amber_for_warning():
 
 # --- brain hero crest + preserved Pitt shield ----------------------------- #
 
-def test_brain_art_rows_equal_width():
-    # Regression guard: every row in each brain tier must be the same width
-    # (code points) or Textual's centred layout shifts; and each tier is Braille.
-    for tier in (ui._BRAIN_FULL, ui._BRAIN_COMPACT, ui._BRAIN_MINI):
-        widths = {len(row) for row in tier}
-        assert len(widths) == 1, f"ragged brain tier widths: {widths}"
-        assert _has_braille(tier[0])
+def test_neuron_tiers_equal_width():
+    # Every row in each tier's rest pose must be the same width or Textual's
+    # centred crest shifts row-to-row.
+    for tier in (ui._NEURON_FULL, ui._NEURON_COMPACT, ui._NEURON_MINI):
+        widths = {len(row) for row in tier.rest}
+        assert len(widths) == 1, f"ragged neuron tier widths: {widths}"
+
+
+def test_neuron_frame_width_invariant():
+    # Animation only recolours / replaces cells in place — it never changes a
+    # row's display width, at any phase.
+    for tier in (ui._NEURON_FULL, ui._NEURON_COMPACT, ui._NEURON_MINI):
+        W = len(tier.rest[0])
+        for phase in (0.0, 0.5, 0.80, 0.96):
+            for row in ui.neuron_frame(tier, phase):
+                assert sum(len(seg) for _, seg in row) == W
+
+
+def test_neuron_rest_has_no_spark():
+    styles = {s for row in ui.neuron_frame(ui._NEURON_FULL, 0.0) for s, _ in row}
+    assert ui.NEURON_SPARK not in styles
+    assert ui.NEURON_BODY in styles
+
+
+def test_neuron_fire_has_spark():
+    styles = {s for row in ui.neuron_frame(ui._NEURON_FULL, 0.96) for s, _ in row}
+    assert ui.NEURON_SPARK in styles
 
 
 async def test_dashboard_crest_is_the_brain(make_controller):
