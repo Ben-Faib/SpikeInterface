@@ -105,41 +105,70 @@ directly. The interactive view (terminal UI **v2**) is a **single full-screen Te
 usable at **any window size**, from a wide desktop down to a short VS Code pane.
 The launcher builds a `MenuController` (the bridge to dashboard data + action
 running) and runs the app; the app is a pure view that calls back into the
-controller. Layout is **two-pane and responsive**: a left **Sorter** sidebar (a
-focusable **grouped** list over the *full* sorter catalog) that **flexes to fill
-the sidebar** (`#sorters { height: 1fr }`, so most of the ~27-row catalog is
-visible instead of being crammed into a fixed 5-row box) and **auto-scrolls the
-active/highlighted row into view** on every rebuild. The **active sorter is marked
-as a shape, not just colour**: a persistent left accent **bar `▌`** + a bold name +
-a **reverse `ACTIVE` chip** (the `★` recommended badge and saved-unit count round
-out the row) — so it reads at a glance regardless of focus and is structurally
-distinct from the cursor highlight (no more per-row `◇/·` group glyph; the section
-header already names the group). Below the list sits a persistent **Selected-sorter
-card** (`#sorterdetail`) showing the *highlighted* sorter's name (+ `ACTIVE` chip),
-saved units · duration, the plain-language **group reason** (`Ready to run` /
-`Runs via Docker (~1 GB)` / `Needs an NVIDIA GPU` / `Not installed here`) with any
-`· N custom params` override count, and its one-line description — this is where
-per-sorter info now lives (it no longer flickers in the footer). Under that, a
-compact **Pipeline** panel (LFP/Broadband/.nev/Events with ✓/–/✗), and a right
-**Actions** list. The cursor highlight is themed to read as *cursor* (focused: a
-faint accent wash; blurred: an underline, no filled bar) so it never masquerades as
-the active selection. On narrow terminals (`< NARROW_COLS`, ≈78) the panes
-**stack** (the Selected-sorter card is hidden there); on short terminals the shield
-collapses (full→compact→mini→hidden, and `SHIELD_RESERVE` keeps the big crest to
-tall ≈41+ row windows so the lists get vertical room) and the secondary panels drop
-in priority order (**pipeline** first at `h<22`, then the **Selected-sorter card**
-at `h<20`) while **both lists scroll** — so the active sorter and the actions are
-never clipped. A neutral three-tier text ramp (`ui.PRIMARY`/`ui.SECONDARY`/`dim`)
-keeps real info (unit counts, descriptions, action hints) readable and distinct
-from disabled rows. **Navigation:** ←/→ (or Tab/Shift-Tab) move focus
-**between** the Sorter and Actions panes (the focused pane shows an accent
-border); ↑/↓ (or j/k) move within it; Enter on a sorter makes it active, Enter on
-an action runs it; **1–9** jump-run an action, **t** cycles the active sorter
-(skipping non-runnable rows), **?** opens **Help** and **d** jumps to its *Data
-files* topic, `q`/Esc/Ctrl-C quit (j/k and Space also work). The active sorter stays marked
-independently of focus and is echoed in the footer (which now just confirms the
-**active** sorter + its saved summary and echoes the last action's result — the
-per-sorter description moved to the Selected-sorter card). A one-time **WelcomeScreen** greets
+controller. Layout is a **focus-driven two-pane accordion**: a left **active
+pane** (`#activepane`) holding **both** a sorter list (`#sorters`) and an actions
+list (`#actions`) — exactly **one displayed at a time** (the other is
+`display:none`) — beside a persistent **explanation pane** (`#explain`) that always
+describes the *highlighted* row (the per-sorter card and the old pipeline panel are
+gone; their job moved here). **Mode follows focus:** *sorter mode* (the launch
+state) shows the sorter list + its blurb; *action mode* shows the actions list +
+the highlighted action's rich blurb and folds the sorter list into a one-line
+`▸ Active sorter: …` bar (`#activebar`, shown only in action mode — it's the
+mode's shape cue) so you never lose track of what the actions run on.
+`action_focus_actions`/`action_focus_sorter` (`_switch_mode`) are the single
+mode-switch entry points: they flip both lists' `display`, show/hide `#activebar`,
+explicitly re-render `#explain` for the now-active list (revealing a list fires no
+highlight event), `_relayout()` (re-fit the crest for the new reserve), then
+`.focus()` the now-shown list — invariant: exactly one of `#sorters`/`#actions` is
+displayed **and** focused. The sorter list still **flexes to fill** (`#sorters {
+height: 1fr }`, most of the ~27-row catalog visible), **auto-scrolls** the
+active/highlighted row into view, and marks the **active sorter as a shape, not
+just colour**: a left accent **bar `▌`** + bold name + **reverse `ACTIVE` chip**
+(plus the `★` recommended badge and saved-unit count) — structurally distinct from
+the cursor highlight (no per-row group glyph; the section header names the group).
+`_render_sorter_explain` shows the highlighted sorter's full (un-truncated)
+description, header state (`★ · ACTIVE` / `press Enter to make active` / the block
+reason for non-runnable rows), saved units · duration, group reason
+(`Ready to run` / `Runs via Docker (~1 GB)` / `Needs an NVIDIA GPU` /
+`Not installed here`) with any `· N custom params` override count, and a
+`Press → or Enter for actions.` call-to-action; `_render_action_explain` shows the
+controller's resolved action metadata — *what it does*, an optional *you'll choose*
+line, a `⚠` caveat, and a `Needs … ✓/✗` + `Output …` footer (omitted for
+needs-nothing actions). The cursor highlight is themed to read as *cursor* (focused:
+a faint accent wash; blurred: an underline, no filled bar) so it never masquerades
+as the active selection. **Quiet-until-broken load status** (`#statusline`,
+`_render_statusline`): healthy → one borderless dim `✓ Recording loaded — <verified
+streams>` line (empty Events is **not** a failure — `.nev` is listed only when it
+loaded); any load failure → a 3-row **bordered** `⚠` banner (border + `⚠` are the
+NO_COLOR-safe shape cues) naming the exact problem (missing / incomplete /
+unreadable-broadband, the last reusing `controller.pipeline`'s broadband-`FAIL`
+detection) + remedy (`d` help · `f` folder). On narrow terminals (`< NARROW_COLS`,
+≈78) `#body` **stacks** (active pane on top, `#explain` capped at `max-height: 40%`
+so the list keeps the majority); side-by-side, the panes are co-equal `1fr`, so the
+**chrome above yields** — the shield collapses (full→compact→mini→hidden, and
+`SHIELD_RESERVE` keeps the big crest to tall ≈41+ row windows) and, only on extreme
+shortness, `#explain` is hidden so `#activepane` takes the full width — while the
+active list **scrolls** rather than clips. The brain **reserve is mode- and
+status-aware** (`reserve = SHIELD_RESERVE + (statusrows-1) + activebarrows`: the
+status line adds +2 when loud, the `#activebar` +1 in action mode), re-fit on every
+mode switch and quiet→loud transition so the crest drops a tier rather than the
+list losing rows; the `_BANNER_MIN_ROWS` suppression still keeps a loud banner off a
+very short window. A neutral three-tier text ramp (`ui.PRIMARY`/`ui.SECONDARY`/`dim`)
+keeps real info readable and distinct from disabled rows (which keep an inline
+`(needs data)` suffix, width-independent). **Navigation:** ←/→ (or Tab/Shift-Tab)
+move focus **between** the two panes, which **switches mode**; ↑/↓ (or j/k) move
+within the focused list. **Enter on a runnable sorter activates it *and
+auto-advances* to action mode** (the choose→run flow is one motion — the actions
+appear by doing the obvious thing); Enter on a **non-runnable** sorter stays in
+sorter mode (offers to enable Docker / shows the block hint); Enter on the **Docker
+toggle row** flips it; Enter on an action runs it. **1–9** jump-run an action — from
+sorter mode a digit **first switches to action mode** (revealing the list +
+`#activebar` + the action's blurb) **then** runs action *i*, so nothing runs while
+invisible. **t** cycles the active sorter (skipping non-runnable rows), **?** opens
+**Help** and **d** jumps to its *Data files* topic, `q`/Esc/Ctrl-C quit (Space also
+works). The active sorter stays marked independently of focus and is echoed in the
+footer (a per-mode, width-adaptive key hint that leads with — and never first-drops
+— the `→/1-9 Actions` bridge in sorter mode). A one-time **WelcomeScreen** greets
 first-time users (gated by `seen_welcome` in `.si_menu.json`). Actions run via Textual's
 **`suspend()`** (the app drops out of the alt-screen so the action's own stdout
 scrolls normally, then resumes and re-renders) — the sort-span and theme picks
@@ -147,15 +176,20 @@ use in-app **modal** screens, while compare's conditional re-sort prompt still
 uses `ui.select` during the suspend. The modal screens now include
 **`DockerConfirmScreen`** (the guided Docker dialog), **`WelcomeScreen`** (first-run
 greeting), and **`HelpScreen`** (the unified interactive help). **Missing data:**
-`_data_report()` classifies the data dir as complete / incomplete / absent; the app
-shows a red **banner** when nothing is found (and dims the data-dependent actions)
-or an amber *incomplete set* banner when only some files are present. The expected-
+`_data_report()` classifies the data dir as complete / incomplete / absent; the
+quiet-until-broken `#statusline` (above) escalates to its bordered `⚠` banner naming
+the exact problem (missing / incomplete / unreadable-broadband) and the data-
+dependent actions are dimmed with the inline `(needs data)` suffix. The expected-
 files checklist (`.ns2` LFP / `.ns5` broadband / `.nev` events, each present/missing
 with the folder it belongs in) is now the **Data files** topic of the unified
 **HelpScreen** (reached via the *Help* action, **`?`**, or **`d`**), which replaces
 the old standalone Data-Setup screen/action — its topics come from `ui.HELP_TOPICS`
 (overview / 3 steps / sorters / Docker / data / keyboard), with the `data` body
-rendered live from the data report. Off-TTY / without
+rendered live from the data report. Because the main view no longer shows the
+pipeline panel, the per-stream load detail (channels · rate · duration) it used to
+carry is **relocated to the `d` Data-files topic**, merged in from
+`controller.pipeline` via the shared `ui.stream_detail(files, pipeline)` helper
+(matched by extension; the same helper feeds the fallback's `data` topic). Off-TTY / without
 Textual installed it falls back to the legacy `ui.dashboard_menu()`
 (prompt_toolkit full-screen, else a typed numbered menu), which prepends the same
 missing-data guidance in plain text.
@@ -197,8 +231,8 @@ catalog entry is a dict with the stable keys
 `name/group/status/runnable/recommended/description/present/units/duration/active/overrides`
 (`overrides` = count of saved per-sorter param diffs, filled in `MenuController.reload`);
 `★` marks the recommended default, the active row gets the `▌` bar + reverse `ACTIVE`
-chip, non-runnable rows use the secondary-grey name, and the Selected-sorter card
-shows the highlighted sorter's full info. **Activation is by name** (`set_active_by_name`,
+chip, non-runnable rows use the secondary-grey name, and the **explanation pane**
+(`#explain`) shows the highlighted sorter's full info. **Activation is by name** (`set_active_by_name`,
 `cycle_active` for `t`) — selecting a non-runnable Docker sorter offers to enable
 Docker; a GPU/unavailable one shows a hint. A `[ ]/[x] Docker sorters: off/on` **toggle
 row at the top** (↑/↓ to reach it, Enter to flip) opens the guided
@@ -213,8 +247,17 @@ changed keys, Ctrl+R resets). **Compare** opens a two-step picker to choose whic
 saved sorts to compare. Docker on/off, per-sorter parameter **overrides** (diffs
 from defaults), the colour theme, and the **`seen_welcome`** one-time-welcome flag
 persist to `.si_menu.json` (`use_docker`, `sorter_params`, `theme`, `seen_welcome`).
-The typed fallback menu offers the same at parity via `ui.select`/prompts +
-`ui.print_catalog()`/`ui.docker_confirm_text()`.
+
+The typed/prompt_toolkit fallback menu is **intentionally non-parity** (no
+accordion, no explanation pane): it has no horizontal pressure, so it keeps its
+always-on Sorters + **pipeline** + Actions catalog and the always-visible
+`status_table` as a *feature*. It does share the new action metadata, though — the
+per-action `what` description (from `MenuController.action_explain`, backed by
+`_ACTION_DETAIL`) and the destructive-`sort` `caveat` flow into its action `hint`
+text so the typed menu still warns before a re-sort, and its `data` help renders
+the same per-stream ch/rate/duration via the shared `ui.stream_detail` helper. The
+sorter catalog, Docker confirm, Welcome, and Help still mirror the Textual app via
+`ui.select`/prompts + `ui.print_catalog()`/`ui.docker_confirm_text()`.
 
 Non-obvious behaviours baked into the loaders — preserve these when editing:
 
