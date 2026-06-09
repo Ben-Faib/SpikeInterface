@@ -367,3 +367,38 @@ def test_start_docker_never_raises(monkeypatch):
 
     monkeypatch.setattr(sorters.subprocess, "Popen", _boom)
     assert sorters.start_docker() is False   # swallowed, returns False
+
+
+def test_image_size_and_delete(monkeypatch):
+    import sorters
+
+    class FakeImg:
+        attrs = {"Size": 1_100_000_000}
+
+    class FakeImages:
+        def __init__(self): self.removed = []
+        def get(self, image): return FakeImg()
+        def remove(self, image, force=False): self.removed.append(image)
+
+    class FakeClient:
+        images = FakeImages()
+
+    fake_docker = type("D", (), {"from_env": staticmethod(lambda: FakeClient())})
+    monkeypatch.setitem(__import__("sys").modules, "docker", fake_docker)
+
+    assert sorters.image_size("spikeinterface/x:latest") == 1_100_000_000
+    ok, msg = sorters.delete_docker_image("spikeinterface/x:latest")
+    assert ok is True and "x" in msg
+
+
+def test_delete_docker_image_never_raises(monkeypatch):
+    import sorters
+
+    class Boom:
+        @staticmethod
+        def from_env(): raise RuntimeError("daemon down")
+
+    monkeypatch.setitem(__import__("sys").modules, "docker", Boom)
+    ok, msg = sorters.delete_docker_image("x:latest")
+    assert ok is False and msg
+    assert sorters.image_size("x:latest") is None

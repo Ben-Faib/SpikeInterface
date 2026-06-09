@@ -26,6 +26,7 @@ ACTIONS = [
     ("traces", "Scroll raw traces", "ephyviewer", True),
     ("compare", "Compare sorters", "agreement matrix", True),
     ("params", "Edit sorter parameters", "tune the active sorter", False),
+    ("manage", "Manage sorters", "download · delete", False),
     ("verify", "Verify install", "smoke test", False),
     ("theme", "Change colour theme", "accent", False),
     ("help", "Help", "what each step does · sorters · Docker · data files", False),
@@ -41,18 +42,28 @@ class FakeController:
     sorters = ["tridesclous2", "spykingcircus2"]
     themes = {"periwinkle": "#9b8cff", "sea-green": "#56d39a", "amber": "#e3a008"}
 
-    def __init__(self, present: bool = True):
+    def __init__(self, present: bool = True, use_docker: bool = False):
         self.theme_name = "periwinkle"
         self.accent = self.themes[self.theme_name]
-        self.use_docker = False
+        self.use_docker = use_docker
         self.animate = True
-        self.sorters = ["tridesclous2", "spykingcircus2"]
+        self.sorters = (["tridesclous2", "spykingcircus2", "mountainsort5", "herdingspikes"]
+                        if use_docker else ["tridesclous2", "spykingcircus2"])
         self.active_sorter = "tridesclous2"
         self.active_idx = 0
         self.sorter_params: dict[str, dict] = {}
         self.actions = [dict(key=k, title=t, hint=h, needs_data=nd) for k, t, h, nd in ACTIONS]
         self.ran: list[tuple[str, str | None]] = []
         self.ran_compare = None
+        self.downloaded: list[str] = []
+        self.deleted_images: list[str] = []
+        self.cleared_sorts: list[str] = []
+        # Which Docker images are cached locally. herdingspikes starts cached;
+        # mountainsort5 does not — so the badge tests cover both states. A download/
+        # delete mutates this set and SURVIVES reload() (a real reload re-probes the
+        # daemon and would see the now-cached / now-removed image).
+        self._cached_images: set[str] = {"herdingspikes"}
+        self._cleared: set[str] = set()
         self.params_set = None
         self.docker_state = "running"   # tests flip this to exercise the dialog
         self.started_docker = False
@@ -82,8 +93,8 @@ class FakeController:
         runnable = set(self.sorters)
         self.infos = []
         for name, group, units in self._UNIVERSE:
-            present = units is not None
-            self.infos.append({
+            present = (units is not None) and (name not in self._cleared)
+            info = {
                 "name": name, "group": group,
                 "status": ("docker" if group == "docker" else
                            "gpu" if group == "gpu" else "local"),
@@ -94,7 +105,19 @@ class FakeController:
                 "duration": 132.0 if present else 0.0,
                 "active": name == self.active_sorter,
                 "overrides": len(self.sorter_params.get(name, {})),
-            })
+            }
+            if group == "docker":
+                # Cached-image state lives in self._cached_images so a download/delete
+                # survives reload() (herdingspikes starts cached, mountainsort5 not).
+                cached = name in self._cached_images
+                info["image"] = f"spikeinterface/{name}-base:latest"
+                info["img_present"] = cached
+                info["img_size"] = 1_100_000_000 if cached else None
+            else:
+                info["image"] = None
+                info["img_present"] = None
+                info["img_size"] = None
+            self.infos.append(info)
         self._mark_active()
         self.data_report = {
             "present": self._present,
@@ -219,7 +242,65 @@ class FakeController:
         self.ran.append((key, span))
         return True, f"✓ ran {key}", key in ("sort", "compare")
 
+    def sort_command(self, span: str | None) -> list[str]:
+        # A harmless argv so SortProgressScreen's worker can spawn + exit cleanly in
+        # tests (no real run_sorting.py / SpikeInterface). ``true`` exits 0 at once.
+        self.sort_span = span
+        return ["true"]
+
+    # -- Docker image management (Stage 4: in-UI download / state) ------------- #
+    def _docker_info(self, name: str) -> dict | None:
+        return next((i for i in self.infos
+                     if i["name"] == name and i.get("group") == "docker"), None)
+
+    def image_state(self, name: str) -> dict:
+        info = self._docker_info(name)
+        present = name in self._cached_images
+        return {"image": (info or {}).get("image"),
+                "present": present,
+                "size": 1_100_000_000 if present else None}
+
+    def download_image(self, name: str, on_progress=None, on_status=None) -> tuple[bool, str]:
+        # Drive the screen's callbacks once (so the bar/status update path is
+        # exercised) then return synchronously — no real ``docker pull``. Records the
+        # call + caches the image so a post-download reload() shows ✓ ready.
+        self.downloaded.append(name)
+        if on_status is not None:
+            on_status(f"pulling {name}…")
+        if on_progress is not None:
+            on_progress(50, 100)
+        self._cached_images.add(name)
+        return True, f"Downloaded {name}"
+
+    def delete_image(self, name: str) -> tuple[bool, str]:
+        if name not in self._cached_images:
+            return False, f"No downloaded image for {name}."
+        self._cached_images.discard(name)
+        self.deleted_images.append(name)
+        return True, f"Removed Docker image for {name}"
+
+    def clear_saved_sort(self, name: str) -> tuple[bool, str]:
+        info = next((i for i in self.infos if i["name"] == name), None)
+        if not (info and info.get("present")):
+            return False, f"No saved sort for {name}."
+        self._cleared.add(name)
+        self.cleared_sorts.append(name)
+        self.reload()
+        return True, f"Cleared saved {name} sort"
+
 
 @pytest.fixture
 def make_controller():
     return FakeController
+
+
+@pytest.fixture
+def make_app():
+    """Build a SpikeMenuApp over a FakeController. Accepts present/use_docker so the
+    three-panel tests can drive the broken-data and Docker-on universes."""
+    import menu_app
+
+    def _build(present: bool = True, use_docker: bool = False):
+        return menu_app.SpikeMenuApp(FakeController(present=present, use_docker=use_docker))
+
+    return _build

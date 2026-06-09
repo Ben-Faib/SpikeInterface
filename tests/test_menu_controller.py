@@ -259,3 +259,42 @@ def test_set_animate_updates_attr_and_persists(monkeypatch, tmp_path):
     assert c.animate is False
     assert c.cfg["animate"] is False
     assert saved.get("animate") is False
+
+
+def test_clear_saved_sort_removes_outputs(monkeypatch, tmp_path):
+    import SpikeInterface_Menu as M
+    import blackrock_io as bio
+
+    monkeypatch.setattr(bio, "REPO_ROOT", tmp_path)
+    saved = tmp_path / "outputs" / "tridesclous2"
+    saved.mkdir(parents=True)
+    (saved / "run_info.json").write_text("{}")
+
+    c = M.MenuController.__new__(M.MenuController)   # no __init__ I/O
+    ok, msg = c.clear_saved_sort("tridesclous2")
+    assert ok is True and not saved.exists()
+
+
+def test_delete_image_resolves_and_calls_registry(monkeypatch):
+    import SpikeInterface_Menu as M
+    calls = {}
+    monkeypatch.setattr(M.sorter_registry, "default_docker_image", lambda n: "img:latest")
+    monkeypatch.setattr(M.sorter_registry, "delete_docker_image",
+                        lambda img: (calls.update(img=img), (True, "ok"))[1])
+    c = M.MenuController.__new__(M.MenuController)
+    ok, msg = c.delete_image("mountainsort5")
+    assert ok is True and calls["img"] == "img:latest"
+
+
+def test_sort_command_builds_argv(monkeypatch, tmp_path):
+    import SpikeInterface_Menu as M
+    c = M.MenuController.__new__(M.MenuController)
+    c.active_sorter = "tridesclous2"
+    c.use_docker = False
+    c.args = type("A", (), {"data_dir": None})()
+    c.get_overrides = lambda name: {}
+    argv = c.sort_command(span="quick")
+    assert "run_sorting.py" in " ".join(argv)
+    assert "--progress" in argv and "json" in argv
+    assert "--sorter" in argv and "tridesclous2" in argv
+    assert "--duration" in argv  # quick → duration set

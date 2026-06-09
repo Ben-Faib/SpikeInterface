@@ -233,6 +233,27 @@ def pull_docker_image(image: str, on_progress=None, on_status=None) -> bool:
         return False
 
 
+def image_size(image: str) -> "int | None":
+    """Size in bytes of a locally cached image, or None. Never raises."""
+    try:
+        import docker
+
+        return int(docker.from_env().images.get(image).attrs["Size"])
+    except Exception:  # noqa: BLE001 - missing image / no SDK / daemon down
+        return None
+
+
+def delete_docker_image(image: str) -> "tuple[bool, str]":
+    """Remove a locally cached image. Returns (ok, human_message). Never raises."""
+    try:
+        import docker
+
+        docker.from_env().images.remove(image, force=False)
+        return True, f"Removed Docker image {image}"
+    except Exception as e:  # noqa: BLE001 - missing image / in use / no SDK / daemon down
+        return False, f"Couldn't remove {image}: {e}"
+
+
 def status(name: str, installed_set=None, docker=None) -> str:
     """Classify one sorter: 'local' | 'docker' | 'gpu' | 'unavailable'.
 
