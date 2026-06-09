@@ -166,6 +166,69 @@ def test_action_explain_sort_no_docker_need_for_native(monkeypatch, tmp_path):
     assert not any("docker" in l for l in labels)
 
 
+def test_action_explain_non_sort_action_never_probes_docker(monkeypatch, tmp_path):
+    # Regression guard for the per-keystroke latency fix: action_explain() resolvers
+    # are LAZY, so a non-sort action ('explore') must NOT evaluate the sort_docker
+    # check (which reaches Docker/installed()). After the controller is built, make
+    # any Docker probe explode; if action_explain still returns, laziness held. Docker
+    # is ON (use_docker gates the uses_docker()/sort_docker path that WOULD probe).
+    import sorters as reg
+    monkeypatch.setattr(reg, "installed", lambda: ["tridesclous2", "spykingcircus2"])
+    monkeypatch.setattr(reg, "available", lambda: sorted(
+        ["tridesclous2", "spykingcircus2", "mountainsort5"]))
+    monkeypatch.setattr(reg, "docker_available", lambda *a, **k: True)   # benign at build
+    monkeypatch.setattr(M, "_saved_summary", lambda name: (False, 0, 0.0))
+    c = _controller(monkeypatch, tmp_path, use_docker=True)   # tridesclous2 active
+
+    # Now arm the trap: the sort_docker resolver is the only one reaching Docker, and
+    # it routes through active_blocked_on_docker(). Make THAT explode. If the lazy
+    # resolver table is ever made eager again, building the resolvers dict for ANY
+    # action evaluates sort_docker -> active_blocked_on_docker() -> boom. With the
+    # lazy thunks, a non-sort action never calls it, so these keys must stay quiet.
+    def _boom(*a, **k):
+        raise AssertionError("non-sort action_explain must not probe Docker")
+
+    monkeypatch.setattr(c, "active_blocked_on_docker", _boom)
+    monkeypatch.setattr(reg, "docker_available", _boom)
+    monkeypatch.setattr(reg, "docker_state", _boom)
+    for key in ("explore", "report", "verify", "gui", "compare"):
+        ex = c.action_explain(key)                  # must not raise -> resolver was lazy
+        labels = [n["label"].lower() for n in ex["needs"]]
+        assert not any("docker" in l for l in labels)
+
+
+def test_installed_is_process_cached(monkeypatch):
+    # Regression guard: sorters.installed() must memoise the ~1 s SpikeInterface
+    # installed_sorters() probe so per-keystroke menu code can call it freely. Patch
+    # the underlying spikeinterface probe with a call-counter and assert it runs at
+    # most once across many installed() calls (then re-probes only on refresh=True).
+    import spikeinterface.sorters as ss
+    import sorters as reg
+
+    calls = {"n": 0}
+
+    def _counting(*a, **k):
+        calls["n"] += 1
+        return ["tridesclous2", "spykingcircus2"]
+
+    monkeypatch.setattr(ss, "installed_sorters", _counting)
+    # Start from a cold cache (an earlier test may have warmed it) and restore it
+    # afterward so this test neither sees nor leaks per-process cache state.
+    saved = dict(reg._installed_cache)
+    reg._installed_cache.clear()
+    try:
+        first = reg.installed()
+        for _ in range(50):
+            assert reg.installed() == first
+        assert calls["n"] == 1                       # probed once, then served from cache
+        # An explicit refresh re-probes (the documented escape hatch).
+        reg.installed(refresh=True)
+        assert calls["n"] == 2
+    finally:
+        reg._installed_cache.clear()
+        reg._installed_cache.update(saved)           # don't leak cache state to other tests
+
+
 def test_welcome_shown_once_and_persisted(monkeypatch, tmp_path):
     import sorters as reg
     monkeypatch.setattr(reg, "installed", lambda: ["tridesclous2"])
