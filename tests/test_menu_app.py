@@ -460,6 +460,40 @@ async def test_sort_progress_screen_renders_events(make_app):
         assert "Enter" in foot
 
 
+async def test_sort_progress_renders_substep_and_detail(make_app):
+    # Under the current (▶) phase the screen renders both the named substep
+    # (→ name (i/n)) and the latest forwarded sorter step line (→ detail), and they
+    # coexist with the heartbeat spinner — none of them fight. Neuter the worker so
+    # the screen stays mid-sort (no auto-injected 'done' wipes the live view).
+    class _NoRun(menu_app.SortProgressScreen):
+        async def _run(self):
+            pass
+
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        screen = _NoRun(["true"], app._accent)
+        await app.push_screen(screen)
+        await pilot.pause()
+        for ev in [
+            {"t": "phase", "i": 2, "n": 4, "title": "Run sorter"},
+            {"t": "detail", "text": "detect_peaks: 562 peaks found"},
+            {"t": "substep", "name": "computing waveforms", "i": 2, "n": 8},
+            {"t": "heartbeat", "label": "sorting", "secs": 12},
+        ]:
+            screen.handle_event(ev)
+            await pilot.pause()
+        body = screen.query_one("#sortbody").render().plain
+        assert "computing waveforms" in body and "2/8" in body       # substep line
+        assert "detect_peaks: 562 peaks found" in body               # forwarded detail
+        assert "still working" in body and "12s" in body             # heartbeat coexists
+        # a new phase clears the prior substep/detail (reducer contract)
+        screen.handle_event({"t": "phase", "i": 3, "n": 4, "title": "Quality metrics"})
+        await pilot.pause()
+        body = screen.query_one("#sortbody").render().plain
+        assert "computing waveforms" not in body
+        assert "detect_peaks: 562 peaks found" not in body
+
+
 async def test_sort_modal_warns_before_overwriting(make_app):
     # active sorter (tridesclous2) already has a saved sort in the fake universe.
     app = make_app(present=True)
@@ -645,6 +679,77 @@ async def test_download_screen_reaches_done_and_reloads(make_app):
         assert not isinstance(app.screen, menu_app.DownloadProgressScreen)
         ms = next(i for i in c.infos if i["name"] == "mountainsort5")
         assert ms["img_present"] is True             # cached after the download
+
+
+async def test_download_screen_shows_phase_label_and_spinner(make_app):
+    # The on_status callback emits a phase+count string ("Downloading N/M layers" /
+    # "Extracting N/M layers") — the screen renders that string as a label and ticks
+    # a spinner next to it. Gate the fake's completion on a threading.Event so the
+    # pull stays "live" while we inspect the spinner, then release it.
+    import threading
+    app = make_app(use_docker=True)
+    gate = threading.Event()
+
+    def slow_download(name, on_progress=None, on_status=None):
+        app.c.downloaded.append(name)
+        if on_status:
+            on_status("Downloading 1/2 layers")
+        if on_progress:
+            on_progress(40, 100)
+        gate.wait(5)                              # block the worker until released
+        app.c._cached_images.add(name)
+        return True, f"Downloaded {name}"
+
+    app.c.download_image = slow_download
+    async with app.run_test(size=(110, 40)) as pilot:
+        screen = menu_app.DownloadProgressScreen(app.c, "mountainsort5", app._accent)
+        await app.push_screen(screen)
+        await pilot.pause()
+        # the spinner timer exists + the worker is still mid-pull (not done yet)
+        assert screen._spin_timer is not None
+        assert screen._done is None
+        body = screen.query_one("#dlbody", Static).render().plain
+        assert "Downloading" in body                  # phase string, not a per-layer status
+        spin0 = screen._spin
+        screen._tick_spinner()                         # the spinner ticks while live
+        assert screen._spin != spin0
+        # an indeterminate phase (Verifying / Extracting) still reads as the phase str
+        screen._set_status("Extracting 2/2 layers")
+        await pilot.pause()
+        body = screen.query_one("#dlbody", Static).render().plain
+        assert "Extracting" in body
+        gate.set()                                     # let the worker finish + unmount
+        await screen.workers.wait_for_complete()
+        await pilot.pause()
+
+
+async def test_download_screen_never_shows_complete_below_100(make_app):
+    # Regression: the status label is the phase string, NEVER a raw per-layer status
+    # like "Download complete" while the aggregate pct is still < 100. Use a screen
+    # whose worker is a no-op so it stays mid-pull (the spinner timer still starts in
+    # on_mount), then drive the update methods directly.
+    class _NoPull(menu_app.DownloadProgressScreen):
+        def _pull(self):                              # never calls _finish -> stays live
+            pass
+
+    app = make_app(use_docker=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        screen = _NoPull(app.c, "mountainsort5", app._accent)
+        await app.push_screen(screen)
+        await pilot.pause()
+        assert screen._spin_timer is not None and screen._done is None
+        screen._set_pct(20)
+        screen._set_status("Downloading 1/3 layers")
+        await pilot.pause()
+        body = screen.query_one("#dlbody", Static).render().plain
+        assert "20%" in body
+        assert "complete" not in body.lower()          # no false "complete" at 20%
+        # only when finished does the ✓ done line appear (and pct snaps to 100)
+        screen._finish(True, "Downloaded mountainsort5")
+        await pilot.pause()
+        body = screen.query_one("#dlbody", Static).render().plain
+        assert "100%" in body and "✓" in body
+        assert screen._spin_timer is None              # spinner stopped on finish
 
 
 async def test_enter_on_undownloaded_docker_offers_docker_when_daemon_down(make_app):

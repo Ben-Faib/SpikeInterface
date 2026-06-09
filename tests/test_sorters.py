@@ -402,3 +402,214 @@ def test_delete_docker_image_never_raises(monkeypatch):
     ok, msg = sorters.delete_docker_image("x:latest")
     assert ok is False and msg
     assert sorters.image_size("x:latest") is None
+
+
+# --- pull_docker_image: aggregate progress over ALL layers -------------------
+
+def _install_fake_pull(monkeypatch, events):
+    """Monkeypatch the docker SDK so client.api.pull(...) yields ``events``.
+
+    Mirrors the test_image_size_and_delete fake-docker pattern, but for the
+    streaming pull API used by pull_docker_image.
+    """
+    class FakeApi:
+        def __init__(self, evs): self._evs = evs
+        def pull(self, repository, tag=None, stream=True, decode=True):
+            for ev in self._evs:
+                yield ev
+
+    class FakeClient:
+        def __init__(self, evs): self.api = FakeApi(evs)
+
+    fake_docker = type("D", (), {
+        "from_env": staticmethod(lambda evs=events: FakeClient(evs))})
+    monkeypatch.setitem(__import__("sys").modules, "docker", fake_docker)
+
+
+def _two_layer_pull_events():
+    """A realistic 2-layer ``docker pull`` event sequence (interleaved layers).
+
+    Per layer: Pulling fs layer -> Downloading(progressDetail) ->
+    Download complete -> Extracting(progressDetail) -> Pull complete; then once a
+    final 'Status:' event. Layer A total = 100, layer B total = 300.
+    """
+    A, B = "aaaa", "bbbb"
+    return [
+        {"status": "Pulling fs layer", "id": A},
+        {"status": "Pulling fs layer", "id": B},
+        # downloading, interleaved
+        {"status": "Downloading", "id": A,
+         "progressDetail": {"current": 50, "total": 100}},
+        {"status": "Downloading", "id": B,
+         "progressDetail": {"current": 100, "total": 300}},
+        {"status": "Downloading", "id": A,
+         "progressDetail": {"current": 100, "total": 100}},
+        {"status": "Verifying Checksum", "id": A},
+        {"status": "Download complete", "id": A},
+        {"status": "Downloading", "id": B,
+         "progressDetail": {"current": 300, "total": 300}},
+        {"status": "Download complete", "id": B},
+        # extracting, interleaved
+        {"status": "Extracting", "id": A,
+         "progressDetail": {"current": 50, "total": 100}},
+        {"status": "Extracting", "id": A,
+         "progressDetail": {"current": 100, "total": 100}},
+        {"status": "Pull complete", "id": A},
+        {"status": "Extracting", "id": B,
+         "progressDetail": {"current": 150, "total": 300}},
+        {"status": "Extracting", "id": B,
+         "progressDetail": {"current": 300, "total": 300}},
+        {"status": "Pull complete", "id": B},
+        {"status": "Status: Downloaded newer image for spikeinterface/x:latest"},
+    ]
+
+
+def test_pull_status_never_leaks_raw_per_layer_strings(monkeypatch):
+    _install_fake_pull(monkeypatch, _two_layer_pull_events())
+    statuses = []
+    ok = sorters.pull_docker_image("spikeinterface/x:latest",
+                                   on_status=statuses.append)
+    assert ok is True
+    # The raw per-layer terminal strings must NEVER be emitted to the UI.
+    assert "Download complete" not in statuses
+    assert "Pull complete" not in statuses
+    assert "Pulling fs layer" not in statuses
+    # And no raw per-layer 'Downloading'/'Extracting' bare strings either.
+    assert "Downloading" not in statuses
+    assert "Extracting" not in statuses
+
+
+def test_pull_status_transitions_with_counts(monkeypatch):
+    _install_fake_pull(monkeypatch, _two_layer_pull_events())
+    statuses = []
+    sorters.pull_docker_image("spikeinterface/x:latest", on_status=statuses.append)
+    # Only emitted when the string changes -> no consecutive duplicates.
+    assert all(a != b for a, b in zip(statuses, statuses[1:]))
+    # Download phase counts climb as layers finish downloading.
+    assert "Downloading 0/2 layers" in statuses
+    assert "Downloading 1/2 layers" in statuses
+    assert "Downloading 2/2 layers" in statuses
+    # Checksum verification shows up.
+    assert "Verifying…" in statuses
+    # Extract phase counts climb as layers finish extracting.
+    assert "Extracting 0/2 layers" in statuses
+    assert "Extracting 1/2 layers" in statuses
+    assert "Extracting 2/2 layers" in statuses
+    # Final phase.
+    assert statuses[-1] == "Done"
+    # Order: a Downloading… precedes an Extracting… precedes Done.
+    first_dl = next(i for i, s in enumerate(statuses) if s.startswith("Downloading"))
+    first_ex = next(i for i, s in enumerate(statuses) if s.startswith("Extracting"))
+    done_i = statuses.index("Done")
+    assert first_dl < first_ex < done_i
+
+
+def test_pull_progress_reaches_done_equals_total(monkeypatch):
+    _install_fake_pull(monkeypatch, _two_layer_pull_events())
+    progress = []
+    sorters.pull_docker_image("spikeinterface/x:latest",
+                              on_progress=lambda d, t: progress.append((d, t)))
+    assert progress, "on_progress must fire"
+    done, total = progress[-1]
+    assert total > 0
+    assert done == total  # the bar lands exactly full at the end
+
+
+def test_pull_progress_denominator_never_shrinks_in_download_phase(monkeypatch):
+    """Completed layers must NOT drop out of the denominator (the old bug).
+
+    Records (status, done, total) interleaved so we can isolate the download
+    phase: while the caption is 'Downloading n/N', the denominator must only
+    grow as new layers reveal their size (a finished layer keeps its bytes in
+    both done and total — the inflated-early-% bug was the denominator shrinking).
+    """
+    _install_fake_pull(monkeypatch, _two_layer_pull_events())
+    events = []  # ('status', text) | ('progress', done, total)
+    sorters.pull_docker_image(
+        "spikeinterface/x:latest",
+        on_progress=lambda d, t: events.append(("progress", d, t)),
+        on_status=lambda s: events.append(("status", s)),
+    )
+    phase = None
+    dl_totals = []
+    for e in events:
+        if e[0] == "status":
+            phase = ("dl" if e[1].startswith("Downloading")
+                     else "ex" if e[1].startswith("Extracting") else phase)
+        else:
+            _, d, t = e
+            assert d <= t                       # never inflated past 100%
+            if phase == "dl":
+                dl_totals.append(t)
+    assert dl_totals
+    assert dl_totals == sorted(dl_totals)       # download denominator never shrinks
+    assert dl_totals[-1] == 400                 # full known size (100 + 300)
+
+
+def test_pull_extracting_drives_progress_in_extract_phase(monkeypatch):
+    """An 'Extracting' event with progressDetail moves the bar mid-extract."""
+    _install_fake_pull(monkeypatch, _two_layer_pull_events())
+    progress = []
+    statuses = []
+    sorters.pull_docker_image(
+        "spikeinterface/x:latest",
+        on_progress=lambda d, t: progress.append((d, t)),
+        on_status=statuses.append,
+    )
+    # Find where the extract phase begins (first Extracting status).
+    ex_start = next(i for i, s in enumerate(statuses) if s.startswith("Extracting"))
+    assert ex_start >= 0
+    # There must be progress values strictly between 0 and total during extract
+    # (i.e. a partial Extracting event moved the bar, not just the boundaries).
+    _, total = progress[-1]
+    assert any(0 < d < total for d, t in progress)
+
+
+def test_pull_status_image_up_to_date_finishes_done(monkeypatch):
+    """A cached image ('Image is up to date') still reaches Done with no layers."""
+    events = [
+        {"status": "Status: Image is up to date for spikeinterface/x:latest"},
+    ]
+    _install_fake_pull(monkeypatch, events)
+    statuses = []
+    ok = sorters.pull_docker_image("spikeinterface/x:latest", on_status=statuses.append)
+    assert ok is True
+    assert statuses[-1] == "Done"
+
+
+def test_pull_error_event_returns_false(monkeypatch):
+    events = [
+        {"status": "Pulling fs layer", "id": "aaaa"},
+        {"error": "manifest unknown"},
+    ]
+    _install_fake_pull(monkeypatch, events)
+    ok = sorters.pull_docker_image("spikeinterface/x:latest")
+    assert ok is False
+
+
+def test_pull_no_sdk_returns_false(monkeypatch):
+    import builtins
+    real_import = builtins.__import__
+
+    def _no_docker(name, *a, **k):
+        if name == "docker":
+            raise ImportError("no docker SDK")
+        return real_import(name, *a, **k)
+
+    monkeypatch.setattr(builtins, "__import__", _no_docker)
+    assert sorters.pull_docker_image("spikeinterface/x:latest") is False
+
+
+def test_pull_mid_stream_exception_returns_false(monkeypatch):
+    """A daemon/network failure mid-pull is swallowed -> False, never raised."""
+    class FakeApi:
+        def pull(self, repository, tag=None, stream=True, decode=True):
+            yield {"status": "Pulling fs layer", "id": "aaaa"}
+            raise RuntimeError("connection reset")
+
+    class FakeClient:
+        api = FakeApi()
+
+    fake_docker = type("D", (), {"from_env": staticmethod(lambda: FakeClient())})
+    monkeypatch.setitem(__import__("sys").modules, "docker", fake_docker)
+    assert sorters.pull_docker_image("spikeinterface/x:latest") is False

@@ -70,10 +70,14 @@ class Reporter:
         self.stream = stream if stream is not None else sys.stdout
         self.total = total_phases
         self.i = 0
+        # The pipe-tee reader thread and the main thread both emit, so the write
+        # to the event channel must be serialised (one JSON line at a time).
+        self._lock = threading.Lock()
 
     def _emit(self, ev: dict) -> None:
         if self.enabled:
-            _sp.emit(ev, stream=self.stream)
+            with self._lock:
+                _sp.emit(ev, stream=self.stream)
 
     def phase(self, title: str, sub: str = "") -> None:
         self.i += 1
@@ -81,6 +85,10 @@ class Reporter:
 
     def detail(self, text: str) -> None:
         self._emit({"t": "detail", "text": text})
+
+    def substep(self, name: str, i: int, n: int) -> None:
+        """A named sub-step within the current phase (e.g. one quality metric of N)."""
+        self._emit({"t": "substep", "name": name, "i": i, "n": n})
 
     def bar(self, desc: str, *, frac, n=None, total=None, elapsed=None, remaining=None) -> None:
         self._emit({"t": "bar", "desc": desc, "frac": frac, "n": n, "total": total,
@@ -373,20 +381,13 @@ _CURATION_EXTENSIONS = [
 ]
 
 
-def _compute_curation_extensions(analyzer, ui: "ConsoleUI") -> None:
-    """Best-effort compute the inspector-facing extensions; never fail the sort.
+def _ext_compute(analyzer, ext: str):
+    """Return a 0-arg closure that computes one analyzer extension by name.
 
-    Each extension is computed independently so that one that errors on an
-    unusual sort (e.g. too few spikes for PCA) just prints a skip note and leaves
-    the rest — the core sorting + quality metrics are already saved by now.
+    A named function (not an inline lambda) so the captured ``ext`` binds eagerly —
+    avoids the classic late-binding-loop bug when building a list of these.
     """
-    ui.detail("computing GUI-inspector extensions (correlograms, ISI, amplitudes, "
-              "locations, similarity, PCA) …")
-    for ext in _CURATION_EXTENSIONS:
-        try:
-            analyzer.compute(ext)
-        except Exception as e:  # noqa: BLE001 - optional curation data, keep going
-            ui.detail(f"  skipped {ext} ({type(e).__name__})")
+    return lambda: analyzer.compute(ext)
 
 
 def _write_run_info(out: Path, args, **fields) -> None:
@@ -506,6 +507,99 @@ def _prepare_docker_image(ui: "ConsoleUI", sorter: str) -> None:
     else:
         ui.detail("Couldn't pre-download with a progress bar — "
                   "SpikeInterface will fetch the image during the run.")
+
+
+# A line that is just a tqdm bar (or carriage-return progress spam) — not an
+# informative sorter print worth mirroring as a 'detail' event. tqdm bars carry a
+# "%|" gauge or an "it/s]" rate tail; lone carriage returns are redraw spam.
+_TQDM_LINE = re.compile(r"%\||it/s\]|\d+\.\d+s/it\]")
+
+
+def _is_informative_line(text: str) -> bool:
+    """True when ``text`` is a real sorter step print (not a tqdm bar / CR spam)."""
+    s = text.strip()
+    if not s:
+        return False
+    return _TQDM_LINE.search(s) is None
+
+
+class _StdoutTee:
+    """Capture sorter ``print()`` output on **fd 1** and forward it two ways.
+
+    In ``--progress json`` mode the event channel is the *real* stdout (duped aside
+    before this runs), so fd 1 is free to repurpose. Sorters write informative step
+    lines (``detect_peaks(): 562 peaks found`` …) straight to fd 1 with ``print()``;
+    the old code sent fd 1 → stderr and lost them to the event consumer.
+
+    Instead we point fd 1 at an ``os.pipe()`` and run a daemon reader thread that,
+    for every line, (a) echoes it to the **real stderr** (so the human terminal is
+    unchanged) and (b) emits an informative, non-tqdm line as a ``detail`` event via
+    ``reporter`` — so the UI sees the sorter's progress prints live. tqdm bars still
+    go to fd 2 (the real stderr) untouched; the event channel stays pure JSON.
+
+    A no-op (``enabled=False``) outside JSON mode, so plain-CLI behaviour is
+    byte-identical.
+    """
+
+    def __init__(self, reporter: "Reporter | None", *, enabled: bool):
+        self.reporter = reporter
+        self.enabled = enabled
+        self._os = __import__("os")
+        self._saved_fd1 = None          # original fd 1, restored on exit
+        self._real_stderr_fd = None     # a dup of fd 2 the reader echoes to
+        self._write_fd = None           # pipe write end (fd 1 points here)
+        self._read_fd = None            # pipe read end (the reader thread reads)
+        self._thread: "threading.Thread | None" = None
+
+    def __enter__(self):
+        if not self.enabled:
+            return self
+        os = self._os
+        sys.stdout.flush()
+        # Keep a private copy of the original fd 1 and of the real stderr so we can
+        # restore fd 1 and echo human-visible lines after the pipe is torn down.
+        self._saved_fd1 = os.dup(1)
+        self._real_stderr_fd = os.dup(2)
+        self._read_fd, self._write_fd = os.pipe()
+        os.dup2(self._write_fd, 1)                    # fd 1 -> pipe write end
+        # Rebuild sys.stdout on the new fd 1 so Python-level prints flow through too.
+        sys.stdout = os.fdopen(os.dup(1), "w", buffering=1)
+        self._thread = threading.Thread(target=self._reader, daemon=True)
+        self._thread.start()
+        return self
+
+    def _reader(self) -> None:
+        os = self._os
+        with os.fdopen(self._read_fd, "r", buffering=1, errors="replace") as pipe:
+            for line in pipe:
+                # Echo to the real terminal stderr so the human sees it unchanged.
+                try:
+                    os.write(self._real_stderr_fd, line.encode("utf-8", "replace"))
+                except OSError:
+                    pass
+                if self.reporter is not None and _is_informative_line(line):
+                    self.reporter.detail(line.strip())
+
+    def __exit__(self, *exc) -> None:
+        if not self.enabled:
+            return
+        os = self._os
+        # Flush any buffered Python writes, then restore fd 1 and close the pipe
+        # write end so the reader hits EOF and the loop ends.
+        try:
+            sys.stdout.flush()
+        except Exception:  # noqa: BLE001
+            pass
+        os.dup2(self._saved_fd1, 1)                   # restore real fd 1
+        sys.stdout = os.fdopen(os.dup(1), "w", buffering=1)
+        os.close(self._write_fd)                      # EOF for the reader
+        if self._thread is not None:
+            self._thread.join(timeout=2.0)
+        for fd in (self._saved_fd1, self._real_stderr_fd):
+            try:
+                os.close(fd)
+            except OSError:
+                pass
 
 
 class _Heartbeat:
@@ -732,29 +826,42 @@ def main() -> int:
     # Drop non-neural analog aux channels (ids 10241+, 'analog N') before sorting:
     # left in, they corrupt the common median reference and can spawn fake units.
     n_dropped = 0
+    _drop_msg = ""
     if not args.keep_analog:
         neural = bio.neural_channel_ids(rec)
         n_dropped = rec.get_num_channels() - len(neural)
         if 0 < len(neural) < rec.get_num_channels():
             rec = bio.select_channels(rec, neural)
             rec = bio.attach_dummy_probe(rec)  # re-size the placeholder probe to the kept channels
-            ui.detail(f"excluded {n_dropped} non-neural analog aux channel(s) → "
-                      f"sorting {len(neural)} electrode(s)")
+            _drop_msg = (f"excluded {n_dropped} non-neural analog aux channel(s) → "
+                         f"sorting {len(neural)} electrode(s)")
+            ui.detail(_drop_msg)
 
     fs = rec.get_sampling_frequency()
     freq_max = min(args.freq_max, 0.49 * fs)  # keep the high cutoff below Nyquist
     ui.phase("Preprocess", "bandpass + common median reference")
     rep.phase("Preprocess", "bandpass + common median reference")
+    # Mirror the real preprocess sub-steps onto the event channel so the consumer
+    # sees each one (channel drop, bandpass, common median reference, frame slice).
+    if _drop_msg:
+        rep.detail(_drop_msg)
     if freq_max < args.freq_max:
-        ui.detail(f"clamped bandpass high cutoff to {freq_max:g} Hz for {fs:g} Hz Nyquist")
-    ui.detail(f"bandpass {args.freq_min:g}–{freq_max:g} Hz · common median reference")
+        _clamp_msg = f"clamped bandpass high cutoff to {freq_max:g} Hz for {fs:g} Hz Nyquist"
+        ui.detail(_clamp_msg)
+        rep.detail(_clamp_msg)
+    _band_msg = f"bandpass {args.freq_min:g}–{freq_max:g} Hz"
+    ui.detail(f"{_band_msg} · common median reference")
+    rep.detail(_band_msg)
     rec = spre.bandpass_filter(rec, freq_min=args.freq_min, freq_max=freq_max)
+    rep.detail("common median reference")
     rec = spre.common_reference(rec, reference="global", operator="median")
     if args.duration is not None:
         n_samples = rec.get_num_samples()
         end = min(int(args.duration * fs), n_samples)
         rec = rec.frame_slice(0, end)
-        ui.detail(f"limited to first {end / fs:g}s of {n_samples / fs:g}s")
+        _slice_msg = f"limited to first {end / fs:g}s of {n_samples / fs:g}s"
+        ui.detail(_slice_msg)
+        rep.detail(_slice_msg)
     effective_seconds = rec.get_total_duration()
 
     use_container = sorters.uses_docker(args.sorter, args.docker)
@@ -775,16 +882,22 @@ def main() -> int:
                   "SpikeInterface also installs itself inside the container "
                   "(1–3 min, little output) — the lines below come from it.")
     # A heartbeat reassures during long silent stretches: always for Docker (the
-    # sort runs out-of-process in the container), and for a native sort whenever
-    # progress bars are off (normal/quiet) so a multi-minute sort never looks hung.
+    # sort runs out-of-process in the container), for a native sort whenever
+    # progress bars are off (normal/quiet), and always in JSON mode (the consumer
+    # gets no tqdm bars for the silent sorter steps, so it needs the pulse) — so a
+    # multi-minute sort never looks hung.
     if use_container:
         hb = _Heartbeat(ui, f"{args.sorter} in Docker", reporter=rep)
-    elif not show_bars:
+    elif not show_bars or rep.enabled:
         hb = _Heartbeat(ui, args.sorter, reporter=rep)
     else:
         hb = contextlib.nullcontext()
+    # In JSON mode, tee the sorter's fd-1 prints into 'detail' events so the two
+    # longest phases stop being black boxes (the human terminal is unchanged: the
+    # tee echoes every line to the real stderr). A no-op outside JSON mode.
+    tee = _StdoutTee(rep, enabled=rep.enabled)
     try:
-        with hb:
+        with tee, hb:
             sorting = sorters.run(
                 args.sorter,
                 rec,
@@ -814,14 +927,45 @@ def main() -> int:
     if not args.no_metrics and n_units > 0:
         ui.phase("Quality metrics", "(SortingAnalyzer)")
         rep.phase("Quality metrics", "(SortingAnalyzer)")
-        _robust_rmtree(out / "analyzer")  # retry past Windows GUI file-locks before overwrite
-        analyzer = si.create_sorting_analyzer(
-            sorting, rec, folder=str(out / "analyzer"), format="binary_folder", overwrite=True
-        )
-        analyzer.compute(["random_spikes", "waveforms", "templates", "noise_levels"])
-        analyzer.compute("quality_metrics", metric_names=["firing_rate", "snr", "isi_violation"])
-        qm = analyzer.get_extension("quality_metrics").get_data()
-        qm.to_csv(out / "quality_metrics.csv")
+        # In JSON mode tee the analyzer's fd-1 prints into 'detail' events too — the
+        # ~8 compute sub-steps otherwise run silently on the event channel.
+        metrics_tee = _StdoutTee(rep, enabled=rep.enabled)
+        # JSON mode only: the consumer gets no tqdm bars for the silent compute
+        # sub-steps, so pulse it. Plain CLI output is left byte-identical (no hb here).
+        metrics_hb = (_Heartbeat(ui, "computing quality metrics", reporter=rep)
+                      if rep.enabled else contextlib.nullcontext())
+        with metrics_tee, metrics_hb:
+            _robust_rmtree(out / "analyzer")  # retry past Windows GUI file-locks before overwrite
+            analyzer = si.create_sorting_analyzer(
+                sorting, rec, folder=str(out / "analyzer"), format="binary_folder", overwrite=True
+            )
+            # One compute per extension so each shows a named 'substep' the moment it
+            # starts; i/n span the whole metrics phase (base + metrics + curation).
+            # Base + quality_metrics are core (must succeed); the curation/inspector
+            # extensions stay best-effort (one bad one is skipped, not fatal).
+            base_steps = [
+                ("random_spikes", lambda: analyzer.compute("random_spikes")),
+                ("waveforms", lambda: analyzer.compute("waveforms")),
+                ("templates", lambda: analyzer.compute("templates")),
+                ("noise_levels", lambda: analyzer.compute("noise_levels")),
+                ("quality_metrics", lambda: analyzer.compute(
+                    "quality_metrics", metric_names=["firing_rate", "snr", "isi_violation"])),
+            ]
+            curation_steps = [(ext, _ext_compute(analyzer, ext)) for ext in _CURATION_EXTENSIONS]
+            n_steps = len(base_steps) + len(curation_steps)
+            for i, (name, fn) in enumerate(base_steps, start=1):
+                rep.substep(name, i, n_steps)
+                fn()  # core extension — let a real failure surface as before
+            qm = analyzer.get_extension("quality_metrics").get_data()
+            qm.to_csv(out / "quality_metrics.csv")
+            ui.detail("computing GUI-inspector extensions (correlograms, ISI, amplitudes, "
+                      "locations, similarity, PCA) …")
+            for j, (name, fn) in enumerate(curation_steps, start=len(base_steps) + 1):
+                rep.substep(name, j, n_steps)
+                try:
+                    fn()
+                except Exception as e:  # noqa: BLE001 - optional curation data, keep going
+                    ui.detail(f"  skipped {name} ({type(e).__name__})")
         ui.metrics(qm, out / "quality_metrics.csv")
         if rep.enabled:
             rows = [{"unit": idx, **{c: (int(r[c]) if "count" in c else float(r[c]))
@@ -833,7 +977,6 @@ def main() -> int:
             ui.result(f"{n_high_quality} of {n_total} units look high-quality "
                       "(SNR ≥ 5 and few ISI violations — a rough signal, not a substitute "
                       "for manual curation)")
-        _compute_curation_extensions(analyzer, ui)
 
     _write_run_info(
         out, args, si_version=si.__version__, sorter=args.sorter,

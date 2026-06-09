@@ -55,3 +55,30 @@ def test_reduce_metrics_rows():
     sp.reduce(state, {"t": "metrics", "rows": [{"unit": 1, "snr": 7.2}], "csv": "q.csv"})
     assert state["metrics"]["rows"][0]["unit"] == 1
     assert state["metrics"]["csv"] == "q.csv"
+
+
+def test_substep_roundtrip():
+    buf = io.StringIO()
+    sp.emit({"t": "substep", "name": "snr", "i": 2, "n": 8}, stream=buf)
+    ev = sp.parse_line(buf.getvalue())
+    assert ev == {"t": "substep", "name": "snr", "i": 2, "n": 8}
+
+
+def test_reduce_tracks_substep():
+    state = sp.new_state()
+    assert state["substep_name"] == "" and state["substep_i"] == 0 and state["substep_n"] == 0
+    sp.reduce(state, {"t": "phase", "i": 4, "n": 4, "title": "Quality metrics"})
+    sp.reduce(state, {"t": "substep", "name": "firing_rate", "i": 1, "n": 8})
+    assert state["substep_name"] == "firing_rate"
+    assert state["substep_i"] == 1 and state["substep_n"] == 8
+    sp.reduce(state, {"t": "substep", "name": "snr", "i": 2, "n": 8})
+    assert state["substep_name"] == "snr" and state["substep_i"] == 2
+
+
+def test_reduce_phase_clears_substep():
+    state = sp.new_state()
+    sp.reduce(state, {"t": "substep", "name": "snr", "i": 2, "n": 8})
+    assert state["substep_name"] == "snr"
+    # a new phase resets per-substep progress so it never bleeds across phases
+    sp.reduce(state, {"t": "phase", "i": 2, "n": 4, "title": "Sort"})
+    assert state["substep_name"] == "" and state["substep_i"] == 0 and state["substep_n"] == 0
