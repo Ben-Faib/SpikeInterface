@@ -110,11 +110,13 @@ class Controller(Protocol):
                                         # duration,active}
     data_report: dict                   # see SpikeInterface_Menu._data_report
     use_docker: bool
+    animate: bool                       # crest animation on/off (persisted)
     want_welcome: bool
 
     def set_active_by_name(self, name: str) -> bool: ...
     def cycle_active(self) -> None: ...
     def set_theme(self, name: str) -> str: ...      # returns the new accent hex
+    def set_animate(self, on: bool) -> bool: ...    # persist + return the new state
     def reload(self) -> None: ...                   # refresh pipeline/infos/data_report
     def set_data_dir(self, path: str | None) -> bool: ...   # repoint + reload; found?
     def toggle_docker(self) -> bool: ...
@@ -792,6 +794,7 @@ class SpikeMenuApp(App):
         Binding("tab", "focus_actions", "Actions", show=False, priority=True),
         Binding("shift+tab", "focus_sorter", "Sorter", show=False, priority=True),
         Binding("t", "cycle_sorter", "Switch sorter", show=False),
+        Binding("m", "toggle_motion", "Motion", show=False),
         Binding("d", "data_help", "Data files", show=False),
         Binding("f", "choose_folder", "Data folder", show=False),
         Binding("question_mark", "help", "Help", show=False),
@@ -1388,6 +1391,11 @@ class SpikeMenuApp(App):
         if self._mode == "sorter":
             self._render_sorter_explain(self._highlighted_info())
         self._refresh_footer()
+
+    def action_toggle_motion(self) -> None:
+        on = self.c.set_animate(not self.c.animate)
+        self.query_one("#crest", CrestWidget).set_animate(on)
+        self.notify(f"Crest animation {'on' if on else 'off'}")
 
     def action_data_help(self) -> None:
         self.push_screen(HelpScreen(self.c, self._accent, topic="data"))

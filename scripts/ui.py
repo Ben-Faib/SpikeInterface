@@ -57,7 +57,7 @@ HELP_TOPICS = [
      []),   # filled at render time from the live data report (present/missing checklist)
     ("keys", "Keyboard",
      ["↑/↓ or j/k move · ←/→ or Tab/Shift-Tab switch panes · Enter run/activate",
-      "1-9 jump to an action · t switch sorter · ? help · d data files",
+      "1-9 jump to an action · t switch sorter · m animation · ? help · d data files",
       "f choose data folder · q or Ctrl-C quit  (Esc cancels a dialog, not the app)"]),
     ("about", "About",
      ["University of Pittsburgh · SpikeInterface.",

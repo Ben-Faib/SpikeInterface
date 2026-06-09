@@ -771,6 +771,22 @@ async def test_crest_static_when_disabled(make_controller):
         assert crest.render().plain == before
 
 
+async def test_m_key_toggles_animation(make_controller):
+    c = make_controller(present=True)
+    c.animate = True
+    app = _app(c)
+    async with app.run_test(size=(110, 45)) as pilot:
+        await pilot.pause()
+        crest = app.query_one("#crest", menu_app.CrestWidget)
+        assert crest._animate is True
+        await pilot.press("m")
+        await pilot.pause()
+        assert c.animate is False and crest._animate is False
+        await pilot.press("m")
+        await pilot.pause()
+        assert c.animate is True and crest._animate is True
+
+
 async def test_welcome_screen_shows_pitt_shield(make_controller):
     c = make_controller(present=True)
     c.want_welcome = True                              # first-launch greeting
