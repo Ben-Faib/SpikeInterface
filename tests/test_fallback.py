@@ -41,6 +41,17 @@ def test_docker_confirm_text_per_state():
     assert "running" in ui.docker_confirm_text("running").lower()
 
 
+def test_fallback_menu_has_manage_sorters_option():
+    # The typed fallback offers a 'Manage sorters' action (download images / delete /
+    # clear saved sorts), mirroring the Textual Manage hub.
+    keys = [action for _k, action, _title, _hint in M._MENU]
+    assert "manage" in keys
+    titles = {action: title for _k, action, title, _hint in M._MENU}
+    assert titles["manage"] == "Manage sorters"
+    # And the helper that drives it exists.
+    assert hasattr(M, "_manage_sorters_typed")
+
+
 def test_fallback_action_hint_surfaces_what():
     # Each typed action surfaces the same plain-language `what` the Textual
     # explanation pane shows (here for `sort`), not just the terse legacy hint.

@@ -26,6 +26,7 @@ ACTIONS = [
     ("traces", "Scroll raw traces", "ephyviewer", True),
     ("compare", "Compare sorters", "agreement matrix", True),
     ("params", "Edit sorter parameters", "tune the active sorter", False),
+    ("manage", "Manage sorters", "download · delete", False),
     ("verify", "Verify install", "smoke test", False),
     ("theme", "Change colour theme", "accent", False),
     ("help", "Help", "what each step does · sorters · Docker · data files", False),
@@ -108,11 +109,14 @@ class FakeController:
             if group == "docker":
                 # Cached-image state lives in self._cached_images so a download/delete
                 # survives reload() (herdingspikes starts cached, mountainsort5 not).
+                cached = name in self._cached_images
                 info["image"] = f"spikeinterface/{name}-base:latest"
-                info["img_present"] = name in self._cached_images
+                info["img_present"] = cached
+                info["img_size"] = 1_100_000_000 if cached else None
             else:
                 info["image"] = None
                 info["img_present"] = None
+                info["img_size"] = None
             self.infos.append(info)
         self._mark_active()
         self.data_report = {

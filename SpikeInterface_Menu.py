@@ -188,12 +188,17 @@ def _catalog(active: str, use_docker: bool) -> list[dict]:
         group = info["group"]
         if group == "docker":
             img = sorter_registry.default_docker_image(name)
-            info["image"] = img
-            info["img_present"] = bool(img) and docker_installed and \
+            present = bool(img) and docker_installed and \
                 sorter_registry.docker_image_present(img)
+            info["image"] = img
+            info["img_present"] = present
+            # Cached image size (bytes) so the Manage dialogs can show "~X GB"
+            # without a second probe; only queried for an image we already have.
+            info["img_size"] = sorter_registry.image_size(img) if present else None
         else:
             info["image"] = None
             info["img_present"] = None
+            info["img_size"] = None
         out.append(info)
     return out
 
@@ -593,10 +598,11 @@ _MENU = [
     ("5", "traces",  "Scroll raw traces",       "ephyviewer trace browser"),
     ("6", "compare", "Compare sorters",         "pick two saved sorts → comparison.html"),
     ("7", "params",  "Edit sorter parameters",  "tune the active sorter (saved)"),
-    ("8", "docker",  "Toggle Docker sorters",   "show/hide not-installed CPU sorters"),
-    ("9", "verify",  "Verify install",          "environment smoke test"),
-    ("10", "theme",  "Change colour theme",     "pick an accent colour (saved for next time)"),
-    ("11", "help",   "Help",                    "what each step does · sorters · Docker · data"),
+    ("8", "manage",  "Manage sorters",          "download images · delete · clear saved sorts"),
+    ("9", "docker",  "Toggle Docker sorters",   "show/hide not-installed CPU sorters"),
+    ("10", "verify", "Verify install",          "environment smoke test"),
+    ("11", "theme",  "Change colour theme",     "pick an accent colour (saved for next time)"),
+    ("12", "help",   "Help",                    "what each step does · sorters · Docker · data"),
 ]
 
 # v2 (Textual) action table — (key, title, hint, needs_data). ``needs_data`` dims
@@ -610,6 +616,7 @@ _ACTIONS = [
     ("traces",     "Scroll raw traces",       "ephyviewer trace browser",                    True),
     ("compare",    "Compare sorters",         "pick two saved sorts → comparison.html",      True),
     ("params",     "Edit sorter parameters",  "tune the active sorter (saved)",              False),
+    ("manage",     "Manage sorters",          "download images · delete · clear saved sorts", False),
     ("verify",     "Verify install",          "environment smoke test",                      False),
     ("theme",      "Change colour theme",     "pick an accent colour (saved)",               False),
     ("help",       "Help",                    "what each step does · sorters · Docker · data files", False),
@@ -642,6 +649,8 @@ _ACTION_DETAIL = {
     "compare": {"what": "Build an agreement matrix between two saved sorts.",
                 "needs": ["two_sorts"], "output": "outputs/comparison.html"},
     "params":  {"what": "Tune the active sorter's parameters (saved per sorter)."},
+    "manage":  {"what": "Download Docker sorter images, delete downloaded images, "
+                        "and clear saved sort outputs — all in one place."},
     "verify":  {"what": "Run an environment smoke test (library versions, loaders)."},
     "theme":   {"what": "Pick an accent colour for the menu (saved for next time)."},
     "help":    {"what": "What each step does, sorters, Docker, and data files."},
@@ -1040,6 +1049,81 @@ def _pick_compare_pair(data_dir):
     return (first, second)
 
 
+def _manage_sorters_typed(args, use_docker: bool) -> None:
+    """Typed 'Manage sorters' hub: list each sorter's install / image-download /
+    saved-sort state, then download an image (blocking, simple progress), delete a
+    downloaded image, or clear a saved sort. Mirrors the Textual ManageSorters hub
+    in plain text (intentionally non-parity — no live list, one round-trip pick)."""
+    catalog = _catalog(args.sorter or sorter_registry.default_sorter(), use_docker)
+
+    def _state_line(info: dict) -> str:
+        bits = []
+        if info.get("present"):
+            bits.append(f"{info['units']}u saved")
+        else:
+            bits.append("no saved sort")
+        if info.get("group") == "docker":
+            if info.get("img_present"):
+                size = (info.get("img_size") or 0) / 1e9
+                bits.append(f"image ~{size:.1f} GB" if size else "image downloaded")
+            else:
+                bits.append("image not downloaded")
+        return " · ".join(bits)
+
+    while True:
+        opts = [(info["name"], info["name"], _state_line(info)) for info in catalog]
+        opts.append(("__done__", "Done — back to menu", ""))
+        name = ui.select("Manage which sorter?", opts, default=len(opts) - 1)
+        if name in (None, "__done__"):
+            return
+        info = next((i for i in catalog if i["name"] == name), None)
+        if info is None:
+            continue
+        ops = []
+        if info.get("group") == "docker" and not info.get("img_present"):
+            ops.append(("download", "Download the Docker image (~1 GB, one time)", ""))
+        if info.get("group") == "docker" and info.get("img_present"):
+            size = (info.get("img_size") or 0) / 1e9
+            ops.append(("delete", f"Delete the downloaded image (~{size:.1f} GB)"
+                        if size else "Delete the downloaded image", ""))
+        if info.get("present"):
+            ops.append(("clear", f"Clear the saved sort ({info['units']}u)", ""))
+        ops.append(("__back__", "Back", ""))
+        op = ui.select(f"{name} — {_state_line(info)}", ops, default=len(ops) - 1)
+        if op in (None, "__back__"):
+            continue
+        if op == "download":
+            img = sorter_registry.default_docker_image(name)
+            ui.note(f"Downloading {img} … (first run is ~1 GB)")
+
+            def _on_status(text):
+                ui.note(str(text))
+
+            def _on_progress(done, total):
+                pct = int(done / total * 100) if total else 0
+                ui.note(f"  … {pct}%")
+
+            ok = sorter_registry.pull_docker_image(img, _on_progress, _on_status)
+            ui.say("✓ downloaded" if ok else "✗ download failed")
+        elif op == "delete":
+            img = sorter_registry.default_docker_image(name)
+            ok, msg = sorter_registry.delete_docker_image(img)
+            ui.say(("✓ " if ok else "✗ ") + msg)
+        elif op == "clear":
+            folder = bio.REPO_ROOT / "outputs" / name
+            if not folder.exists():
+                ui.warn(f"No saved sort for {name}.")
+            else:
+                import shutil
+                try:
+                    shutil.rmtree(folder)
+                    ui.say(f"✓ Cleared saved {name} sort")
+                except Exception as e:  # noqa: BLE001
+                    ui.warn(f"Couldn't clear {name}: {e}")
+        # Rebuild the catalog so the state lines reflect the change.
+        catalog = _catalog(args.sorter or sorter_registry.default_sorter(), use_docker)
+
+
 def _menu(args) -> int:
     """Interactive front door: Textual dashboard if possible, else typed fallback."""
     if not sys.stdin.isatty():
@@ -1152,6 +1236,13 @@ def _menu_fallback(args, cfg: dict, theme: str) -> int:
         if action == "params":
             _edit_params_typed(args.sorter, cfg)
             last = f"Edited {args.sorter} parameters"
+            continue
+        if action == "manage":
+            _manage_sorters_typed(args, use_docker)
+            # State may have changed (image deleted / saved sort cleared) — refresh.
+            pipeline, infos = _load_dashboard(args.data_dir, args.sorter, sorter_list, use_docker)
+            active_idx = sorter_list.index(args.sorter) if args.sorter in sorter_list else 0
+            last = "Managed sorters"
             continue
         if action == "help":
             topics = [(k, t, "") for k, t, _b in ui.HELP_TOPICS]

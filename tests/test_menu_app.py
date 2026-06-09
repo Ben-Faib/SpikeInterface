@@ -34,7 +34,7 @@ async def test_boots_with_both_lists_and_sorter_focus(make_app):
         sorters = app.query_one("#sorters", OptionList)
         actions = app.query_one("#actions", OptionList)
         assert sorters.get_option_at_index(0).id == "__docker__"
-        assert actions.option_count == 11
+        assert actions.option_count == 12   # 11 base actions + 'manage'
         assert sorters.display is True and actions.display is True
         assert sorters.highlighted == _sorter_row(app, "tridesclous2")
         assert app.focused is sorters
@@ -394,12 +394,13 @@ async def test_number_key_opens_param_editor(make_app):
 async def test_action_run_path_is_guarded(make_app):
     # Pressing a non-data action runs it via the suspend() path; under the headless
     # test driver suspend() is unsupported, so the guard must fall back to an
-    # in-place run instead of crashing. Verify-index in the mirrored table is 7 -> "8".
+    # in-place run instead of crashing. After 'manage' was inserted at index 7,
+    # verify is index 8 -> key "9".
     app = make_app(present=True)
     c = app.c
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        await pilot.press("8")          # verify
+        await pilot.press("9")          # verify
         await pilot.pause()
         assert ("verify", None) in c.ran
         assert app.is_running           # did not crash out
@@ -795,15 +796,125 @@ async def test_f_opens_data_folder_picker_and_sets_dir(make_app):
         assert getattr(c, "data_dir_set", "unset") is None    # "" coerced to None
 
 
-# --- x manage stub -------------------------------------------------------- #
-async def test_x_manage_is_safe_noop(make_app):
-    # 'x' is bound for later stages; for now it must be a safe no-op (no crash).
+# --- x manage (per-sorter) + Manage hub ----------------------------------- #
+async def test_x_opens_manage_for_saved_sorter(make_app):
+    # Highlight a sorter that has a saved sort, press x -> the per-sorter manage
+    # confirm opens and offers to clear the saved sort.
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
+        app._highlight_sorter_by_name("tridesclous2")   # has saved units in the fake
+        await pilot.pause()
         await pilot.press("x")
         await pilot.pause()
-        assert app.is_running
+        assert isinstance(app.screen, menu_app.ManageSorterScreen)
+        body = app.screen.query_one("#mgbody").render().plain
+        assert "saved" in body.lower()
+
+
+async def test_x_clears_saved_sort_via_manage(make_app):
+    # Choosing "clear saved sort" in the per-sorter manage dialog calls the
+    # controller and reloads so the row's saved state flips.
+    app = make_app(present=True)
+    c = app.c
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        app._highlight_sorter_by_name("tridesclous2")
+        await pilot.pause()
+        await pilot.press("x")
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.ManageSorterScreen)
+        await pilot.press("enter")        # the clear-saved-sort option is the cursor
+        await pilot.pause()
+        assert "tridesclous2" in c.cleared_sorts
+        td = next(i for i in c.infos if i["name"] == "tridesclous2")
+        assert td["present"] is False
+
+
+async def test_x_on_nothing_to_delete_hints(make_app):
+    # A READY sorter with no saved sort + no Docker image: x has nothing to do, so
+    # it must NOT open the modal — it just sets a footer hint.
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        app._highlight_sorter_by_name("spykingcircus2")   # ready, no saved sort? it has 7u
+        await pilot.pause()
+        # spykingcircus2 actually has a saved sort; use a docker row with no image.
+        app._highlight_sorter_by_name("mountainsort5")    # docker, no image, no sort
+        await pilot.pause()
+        await pilot.press("x")
+        await pilot.pause()
+        assert not isinstance(app.screen, menu_app.ManageSorterScreen)
+        foot = app.query_one("#footer", Static).render().plain
+        assert "nothing to delete" in foot.lower()
+
+
+async def test_x_offers_image_delete_for_cached_docker(make_app):
+    # A Docker sorter whose image is cached offers "Delete downloaded image".
+    app = make_app(use_docker=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        app._highlight_sorter_by_name("herdingspikes")    # cached image in the fake
+        await pilot.pause()
+        await pilot.press("x")
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.ManageSorterScreen)
+        body = app.screen.query_one("#mgbody").render().plain
+        assert "image" in body.lower() and "gb" in body.lower()
+
+
+async def test_manage_action_opens_hub(make_app):
+    # 'manage' is action index 7 -> key "8". Pressing it opens the hub.
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("right")
+        await pilot.press("8")
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.ManageSortersScreen)
+
+
+async def test_manage_hub_clears_saved_sort(make_app):
+    # In the hub, pressing 'c' on a saved sorter clears it via the controller.
+    app = make_app(present=True)
+    c = app.c
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("right")
+        await pilot.press("8")
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, menu_app.ManageSortersScreen)
+        # the hub list starts on the first sorter (tridesclous2, saved); 'c' asks first
+        await pilot.press("c")
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.ChoiceModal)   # confirm before clearing
+        assert "tridesclous2" not in c.cleared_sorts          # nothing cleared yet
+        await pilot.press("enter")                            # confirm (cursor on "Clear saved sort")
+        await pilot.pause()
+        assert "tridesclous2" in c.cleared_sorts
+
+
+async def test_manage_hub_deletes_image(make_app):
+    # In the hub, pressing 'x' on a cached Docker sorter deletes its image.
+    app = make_app(use_docker=True)
+    c = app.c
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("right")
+        await pilot.press("8")
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, menu_app.ManageSortersScreen)
+        screen._highlight_by_name("herdingspikes")        # cached image
+        await pilot.pause()
+        await pilot.press("x")
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.ChoiceModal)   # confirm before deleting
+        assert "herdingspikes" not in c.deleted_images        # nothing deleted yet
+        await pilot.press("enter")                            # confirm (cursor on "Delete image")
+        await pilot.pause()
+        assert "herdingspikes" in c.deleted_images
 
 
 def test_result_style_amber_for_warning():

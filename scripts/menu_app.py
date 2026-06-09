@@ -749,6 +749,283 @@ class DownloadProgressScreen(ModalScreen):
         self.dismiss(self._done or (False, "download still running", False))
 
 
+class ManageSorterScreen(ModalScreen):
+    """Quick per-sorter 'x' confirm: a short list of the *applicable* destructive
+    operations for ONE sorter — delete its downloaded Docker image (only when the
+    image is cached) and/or clear its saved sort (only when one exists). Each is a
+    confirmed choice; dismisses with the chosen op key ('del_image'/'clear_sort')
+    or None to cancel. The caller (``SpikeMenuApp.action_manage_highlighted``) only
+    builds this screen when at least one op applies, so the list is never empty."""
+
+    DEFAULT_CSS = """
+    ManageSorterScreen { align: center middle; }
+    ManageSorterScreen > #mgdialog {
+        width: 64; max-width: 92%; height: auto; max-height: 90%;
+        border: round $accentcolor; background: $surface; padding: 1 2;
+    }
+    ManageSorterScreen #mgtitle { text-style: bold; color: $accentcolor; padding: 0 0 1 0; }
+    ManageSorterScreen #mgbody { height: auto; padding: 0 0 1 0; }
+    ManageSorterScreen OptionList { height: auto; max-height: 8; background: $surface; border: none; }
+    ManageSorterScreen OptionList:focus { border: none; }
+    ManageSorterScreen #mgfoot { color: $text-muted; padding: 1 0 0 0; }
+    """
+
+    BINDINGS = [Binding("escape", "cancel", "Cancel", show=False)]
+
+    def __init__(self, name: str, options: list[tuple[str, str]], accent: str):
+        super().__init__()
+        self._name = name
+        self._options = options          # [(op_key, label), ...] — only applicable ops
+        self._accent = accent
+
+    def compose(self) -> ComposeResult:
+        body = Text()
+        body.append("These permanently delete saved data for this sorter:\n",
+                    style="#f0883e")
+        # List the applicable ops in the body too (not only as selectable rows) so
+        # the dialog reads at a glance and is testable without the OptionList.
+        for _key, label in self._options:
+            body.append(f"  • {label}\n", style=ui.PRIMARY)
+        with Vertical(id="mgdialog"):
+            yield Static(f"Manage {self._name}", id="mgtitle")
+            yield Static(body, id="mgbody")
+            yield NavList(*[Option(label, id=key) for key, label in self._options],
+                          id="mglist")
+            yield Static("Enter to confirm · Esc to cancel", id="mgfoot")
+
+    def on_mount(self) -> None:
+        self.query_one("#mgdialog").border_title = "MANAGE SORTER"
+        ol = self.query_one("#mglist", OptionList)
+        ol.focus()
+        ol.highlighted = 0
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        event.stop()
+        self.dismiss(event.option.id)
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+
+class ManageSortersScreen(ModalScreen):
+    """The full 'Manage sorters' hub: a scrollable, grouped list of every sorter
+    showing its install / image-download / saved-sort state, with per-row keys to
+    download an image (enter/g), delete a downloaded image (x), clear a saved sort
+    (c), reload (r), and close (Esc). Destructive ops call the matching controller
+    method directly, then reload + re-render the list (the in-UI download still
+    routes through ``DownloadProgressScreen``)."""
+
+    DEFAULT_CSS = """
+    ManageSortersScreen { align: center middle; }
+    ManageSortersScreen > #hubdialog {
+        width: 86; max-width: 96%; height: 90%; max-height: 32;
+        border: round $accentcolor; background: $surface; padding: 1 2;
+    }
+    ManageSortersScreen #hubtitle { text-style: bold; color: $accentcolor; height: 1; }
+    ManageSortersScreen #hublist { height: 1fr; border: none; background: $surface; }
+    ManageSortersScreen #hublist:focus { border: none; }
+    ManageSortersScreen #hubfoot { color: $text-muted; height: auto; padding: 1 0 0 0; }
+    """
+
+    BINDINGS = [
+        Binding("escape", "close", "Close", show=False),
+        # Enter is handled via OptionList.OptionSelected (the focused list consumes the
+        # keypress first); `g` is the spelled-out alternate so both reach download.
+        Binding("g", "download", "Download", show=False),
+        Binding("x", "delete_image", "Delete image", show=False),
+        Binding("c", "clear_sort", "Clear saved", show=False),
+        Binding("r", "reload", "Reload", show=False),
+    ]
+
+    # Same grouping/labels as the dashboard sidebar so the hub reads the same.
+    _GROUP_ORDER = ["ready", "docker", "gpu", "unavailable"]
+    _GROUP_LABEL = {
+        "ready": "READY TO USE",
+        "docker": "DOCKER SORTERS",
+        "gpu": "NEEDS A GPU",
+        "unavailable": "NOT AVAILABLE",
+    }
+    _GROUP_COLOR = {
+        "ready": "#3fb950", "docker": "#d29922",
+        "gpu": "#f0883e", "unavailable": "#6e7681",
+    }
+
+    def __init__(self, controller, accent: str):
+        super().__init__()
+        self._c = controller
+        self._accent = accent
+        self._last = None              # a one-line result of the last op
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="hubdialog"):
+            yield Static("Manage sorters", id="hubtitle")
+            yield OptionList(id="hublist")
+            yield Static("", id="hubfoot")
+
+    def on_mount(self) -> None:
+        self.query_one("#hubdialog").border_title = "MANAGE SORTERS"
+        ol = self.query_one("#hublist", OptionList)
+        ol.focus()
+        self._rebuild()
+
+    # -- list building -------------------------------------------------------- #
+    def _rebuild(self) -> None:
+        ol = self.query_one("#hublist", OptionList)
+        keep = ol.highlighted
+        ol.clear_options()
+        by_group: dict[str, list[dict]] = {}
+        for info in self._c.infos:
+            by_group.setdefault(info.get("group", "unavailable"), []).append(info)
+        for group in self._GROUP_ORDER:
+            members = by_group.get(group)
+            if not members:
+                continue
+            ol.add_option(Option(Text(self._GROUP_LABEL[group],
+                                       style=f"bold {self._GROUP_COLOR[group]}"),
+                                  id=f"__grp_{group}__", disabled=True))
+            for info in members:
+                ol.add_option(Option(self._row_text(info), id=info["name"]))
+        if ol.option_count:
+            ol.highlighted = (keep if (keep is not None and keep < ol.option_count)
+                              else self._first_selectable())
+        self._render_foot()
+
+    def _first_selectable(self) -> int:
+        ol = self.query_one("#hublist", OptionList)
+        for i in range(ol.option_count):
+            opt = ol.get_option_at_index(i)
+            if opt.id and not str(opt.id).startswith("__grp_"):
+                return i
+        return 0
+
+    def _row_text(self, info: dict) -> Text:
+        t = Text()
+        t.append("  ")
+        t.append(info["name"], style="bold" if info.get("active") else "")
+        # Saved-sort state.
+        if info.get("present"):
+            t.append(f"   {info['units']}u saved", style="#3fb950")
+        else:
+            t.append("   no saved sort", style="dim")
+        # Docker image state.
+        if info.get("group") == "docker":
+            if info.get("img_present"):
+                size = (info.get("img_size") or 0) / 1e9
+                t.append(f"   image: ~{size:.1f} GB" if size else "   image: downloaded",
+                         style="dim #3fb950")
+            else:
+                t.append("   image: not downloaded", style="#d29922")
+        return t
+
+    def _render_foot(self) -> None:
+        f = Text()
+        if self._last is not None:
+            f.append(self._last)
+            f.append("\n")
+        f.append("enter/g download · x delete image · c clear saved · r reload · Esc close",
+                 style="dim")
+        self.query_one("#hubfoot", Static).update(f)
+
+    # -- the highlighted sorter ----------------------------------------------- #
+    def _highlighted_info(self) -> "dict | None":
+        ol = self.query_one("#hublist", OptionList)
+        if ol.highlighted is None:
+            return None
+        oid = ol.get_option_at_index(ol.highlighted).id
+        if not oid or str(oid).startswith("__grp_"):
+            return None
+        return next((i for i in self._c.infos if i["name"] == oid), None)
+
+    def _highlight_by_name(self, name: str) -> bool:
+        """Move the hub cursor onto a sorter row by name (used by the keyboard flow
+        + tests)."""
+        ol = self.query_one("#hublist", OptionList)
+        for i in range(ol.option_count):
+            if ol.get_option_at_index(i).id == name:
+                ol.highlighted = i
+                return True
+        return False
+
+    # -- per-row operations --------------------------------------------------- #
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        # Enter on a row: download its image (no-op for non-docker / already-cached).
+        event.stop()
+        self.action_download()
+
+    def action_download(self) -> None:
+        info = self._highlighted_info()
+        if info is None or info.get("group") != "docker" or info.get("img_present"):
+            return                          # nothing to download for this row
+        self.app.push_screen(
+            DownloadProgressScreen(self._c, info["name"], self._accent),
+            self._after_download)
+
+    def _after_download(self, result) -> None:
+        ok, message = (result[0], result[1]) if isinstance(result, tuple) else (False, str(result))
+        self._set_last(ok, message)
+        self._reload_and_rebuild()
+
+    def action_delete_image(self) -> None:
+        # Destructive: confirm first (never delete on a single keystroke).
+        info = self._highlighted_info()
+        if info is None or not info.get("img_present"):
+            self._set_last(False, "no downloaded image to delete")
+            self._render_foot()
+            return
+        name = info["name"]
+        size = (info.get("img_size") or 0) / 1e9
+        sz = f" (~{size:.1f} GB)" if size else ""
+        self.app.push_screen(
+            ChoiceModal(f"Delete the downloaded image for {name}{sz}?",
+                        [("confirm", "Delete image", ""), ("cancel", "Keep it", "")],
+                        note="Removes only the cached image — you can re-download it later."),
+            lambda r: self._confirmed_delete_image(name) if r == "confirm" else None)
+
+    def _confirmed_delete_image(self, name: str) -> None:
+        ok, msg = self._c.delete_image(name)
+        self._set_last(ok, msg)
+        self._reload_and_rebuild()
+
+    def action_clear_sort(self) -> None:
+        # Destructive: confirm first (never clear on a single keystroke).
+        info = self._highlighted_info()
+        if info is None or not info.get("present"):
+            self._set_last(False, "no saved sort to clear")
+            self._render_foot()
+            return
+        name, units = info["name"], info.get("units", "?")
+        self.app.push_screen(
+            ChoiceModal(f"Clear the saved {name} sort ({units}u)?",
+                        [("confirm", "Clear saved sort", ""), ("cancel", "Keep it", "")],
+                        note=f"Deletes outputs/{name}/ — you can re-run the sort later."),
+            lambda r: self._confirmed_clear_sort(name) if r == "confirm" else None)
+
+    def _confirmed_clear_sort(self, name: str) -> None:
+        ok, msg = self._c.clear_saved_sort(name)
+        self._set_last(ok, msg)
+        self._reload_and_rebuild()
+
+    def action_reload(self) -> None:
+        self._reload_and_rebuild()
+        self._set_last(True, "reloaded")
+        self._render_foot()
+
+    def _reload_and_rebuild(self) -> None:
+        try:
+            self._c.reload()
+        except Exception as e:  # noqa: BLE001 - a reload failure must not kill the modal
+            self._set_last(False, f"reload failed: {e!r}")
+        self._rebuild()
+
+    def _set_last(self, ok: bool, message: str) -> None:
+        self._last = Text(message, style=_result_style(ok, message))
+
+    def action_close(self) -> None:
+        # Tell the caller whether anything changed so the dashboard reloads its own
+        # sidebar/banner after the hub closes.
+        self.dismiss(True)
+
+
 class WelcomeScreen(ModalScreen):
     """First-launch onboarding (shown once; re-openable from Help)."""
 
@@ -1412,7 +1689,7 @@ class SpikeMenuApp(App):
         """Paint the explanation pane for a sorter: a header line (name + ★/ACTIVE
         chip / 'press Enter to make active' / block reason), the full (un-truncated)
         description, a generic tuning hint, the saved-sort + custom-params lines, and
-        a 'Press → or Enter for actions.' call-to-action.
+        a 'Press → or Tab for actions.' call-to-action.
 
         ``info`` is the highlighted catalog row; for a header/docker/None row it
         falls back to the active sorter (matching the State-A spec)."""
@@ -1467,7 +1744,7 @@ class SpikeMenuApp(App):
                      style=ui.PRIMARY)
         else:
             t.append("none\n", style="dim")
-        t.append("\nPress → or Enter for actions.", style=f"bold {self._accent}")
+        t.append("\nPress → or Tab for actions.", style=f"bold {self._accent}")
         self.query_one("#inspectbody", Static).update(t)
 
     def _render_action_explain(self, meta: dict) -> None:
@@ -1648,9 +1925,51 @@ class SpikeMenuApp(App):
             pass
 
     def action_manage_highlighted(self) -> None:
-        """Manage the highlighted sorter (delete its Docker image / clear its saved
-        sort). A no-op-safe stub for now — Stage 5 fills in the ManageSorter modal."""
-        return
+        """``x``: manage the highlighted sorter. Only when the SORTERS pane is
+        focused — open a small confirm offering ONLY the applicable destructive ops
+        (delete its downloaded Docker image when cached, clear its saved sort when
+        one exists). If neither applies, set a footer hint instead of opening an
+        empty modal."""
+        if not self._sorters_focused():
+            return
+        info = self._highlighted_info()
+        if info is None:
+            return
+        name = info["name"]
+        opts: list[tuple[str, str]] = []
+        if info.get("img_present"):
+            size = (info.get("img_size") or 0) / 1e9
+            label = (f"Delete downloaded image (~{size:.1f} GB)" if size
+                     else "Delete downloaded image")
+            opts.append(("del_image", label))
+        if info.get("present"):
+            opts.append(("clear_sort", f"Clear saved sort ({info['units']}u)"))
+        if not opts:
+            self._last = Text(f"nothing to delete for {name}", style="dim")
+            self._refresh_footer()
+            return
+        self.push_screen(ManageSorterScreen(name, opts, self._accent),
+                         lambda choice: self._do_manage(name, choice))
+
+    def _do_manage(self, name: str, choice) -> None:
+        """Apply the per-sorter manage choice, then reload + re-render the sidebar,
+        SORT banner, and INSPECTING panel so the deleted state shows at once."""
+        if choice == "del_image":
+            ok, msg = self.c.delete_image(name)
+        elif choice == "clear_sort":
+            ok, msg = self.c.clear_saved_sort(name)
+        else:
+            return                          # cancelled
+        self._last = Text(msg, style=_result_style(ok, msg))
+        try:
+            self.c.reload()
+            self._rebuild_sorters()
+            self._rebuild_actions()
+        except Exception as e:  # noqa: BLE001 - a reload failure must not kill the app
+            self._last = Text(f"reload after manage failed: {e!r}", style="#f85149")
+        self._render_sortbar(self.size.width)
+        self._refresh_footer()
+        self._render_inspect()
 
     def action_cycle_sorter(self) -> None:
         self.c.cycle_active()
@@ -1826,6 +2145,8 @@ class SpikeMenuApp(App):
             self.action_help()
         elif key == "params":
             self._open_params()
+        elif key == "manage":
+            self.push_screen(ManageSortersScreen(self.c, self._accent), self._after_manage)
         elif self._needs_data(key) and not self.c.data_report.get("present"):
             # Guarded BEFORE the sort branch so sort can't open its modal with no data.
             self._last = Text("✗ ", style="bold #f85149") + Text(
@@ -1935,6 +2256,20 @@ class SpikeMenuApp(App):
                 else f"{sorter}: parameters reset to defaults",
                 style=f"bold {self._accent}")
         self._refresh_footer()
+
+    def _after_manage(self, _result) -> None:
+        """The Manage hub closed. It already mutated the controller + reloaded its
+        own view; refresh the dashboard's sidebar, SORT banner, and INSPECTING panel
+        so any deleted image / cleared sort shows on the main screen too."""
+        try:
+            self.c.reload()
+            self._rebuild_sorters()
+            self._rebuild_actions()
+        except Exception as e:  # noqa: BLE001 - a reload failure must not kill the app
+            self._last = Text(f"reload after manage failed: {e!r}", style="#f85149")
+        self._render_sortbar(self.size.width)
+        self._refresh_footer()
+        self._render_inspect()
 
     def _open_compare_picker(self) -> None:
         if self._needs_data("compare") and not self.c.data_report.get("present"):
