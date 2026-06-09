@@ -722,6 +722,10 @@ class MenuController:
 
     def reload(self) -> None:
         self.pipeline = _pipeline_rows(self.args.data_dir, self.active_sorter)
+        # Snapshot the installed set so per-keystroke action_explain() reuses it via
+        # uses_docker(..., installed_set=) instead of re-probing SpikeInterface each
+        # key. installed() is process-cached, so this is ~0 ms after the first call.
+        self._installed = sorter_registry.installed()
         self.infos = _catalog(self.active_sorter, self.use_docker)
         # Surface the count of saved per-sorter param overrides so the dashboard's
         # Selected-sorter card can show "· N custom params" (invisible until now once
@@ -825,21 +829,27 @@ class MenuController:
         bb = next((r for r in self.pipeline if "Broadband" in r.get("stage", "")), None)
         broadband_ok = present and (bb is None or bb.get("status") != "FAIL")
         n_saved = len(self.saved_sorters())
+        # Resolvers are LAZY (each value is a thunk) so a need's live check runs only
+        # when an action actually lists it. This matters for 'sort_docker': its check
+        # reaches the ~1 s installed()/Docker probe via active_blocked_on_docker(), and
+        # only the 'sort' action ever needs it — eager evaluation here paid that cost on
+        # *every* action highlight (per-keystroke latency). See perf measurement.
         resolvers = {
-            "data":       ("recording files", present),
-            "broadband":  ("broadband .ns5", broadband_ok),
-            "saved_sort": (f"a saved {self.active_sorter} sort", bool(info.get("present"))),
-            "two_sorts":  ("two saved sorts", n_saved >= 2),
-            "sort_docker": ("Docker running", not self.active_blocked_on_docker()),
+            "data":       lambda: ("recording files", present),
+            "broadband":  lambda: ("broadband .ns5", broadband_ok),
+            "saved_sort": lambda: (f"a saved {self.active_sorter} sort", bool(info.get("present"))),
+            "two_sorts":  lambda: ("two saved sorts", n_saved >= 2),
+            "sort_docker": lambda: ("Docker running", not self.active_blocked_on_docker()),
         }
         needs = []
         for nkey in meta.get("needs", []):
             # The docker-running requirement is only meaningful for a Docker sorter;
             # an installed/native active sorter never uses a container, so skip it.
             if nkey == "sort_docker" and not sorter_registry.uses_docker(
-                    self.active_sorter, self.use_docker):
+                    self.active_sorter, self.use_docker,
+                    installed_set=self._installed):
                 continue
-            label, ok = resolvers[nkey]
+            label, ok = resolvers[nkey]()
             needs.append({"label": label, "ok": ok})
         out = {"what": meta["what"], "needs": needs}
         if meta.get("choose"):

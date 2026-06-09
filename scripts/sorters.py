@@ -87,11 +87,24 @@ def available() -> list[str]:
     return sorted(ss.available_sorters())
 
 
-def installed() -> list[str]:
-    """Sorters runnable on this machine right now (deps importable), sorted."""
+_installed_cache: dict = {}
+
+
+def installed(refresh: bool = False) -> list[str]:
+    """Sorters runnable on this machine right now (deps importable), sorted.
+
+    Cached per process (it re-imports/probes every sorter's deps, ~1 s, and the
+    set is fixed for the life of the process — installing a sorter mid-session
+    needs a relaunch to register everywhere else anyway). Pass ``refresh=True`` to
+    re-probe. Mirrors the ``_docker_cache`` pattern.
+    """
+    if not refresh and "set" in _installed_cache:
+        return _installed_cache["set"]
     import spikeinterface.sorters as ss
 
-    return sorted(ss.installed_sorters())
+    result = sorted(ss.installed_sorters())
+    _installed_cache["set"] = result
+    return result
 
 
 def docker_state(refresh: bool = False) -> str:
