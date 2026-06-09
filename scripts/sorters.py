@@ -194,10 +194,25 @@ def docker_image_present(image: str) -> bool:
 def pull_docker_image(image: str, on_progress=None, on_status=None) -> bool:
     """Pull ``image`` via the Docker SDK, streaming progress. Never raises.
 
-    ``on_progress(downloaded_bytes, total_bytes)`` fires as layers download;
-    ``on_status(text)`` fires when the high-level step changes (Extracting, …).
-    Returns True on success, False on any failure — the caller can then fall back
-    to letting SpikeInterface pull the image during the run.
+    Docker fires its per-layer status strings ("Download complete"/"Pull
+    complete") once **per layer**, and a naive sum over only the *currently*
+    downloading layers gives an inflated early % (the denominator shrinks as
+    layers finish). This aggregates over **all** layers across two phases so the
+    UI sees a single honest bar plus a phase+count caption — never a raw
+    per-layer string. Returns True on success, False on any failure (the caller
+    can fall back to letting SpikeInterface pull during the run).
+
+    The callbacks see the **current phase over ALL layers** (a completed layer
+    never drops out of the denominator):
+
+    - ``on_progress(done, total)`` — download phase: ``done`` = Σ(layer.total if
+      that layer's download is done else its current bytes), ``total`` =
+      Σ(layer.total over layers whose total is known); extract phase: same but
+      over each layer's *extract* current/total. Fires whenever the bytes change.
+    - ``on_status(text)`` — only a phase+count caption, fired only when it
+      changes: ``"Downloading n/N layers"``, ``"Verifying…"`` (on "Verifying
+      Checksum"), ``"Extracting n/N layers"``, ``"Done"``. Raw per-layer status
+      strings are never passed through.
     """
     try:
         import docker
@@ -208,26 +223,106 @@ def pull_docker_image(image: str, on_progress=None, on_status=None) -> bool:
         repository, tag = image.rsplit(":", 1)
     else:
         repository, tag = image, "latest"
+
+    # Per-layer accumulators, keyed by layer id (order of first appearance).
+    layers: dict = {}   # lid -> {dl_cur, dl_total, dl_done, ex_cur, ex_total, ex_done}
+
+    def _layer(lid):
+        return layers.setdefault(lid, {
+            "dl_cur": 0, "dl_total": 0, "dl_done": False,
+            "ex_cur": 0, "ex_total": 0, "ex_done": False,
+        })
+
+    phase = "downloading"   # 'downloading' -> 'extracting' -> 'done'
+    last_status = None
+    last_progress = None
+
+    def _emit_status(text):
+        nonlocal last_status
+        if on_status and text != last_status:
+            last_status = text
+            on_status(text)
+
+    def _emit_progress(done, total):
+        nonlocal last_progress
+        if on_progress and (done, total) != last_progress:
+            last_progress = (done, total)
+            on_progress(done, total)
+
+    def _counts():
+        n = len(layers)
+        n_dl = sum(1 for v in layers.values() if v["dl_done"])
+        n_ex = sum(1 for v in layers.values() if v["ex_done"])
+        return n, n_dl, n_ex
+
+    def _progress_for_phase():
+        if phase == "extracting":
+            done = sum(v["ex_total"] if v["ex_done"] else v["ex_cur"]
+                       for v in layers.values())
+            total = sum(v["ex_total"] for v in layers.values() if v["ex_total"])
+        else:  # downloading (also used as the floor before extract starts)
+            done = sum(v["dl_total"] if v["dl_done"] else v["dl_cur"]
+                       for v in layers.values())
+            total = sum(v["dl_total"] for v in layers.values() if v["dl_total"])
+        return done, total
+
     try:
         client = docker.from_env()
-        downloading: dict = {}      # layer id -> (current, total) while downloading
-        last_status = None
         for ev in client.api.pull(repository, tag=tag, stream=True, decode=True):
             if "error" in ev:
                 return False
             status_text = ev.get("status") or ""
             lid = ev.get("id")
             det = ev.get("progressDetail") or {}
-            if status_text == "Downloading" and lid and "total" in det:
-                downloading[lid] = (det.get("current", 0), det.get("total", 0))
-                if on_progress:
-                    done = sum(c for c, _ in downloading.values())
-                    total = sum(t for _, t in downloading.values())
-                    on_progress(done, total)
-            elif status_text and status_text != last_status:
-                last_status = status_text
-                if on_status:
-                    on_status(status_text)
+
+            if status_text == "Pulling fs layer" and lid:
+                _layer(lid)
+            elif status_text == "Downloading" and lid:
+                ly = _layer(lid)
+                ly["dl_cur"] = det.get("current", ly["dl_cur"])
+                if det.get("total"):
+                    ly["dl_total"] = det["total"]
+            elif status_text == "Download complete" and lid:
+                ly = _layer(lid)
+                ly["dl_done"] = True
+                if ly["dl_total"]:
+                    ly["dl_cur"] = ly["dl_total"]
+            elif status_text == "Extracting" and lid:
+                phase = "extracting"   # first extract event ends the download phase
+                ly = _layer(lid)
+                ly["ex_cur"] = det.get("current", ly["ex_cur"])
+                if det.get("total"):
+                    ly["ex_total"] = det["total"]
+            elif status_text == "Pull complete" and lid:
+                phase = "extracting"
+                ly = _layer(lid)
+                ly["ex_done"] = True
+                if ly["ex_total"]:
+                    ly["ex_cur"] = ly["ex_total"]
+            elif status_text == "Verifying Checksum":
+                _emit_status("Verifying…")
+                continue
+            elif status_text.startswith("Status:"):
+                phase = "done"
+                _emit_status("Done")
+                continue
+            else:
+                # Any other per-layer chatter (e.g. "Waiting", "Already exists",
+                # "Pulling from …") is not surfaced as a status string.
+                if status_text == "Already exists" and lid:
+                    ly = _layer(lid)
+                    ly["dl_done"] = True
+                    ly["ex_done"] = True
+                continue
+
+            n, n_dl, n_ex = _counts()
+            if phase == "extracting":
+                _emit_status(f"Extracting {n_ex}/{n} layers")
+            else:
+                _emit_status(f"Downloading {n_dl}/{n} layers")
+            done, total = _progress_for_phase()
+            if total:
+                _emit_progress(done, total)
         return True
     except Exception:  # noqa: BLE001 - daemon / network failure mid-pull
         return False

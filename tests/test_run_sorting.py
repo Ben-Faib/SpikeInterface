@@ -148,5 +148,30 @@ def test_reporter_disabled_emits_nothing():
     buf = io.StringIO()
     rep = rs.Reporter(enabled=False, stream=buf, total_phases=4)
     rep.phase("X")
+    rep.substep("snr", 1, 8)
     rep.done_ok(units=0, out="o")
+    assert buf.getvalue() == ""
+
+
+def test_reporter_emits_substep_events(monkeypatch):
+    import io
+
+    import sort_progress as sp
+
+    buf = io.StringIO()
+    rep = rs.Reporter(enabled=True, stream=buf, total_phases=4)
+    rep.substep("firing_rate", 1, 8)
+    rep.substep("snr", 2, 8)
+
+    events = [e for e in (sp.parse_line(l) for l in buf.getvalue().splitlines()) if e]
+    assert events[0] == {"t": "substep", "name": "firing_rate", "i": 1, "n": 8}
+    assert events[1] == {"t": "substep", "name": "snr", "i": 2, "n": 8}
+
+
+def test_reporter_substep_disabled_noop():
+    import io
+
+    buf = io.StringIO()
+    rep = rs.Reporter(enabled=False, stream=buf, total_phases=4)
+    rep.substep("snr", 1, 8)
     assert buf.getvalue() == ""

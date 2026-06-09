@@ -494,11 +494,15 @@ class SortProgressScreen(ModalScreen):
     so Esc can kill the whole process *group* (SI spawns worker children) with one
     ``os.killpg``.
 
-    A phase checklist (✓ done / ▶ current) sits above an optional determinate bar
-    (drawn only when a ``bar`` event carries a ``total``) or, during indeterminate
-    stretches, a spinner + "still working (Ns)" line fed by ``heartbeat`` events.
-    On done/error the result line shows and the footer flips to "Press Enter to
-    close". Esc cancels.
+    A phase checklist (✓ done / ▶ current) sits above the live detail for the
+    current phase, which stacks (any that apply, in order): a ``→ {substep} (i/n)``
+    line (a named sub-step within the phase), a dim ``→ {detail}`` line (the latest
+    forwarded sorter step print, e.g. "detect_peaks(): 562 peaks found"), an
+    optional determinate bar (drawn only when a ``bar`` event carries a ``total``),
+    and — during indeterminate stretches — a spinner + "still working (Ns)" line fed
+    by ``heartbeat`` events. These coexist: a phase can show a substep, the latest
+    detail, AND a bar/heartbeat at once. On done/error the result line shows and the
+    footer flips to "Press Enter to close". Esc cancels.
 
     ``handle_event`` is a *synchronous* reduce-then-render entry point so a Pilot
     test can drive the screen with synthetic events (no real subprocess)."""
@@ -585,9 +589,10 @@ class SortProgressScreen(ModalScreen):
             self.query_one("#sortfoot", Static).update("Press Enter to close")
 
     def _tick_spinner(self) -> None:
-        # Only the indeterminate (heartbeat, no bar, not done) view animates.
+        # The heartbeat ("still working") line carries the live spinner glyph; it can
+        # now coexist with a bar/substep/detail, so animate whenever it will show.
         s = self._state
-        if s["done"] is None and not (s["bar"] and s["bar"].get("total")) and s["heartbeat"]:
+        if s["done"] is None and s["heartbeat"]:
             self._spin = (self._spin + 1) % len(self._SPINNER)
             self._repaint()
 
@@ -601,6 +606,17 @@ class SortProgressScreen(ModalScreen):
             t.append("✓ " if done else "▶ ",
                      style="#3fb950" if done else f"bold {self._accent}")
             t.append(f"{p['title']}\n", style="" if done else "bold")
+        # Live detail for the current phase — substep, latest sorter step line, the
+        # determinate bar, and the heartbeat all stack (whichever apply). They're
+        # cleared on each new phase by the reducer, so this only ever shows the
+        # running phase's progress.
+        if s["done"] is None:
+            if s.get("substep_name"):
+                t.append(f"  → {s['substep_name']} "
+                         f"({s['substep_i']}/{s['substep_n']})\n",
+                         style=f"bold {self._accent}")
+            if s.get("detail"):
+                t.append(f"  → {s['detail']}\n", style="dim")
         bar = s["bar"]
         if bar and bar.get("total"):
             frac = bar.get("frac") or 0.0
@@ -608,7 +624,7 @@ class SortProgressScreen(ModalScreen):
             t.append(f"  {bar.get('desc', '')} ", style="dim")
             t.append("█" * fill + "░" * (24 - fill), style=self._accent)
             t.append(f"  {frac * 100:3.0f}%\n", style="dim")
-        elif s["heartbeat"] and s["done"] is None:
+        if s["heartbeat"] and s["done"] is None:
             spin = self._SPINNER[self._spin]
             t.append(f"  {spin} {s['heartbeat']} … still working "
                      f"({s['heartbeat_secs']}s)\n", style="dim")
@@ -658,9 +674,16 @@ class DownloadProgressScreen(ModalScreen):
     hook), which we run in a **worker thread** (``run_worker(self._pull,
     thread=True)``) so the event loop never blocks. The SDK's ``on_progress`` /
     ``on_status`` callbacks fire on that thread, so every UI touch is marshalled
-    back with ``self.app.call_from_thread(...)``. A determinate bar + status line
-    render the pull; on finish a ✓/✗ line shows and Esc/Enter close (returning the
-    ``(ok, message)`` result to ``_after_download``)."""
+    back with ``self.app.call_from_thread(...)``.
+
+    ``on_status`` now emits only a phase+count string ("Downloading N/M layers" /
+    "Verifying…" / "Extracting N/M layers" / "Done"), and ``on_progress`` aggregates
+    correctly over all layers of the current phase. So the layout is: the phase
+    string is a **label above** a determinate bar (the aggregate %), with a **spinner**
+    next to the label that ticks on a ``set_interval`` (~6 fps) while the pull is live
+    — so indeterminate stretches (Waiting / Verifying, which emit no progress) still
+    read as alive. On finish a ✓/✗ line shows, the spinner stops, and Esc/Enter close
+    (returning the ``(ok, message)`` result to ``_after_download``)."""
 
     DEFAULT_CSS = """
     DownloadProgressScreen { align: center middle; }
@@ -678,14 +701,20 @@ class DownloadProgressScreen(ModalScreen):
         Binding("enter", "close", "Close", show=False),
     ]
 
+    _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
     def __init__(self, controller, name: str, accent: str):
         super().__init__()
         self._c = controller
         self._name = name
         self._accent = accent
         self._pct = 0
+        # The phase string from on_status ("Downloading N/M layers" / "Verifying…" /
+        # "Extracting N/M layers" / "Done") — never a raw per-layer status. It is the
+        # label drawn ABOVE the bar.
         self._status = "starting…"
         self._done = None              # (ok, message) once the pull finishes
+        self._spin = 0
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dldialog"):
@@ -696,9 +725,29 @@ class DownloadProgressScreen(ModalScreen):
     def on_mount(self) -> None:
         self.query_one("#dldialog").border_title = "DOWNLOAD"
         self._repaint()
+        # A slow spinner tick keeps the status line visibly alive even while the pull
+        # is in an indeterminate stretch (Waiting / Verifying emit no progress). Cheap
+        # — it stops the moment the pull finishes / the screen unmounts.
+        self._spin_timer = self.set_interval(1.0 / 6, self._tick_spinner)
         # The pull blocks (network + disk); run it OFF the event loop. The two
         # callbacks fire on this worker thread, so they hop back via call_from_thread.
         self.run_worker(self._pull, thread=True, exclusive=True)
+
+    def on_unmount(self) -> None:
+        self._stop_spinner()
+
+    def _stop_spinner(self) -> None:
+        timer = getattr(self, "_spin_timer", None)
+        if timer is not None:
+            timer.stop()
+            self._spin_timer = None
+
+    def _tick_spinner(self) -> None:
+        # Only animate while the pull is live — once done the ✓/✗ line is the cue.
+        if self._done is not None:
+            return
+        self._spin = (self._spin + 1) % len(self._SPINNER)
+        self._repaint()
 
     def _pull(self) -> None:
         def on_progress(done, total):
@@ -727,16 +776,21 @@ class DownloadProgressScreen(ModalScreen):
         self._done = (ok, msg)
         if ok:
             self._pct = 100
+        self._stop_spinner()           # no live spinner once the ✓/✗ line shows
         self._repaint()
         self.query_one("#dlfoot", Static).update("Press Enter to close")
 
     # NB: NOT named ``_render`` — that collides with Textual's Widget._render.
     def _repaint(self) -> None:
         t = Text()
+        # Phase string (from on_status) ABOVE the bar, with a live spinner alongside
+        # so an indeterminate stretch (Waiting / Verifying) clearly reads as alive.
+        if self._done is None:
+            t.append(self._SPINNER[self._spin] + " ", style=self._accent)
+        t.append(self._status + "\n", style="dim")
         fill = int(self._pct / 100 * 24)
         t.append("█" * fill + "░" * (24 - fill), style=self._accent)
         t.append(f"  {self._pct:3d}%\n", style="dim")
-        t.append(self._status + "\n", style="dim")
         if self._done is not None:
             ok, msg = self._done
             t.append(("✓ " if ok else "✗ ") + msg,

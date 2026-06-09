@@ -261,14 +261,18 @@ class FakeController:
                 "size": 1_100_000_000 if present else None}
 
     def download_image(self, name: str, on_progress=None, on_status=None) -> tuple[bool, str]:
-        # Drive the screen's callbacks once (so the bar/status update path is
-        # exercised) then return synchronously — no real ``docker pull``. Records the
-        # call + caches the image so a post-download reload() shows ✓ ready.
+        # Drive the screen's callbacks (so the bar/phase-label update path is
+        # exercised) then return synchronously — no real ``docker pull``. on_status
+        # now emits ONLY phase+count strings (the backend contract), so feed the
+        # phase sequence: Downloading -> Extracting. Records the call + caches the
+        # image so a post-download reload() shows ✓ ready.
         self.downloaded.append(name)
         if on_status is not None:
-            on_status(f"pulling {name}…")
+            on_status("Downloading 1/2 layers")
         if on_progress is not None:
             on_progress(50, 100)
+        if on_status is not None:
+            on_status("Extracting 1/2 layers")
         self._cached_images.add(name)
         return True, f"Downloaded {name}"
 

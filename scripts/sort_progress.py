@@ -4,7 +4,8 @@ in a subprocess) and the Textual ``SortProgressScreen`` (consumer).
 Events are newline-delimited JSON objects, each with a ``t`` (type) field:
 
     phase     {t,i,n,title,sub?}     a numbered pipeline phase started
-    detail    {t,text}               a dim sub-step line
+    detail    {t,text}               a dim sub-step line (also: a mirrored sorter step print)
+    substep   {t,name,i,n}           a named sub-step within a phase (e.g. one metric of N)
     bar       {t,desc,frac,n,total,elapsed?,remaining?}  determinate progress
     heartbeat {t,label,secs}         "still working" pulse during quiet stretches
     metrics   {t,rows:[...],csv}     quality-metrics table
@@ -21,7 +22,7 @@ import sys
 from typing import Any
 
 EVENT_TYPES = frozenset(
-    {"phase", "detail", "bar", "heartbeat", "metrics", "done", "error"}
+    {"phase", "detail", "substep", "bar", "heartbeat", "metrics", "done", "error"}
 )
 
 
@@ -56,6 +57,9 @@ def new_state() -> dict:
         "phase_title": "",
         "phases": [],          # [{i,title,done}]
         "detail": "",
+        "substep_name": "",    # named sub-step within the current phase
+        "substep_i": 0,        # 1-based index of the current sub-step
+        "substep_n": 0,        # total sub-steps in the current phase
         "bar": None,           # {desc,frac,n,total,elapsed,remaining} or None
         "heartbeat": "",
         "heartbeat_secs": 0,
@@ -79,8 +83,16 @@ def reduce(state: dict, ev: dict) -> dict:
         )
         state["bar"] = None            # a new phase clears the old determinate bar
         state["detail"] = ev.get("sub", "")
+        # a new phase clears any per-substep progress from the previous phase
+        state["substep_name"] = ""
+        state["substep_i"] = 0
+        state["substep_n"] = 0
     elif t == "detail":
         state["detail"] = ev.get("text", "")
+    elif t == "substep":
+        state["substep_name"] = ev.get("name", "")
+        state["substep_i"] = ev.get("i", 0)
+        state["substep_n"] = ev.get("n", 0)
     elif t == "bar":
         state["bar"] = {
             "desc": ev.get("desc", ""),
