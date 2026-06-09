@@ -169,10 +169,13 @@ def _catalog(active: str, use_docker: bool) -> list[dict]:
     inst = set(sorter_registry.installed())
     docker = sorter_registry.docker_available()
     runnable = set(sorter_registry.runnable(use_docker))
+    # Only probe the local image cache when Docker is at least installed; the
+    # daemon-installed check is cached per process, so this stays cheap.
+    docker_installed = sorter_registry.docker_state() != "not_installed"
     out = []
     for name in sorter_registry.available():
         present, units, duration = _saved_summary(name)
-        out.append({
+        info = {
             "name": name,
             "group": sorter_registry.group_of(name, installed_set=inst),
             "status": sorter_registry.status(name, installed_set=inst, docker=docker),
@@ -181,7 +184,17 @@ def _catalog(active: str, use_docker: bool) -> list[dict]:
             "description": sorter_registry.description(name),
             "present": present, "units": units, "duration": duration,
             "active": name == active,
-        })
+        }
+        group = info["group"]
+        if group == "docker":
+            img = sorter_registry.default_docker_image(name)
+            info["image"] = img
+            info["img_present"] = bool(img) and docker_installed and \
+                sorter_registry.docker_image_present(img)
+        else:
+            info["image"] = None
+            info["img_present"] = None
+        out.append(info)
     return out
 
 
@@ -862,6 +875,57 @@ class MenuController:
         if key == "gui" and not info.get("present"):
             out["caveat"] = "No saved sort yet — run Sort first."
         return out
+
+    def image_state(self, name: str) -> dict:
+        """{image, present, size} for a sorter's Docker image (best-effort)."""
+        img = sorter_registry.default_docker_image(name)
+        if not img:
+            return {"image": None, "present": False, "size": None}
+        present = sorter_registry.docker_image_present(img)
+        size = sorter_registry.image_size(img) if present else None
+        return {"image": img, "present": present, "size": size}
+
+    def download_image(self, name: str, on_progress=None, on_status=None) -> tuple[bool, str]:
+        """Pull a sorter's Docker image, streaming progress to the callbacks."""
+        img = sorter_registry.default_docker_image(name)
+        if not img:
+            return False, f"No Docker image is known for {name}."
+        ok = sorter_registry.pull_docker_image(img, on_progress, on_status)
+        return (True, f"Downloaded {img}") if ok else (False, f"Couldn't download {img}.")
+
+    def delete_image(self, name: str) -> tuple[bool, str]:
+        img = sorter_registry.default_docker_image(name)
+        if not img:
+            return False, f"No Docker image is known for {name}."
+        return sorter_registry.delete_docker_image(img)
+
+    def clear_saved_sort(self, name: str) -> tuple[bool, str]:
+        """Delete outputs/<name>/ (the saved sorting + analyzer). Robust to locks."""
+        import shutil
+
+        folder = bio.REPO_ROOT / "outputs" / name
+        if not folder.exists():
+            return False, f"No saved sort for {name}."
+        try:
+            shutil.rmtree(folder)
+            return True, f"Cleared saved {name} sort"
+        except Exception as e:  # noqa: BLE001
+            return False, f"Couldn't clear {name}: {e}"
+
+    def sort_command(self, span: str | None) -> list:
+        """argv for run_sorting.py in JSON-progress mode, for the in-UI sort modal."""
+        argv = [sys.executable, str(bio.REPO_ROOT / "scripts" / "run_sorting.py"),
+                "--sorter", self.active_sorter, "--progress", "json"]
+        if span == "quick":
+            argv += ["--duration", str(QUICK_SECONDS)]
+        if self.use_docker:
+            argv += ["--docker"]
+        if getattr(self.args, "data_dir", None):
+            argv += ["--data-dir", str(self.args.data_dir)]
+        overrides = self.get_overrides(self.active_sorter)
+        for k, v in overrides.items():
+            argv += ["--param", f"{k}={v}"]
+        return argv
 
     def run_compare(self, pair) -> tuple[bool, str, bool]:
         """Compare a user-chosen pair of saved sorts (mismatch caveat handled in action)."""
