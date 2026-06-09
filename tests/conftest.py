@@ -54,6 +54,15 @@ class FakeController:
         self.actions = [dict(key=k, title=t, hint=h, needs_data=nd) for k, t, h, nd in ACTIONS]
         self.ran: list[tuple[str, str | None]] = []
         self.ran_compare = None
+        self.downloaded: list[str] = []
+        self.deleted_images: list[str] = []
+        self.cleared_sorts: list[str] = []
+        # Which Docker images are cached locally. herdingspikes starts cached;
+        # mountainsort5 does not — so the badge tests cover both states. A download/
+        # delete mutates this set and SURVIVES reload() (a real reload re-probes the
+        # daemon and would see the now-cached / now-removed image).
+        self._cached_images: set[str] = {"herdingspikes"}
+        self._cleared: set[str] = set()
         self.params_set = None
         self.docker_state = "running"   # tests flip this to exercise the dialog
         self.started_docker = False
@@ -83,7 +92,7 @@ class FakeController:
         runnable = set(self.sorters)
         self.infos = []
         for name, group, units in self._UNIVERSE:
-            present = units is not None
+            present = (units is not None) and (name not in self._cleared)
             info = {
                 "name": name, "group": group,
                 "status": ("docker" if group == "docker" else
@@ -97,9 +106,10 @@ class FakeController:
                 "overrides": len(self.sorter_params.get(name, {})),
             }
             if group == "docker":
-                # mountainsort5 has no image cached; herdingspikes has one.
+                # Cached-image state lives in self._cached_images so a download/delete
+                # survives reload() (herdingspikes starts cached, mountainsort5 not).
                 info["image"] = f"spikeinterface/{name}-base:latest"
-                info["img_present"] = name == "herdingspikes"
+                info["img_present"] = name in self._cached_images
             else:
                 info["image"] = None
                 info["img_present"] = None
@@ -233,6 +243,46 @@ class FakeController:
         # tests (no real run_sorting.py / SpikeInterface). ``true`` exits 0 at once.
         self.sort_span = span
         return ["true"]
+
+    # -- Docker image management (Stage 4: in-UI download / state) ------------- #
+    def _docker_info(self, name: str) -> dict | None:
+        return next((i for i in self.infos
+                     if i["name"] == name and i.get("group") == "docker"), None)
+
+    def image_state(self, name: str) -> dict:
+        info = self._docker_info(name)
+        present = name in self._cached_images
+        return {"image": (info or {}).get("image"),
+                "present": present,
+                "size": 1_100_000_000 if present else None}
+
+    def download_image(self, name: str, on_progress=None, on_status=None) -> tuple[bool, str]:
+        # Drive the screen's callbacks once (so the bar/status update path is
+        # exercised) then return synchronously — no real ``docker pull``. Records the
+        # call + caches the image so a post-download reload() shows ✓ ready.
+        self.downloaded.append(name)
+        if on_status is not None:
+            on_status(f"pulling {name}…")
+        if on_progress is not None:
+            on_progress(50, 100)
+        self._cached_images.add(name)
+        return True, f"Downloaded {name}"
+
+    def delete_image(self, name: str) -> tuple[bool, str]:
+        if name not in self._cached_images:
+            return False, f"No downloaded image for {name}."
+        self._cached_images.discard(name)
+        self.deleted_images.append(name)
+        return True, f"Removed Docker image for {name}"
+
+    def clear_saved_sort(self, name: str) -> tuple[bool, str]:
+        info = next((i for i in self.infos if i["name"] == name), None)
+        if not (info and info.get("present")):
+            return False, f"No saved sort for {name}."
+        self._cleared.add(name)
+        self.cleared_sorts.append(name)
+        self.reload()
+        return True, f"Cleared saved {name} sort"
 
 
 @pytest.fixture

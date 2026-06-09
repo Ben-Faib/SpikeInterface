@@ -591,6 +591,75 @@ async def test_docker_confirm_start_calls_controller(make_app):
         assert c.started_docker is True
 
 
+# --- docker image download (Stage 4) -------------------------------------- #
+async def test_docker_row_shows_download_badge(make_app):
+    # A Docker sorter whose image isn't cached shows the "get it" badge; a cached
+    # one shows "ready" — both states drawn straight on the catalog row.
+    app = make_app()
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        sorters = app.query_one("#sorters", OptionList)
+        labels = {sorters.get_option_at_index(i).id:
+                  sorters.get_option_at_index(i).prompt.plain
+                  for i in range(sorters.option_count)}
+        ms = labels["mountainsort5"]                 # img_present False in the fake
+        assert "get" in ms.lower() or "⬇" in ms      # not-downloaded badge
+        hs = labels["herdingspikes"]                 # img_present True in the fake
+        assert "ready" in hs.lower() or "✓" in hs    # cached badge
+
+
+async def test_enter_on_undownloaded_docker_opens_download(make_app):
+    # With Docker on and the daemon running, Enter on an un-cached Docker sorter
+    # opens the in-UI download (separate from running a sort).
+    app = make_app(use_docker=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        app._highlight_sorter_by_name("mountainsort5")
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.DownloadProgressScreen)
+
+
+async def test_download_screen_reaches_done_and_reloads(make_app):
+    # The download worker drives the bar via the controller's callbacks and finishes
+    # ✓; closing reloads the catalog so the row flips to the cached badge.
+    app = make_app(use_docker=True)
+    c = app.c
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        app._highlight_sorter_by_name("mountainsort5")
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, menu_app.DownloadProgressScreen)
+        # let the worker thread run + marshal its callbacks/finish back to the UI
+        await screen.workers.wait_for_complete()
+        await pilot.pause()
+        assert screen._done is not None and screen._done[0] is True
+        assert "mountainsort5" in c.downloaded
+        await pilot.press("enter")                   # close -> _after_download reload
+        await pilot.pause()
+        assert not isinstance(app.screen, menu_app.DownloadProgressScreen)
+        ms = next(i for i in c.infos if i["name"] == "mountainsort5")
+        assert ms["img_present"] is True             # cached after the download
+
+
+async def test_enter_on_undownloaded_docker_offers_docker_when_daemon_down(make_app):
+    # Same row, but the Docker daemon isn't running: Enter must guide the user to
+    # start Docker first (the confirm dialog), not open a download that can't run.
+    app = make_app(use_docker=True)
+    app.c.docker_state = "installed_not_running"
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        app._highlight_sorter_by_name("mountainsort5")
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.DockerConfirmScreen)
+
+
 async def test_docker_off_is_immediate(make_app):
     app = make_app(present=True, use_docker=True)   # already on
     c = app.c

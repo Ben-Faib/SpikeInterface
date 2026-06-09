@@ -34,6 +34,14 @@ ACCENT, MUTED, OK, WARN, BAD = THEMES[DEFAULT_THEME], "dim", "bold green", "#e3a
 # the terminal's default foreground. Under NO_COLOR both flatten to the default fg.
 PRIMARY, SECONDARY = "", "#9aa0a6"
 
+# Docker-sorter download badge (drawn on the catalog rows + the manage hub). Each
+# is (glyph+label, rich style): cached/ready image, an in-flight pull, and a
+# not-yet-downloaded "get it" affordance. The ⬇ arrow + words are the NO_COLOR-safe
+# shape cue. DL_GET_COLOUR matches the amber DOCKER group tier.
+DL_GET_COLOUR = "#d29922"          # amber — "downloadable, ~1 GB"
+DL_READY = ("  ✓ ready", "dim #3fb950")   # green — image is cached locally
+DL_GET = ("  ⬇ get", DL_GET_COLOUR)       # amber — not downloaded yet
+
 # Shared, plain-language Help content (single source for the Textual HelpScreen
 # AND the typed-fallback help). Each entry is (topic_key, title, body_lines).
 HELP_TOPICS = [

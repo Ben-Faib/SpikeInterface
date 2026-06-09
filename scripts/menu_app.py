@@ -650,6 +650,105 @@ class SortProgressScreen(ModalScreen):
         self.dismiss((ok, msg, ok))
 
 
+class DownloadProgressScreen(ModalScreen):
+    """Pulls a sorter's Docker image in-UI, separate from running a sort.
+
+    The Textual app never imports the Docker SDK or SpikeInterface; the actual
+    ``docker pull`` happens inside ``MenuController.download_image`` (the registry
+    hook), which we run in a **worker thread** (``run_worker(self._pull,
+    thread=True)``) so the event loop never blocks. The SDK's ``on_progress`` /
+    ``on_status`` callbacks fire on that thread, so every UI touch is marshalled
+    back with ``self.app.call_from_thread(...)``. A determinate bar + status line
+    render the pull; on finish a ✓/✗ line shows and Esc/Enter close (returning the
+    ``(ok, message)`` result to ``_after_download``)."""
+
+    DEFAULT_CSS = """
+    DownloadProgressScreen { align: center middle; }
+    DownloadProgressScreen > #dldialog {
+        width: 70; max-width: 92%; height: auto; max-height: 90%;
+        border: round $accentcolor; background: $surface; padding: 1 2;
+    }
+    DownloadProgressScreen #dltitle { text-style: bold; color: $accentcolor; padding: 0 0 1 0; }
+    DownloadProgressScreen #dlbody { height: auto; }
+    DownloadProgressScreen #dlfoot { color: $text-muted; padding: 1 0 0 0; }
+    """
+
+    BINDINGS = [
+        Binding("escape", "close", "Close", show=False),
+        Binding("enter", "close", "Close", show=False),
+    ]
+
+    def __init__(self, controller, name: str, accent: str):
+        super().__init__()
+        self._c = controller
+        self._name = name
+        self._accent = accent
+        self._pct = 0
+        self._status = "starting…"
+        self._done = None              # (ok, message) once the pull finishes
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="dldialog"):
+            yield Static(f"Downloading {self._name}", id="dltitle")
+            yield Static("", id="dlbody")
+            yield Static("This runs once (~1 GB). Esc to close.", id="dlfoot")
+
+    def on_mount(self) -> None:
+        self.query_one("#dldialog").border_title = "DOWNLOAD"
+        self._repaint()
+        # The pull blocks (network + disk); run it OFF the event loop. The two
+        # callbacks fire on this worker thread, so they hop back via call_from_thread.
+        self.run_worker(self._pull, thread=True, exclusive=True)
+
+    def _pull(self) -> None:
+        def on_progress(done, total):
+            pct = int(done / total * 100) if total else 0
+            self.app.call_from_thread(self._set_pct, pct)
+
+        def on_status(text):
+            self.app.call_from_thread(self._set_status, text)
+
+        try:
+            ok, msg = self._c.download_image(self._name, on_progress, on_status)
+        except Exception as e:  # noqa: BLE001 - never let a worker crash kill the app
+            ok, msg = False, f"download failed: {e}"
+        self.app.call_from_thread(self._finish, ok, msg)
+
+    # -- thread-marshalled UI updates (only ever called via call_from_thread) -- #
+    def _set_pct(self, pct: int) -> None:
+        self._pct = pct
+        self._repaint()
+
+    def _set_status(self, text: str) -> None:
+        self._status = text
+        self._repaint()
+
+    def _finish(self, ok: bool, msg: str) -> None:
+        self._done = (ok, msg)
+        if ok:
+            self._pct = 100
+        self._repaint()
+        self.query_one("#dlfoot", Static).update("Press Enter to close")
+
+    # NB: NOT named ``_render`` — that collides with Textual's Widget._render.
+    def _repaint(self) -> None:
+        t = Text()
+        fill = int(self._pct / 100 * 24)
+        t.append("█" * fill + "░" * (24 - fill), style=self._accent)
+        t.append(f"  {self._pct:3d}%\n", style="dim")
+        t.append(self._status + "\n", style="dim")
+        if self._done is not None:
+            ok, msg = self._done
+            t.append(("✓ " if ok else "✗ ") + msg,
+                     style="bold " + ("#3fb950" if ok else "#f85149"))
+        self.query_one("#dlbody", Static).update(t)
+
+    def action_close(self) -> None:
+        # Before the pull finishes, Esc/Enter close with a not-done sentinel so the
+        # caller doesn't treat an interrupted view as a completed download.
+        self.dismiss(self._done or (False, "download still running", False))
+
+
 class WelcomeScreen(ModalScreen):
     """First-launch onboarding (shown once; re-openable from Help)."""
 
@@ -1282,6 +1381,17 @@ class SpikeMenuApp(App):
             tag = self._GROUP_ROW_TAG.get(info.get("group"))
             if tag:
                 t.append(f"  ·{tag}", style="dim")
+        # Docker rows carry a download badge so the cached/get-it state is scannable
+        # without opening INSPECTING: ✓ ready (cached), ⬇ NN% (pulling), or ⬇ get.
+        if info.get("group") == "docker":
+            if info.get("img_present"):
+                label, style = ui.DL_READY
+                t.append(label, style=style)
+            elif info.get("downloading") is not None:
+                t.append(f"  ⬇ {info['downloading']}%", style=self._accent)
+            else:
+                label, style = ui.DL_GET
+                t.append(label, style=style)
         return t
 
     def _highlighted_info(self) -> dict:
@@ -1614,21 +1724,71 @@ class SpikeMenuApp(App):
             self._activate_action(event.option.id)
 
     def _select_sorter(self, name: str) -> None:
+        """Enter on a sorter row. Decision table:
+
+          • Docker sorter whose image is NOT downloaded → if the Docker daemon is
+            running, open the in-UI download (DownloadProgressScreen); otherwise
+            offer to enable/start Docker first (DockerConfirmScreen).
+          • Runnable sorter → activate it and advance to the ACTIONS pane.
+          • Other Docker sorter (image present, but the Docker toggle is off) →
+            offer to enable the Docker toggle.
+          • GPU / unavailable → a footer hint (nothing to download).
+        """
         info = next((i for i in self.c.infos if i["name"] == name), None)
         if info is None:
             return
-        if info.get("runnable"):
+        if info.get("group") == "docker" and not info.get("img_present"):
+            # Download path — the image must be pulled before this can ever run, and
+            # it needs the daemon up. Pulling is SEPARATE from running a sort.
+            if self.c.docker_status(refresh=False).get("running"):
+                self.push_screen(DownloadProgressScreen(self.c, name, self._accent),
+                                 self._after_download)
+            else:
+                self._toggle_docker(offer_from=name)   # get Docker running first
+        elif info.get("runnable"):
             # Activate AND move focus to the (always-visible) ACTIONS pane — the
             # choose→run flow is one motion.
             if self._set_active_by_name(name):
                 self.action_focus_actions()
         elif info.get("group") == "docker":
-            self._toggle_docker(offer_from=name)     # offer to enable Docker (no advance)
+            # Image is cached but the Docker toggle is off — offer to enable it.
+            self._toggle_docker(offer_from=name)
         else:
             hint = ("needs a GPU build installed — see Help" if info.get("group") == "gpu"
                     else "not available on this computer")
             self._last = Text(f"{name}: {hint}", style="#f0883e")
             self._refresh_footer()
+
+    def _after_download(self, result) -> None:
+        """A finished/interrupted in-UI download. Reload the catalog so the row's
+        download badge + readiness flip, then re-render the sidebar, banner, and
+        INSPECTING panel."""
+        if isinstance(result, tuple):
+            ok, message = result[0], result[1]
+        else:
+            ok, message = False, str(result)
+        self._last = Text(message, style=_result_style(ok, message))
+        try:
+            self.c.reload()
+            self._rebuild_sorters()
+            self._rebuild_actions()
+        except Exception as e:  # noqa: BLE001 - a reload failure must not kill the app
+            self._last = Text(f"reload after download failed: {e!r}", style="#f85149")
+        self._render_sortbar(self.size.width)
+        self._refresh_footer()
+        self._render_inspect()
+
+    def _highlight_sorter_by_name(self, name: str) -> bool:
+        """Move the SORTERS cursor onto a sorter row by name (focusing the pane so a
+        following Enter dispatches there). Used by the keyboard flow + tests."""
+        ol = self.query_one("#sorters", OptionList)
+        for i in range(ol.option_count):
+            if ol.get_option_at_index(i).id == name:
+                ol.focus()
+                ol.highlighted = i
+                self._render_inspect(focus="sorters")
+                return True
+        return False
 
     def _toggle_docker(self, offer_from: str | None = None) -> None:
         if self.c.use_docker and offer_from is None:
