@@ -162,7 +162,7 @@ _LOGO_INDENT = 2  # leading "  " before every shield row
 
 # Public aliases: the built shield rows, by size, for screens that render the
 # Pitt crest at a fixed spot (the v2 Welcome screen + Help "About" topic) now
-# that the brain — not the shield — is the dashboard's top crest.
+# that the firing neuron — not the shield — is the dashboard's top crest.
 SHIELD_FULL, SHIELD_COMPACT, SHIELD_MINI = _LOGO, _LOGO_COMPACT, _LOGO_MINI
 
 # --------------------------------------------------------------------------- #
@@ -301,65 +301,6 @@ def pick_neuron(cols, rows=None, reserve=0):
     return _pick(_NEURONS, cols, rows, reserve)
 
 
-# --------------------------------------------------------------------------- #
-# Brain hero — the v2 dashboard's centerpiece (replaces the shield up top).
-# A detailed, *solid* brain rendered in Braille (each glyph = a 2x4 dot grid),
-# in "neural pink". Three tiers feed the SAME responsive ladder as the shield
-# (full -> compact -> mini -> hidden). Single-colour, so each row is one
-# fragment — the crest widget reuses the shield's render loop unchanged.
-# Regenerate with scripts/_brain_art_gen.py (decode -> downscale -> re-encode).
-# --------------------------------------------------------------------------- #
-BRAIN_PINK = "#ff6fb5"
-_BRAIN_FULL = [                # 30 cols
-    "⠀⠀⠀⠀⠀⠀⠀⠀⠀⣀⣀⣤⣤⣤⣤⡤⣄⣤⣀⣀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
-    "⠀⠀⠀⠀⠀⣠⣴⣾⣿⣿⣿⣿⣽⣿⣿⣿⣿⣿⣿⣾⣿⣦⣤⡀⠀⠀⠀⠀⠀⠀",
-    "⠀⠀⢀⣴⣾⢧⣽⣻⠿⢿⠿⠻⣯⣿⠾⢿⡿⣿⣼⡾⠾⣿⣯⣿⣶⡄⠀⠀⠀⠀",
-    "⠀⢠⢾⣷⡽⣻⣻⣿⣿⣿⣿⣿⣿⣏⣶⣯⢷⣿⣿⣏⢾⣯⣿⣿⣿⣿⣦⠀⠀⠀",
-    "⢰⣿⣿⣿⣿⢻⣿⢿⣿⣿⣿⣿⣿⣿⣿⣾⣿⣿⣟⣧⣼⣿⣿⣿⢕⣽⣾⣧⠀⠀",
-    "⠺⣽⣿⣿⣏⣾⣾⣿⣿⣿⣿⣿⣿⣾⣿⣿⣾⡿⣻⣿⣿⣿⣿⣾⣿⣿⣿⣽⡇⠀",
-    "⠀⠻⣽⣿⣾⣻⣿⣿⣿⣿⣿⣿⣿⣟⣿⣿⣹⣾⣷⣿⣯⣿⣾⣿⣿⣻⣿⣿⣿⣦",
-    "⠀⠀⠈⠛⠿⠿⣿⣿⣿⣿⡿⢿⣿⣿⣿⣿⡯⣻⣿⣿⣿⣿⢽⣿⣿⣿⣿⣿⣿⣿",
-    "⠀⠀⠀⠀⠀⠀⠀⢸⡸⢿⣳⣽⣿⣿⣿⣿⣼⣿⣽⣷⣝⣝⣿⣾⣿⣿⣿⣿⣿⣭",
-    "⠀⠀⠀⠀⠀⠀⠀⠈⠛⣿⣿⢿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⡿⠏⠀",
-    "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠉⠛⠛⠙⢯⣿⣿⣿⢿⣿⣿⡷⣿⣴⡮⣿⠀⠀⠀⠀",
-    "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⢹⣿⣿⣿⣿⣿⣿⢿⣟⡿⠋⠀⠀⠀⠀",
-    "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠈⣿⢿⠙⠾⠿⠿⠟⠋⠀⠀⠀⠀⠀⠀",
-    "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠸⠿⠃⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀⠀",
-]
-_BRAIN_COMPACT = [             # 18 cols
-    "⠀⠀⠀⠀⣀⣠⣤⣶⣶⣶⣴⣤⣀⠀⠀⠀⠀⠀",
-    "⠀⢀⣤⣞⣿⣿⡿⣟⣿⣿⣿⣿⣿⣟⣦⡀⠀⠀",
-    "⢀⣾⣿⣽⣿⣿⣿⣿⣿⣿⣿⣿⢻⣿⣿⢿⡆⠀",
-    "⢼⣿⣿⣼⣿⣿⣿⣿⣿⣿⡿⣿⣿⣿⣿⣿⣿⡆",
-    "⠈⠻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣷",
-    "⠀⠀⠀⠈⢹⣿⣳⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿",
-    "⠀⠀⠀⠀⠀⠙⠿⠿⢿⣿⣿⣿⣿⣿⣻⣿⠛⠁",
-    "⠀⠀⠀⠀⠀⠀⠀⠀⠈⢹⣿⣿⣿⣿⡿⠋⠀⠀",
-    "⠀⠀⠀⠀⠀⠀⠀⠀⠀⠘⣿⠌⠉⠉⠀⠀⠀⠀",
-]
-_BRAIN_MINI = [                # 12 cols
-    "⠀⠀⣠⣤⣶⣶⣶⣶⣤⡀⠀⠀",
-    "⢠⣾⣿⣿⣿⣿⣿⣿⣿⣿⣦⠀",
-    "⢻⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣇",
-    "⠀⠉⠛⣿⣿⣿⣿⣿⣿⣿⣿⣿",
-    "⠀⠀⠀⠈⠛⠻⣿⣿⣿⣿⡏⠁",
-    "⠀⠀⠀⠀⠀⠀⢹⡟⠛⠋⠀⠀",
-]
-
-
-def _build_brain(lines):
-    """Each Braille line -> a single pink fragment (the same row shape the shield
-    uses: a list of (style, text) per row), so the crest widget renders both."""
-    return [[(BRAIN_PINK, line)] for line in lines]
-
-
-_BRAINS = [
-    (len(_BRAIN_FULL[0]), len(_BRAIN_FULL), _build_brain(_BRAIN_FULL)),
-    (len(_BRAIN_COMPACT[0]), len(_BRAIN_COMPACT), _build_brain(_BRAIN_COMPACT)),
-    (len(_BRAIN_MINI[0]), len(_BRAIN_MINI), _build_brain(_BRAIN_MINI)),
-]
-
-
 def _term_size():
     """Live (cols, rows). Inside a running prompt_toolkit app, read its output size (so
     the dashboard tracks live resizes); otherwise use the real terminal via shutil.
@@ -396,12 +337,6 @@ def _pick(ladder, cols, rows, reserve):
 def pick_logo(cols, rows=None, reserve=0):
     """Largest Pitt shield (full -> compact -> mini -> none) that fits."""
     return _pick(_LOGOS, cols, rows, reserve)
-
-
-def pick_brain(cols, rows=None, reserve=0):
-    """Largest brain crest (full -> compact -> mini -> none) that fits — the v2
-    dashboard's top crest. Same fit rules as :func:`pick_logo`."""
-    return _pick(_BRAINS, cols, rows, reserve)
 
 
 try:  # rich is a declared dependency; the fallback is just safety.

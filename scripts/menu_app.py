@@ -17,7 +17,7 @@ bordered banner only when a stream fails to load. In action mode a folded
 
 Layout (responsive):
 
-    ┌ brain crest (collapses full→compact→mini→hidden as height shrinks) ┐
+    ┌ neuron crest (collapses full→compact→mini→hidden as height shrinks)┐
     │ ── University of Pittsburgh · SpikeInterface ── (#titlebar)         │
     │ ✓ Recording loaded — LFP · Broadband · .nev      (#statusline:      │
     │                                            quiet, or ⚠ loud banner)  │
@@ -74,7 +74,7 @@ class NavList(OptionList):
 NARROW_COLS = 78
 # Rows the crest must leave for title + footer + a usable body, so it drops
 # full→compact→mini→hidden well before it would crowd the menu off a short window.
-# (The brain ladder itself is 14 / 9 / 6 rows tall — see ui._BRAINS.) The status
+# (The neuron ladder itself is 7 / 5 / 3 rows tall — see ui._NEURONS.) The status
 # line adds +2 when loud and the #activebar adds +1 in action mode (both passed
 # through from _relayout via the mode/status-aware reserve). Tuned so the big crest
 # is deferential: it only claims the full tier on a tall (≈40+ row) terminal,
@@ -585,7 +585,7 @@ class HelpScreen(ModalScreen):
             body = _setup_body(self._c.data_report, self._accent, self._c.pipeline)
         elif key == "about":
             # The Pitt shield lives here (and on Welcome): the dashboard's top
-            # crest is now the brain, so the crest still has a home in the app.
+            # crest is now the firing neuron, so the shield still has a home here.
             body = _crest_text(ui.SHIELD_COMPACT)
             body.append("\n\n")
             body.append(title + "\n\n", style=f"bold {self._accent}")
@@ -664,7 +664,8 @@ def _setup_body(report: dict, accent: str, pipeline=None) -> Text:
 # --------------------------------------------------------------------------- #
 def _crest_text(rows) -> Text:
     """Build a Text from built crest rows (each row = a list of (style, seg)).
-    Works for both the brain (one pink fragment/row) and the blue+gold shield."""
+    Works for both the firing neuron (multi-fragment rows) and the blue+gold
+    shield (one fragment/row)."""
     t = Text()
     for n, line in enumerate(rows):
         if n:

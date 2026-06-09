@@ -703,7 +703,7 @@ def test_result_style_amber_for_warning():
     assert menu_app._result_style(False, "✗ Sorted x") == "#f85149"
 
 
-# --- brain hero crest + preserved Pitt shield ----------------------------- #
+# --- firing-neuron crest + preserved Pitt shield -------------------------- #
 
 def test_neuron_tiers_equal_width():
     # Every row in each tier's rest pose must be the same width or Textual's
