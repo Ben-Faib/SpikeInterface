@@ -417,17 +417,46 @@ async def test_disabled_action_does_not_run(make_app):
         assert "needs" in app.query_one("#footer", Static).render().plain.lower()
 
 
-async def test_sort_span_modal_then_runs(make_app):
+async def test_sort_opens_progress_screen(make_app):
+    # Sort now runs IN-UI: the span ChoiceModal first, then (on confirm) a
+    # SortProgressScreen that spawns the sort subprocess — not the old suspend+stdout
+    # _run path. The FakeController.sort_command returns ['true'] so the worker
+    # spawns + exits cleanly.
     app = make_app(present=True)
-    c = app.c
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
+        await pilot.press("right")      # focus the ACTIONS pane
         await pilot.press("2")          # sort -> opens the span modal
         await pilot.pause()
-        assert isinstance(app.screen, menu_app.ChoiceModal)
+        assert isinstance(app.screen, menu_app.ChoiceModal)   # span picker first
         await pilot.press("enter")      # choose the highlighted "full"
         await pilot.pause()
-        assert ("sort", "full") in c.ran
+        assert isinstance(app.screen, menu_app.SortProgressScreen)
+
+
+async def test_sort_progress_screen_renders_events(make_app):
+    # Drive the screen with synthetic events (no real subprocess) via the
+    # synchronous handle_event hook, then assert the phase checklist + done line.
+    import sort_progress as sp  # noqa: F401 - imported for symmetry with the emitter
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        screen = menu_app.SortProgressScreen(["true"], app._accent)
+        await app.push_screen(screen)
+        await pilot.pause()
+        for ev in [
+            {"t": "phase", "i": 1, "n": 4, "title": "Read broadband"},
+            {"t": "bar", "desc": "detect", "frac": 0.5, "n": 5, "total": 10},
+            {"t": "phase", "i": 2, "n": 4, "title": "Run sorter"},
+            {"t": "done", "ok": True, "units": 13, "out": "outputs/tridesclous2"},
+        ]:
+            screen.handle_event(ev)        # synchronous reducer + render
+            await pilot.pause()
+        body = screen.query_one("#sortbody").render().plain
+        assert "Read broadband" in body and "Run sorter" in body
+        assert ("13" in body or "Done" in body)
+        assert screen._state["done"]["ok"] is True
+        foot = screen.query_one("#sortfoot").render().plain
+        assert "Enter" in foot
 
 
 async def test_sort_modal_warns_before_overwriting(make_app):

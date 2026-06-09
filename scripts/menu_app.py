@@ -46,6 +46,7 @@ the actions are always reachable even when the body is taller than the screen.
 """
 from __future__ import annotations
 
+import asyncio
 from typing import Protocol
 
 from rich.text import Text
@@ -56,6 +57,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Checkbox, Input, Label, OptionList, Static
 from textual.widgets.option_list import Option
 
+import sort_progress as _sp  # pure JSON progress protocol (no SI / Textual deps)
 import ui  # shield art + theme palette + plain helpers (single source)
 
 
@@ -479,6 +481,173 @@ class DockerConfirmScreen(ModalScreen):
             self.query_one("#dstatus", Static).update(
                 Text("Still not ready — open Docker Desktop, then press [r].", style="#f0883e"))
             return
+
+
+class SortProgressScreen(ModalScreen):
+    """Runs a sort subprocess and renders its JSON progress events in-UI.
+
+    The Textual app never imports SpikeInterface; instead we spawn
+    ``run_sorting.py --progress json`` (the ``argv`` from
+    ``MenuController.sort_command``) and read its newline-delimited JSON events on
+    stdout, folding each through ``sort_progress.reduce`` into ``self._state`` and
+    re-rendering. The subprocess gets its own session (``start_new_session=True``)
+    so Esc can kill the whole process *group* (SI spawns worker children) with one
+    ``os.killpg``.
+
+    A phase checklist (✓ done / ▶ current) sits above an optional determinate bar
+    (drawn only when a ``bar`` event carries a ``total``) or, during indeterminate
+    stretches, a spinner + "still working (Ns)" line fed by ``heartbeat`` events.
+    On done/error the result line shows and the footer flips to "Press Enter to
+    close". Esc cancels.
+
+    ``handle_event`` is a *synchronous* reduce-then-render entry point so a Pilot
+    test can drive the screen with synthetic events (no real subprocess)."""
+
+    DEFAULT_CSS = """
+    SortProgressScreen { align: center middle; }
+    SortProgressScreen > #sortdialog {
+        width: 70; max-width: 92%; height: auto; max-height: 90%;
+        border: round $accentcolor; background: $surface; padding: 1 2;
+    }
+    SortProgressScreen #sorttitle { text-style: bold; color: $accentcolor; padding: 0 0 1 0; }
+    SortProgressScreen #sortbody { height: auto; }
+    SortProgressScreen #sortfoot { color: $text-muted; padding: 1 0 0 0; }
+    """
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel", show=False),
+        Binding("enter", "close_if_done", "Close", show=False),
+    ]
+
+    _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+    def __init__(self, argv: list, accent: str):
+        super().__init__()
+        self._argv = list(argv)
+        self._accent = accent
+        self._state = _sp.new_state()
+        self._proc = None
+        self._spin = 0
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="sortdialog"):
+            yield Static("Sorting…", id="sorttitle")
+            yield Static("", id="sortbody")
+            yield Static("Esc to cancel", id="sortfoot")
+
+    def on_mount(self) -> None:
+        self.query_one("#sortdialog").border_title = "SORTING"
+        self._repaint()
+        # A slow spinner tick keeps the indeterminate-phase glyph alive even while
+        # the subprocess is quiet (between heartbeats). Cheap — no work when done.
+        self._spin_timer = self.set_interval(0.2, self._tick_spinner)
+        self.run_worker(self._run(), exclusive=True)
+
+    def on_unmount(self) -> None:
+        timer = getattr(self, "_spin_timer", None)
+        if timer is not None:
+            timer.stop()
+
+    async def _run(self) -> None:
+        try:
+            self._proc = await asyncio.create_subprocess_exec(
+                *self._argv,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except Exception as e:  # noqa: BLE001 - bad argv / no python -> friendly error
+            self.handle_event({"t": "error", "ok": False,
+                               "message": f"couldn't start sort: {e}"})
+            return
+        if self._proc.stdout is not None:
+            async for raw in self._proc.stdout:
+                ev = _sp.parse_line(raw.decode("utf-8", "replace"))
+                if ev:
+                    self.handle_event(ev)
+        await self._proc.wait()
+        if self._state["done"] is None:
+            # The process ended without emitting done/error (e.g. argv was a plain
+            # 'true' in tests, or a hard crash) — synthesise a friendly close state.
+            rc = self._proc.returncode
+            if rc == 0:
+                self.handle_event({"t": "done", "ok": True, "units": "?", "out": ""})
+            else:
+                self.handle_event({"t": "error", "ok": False,
+                                   "message": f"sort exited ({rc}) without finishing"})
+
+    def handle_event(self, ev: dict) -> None:
+        """Synchronous: fold one event into the state and re-render. Safe to call
+        from the reader worker or directly from a test."""
+        _sp.reduce(self._state, ev)
+        self._repaint()
+        if self._state["done"] is not None:
+            self.query_one("#sortfoot", Static).update("Press Enter to close")
+
+    def _tick_spinner(self) -> None:
+        # Only the indeterminate (heartbeat, no bar, not done) view animates.
+        s = self._state
+        if s["done"] is None and not (s["bar"] and s["bar"].get("total")) and s["heartbeat"]:
+            self._spin = (self._spin + 1) % len(self._SPINNER)
+            self._repaint()
+
+    # NB: deliberately NOT named ``_render`` — that collides with Textual's
+    # ``Widget._render`` (the layout engine calls it expecting a Visual).
+    def _repaint(self) -> None:
+        s = self._state
+        t = Text()
+        for p in s["phases"]:
+            done = p["done"]
+            t.append("✓ " if done else "▶ ",
+                     style="#3fb950" if done else f"bold {self._accent}")
+            t.append(f"{p['title']}\n", style="" if done else "bold")
+        bar = s["bar"]
+        if bar and bar.get("total"):
+            frac = bar.get("frac") or 0.0
+            fill = int(frac * 24)
+            t.append(f"  {bar.get('desc', '')} ", style="dim")
+            t.append("█" * fill + "░" * (24 - fill), style=self._accent)
+            t.append(f"  {frac * 100:3.0f}%\n", style="dim")
+        elif s["heartbeat"] and s["done"] is None:
+            spin = self._SPINNER[self._spin]
+            t.append(f"  {spin} {s['heartbeat']} … still working "
+                     f"({s['heartbeat_secs']}s)\n", style="dim")
+        if s["done"]:
+            d = s["done"]
+            if d.get("ok"):
+                units = d.get("units", "?")
+                out = d.get("out", "")
+                line = f"\n✓ Done · {units} units"
+                if out:
+                    line += f" → {out}"
+                t.append(line + "\n", style="bold #3fb950")
+            else:
+                t.append(f"\n✗ {d.get('message', 'sort failed')}\n", style="bold #f85149")
+        self.query_one("#sortbody", Static).update(t)
+
+    def action_cancel(self) -> None:
+        # Kill the whole process group so SpikeInterface's worker children die too.
+        if self._proc is not None and self._proc.returncode is None:
+            import os
+            import signal
+            try:
+                os.killpg(os.getpgid(self._proc.pid), signal.SIGTERM)
+            except Exception:  # noqa: BLE001 - already gone / no group -> ignore
+                pass
+        self.dismiss((False, "Sort cancelled", False))
+
+    def action_close_if_done(self) -> None:
+        if self._state["done"] is None:
+            return                                  # still running — Enter is a no-op
+        d = self._state["done"]
+        ok = bool(d.get("ok"))
+        if ok:
+            units = d.get("units", "")
+            msg = f"✓ Sorted {units} units".rstrip()
+        else:
+            msg = f"✗ {d.get('message', 'sort failed')}"
+        # Only an OK sort changed the saved-sort universe (cancel/error did not).
+        self.dismiss((ok, msg, ok))
 
 
 class WelcomeScreen(ModalScreen):
@@ -1537,7 +1706,29 @@ class SpikeMenuApp(App):
             self._last = Text("Sort cancelled", style="dim")
             self._refresh_footer()
         else:
-            self._run("sort", span)
+            self._start_sort(span)
+
+    def _start_sort(self, span: str) -> None:
+        """Run the sort *in-UI* via SortProgressScreen instead of dropping to
+        scrolling stdout: build the run_sorting.py argv (JSON-progress mode) and push
+        the modal that spawns it and renders its progress events live."""
+        argv = self.c.sort_command(span)
+        self.push_screen(SortProgressScreen(argv, self._accent), self._after_sort)
+
+    def _after_sort(self, result) -> None:
+        ok, message, changed = result or (False, "Sort cancelled", False)
+        self._last = Text(message, style=_result_style(ok, message))
+        if changed:
+            try:
+                self.c.reload()
+                self._rebuild_sorters()
+                self._rebuild_actions()
+            except Exception as e:  # noqa: BLE001 - reload failure must not kill the app
+                self._last = Text(f"reload after sort failed: {e!r}", style="#f85149")
+        self._refresh_footer()
+        self._relayout()
+        self._render_inspect()
+        self.refresh()
 
     def _open_theme(self) -> None:
         opts = [(n, n, "(current)" if n == self.c.theme_name else "") for n in self.c.themes]

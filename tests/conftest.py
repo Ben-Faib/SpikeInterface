@@ -228,6 +228,12 @@ class FakeController:
         self.ran.append((key, span))
         return True, f"✓ ran {key}", key in ("sort", "compare")
 
+    def sort_command(self, span: str | None) -> list[str]:
+        # A harmless argv so SortProgressScreen's worker can spawn + exit cleanly in
+        # tests (no real run_sorting.py / SpikeInterface). ``true`` exits 0 at once.
+        self.sort_span = span
+        return ["true"]
+
 
 @pytest.fixture
 def make_controller():
