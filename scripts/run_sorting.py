@@ -50,9 +50,59 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import blackrock_io as bio  # noqa: E402
+import sort_progress as _sp  # noqa: E402  (pure JSON progress protocol)
 import sorters  # noqa: E402  (sorter registry: discovery / status / params / run)
 
 VERBOSITY_LEVELS = ["quiet", "normal", "verbose"]
+
+
+class Reporter:
+    """Mirrors high-level pipeline events into the JSON progress channel.
+
+    When ``enabled`` (``--progress json``), each call writes a ``sort_progress``
+    event to ``stream`` (stdout); when disabled it is a no-op, so the normal CLI
+    paths cost nothing. The human ConsoleUI is independent and writes to stderr in
+    JSON mode.
+    """
+
+    def __init__(self, *, enabled: bool, stream=None, total_phases: int):
+        self.enabled = enabled
+        self.stream = stream if stream is not None else sys.stdout
+        self.total = total_phases
+        self.i = 0
+
+    def _emit(self, ev: dict) -> None:
+        if self.enabled:
+            _sp.emit(ev, stream=self.stream)
+
+    def phase(self, title: str, sub: str = "") -> None:
+        self.i += 1
+        self._emit({"t": "phase", "i": self.i, "n": self.total, "title": title, "sub": sub})
+
+    def detail(self, text: str) -> None:
+        self._emit({"t": "detail", "text": text})
+
+    def bar(self, desc: str, *, frac, n=None, total=None, elapsed=None, remaining=None) -> None:
+        self._emit({"t": "bar", "desc": desc, "frac": frac, "n": n, "total": total,
+                    "elapsed": elapsed, "remaining": remaining})
+
+    def heartbeat(self, label: str, secs: int) -> None:
+        self._emit({"t": "heartbeat", "label": label, "secs": secs})
+
+    def metrics(self, rows: list, csv: str) -> None:
+        self._emit({"t": "metrics", "rows": rows, "csv": csv})
+
+    def done_ok(self, *, units: int, out: str, good=None) -> None:
+        self._emit({"t": "done", "ok": True, "units": units, "good": good, "out": str(out)})
+
+    def error(self, message: str) -> None:
+        self._emit({"t": "error", "ok": False, "message": message})
+
+
+# Set in configure_output(); read by AlignedTqdm so library/sorter tqdm bars can
+# mirror into the JSON event channel without threading the Reporter through every
+# SpikeInterface call site.
+_REPORTER: "Reporter | None" = None
 
 # Width the tqdm description is padded/truncated to, so every progress bar's
 # fill lines up in the same column. 34 fits all but the longest SI/sorter job
@@ -105,7 +155,43 @@ def _install_aligned_tqdm() -> None:
                 args = (args[0], _format_desc(args[1])) + args[2:]
             kwargs.setdefault("bar_format", _TQDM_BAR_FORMAT)
             kwargs.setdefault("colour", _TQDM_BAR_COLOUR)
+            self._last_emit_frac = -1.0
             super().__init__(*args, **kwargs)
+
+        def _emit_bar(self) -> None:
+            """Mirror the bar's current state into the JSON progress channel.
+
+            Only fires when a Reporter is active (``--progress json``); throttled to
+            ~1% steps so a fast inner loop doesn't flood the event channel, and
+            always fires on completion.
+            """
+            rep = _REPORTER
+            if rep is None or not rep.enabled:
+                return
+            total = self.total
+            if not total or total <= 0:
+                return
+            frac = self.n / total
+            if frac < 1.0 and frac - self._last_emit_frac < 0.01:
+                return
+            self._last_emit_frac = frac
+            fmt = self.format_dict
+            desc = _TQDM_DESC_SUFFIX.sub("", (self.desc or "")).strip()
+            rep.bar(
+                desc, frac=frac, n=self.n, total=total,
+                elapsed=fmt.get("elapsed"),
+                remaining=(fmt.get("elapsed", 0) / frac - fmt.get("elapsed", 0)) if frac else None,
+            )
+
+        def update(self, *args, **kwargs):
+            ret = super().update(*args, **kwargs)
+            self._emit_bar()
+            return ret
+
+        def refresh(self, *args, **kwargs):
+            ret = super().refresh(*args, **kwargs)
+            self._emit_bar()
+            return ret
 
     # Rebind on every module the libraries might import tqdm from.
     _tqdm.tqdm = _tqdm_std.tqdm = _tqdm_auto.tqdm = AlignedTqdm
@@ -123,14 +209,17 @@ class ConsoleUI:
 
     PALETTE = {"accent": "cyan", "muted": "dim", "ok": "bold green", "warn": "yellow"}
 
-    def __init__(self, *, quiet: bool, total_phases: int):
+    def __init__(self, *, quiet: bool, total_phases: int, stderr: bool = False):
         self.quiet = quiet
         self.total = total_phases
         self.n = 0
+        # In JSON-progress mode stdout is a clean event channel, so the human
+        # rich/plain output is redirected to stderr.
+        self._stderr = stderr
         try:
             from rich.console import Console
 
-            self._c = Console(highlight=False)
+            self._c = Console(stderr=stderr, highlight=False)
         except Exception:  # rich missing — fall back to plain text
             self._c = None
 
@@ -138,7 +227,7 @@ class ConsoleUI:
         if self._c is not None:
             self._c.print(markup)
         else:
-            print(plain, flush=True)
+            print(plain, flush=True, file=sys.stderr if self._stderr else None)
 
     def banner(self, sorter: str) -> None:
         if self.quiet:
@@ -146,7 +235,8 @@ class ConsoleUI:
         if self._c is not None:
             self._c.rule(f"[bold]spike sorting[/] · [{self.PALETTE['accent']}]{sorter}[/]")
         else:
-            print(f"=== spike sorting · {sorter} ===", flush=True)
+            print(f"=== spike sorting · {sorter} ===", flush=True,
+                  file=sys.stderr if self._stderr else None)
 
     def phase(self, title: str, subtitle: str = "") -> None:
         """Start a numbered phase, e.g. ``[2/4] Preprocess``."""
@@ -202,8 +292,9 @@ class ConsoleUI:
             self._c.print(table)
             self._c.print(f"[{self.PALETTE['muted']}]saved → {csv_path}[/]")
         else:
-            print("\n" + df.round(3).to_string(), flush=True)
-            print(f"saved -> {csv_path}", flush=True)
+            _f = sys.stderr if self._stderr else None
+            print("\n" + df.round(3).to_string(), flush=True, file=_f)
+            print(f"saved -> {csv_path}", flush=True, file=_f)
 
     def done(self, out: Path) -> None:
         self._emit(
@@ -212,7 +303,7 @@ class ConsoleUI:
         )
 
 
-def configure_output(level: str) -> bool:
+def configure_output(level: str, *, json_mode: bool = False, reporter: "Reporter | None" = None) -> bool:
     """Mute library/native chatter and align tqdm bars. Returns ``show_bars``.
 
     Call this *before* importing spikeinterface so the env vars and the tqdm
@@ -220,7 +311,13 @@ def configure_output(level: str) -> bool:
     is True only for ``verbose``; ``normal``/``quiet`` keep the high-level step
     messages but draw no progress bars. Warnings are muted at every level — they
     are clutter that breaks up the clean formatting, not the verbose signal.
+
+    When ``json_mode`` the aligned-tqdm patch is installed even with bars off, so
+    the library/sorter bars can mirror into the JSON event channel via
+    ``reporter`` (stored in the module-level ``_REPORTER`` the patch reads).
     """
+    global _REPORTER
+    _REPORTER = reporter
     # UTF-8 stdout/stderr first, before rich/tqdm/SI build any console — so the
     # ✓ / → / … glyphs below never raise UnicodeEncodeError on a legacy Windows
     # console code page (cp1252/cp437) when output is redirected or piped. Then
@@ -229,7 +326,10 @@ def configure_output(level: str) -> bool:
     bio.mute_native_chatter()
 
     show_bars = level == "verbose"
-    if show_bars:
+    # Patch tqdm when drawing bars OR when JSON mode needs to mirror bar events.
+    # The patched class is a no-op for the event channel unless _REPORTER.enabled,
+    # so installing it in JSON mode never changes plain-CLI behaviour.
+    if show_bars or json_mode:
         _install_aligned_tqdm()
     return show_bars
 
@@ -412,14 +512,18 @@ class _Heartbeat:
     """Periodic 'still working' line so a long, silent container step (image setup,
     in-container install, the sort itself) never looks frozen. No-op when quiet."""
 
-    def __init__(self, ui: "ConsoleUI", label: str, every: float = 25.0):
+    def __init__(self, ui: "ConsoleUI", label: str, every: float = 25.0,
+                 reporter: "Reporter | None" = None):
         self.ui, self.label, self.every = ui, label, every
+        self.reporter = reporter
         self._stop = threading.Event()
         self._t: "threading.Thread | None" = None
         self._t0 = 0.0
 
     def __enter__(self):
-        if not self.ui.quiet:
+        # Start the thread when the human cares (not quiet) OR when JSON-progress
+        # is on (so the consumer still gets a "still working" pulse while quiet).
+        if not self.ui.quiet or (self.reporter is not None and self.reporter.enabled):
             self._t0 = time.monotonic()
             self._t = threading.Thread(target=self._run, daemon=True)
             self._t.start()
@@ -429,6 +533,8 @@ class _Heartbeat:
         while not self._stop.wait(self.every):
             el = int(time.monotonic() - self._t0)
             self.ui.detail(f"… {self.label} — still working ({el // 60}m{el % 60:02d}s elapsed)")
+            if self.reporter is not None:
+                self.reporter.heartbeat(self.label, el)
 
     def __exit__(self, *exc) -> None:
         self._stop.set()
@@ -548,6 +654,11 @@ def main() -> int:
         "prints (default), 'normal' = step messages + final table only, "
         "'quiet' = final table only. Warnings are muted at every level.",
     )
+    parser.add_argument(
+        "--progress", choices=["plain", "json"], default="plain",
+        help="plain CLI output (default) or newline-delimited JSON events on stdout "
+        "(human/rich output then goes to stderr) — used by the in-UI sort screen.",
+    )
     args = parser.parse_args()
 
     # Validate args up front — before the heavy SpikeInterface import and the
@@ -569,17 +680,39 @@ def main() -> int:
     args.sorter = resolve_sorter(args.sorter, args.docker)
     overrides = resolve_overrides(args.sorter, args.param, args.params_file)
 
+    json_mode = args.progress == "json"
+    total_phases = 3 if args.no_metrics else 4
+    # In JSON mode stdout must be a *pure* event channel, but sorters/libraries
+    # write status lines straight to stdout (fd 1, bypassing sys.stdout). So we
+    # dup the real stdout aside for the Reporter to emit events on, then point
+    # fd 1 (and sys.stdout) at stderr for the rest of the run — any other write
+    # to stdout then lands on stderr, off the event channel.
+    event_stream = sys.stdout
+    if json_mode:
+        os = __import__("os")
+        saved_fd = os.dup(1)                       # the real stdout, for events
+        event_stream = os.fdopen(saved_fd, "w", buffering=1)
+        sys.stdout.flush()
+        os.dup2(2, 1)                              # fd 1 -> stderr
+        sys.stdout = os.fdopen(os.dup(1), "w", buffering=1)
+    rep = Reporter(enabled=json_mode, stream=event_stream, total_phases=total_phases)
+
     # Configure output BEFORE importing spikeinterface so env vars / the tqdm
-    # patch land before OpenMP/Numba/the sorters initialise.
-    show_bars = configure_output(args.verbosity)
+    # patch land before OpenMP/Numba/the sorters initialise. In JSON mode the
+    # tqdm patch is installed too (it mirrors bar events into the event channel).
+    show_bars = configure_output(args.verbosity, json_mode=json_mode, reporter=rep)
     quiet = args.verbosity == "quiet"
-    ui = ConsoleUI(quiet=quiet, total_phases=3 if args.no_metrics else 4)
+    # In JSON mode stdout is the clean event channel, so the human ConsoleUI
+    # output goes to stderr.
+    ui = ConsoleUI(quiet=quiet, total_phases=total_phases, stderr=json_mode)
 
     import spikeinterface.full as si
     import spikeinterface.preprocessing as spre
     import spikeinterface.sorters as ss
 
-    si.set_global_job_kwargs(n_jobs=args.n_jobs, progress_bar=show_bars)
+    # Drive SI's own tqdm bars when drawing them OR in JSON mode (so the patched
+    # tqdm fires bar events); in JSON mode they render on stderr, off the channel.
+    si.set_global_job_kwargs(n_jobs=args.n_jobs, progress_bar=show_bars or json_mode)
 
     out = Path(args.output_dir) if args.output_dir else (bio.REPO_ROOT / "outputs" / args.sorter)
     out.mkdir(parents=True, exist_ok=True)
@@ -588,12 +721,13 @@ def main() -> int:
     _warn_existing_sort(out, ui)  # flag (don't block) before we overwrite it
 
     ui.phase("Read broadband", "(.ns5)")
+    rep.phase("Read broadband", "(.ns5)")
     rec = bio.read_broadband(args.data_dir)  # placeholder independent-channel probe attached
     total_seconds = rec.get_total_duration()
-    ui.detail(
-        f"{rec.get_num_channels()} channels · {rec.get_sampling_frequency():g} Hz · "
-        f"{total_seconds:.1f}s"
-    )
+    _ch_detail = (f"{rec.get_num_channels()} channels · "
+                  f"{rec.get_sampling_frequency():g} Hz · {total_seconds:.1f}s")
+    ui.detail(_ch_detail)
+    rep.detail(_ch_detail)
 
     # Drop non-neural analog aux channels (ids 10241+, 'analog N') before sorting:
     # left in, they corrupt the common median reference and can spawn fake units.
@@ -610,6 +744,7 @@ def main() -> int:
     fs = rec.get_sampling_frequency()
     freq_max = min(args.freq_max, 0.49 * fs)  # keep the high cutoff below Nyquist
     ui.phase("Preprocess", "bandpass + common median reference")
+    rep.phase("Preprocess", "bandpass + common median reference")
     if freq_max < args.freq_max:
         ui.detail(f"clamped bandpass high cutoff to {freq_max:g} Hz for {fs:g} Hz Nyquist")
     ui.detail(f"bandpass {args.freq_min:g}–{freq_max:g} Hz · common median reference")
@@ -623,7 +758,9 @@ def main() -> int:
     effective_seconds = rec.get_total_duration()
 
     use_container = sorters.uses_docker(args.sorter, args.docker)
-    ui.phase("Sort", args.sorter + ("  (docker)" if use_container else ""))
+    _sort_sub = args.sorter + ("  (docker)" if use_container else "")
+    ui.phase("Sort", _sort_sub)
+    rep.phase("Sort", _sort_sub)
     if args.docker and not use_container:
         ui.detail(f"{args.sorter} is installed — running it natively (no Docker needed)")
     if overrides:
@@ -641,9 +778,9 @@ def main() -> int:
     # sort runs out-of-process in the container), and for a native sort whenever
     # progress bars are off (normal/quiet) so a multi-minute sort never looks hung.
     if use_container:
-        hb = _Heartbeat(ui, f"{args.sorter} in Docker")
+        hb = _Heartbeat(ui, f"{args.sorter} in Docker", reporter=rep)
     elif not show_bars:
-        hb = _Heartbeat(ui, args.sorter)
+        hb = _Heartbeat(ui, args.sorter, reporter=rep)
     else:
         hb = contextlib.nullcontext()
     try:
@@ -659,7 +796,9 @@ def main() -> int:
     except Exception as e:  # noqa: BLE001 - show a friendly message, not a traceback
         # Use whether a container was ACTUALLY used (not the raw --docker flag): a
         # native sort that failed while Docker happens to be down isn't a Docker problem.
-        ui.warn(_friendly_sort_error(e, use_docker=use_container))
+        message = _friendly_sort_error(e, use_docker=use_container)
+        ui.warn(message)
+        rep.error(message)
         return 1
     n_units = len(sorting.get_unit_ids())
     if n_units == 0:
@@ -674,6 +813,7 @@ def main() -> int:
     n_high_quality = None
     if not args.no_metrics and n_units > 0:
         ui.phase("Quality metrics", "(SortingAnalyzer)")
+        rep.phase("Quality metrics", "(SortingAnalyzer)")
         _robust_rmtree(out / "analyzer")  # retry past Windows GUI file-locks before overwrite
         analyzer = si.create_sorting_analyzer(
             sorting, rec, folder=str(out / "analyzer"), format="binary_folder", overwrite=True
@@ -683,6 +823,11 @@ def main() -> int:
         qm = analyzer.get_extension("quality_metrics").get_data()
         qm.to_csv(out / "quality_metrics.csv")
         ui.metrics(qm, out / "quality_metrics.csv")
+        if rep.enabled:
+            rows = [{"unit": idx, **{c: (int(r[c]) if "count" in c else float(r[c]))
+                                    for c in qm.columns}}
+                    for idx, r in qm.iterrows()]
+            rep.metrics(rows, str(out / "quality_metrics.csv"))
         n_total, n_high_quality = _quality_summary(qm)
         if n_high_quality is not None:
             ui.result(f"{n_high_quality} of {n_total} units look high-quality "
@@ -706,8 +851,10 @@ def main() -> int:
         _robust_rmtree(out / "analyzer")
         (out / "quality_metrics.csv").unlink(missing_ok=True)
         ui.warn(f"Saved to {out}, but no units were found — adjust parameters and re-run.")
+        rep.done_ok(units=0, out=out, good=0)
         return 0
     ui.done(out)
+    rep.done_ok(units=n_units, out=out, good=n_high_quality)
     ui.detail("saved: sorting/ · analyzer/ · quality_metrics.csv")
     ui.detail("next: build a report, open the inspector GUI, or compare sorters "
               "(from the menu, or scripts/make_report.py).")

@@ -122,3 +122,31 @@ def test_prepare_docker_image_noop_without_image(monkeypatch):
         raise AssertionError("should not probe presence when there is no image")
     monkeypatch.setattr(sorters, "docker_image_present", _boom)
     rs._prepare_docker_image(rs.ConsoleUI(quiet=True, total_phases=4), "weird")
+
+
+def test_reporter_emits_events_to_stdout(monkeypatch):
+    import io
+
+    import sort_progress as sp
+
+    buf = io.StringIO()
+    rep = rs.Reporter(enabled=True, stream=buf, total_phases=4)
+    rep.phase("Read broadband", "22 ch")
+    rep.bar("detect", frac=0.5, n=5, total=10)
+    rep.done_ok(units=13, good=9, out="outputs/x")
+
+    events = [sp.parse_line(l) for l in buf.getvalue().splitlines()]
+    events = [e for e in events if e]
+    assert events[0]["t"] == "phase" and events[0]["title"] == "Read broadband"
+    assert any(e["t"] == "bar" and e["frac"] == 0.5 for e in events)
+    assert events[-1]["t"] == "done" and events[-1]["units"] == 13
+
+
+def test_reporter_disabled_emits_nothing():
+    import io
+
+    buf = io.StringIO()
+    rep = rs.Reporter(enabled=False, stream=buf, total_phases=4)
+    rep.phase("X")
+    rep.done_ok(units=0, out="o")
+    assert buf.getvalue() == ""
