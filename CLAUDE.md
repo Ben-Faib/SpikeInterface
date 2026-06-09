@@ -145,10 +145,10 @@ unreadable-broadband, the last reusing `controller.pipeline`'s broadband-`FAIL`
 detection) + remedy (`d` help · `f` folder). On narrow terminals (`< NARROW_COLS`,
 ≈78) `#body` **stacks** (active pane on top, `#explain` capped at `max-height: 40%`
 so the list keeps the majority); side-by-side, the panes are co-equal `1fr`, so the
-**chrome above yields** — the shield collapses (full→compact→mini→hidden, and
+**chrome above yields** — the crest collapses (full→compact→mini→hidden, and
 `SHIELD_RESERVE` keeps the big crest to tall ≈41+ row windows) and, only on extreme
 shortness, `#explain` is hidden so `#activepane` takes the full width — while the
-active list **scrolls** rather than clips. The brain **reserve is mode- and
+active list **scrolls** rather than clips. The crest **reserve is mode- and
 status-aware** (`reserve = SHIELD_RESERVE + (statusrows-1) + activebarrows`: the
 status line adds +2 when loud, the `#activebar` +1 in action mode), re-fit on every
 mode switch and quiet→loud transition so the crest drops a tier rather than the
@@ -193,14 +193,24 @@ carry is **relocated to the `d` Data-files topic**, merged in from
 Textual installed it falls back to the legacy `ui.dashboard_menu()`
 (prompt_toolkit full-screen, else a typed numbered menu), which prepends the same
 missing-data guidance in plain text.
-A detailed
-**blue + gold Pitt shield** (the `ui._LOGO_ART` ladder — 21/15/11-col grids of
-only the full block `█` and spaces, every row the same width so it aligns in any
-monospace terminal/font with no ambiguous-width glyphs) sits atop the view, drawn
-by `ShieldWidget` which picks the largest crest that fits the live window (or
-hides it). The heraldry sits in negative space (the empty interior = the white
-field): crenellated turrets, a centre keystone notch, roundels over a blue/gold
-checky band, tapering to the base point. The **accent colour is themeable**
+An **animated firing neuron** sits atop the dashboard, drawn by `CrestWidget`
+(`ui.pick_neuron`/`ui.neuron_frame`/`_NEURON_*`): a single neuron — dendrites →
+soma → axon → action-potential spike — in width-safe box-drawing + full-block `█`
+glyphs only (no `●`/quadrant blocks, the same discipline as the shield), picking
+the largest tier (full→compact→mini→hidden) that fits the live window (or hiding
+it). A slow `set_interval` timer walks a phase on a gentle **receive → fire →
+rest** loop (~6 fps over a ~6 s cycle; rest dominates and identical frames are
+memoised, so idle cost is ~nil), gated by an **`animate`** flag persisted in
+`.si_menu.json` (default on; toggle live with **`m`**). The detailed **blue +
+gold Pitt shield** (the `ui._LOGO_ART` ladder — 21/15/11-col grids of only the
+full block `█` and spaces, every row the same width so it aligns in any monospace
+terminal/font with no ambiguous-width glyphs; heraldry in negative space —
+crenellated turrets, a centre keystone notch, roundels over a blue/gold checky
+band, tapering to the base point) now draws only on the **Welcome screen**
+(`#wcrest`, `ui.SHIELD_FULL`) and the **Help "About"** topic (`ui.SHIELD_COMPACT`),
+not the dashboard top. (`neuron_frame`/`pick_neuron`/`_NEURON_*` replaced the
+brain's `pick_brain`/`_BRAIN_*`/`BRAIN_PINK`, and `scripts/_neuron_art_preview.py`
+replaced `scripts/_brain_art_gen.py`.) The **accent colour is themeable**
 (`ui.THEMES`: periwinkle/sea-green/steel-blue/amber/cyan; default periwinkle),
 driven into the Textual **`$accentcolor`** CSS variable (via
 `App.get_css_variables` + `refresh_css`); it is changed through the *Change colour

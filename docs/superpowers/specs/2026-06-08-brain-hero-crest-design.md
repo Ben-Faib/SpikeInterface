@@ -1,5 +1,7 @@
 # Brain hero crest + preserved Pitt shield — design
 
+> **Superseded by `2026-06-08-neuron-firing-crest-design.md`** — the brain hero was replaced by an animated firing neuron.
+
 **Date:** 2026-06-08
 **Topic:** Replace the dashboard's top Pitt-shield crest with a brain+spike-sorting
 hero; keep the Pitt shield on the Welcome and Help screens.
