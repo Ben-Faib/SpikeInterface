@@ -41,12 +41,13 @@ class FakeController:
     sorters = ["tridesclous2", "spykingcircus2"]
     themes = {"periwinkle": "#9b8cff", "sea-green": "#56d39a", "amber": "#e3a008"}
 
-    def __init__(self, present: bool = True):
+    def __init__(self, present: bool = True, use_docker: bool = False):
         self.theme_name = "periwinkle"
         self.accent = self.themes[self.theme_name]
-        self.use_docker = False
+        self.use_docker = use_docker
         self.animate = True
-        self.sorters = ["tridesclous2", "spykingcircus2"]
+        self.sorters = (["tridesclous2", "spykingcircus2", "mountainsort5", "herdingspikes"]
+                        if use_docker else ["tridesclous2", "spykingcircus2"])
         self.active_sorter = "tridesclous2"
         self.active_idx = 0
         self.sorter_params: dict[str, dict] = {}
@@ -83,7 +84,7 @@ class FakeController:
         self.infos = []
         for name, group, units in self._UNIVERSE:
             present = units is not None
-            self.infos.append({
+            info = {
                 "name": name, "group": group,
                 "status": ("docker" if group == "docker" else
                            "gpu" if group == "gpu" else "local"),
@@ -94,7 +95,15 @@ class FakeController:
                 "duration": 132.0 if present else 0.0,
                 "active": name == self.active_sorter,
                 "overrides": len(self.sorter_params.get(name, {})),
-            })
+            }
+            if group == "docker":
+                # mountainsort5 has no image cached; herdingspikes has one.
+                info["image"] = f"spikeinterface/{name}-base:latest"
+                info["img_present"] = name == "herdingspikes"
+            else:
+                info["image"] = None
+                info["img_present"] = None
+            self.infos.append(info)
         self._mark_active()
         self.data_report = {
             "present": self._present,
@@ -223,3 +232,15 @@ class FakeController:
 @pytest.fixture
 def make_controller():
     return FakeController
+
+
+@pytest.fixture
+def make_app():
+    """Build a SpikeMenuApp over a FakeController. Accepts present/use_docker so the
+    three-panel tests can drive the broken-data and Docker-on universes."""
+    import menu_app
+
+    def _build(present: bool = True, use_docker: bool = False):
+        return menu_app.SpikeMenuApp(FakeController(present=present, use_docker=use_docker))
+
+    return _build

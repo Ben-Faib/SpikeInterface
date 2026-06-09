@@ -7,38 +7,38 @@ in ``SpikeInterface_Menu.py``) that this app calls back into. That keeps the app
 import-light (no SpikeInterface at import time) and unit-testable with Textual's
 ``run_test`` / ``Pilot`` harness.
 
-The dashboard is a **focus-driven two-pane accordion**. The left **active pane**
-holds *either* the sorter catalog (sorter mode, the launch state) *or* the actions
-list (action mode) — exactly one list is shown at a time; the other is folded away.
-The right **explanation pane** (#explain) always describes the highlighted row.
-Load status (#statusline) is a quiet one-line summary that turns into a loud
-bordered banner only when a stream fails to load. In action mode a folded
-``▸ Active sorter: …`` bar (#activebar) keeps the active sorter in view.
+The dashboard is a **simultaneous three-panel layout**. SORTERS (#sorterpane) and
+ACTIONS (#actionpane) sit side-by-side and are *both always visible*; a bottom
+**INSPECTING** panel (#inspect) describes whichever pane currently has focus (the
+highlighted sorter's blurb, or the highlighted action's explanation). An always-on
+two-line banner sits above the panes: a DATA line (#databar) naming the loaded
+streams (or a loud ✗ problem line) and a SORT line (#sortbar) naming the active
+sorter and its readiness.
 
 Layout (responsive):
 
     ┌ neuron crest (collapses full→compact→mini→hidden as height shrinks)┐
     │ ── University of Pittsburgh · SpikeInterface ── (#titlebar)         │
-    │ ✓ Recording loaded — LFP · Broadband · .nev      (#statusline:      │
-    │                                            quiet, or ⚠ loud banner)  │
-    │ ▸ Active sorter: ★ tridesclous2 · 13 units …     (#activebar; shown  │
-    │                                                   only in action mode)│
-    │ ┌ SORTERS / ACTIONS (#activepane) ──┬ explanation (#explain) ─────┐  │
-    │ │ ▌ ★ tridesclous2  13u ACTIVE       │ <highlighted row's blurb>    │  │
-    │ │   spykingcircus2  8u               │ what · you'll choose · ⚠     │  │
-    │ │ …                                  │ caveat · Needs ✓/✗ · Output  │  │
-    │ └────────────────────────────────────┴──────────────────────────────┘  │
+    │ DATA  ✓ LFP  ✓ Broadband  ✓ .nev   all 3 streams loaded (#databar)  │
+    │ SORT  ★ tridesclous2 · 13 units saved · Ready to run     (#sortbar)  │
+    │ ┌ SORTERS (#sorterpane) ───────────┬ ACTIONS — on tridesclous2 ───┐ │
+    │ │ ▌ ★ tridesclous2  13u ACTIVE      │ 1  Explore raw data           │ │
+    │ │   spykingcircus2  8u              │ 2  Run / re-run sorting        │ │
+    │ │ …                                 │ …                              │ │
+    │ └───────────────────────────────────┴────────────────────────────────┘ │
+    │ ┌ INSPECTING ▸ tridesclous2 ─ <highlighted row's blurb> ───────────┐ │
+    │ └───────────────────────────────────────────────────────────────────┘ │
     │ ↑/↓ choose · Enter activate · →/1-9 Actions · t · d · ? · q quit    │
     └─────────────────────────────────────────────────────────────────────┘
 
-Navigation: ←/→ (or Tab/Shift-Tab) switch *mode* — ``→``/``Tab`` reveals the
-actions list (action mode), ``←``/``Shift-Tab`` returns to the sorter list (sorter
-mode); the shown list is always the focused widget. ↑/↓ (or j/k) move within it.
-Enter on a runnable sorter activates it AND auto-advances to action mode; Enter on
-an action runs it (the app drops out via ``suspend()`` so the action's own output
-scrolls normally, then resumes). 1-9 jump-run an action from either mode (switching
-to action mode first so nothing runs while invisible). ``t`` cycles the active
-sorter, ``d`` opens the data-files help, ``q`` quits.
+Navigation: ←/→ (or Tab/Shift-Tab) move *focus* between the two always-visible
+panes (the focused pane gets the heavy accent border; the bottom INSPECTING panel
+re-renders for the now-focused pane). ↑/↓ (or j/k) move within the focused list.
+Enter on a runnable sorter activates it (the SORT banner + ACTIONS title follow);
+Enter on an action runs it (the app drops out via ``suspend()`` so the action's own
+output scrolls normally, then resumes). 1-9 jump-run an action (focus moves to the
+actions list first). ``t`` cycles the active sorter, ``x`` manages the highlighted
+sorter (Stage 5), ``d`` opens the data-files help, ``q`` quits.
 
 The accent colour is themeable (driven into the ``$accentcolor`` CSS variable);
 the Pitt blue+gold shield is fixed. Both lists scroll, so the active sorter and
@@ -69,17 +69,19 @@ class NavList(OptionList):
         Binding("space", "select", show=False),
     ]
 
-# Width below which the two panes stack vertically instead of side-by-side. Tuned
-# so a default 80-col terminal stays two-pane but a split/VS Code pane collapses.
-NARROW_COLS = 78
-# Rows the crest must leave for title + footer + a usable body, so it drops
-# full→compact→mini→hidden well before it would crowd the menu off a short window.
-# (The neuron ladder itself is 7 / 5 / 3 rows tall — see ui._NEURONS.) The status
-# line adds +2 when loud and the #activebar adds +1 in action mode (both passed
-# through from _relayout via the mode/status-aware reserve). Tuned so the big crest
-# is deferential: it only claims the full tier on a tall (≈40+ row) terminal,
-# dropping to the compact crest on the common 34–40 row window so the active list +
-# explanation pane get the vertical room they need to read.
+# Width below which the SORTERS + ACTIONS panes stack vertically instead of
+# side-by-side. Tuned so a split/VS Code pane collapses to a single column while a
+# default 80-col terminal stays two-pane.
+STACK_COLS = 64
+# The always-on DATA + SORT banner is a fixed two rows, so the crest reserve never
+# changes when the banner switches between its quiet ✓ and loud ✗ text.
+BANNER_ROWS = 2
+# Rows the crest must leave for title + banner + footer + a usable body, so it
+# drops full→compact→mini→hidden well before it would crowd the menu off a short
+# window. (The neuron ladder itself is 7 / 5 / 3 rows tall — see ui._NEURONS.)
+# Tuned so the big crest is deferential: it only claims the full tier on a tall
+# (≈40+ row) terminal, dropping to the compact crest on the common 34–40 row window
+# so the panes get the vertical room they need to read.
 SHIELD_RESERVE = 24
 # Unfocused panel border colour (focus uses the live accent).
 _BORDER_DIM = "#3a3f47"
@@ -572,7 +574,7 @@ class HelpScreen(ModalScreen):
 
     def _relayout(self, size=None) -> None:
         size = size if size is not None else self.size
-        self.set_class(size.width < NARROW_COLS, "stacked")
+        self.set_class(size.width < STACK_COLS, "stacked")
 
     def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
         if event.option.id:
@@ -740,62 +742,73 @@ class SpikeMenuApp(App):
     #crest { height: auto; content-align: center top; padding: 1 0 0 0; }
     #titlebar { height: 1; content-align: left middle; }
 
-    /* Load status: a quiet one-row dim line (healthy) that grows into a 3-row
-       bordered banner on a load failure. height:auto lets it size itself; the
-       border (drawn in the Text when loud) is the shape cue that survives NO_COLOR. */
-    #statusline { height: auto; margin: 1 2 0 2; }
-
-    /* Action-mode fold: the single ▸ Active sorter line. Hidden in sorter mode;
-       its presence/absence is the mode's shape cue. */
-    #activebar { height: 1; display: none; margin: 1 2 0 2; }
+    /* Always-on two-line banner (replaces statusline + activebar): a DATA row
+       naming the loaded streams (or a loud ✗ problem line) and a SORT row naming
+       the active sorter + its readiness. Fixed at one row each so the crest reserve
+       never shifts when the banner switches between its quiet/loud text. */
+    #databar { height: 1; margin: 1 2 0 2; }
+    #sortbar { height: 1; margin: 0 2 0 2; }
+    /* On an extreme-short window the banner + title yield their rows to the lists
+       (the DATA/SORT info still lives in the d Help topic + the footer). */
+    #databar.collapsed, #sortbar.collapsed, #titlebar.collapsed { display: none; }
 
     #body { height: 1fr; padding: 1 1 0 1; }
     #body.stacked { layout: vertical; }
 
-    /* Two-pane: active list (sorters OR actions) + a co-equal explanation pane.
-       Stacked (narrow): #explain caps at 40% so the active list keeps the majority. */
-    #activepane { width: 1fr; height: 1fr; min-height: 6; }
-    #explain { width: 1fr; height: 1fr; border: round #3a3f47; padding: 0 1; margin: 0 0 0 1; }
-    #explain.hidden { display: none; }
-    #body.stacked #explain { width: 1fr; height: auto; max-height: 40%; margin: 1 0 0 0; }
+    /* SORTERS and ACTIONS are co-equal and BOTH always shown (no accordion). The
+       low min-height (border + one content row) lets BOTH panes keep a visible row
+       when stacked on a short window — the lists scroll rather than clip. */
+    #sorterpane, #actionpane { width: 1fr; height: 1fr; min-height: 3;
+        border: round #3a3f47; padding: 0 1; }
+    #actionpane { margin: 0 0 0 1; }
+    #body.stacked #actionpane { margin: 1 0 0 0; }
+    /* Tiny windows: drop the pane borders + the stacked top-margin so two stacked
+       panes fit in the few body rows that remain (the lists still scroll). */
+    #body.tiny #sorterpane, #body.tiny #actionpane { border: none; min-height: 1; }
+    #body.tiny.stacked #actionpane { margin: 0; }
+    /* Focused pane: accent + heavy border (the shape cue survives NO_COLOR). */
+    #sorterpane:focus-within { border: heavy $accentcolor; }
+    #actionpane:focus-within { border: heavy $accentcolor; }
 
-    .sectionlabel { text-style: bold; color: $accentcolor; padding: 0 0 0 1; }
+    #sorters, #actions { height: 1fr; border: none; }
+    OptionList:focus { border: none; }
 
-    /* Exactly one of #sorters / #actions is shown (accordion); both flex to fill the
-       active pane so most of the ~27-row catalog (or the 11 actions) is visible. */
-    #sorters { height: 1fr; min-height: 5; border: round #3a3f47; padding: 0 1; }
-    #actions { height: 1fr; min-height: 3; border: round #3a3f47; padding: 0 1; }
-    /* Focused pane: accent colour AND a heavier border, so the focus cue
-       survives on NO_COLOR / monochrome terminals (shape, not colour alone). */
-    OptionList:focus { border: heavy $accentcolor; }
-
-    /* The sorter CURSOR (where up/down is) must read differently from the ACTIVE
-       sorter (the persistent left-bar + reverse chip drawn in the row text). Focused:
-       a faint accent wash + default fg. Blurred: no filled bar at all — just an
-       underline — so the cursor never masquerades as the active selection.
-       Underline is a shape cue, so it survives NO_COLOR too. */
-    #sorters:focus > .option-list--option-highlighted {
+    /* The CURSOR (where up/down is) must read differently from the ACTIVE sorter
+       (the persistent left-bar + reverse chip drawn in the row text). Focused: a
+       faint accent wash + default fg. Blurred: no filled bar — just an underline —
+       so the cursor never masquerades as the active selection. Underline is a shape
+       cue, so it survives NO_COLOR too. */
+    OptionList:focus > .option-list--option-highlighted {
         background: $accentcolor 25%; color: $foreground; text-style: none;
     }
-    #sorters > .option-list--option-highlighted {
+    OptionList > .option-list--option-highlighted {
         background: transparent; text-style: underline;
     }
 
+    /* Bottom INSPECTING panel — full width, capped height, scrolls. Follows the
+       focused pane's highlighted row. */
+    #inspect { height: auto; max-height: 7; border: round #3a3f47;
+        padding: 0 1; margin: 1 1 0 1; }
+    #inspect.hidden { display: none; }
+
     /* Pinned to the bottom at a fixed 2 rows so a long key-hint can never wrap and
-       steal body rows from the active list. */
+       steal body rows from the lists. */
     #footer { dock: bottom; height: 2; padding: 0 2; }
     """
 
     BINDINGS = [
-        Binding("left", "focus_sorter", "Sorter", show=False),
+        # Both lists are always visible: ←/→ (and Tab/Shift-Tab) MOVE FOCUS between
+        # the two panes (no display flip). Tab bindings are priority so they beat the
+        # Screen's default focus-next/previous traversal.
+        Binding("left", "focus_sorters", "Sorters", show=False),
         Binding("right", "focus_actions", "Actions", show=False),
-        # Explicit Tab bindings (priority so they beat the Screen's default
-        # focus-next/previous): a display:none OptionList can't be reached by
-        # Textual's default Tab traversal, so we drive the mode switch directly.
         Binding("tab", "focus_actions", "Actions", show=False, priority=True),
-        Binding("shift+tab", "focus_sorter", "Sorter", show=False, priority=True),
+        Binding("shift+tab", "focus_sorters", "Sorters", show=False, priority=True),
         Binding("t", "cycle_sorter", "Switch sorter", show=False),
         Binding("m", "toggle_motion", "Motion", show=False),
+        # x manages the highlighted sorter (delete image / clear saved sort) — wired
+        # to a no-op-safe action now; Stage 5 fills it in.
+        Binding("x", "manage_highlighted", "Manage", show=False),
         Binding("d", "data_help", "Data files", show=False),
         Binding("f", "choose_folder", "Data folder", show=False),
         Binding("question_mark", "help", "Help", show=False),
@@ -814,9 +827,6 @@ class SpikeMenuApp(App):
         self.c = controller
         self._accent = controller.accent
         self._last = None
-        # The mode owns focus, key-gating and the explanation render. Launch in
-        # sorter mode (set authoritatively in on_mount); "" until then.
-        self._mode = ""
         super().__init__()
 
     # -- CSS variable plumbing: $accentcolor follows the live theme ----------- #
@@ -829,36 +839,30 @@ class SpikeMenuApp(App):
     def compose(self) -> ComposeResult:
         yield CrestWidget(id="crest")
         yield Static(id="titlebar")
-        yield Static(id="statusline")
-        yield Static(id="activebar")            # the action-mode fold (hidden until then)
+        yield Static(id="databar")
+        yield Static(id="sortbar")
         with Horizontal(id="body"):
-            with Vertical(id="activepane"):
-                # One section label that re-titles per mode (SORTERS / ACTIONS), and
-                # BOTH lists — only the mode's list is display:true (accordion).
-                yield Static("SORTERS", id="panelabel", classes="sectionlabel")
+            with Vertical(id="sorterpane"):
                 yield NavList(id="sorters")
+            with Vertical(id="actionpane"):
                 yield NavList(id="actions")
-            with VerticalScroll(id="explain"):
-                yield Static(id="explainbody")
+        with VerticalScroll(id="inspect"):
+            yield Static(id="inspectbody")
         yield Static(id="footer")
 
     def on_mount(self) -> None:
-        # The explanation pane is a pure display surface — keep it OUT of the Tab
-        # focus order so Tab/Shift-Tab only ever move between the two lists (a
-        # focusable #explain would otherwise swallow a Tab press).
-        self.query_one("#explain", VerticalScroll).can_focus = False
+        # The INSPECTING panel is a pure display surface — keep it OUT of the Tab
+        # focus order so Tab/Shift-Tab only ever move between the two lists.
+        self.query_one("#inspect", VerticalScroll).can_focus = False
+        self.query_one("#sorterpane").border_title = "SORTERS"
         self._rebuild_sorters()
         self._rebuild_actions()
-        # Launch in sorter mode: sorter list shown + focused, actions list hidden,
-        # the sorter explanation rendered, the active sorter bar hidden.
-        self._mode = "sorter"
-        self.query_one("#sorters", OptionList).display = True
-        self.query_one("#actions", OptionList).display = False
-        self.query_one("#panelabel", Static).update("SORTERS")
-        self._render_explain_for_mode()
+        self._refresh_action_title()
+        # Launch with the SORTERS pane focused; both lists are always visible.
+        self.query_one("#sorters", OptionList).focus()
+        self._render_inspect()
         self._refresh_footer()
         self._relayout()
-        self.query_one("#sorters", OptionList).focus()
         if getattr(self.c, "want_welcome", False):
             self.push_screen(WelcomeScreen(), self._after_welcome)
 
@@ -872,147 +876,119 @@ class SpikeMenuApp(App):
     def _relayout(self, size=None) -> None:
         size = size if size is not None else self.size
         w, h = size.width, size.height
-        stacked = w < NARROW_COLS
+        stacked = w < self.STACK_COLS
         self.query_one("#body").set_class(stacked, "stacked")
-        statusrows = self._render_statusline(w, h)
-        self._render_activebar(w, h)
-        # Mode/status-aware reserve: the crest yields rows for the title + footer +
-        # a usable body, the loud status banner (+2 over the quiet line), and the
-        # action-mode #activebar (+1). The crest drops a tier rather than the active
-        # list losing rows, and is re-fit on every mode switch / quiet→loud flip.
-        activebarrows = 1 if self._activebar_visible(h) else 0
-        reserve = SHIELD_RESERVE + (statusrows - 1) + activebarrows
+        self._render_databar(w)
+        self._render_sortbar(w)
+        self._refresh_action_title()
+        # Hide the INSPECTING panel on shortness so the lists keep their rows (its
+        # blurb is non-essential; the lists themselves must never clip). Stacked panes
+        # share the body height, so they need the room sooner — drop it earlier there.
+        hide_inspect = h < (self.STACK_SHORT_ROWS if stacked else 16)
+        self.query_one("#inspect").set_class(hide_inspect, "hidden")
+        # On an extreme-short window (no room for two stacked panes once chrome is
+        # subtracted), collapse the title + banner so the lists keep their rows. The
+        # footer + the d Help topic still carry the DATA/SORT info.
+        tiny = h < self.TINY_ROWS
+        for wid in ("#titlebar", "#databar", "#sortbar"):
+            self.query_one(wid).set_class(tiny, "collapsed")
+        # Tiny: drop the pane borders too so two stacked panes fit the few body rows.
+        self.query_one("#body").set_class(tiny, "tiny")
+        # Crest reserve = chrome (title + banner + its top margin + footer + the
+        # crest's own padding row, ~6 rows; ~3 when tiny-collapsed) + a usable min
+        # body. Side by side, one pane is ~8 rows; stacked, the two panes need ~6 rows
+        # between them PLUS the inspect panel when shown, so reserve more so the crest
+        # drops a tier rather than the lists losing rows.
+        chrome = 3 if tiny else 6
+        if tiny:
+            body_min = 2 if stacked else 1     # borderless panes: 1 content row each
+        elif stacked:
+            body_min = 6 + (0 if hide_inspect else 6)
+        else:
+            body_min = 8
+        reserve = chrome + body_min
         self.query_one("#crest", CrestWidget).fit(w, h, reserve)
         self.query_one("#titlebar", Static).update(self._render_titlerule(w))
-        # On an extreme-short *wide* window, hide the explanation pane so the active
-        # list gets the full width (side-by-side panes are co-equal height, so
-        # shrinking #explain frees no rows — only dropping it does). Stacked windows
-        # keep #explain (capped at 40% by CSS).
-        hide_explain = (not stacked) and h < 16
-        self.query_one("#explain", VerticalScroll).set_class(hide_explain, "hidden")
         self._refresh_footer(w)
 
-    # The loud banner is 3 rows tall; below this height it is suppressed so it can
-    # never push the active list off a short window (the footer + inline (needs data)
-    # suffixes still convey the problem). Higher than the old 1-row banner's floor
-    # because the bordered banner costs two extra rows.
-    _BANNER_MIN_ROWS = 14
+    STACK_COLS = STACK_COLS
+    BANNER_ROWS = BANNER_ROWS
+    # Stacked windows shorter than this hide the INSPECTING panel so both stacked
+    # panes keep a visible row (each pane is a 2-row border + ≥1 content row).
+    STACK_SHORT_ROWS = 24
+    # Below this the title + banner collapse so two stacked panes still fit.
+    TINY_ROWS = 14
 
-    def _render_statusline(self, width: int, height: int) -> int:
-        """Quiet-until-broken load status. Healthy → one borderless dim line with a
-        leading ✓ (verified streams only; empty Events is NOT a failure). Any load
-        failure → a 3-row bordered ⚠ banner (the border + ⚠ are the shape cues, so
-        quiet/loud read apart under NO_COLOR). Returns the rows it occupies (1 or 3).
-
-        Three failure variants reuse today's detection: missing (no set found),
-        incomplete (set present, some files missing), unreadable (complete set but
-        the broadband pipeline row is FAIL)."""
+    # -- the always-on DATA / SORT banner ------------------------------------- #
+    def _render_databar(self, width: int) -> None:
+        """The DATA row: a quiet ✓ line naming the loaded streams (Events listed only
+        when the .nev loaded — an empty Events set is NOT a failure), or a loud ✗ line
+        naming the exact problem (missing / incomplete / unreadable broadband)."""
         dr = self.c.data_report
         files = dr.get("files", [])
         complete = bool(files) and all(f.get("present") for f in files)
         bb = next((r for r in self.c.pipeline if "Broadband" in r.get("stage", "")), None)
         unreadable = complete and bb is not None and bb.get("status") == "FAIL"
-        healthy = dr.get("present") and complete and not unreadable
-        line = self.query_one("#statusline", Static)
-        # On a very short window a loud banner would push the body off-screen, so
-        # suppress the status line entirely there (the footer + inline (needs data)
-        # suffixes still convey the problem).
-        if not healthy and height < self._BANNER_MIN_ROWS:
-            line.display = False
-            return 0
-        line.display = True
-        if healthy:
-            line.update(self._quiet_status_text(width))
-            return 1
-        line.update(self._loud_status_text(width, dr, files, unreadable))
-        return 3
-
-    def _quiet_status_text(self, width: int) -> Text:
-        """Borderless ✓ line naming the verified streams (Events listed only when
-        the .nev loaded; never escalates for missing markers)."""
-        streams = []
-        labels = {".ns2": "LFP", ".ns5": "Broadband", ".nev": ".nev"}
-        for f in self.c.data_report.get("files", []):
-            if f.get("present"):
-                streams.append(labels.get(f.get("ext"), f.get("ext", "")))
         t = Text()
-        t.append("✓ ", style="bold #3fb950")
-        t.append("Recording loaded", style=ui.SECONDARY)
-        if streams:
-            t.append(" — ", style="dim")
-            t.append(" · ".join(streams), style="dim")
-        t.truncate(max(1, width - 2), overflow="ellipsis")
-        return t
-
-    def _loud_status_text(self, width, dr, files, unreadable) -> Text:
-        """A bordered ⚠ banner naming the exact problem + remedy. The border is drawn
-        as box-drawing rows so the shape survives NO_COLOR (no reliance on bg colour)."""
-        if not dr.get("present"):
-            title = "⚠ PROBLEM LOADING YOUR RECORDING"
-            body = ("✗ No recording found — drop your .ns5 / .ns2 / .nev set here.")
+        t.append("DATA  ", style=ui.SECONDARY)
+        if dr.get("present") and complete and not unreadable:
+            labels = {".ns2": "LFP", ".ns5": "Broadband", ".nev": ".nev"}
+            loaded = [f for f in files if f.get("present")]
+            for f in loaded:
+                if f["ext"] == ".nev" and not f.get("present"):
+                    continue
+                t.append("✓ ", style="#3fb950")
+                t.append(f"{labels.get(f['ext'], f['ext'])}   ", style=ui.PRIMARY)
+            t.append(f"  all {len(loaded)} streams loaded", style="dim")
+        elif not dr.get("present"):
+            t.append("✗ no recording in ", style="bold #f0883e")
+            t.append(f"{dr.get('data_dir', '.')} ", style="#f0883e")
+            t.append("— press f to choose · d for help", style="dim")
         elif unreadable:
-            title = "⚠ PROBLEM LOADING YOUR RECORDING"
-            body = ("✗ Broadband (.ns5) won't load — it's the stream spike sorting "
-                    "needs. Explore and LFP still work.")
+            t.append("✗ Broadband (.ns5) won't load ", style="bold #f0883e")
+            t.append("— press d for help", style="dim")
         else:
             missing = ", ".join(f["ext"] for f in files if not f.get("present"))
-            title = "⚠ INCOMPLETE RECORDING SET"
-            body = f"✗ Missing {missing} — some streams won't be available."
-        remedy = "Press  d  for setup help  ·  f  to pick a folder."
-        inner = max(8, width - 4)
-        t = Text()
-        t.append("┌─ ", style="bold #f0883e")
-        t.append(_trunc(title, inner - 3), style="bold #f0883e")
-        bar = "─" * max(0, inner - 3 - len(_trunc(title, inner - 3)))
-        t.append(" " + bar + "┐\n", style="#f0883e")
-        t.append("│ ", style="#f0883e")
-        t.append(_ljust_trunc(body, inner - 1), style="#ffd9d4")
-        t.append("│\n", style="#f0883e")
-        t.append("│ ", style="#f0883e")
-        t.append(_ljust_trunc(remedy, inner - 1), style="dim #ffd9d4")
-        t.append("│\n", style="#f0883e")
-        t.append("└" + "─" * inner + "┘", style="#f0883e")
-        return t
+            t.append(f"✗ incomplete set — missing {missing} ", style="bold #f0883e")
+            t.append("· press f / d", style="dim")
+        t.truncate(max(1, width - 2), overflow="ellipsis")
+        self.query_one("#databar", Static).update(t)
 
-    # Below this height the action-mode bar's single row would clip the (bordered)
-    # active list, so it is suppressed even in action mode (the footer still echoes
-    # the active sorter). Above it the bar is always shown — it's the mode shape cue.
-    _ACTIVEBAR_MIN_ROWS = 8
-
-    def _activebar_visible(self, height: int) -> bool:
-        return self._mode == "action" and height >= self._ACTIVEBAR_MIN_ROWS
-
-    def _render_activebar(self, width: int, height: int | None = None) -> None:
-        """The action-mode fold: ▸ Active sorter: ★ <name> · <saved>  ← to change.
-        Shown only in action mode (its presence is the mode's shape cue); hidden in
-        sorter mode, and suppressed on a very short window so it never clips the
-        active list."""
-        height = height if height is not None else self.size.height
-        bar = self.query_one("#activebar", Static)
-        if not self._activebar_visible(height):
-            bar.display = False
-            return
-        bar.display = True
+    def _render_sortbar(self, width: int) -> None:
+        """The SORT row: the active sorter (★ if recommended), its saved-units/duration
+        (or 'not sorted yet'), its readiness, and any custom-param count."""
         info = self.c.infos[self.c.active_idx]
         t = Text()
-        t.append("▸ Active sorter:  ", style=ui.SECONDARY)
+        t.append("SORT  ", style=ui.SECONDARY)
         if info.get("recommended"):
             t.append("★ ", style=f"bold {self._accent}")
         t.append(info["name"], style=f"bold {self._accent}")
         if info.get("present"):
             t.append(f" · {info['units']} units · {info['duration']:.0f} s saved",
-                     style=ui.SECONDARY)
+                     style=ui.PRIMARY)
         else:
             t.append(" · not sorted yet", style="dim")
-        if not info.get("runnable"):
-            reason = {"docker": " · needs Docker", "gpu": " · needs a GPU",
-                      "unavailable": " · not installed"}.get(info.get("group"), "")
-            t.append(reason, style="#f0883e")
-        change = "   ← to change"
-        room = max(1, width - 2 - len(change))
-        t.truncate(room, overflow="ellipsis")
-        t.append(change, style="dim")
-        bar.update(t)
+        if info.get("runnable"):
+            ready = ("Ready to run (Docker)"
+                     if self.c.use_docker and info.get("group") == "docker"
+                     else "Ready to run")
+        elif info.get("group") == "docker":
+            ready = ("Docker image not downloaded — Enter to get it"
+                     if not info.get("img_present") else "Turn on Docker sorters to run")
+        elif info.get("group") == "gpu":
+            ready = "Needs an NVIDIA GPU"
+        else:
+            ready = "Not installed here"
+        t.append(f" · {ready}",
+                 style="#3fb950" if info.get("runnable") else "#f0883e")
+        n = info.get("overrides", 0)
+        if n:
+            t.append(f" · {n} custom params", style="dim")
+        t.truncate(max(1, width - 2), overflow="ellipsis")
+        self.query_one("#sortbar", Static).update(t)
+
+    def _refresh_action_title(self) -> None:
+        self.query_one("#actionpane").border_title = f"ACTIONS — on {self.c.active_sorter}"
 
     # -- rendering helpers ---------------------------------------------------- #
     def _render_titlerule(self, width: int) -> Text:
@@ -1061,10 +1037,16 @@ class SpikeMenuApp(App):
                 ol.scroll_to_highlight()
             except Exception:  # noqa: BLE001 - cosmetic only
                 pass
-        # Keep the explanation pane in sync after any rebuild (cycle/activate/docker
-        # toggle/post-run reload) when the sorter list is the one on screen.
-        if self._mode == "sorter":
+        # Keep the INSPECTING panel in sync after any rebuild (cycle/activate/docker
+        # toggle/post-run reload) when SORTERS is the focused pane.
+        if self._sorters_focused():
             self._render_sorter_explain(self._highlighted_info())
+
+    def _sorters_focused(self) -> bool:
+        try:
+            return self.focused is self.query_one("#sorters", OptionList)
+        except Exception:  # noqa: BLE001 - during mount/teardown
+            return False
 
     def _docker_row_text(self) -> Text:
         # A [x]/[ ] checkbox affordance reads as a toggle on any font and under
@@ -1207,7 +1189,7 @@ class SpikeMenuApp(App):
         else:
             t.append("none\n", style="dim")
         t.append("\nPress → or Enter for actions.", style=f"bold {self._accent}")
-        self.query_one("#explainbody", Static).update(t)
+        self.query_one("#inspectbody", Static).update(t)
 
     def _render_action_explain(self, meta: dict) -> None:
         """Paint the explanation pane for an action from the controller's resolved
@@ -1235,17 +1217,29 @@ class SpikeMenuApp(App):
             if output:
                 t.append("Output  ", style=ui.SECONDARY)
                 t.append(str(output) + "\n", style=ui.PRIMARY)
-        self.query_one("#explainbody", Static).update(t)
+        self.query_one("#inspectbody", Static).update(t)
 
-    def _render_explain_for_mode(self) -> None:
-        """Render the explanation pane for the currently-shown list (called on a
-        mode switch — revealing a list fires no OptionHighlighted event)."""
-        if self._mode == "action":
-            ol = self.query_one("#actions", OptionList)
-            key = self._highlighted_action_key(ol)
+    def _render_inspect(self, focus: str | None = None) -> None:
+        """Paint the bottom INSPECTING panel for the focused pane's highlighted row:
+        the action explanation when ACTIONS has focus, otherwise the highlighted
+        sorter's blurb. ``focus`` ('actions'/'sorters') overrides the live
+        ``self.focused`` (which lags right after a programmatic ``.focus()`` call).
+        The panel's border-title names what's being inspected."""
+        try:
+            actions = self.query_one("#actions", OptionList)
+            inspect = self.query_one("#inspect")
+        except Exception:  # noqa: BLE001 - during mount/teardown
+            return
+        on_actions = (focus == "actions") if focus is not None else (self.focused is actions)
+        if on_actions:
+            key = self._highlighted_action_key(actions)
+            label = key or "action"
+            inspect.border_title = f"INSPECTING ▸ {label}"
             self._render_action_explain(self.c.action_explain(key) if key else {"what": ""})
         else:
-            self._render_sorter_explain(self._highlighted_info())
+            info = self._highlighted_info()
+            inspect.border_title = f"INSPECTING ▸ {info['name']}"
+            self._render_sorter_explain(info)
 
     def _highlighted_action_key(self, ol: OptionList) -> str | None:
         try:
@@ -1280,7 +1274,7 @@ class SpikeMenuApp(App):
             t.append("   (needs data)", style="italic #f0883e")
         return t
 
-    def _refresh_footer(self, width: int | None = None) -> None:
+    def _refresh_footer(self, width: int | None = None, focus: str | None = None) -> None:
         width = width if width is not None else self.size.width
         info = self.c.infos[self.c.active_idx]
         summary = (f"{info['units']}u · {info['duration']:.0f}s" if info.get("present")
@@ -1290,28 +1284,29 @@ class SpikeMenuApp(App):
         line1.append(info["name"], style=f"bold {self._accent}")
         line1.append(f"  ({summary})", style=ui.SECONDARY)
         # The footer just confirms the ACTIVE sorter and echoes the last action's
-        # result; the per-sorter description lives in the explanation pane.
+        # result; the per-sorter description lives in the INSPECTING panel.
         if self._last:
             line1.append("    ")
             line1.append(self._last if isinstance(self._last, Text) else Text(str(self._last)))
-        line2 = Text(self._footer_hint(width), style="dim")
+        line2 = Text(self._footer_hint(width, focus), style="dim")
         cap = max(1, width - 2)
         line1.truncate(cap, overflow="ellipsis")
         line2.truncate(cap, overflow="ellipsis")
         self.query_one("#footer", Static).update(line1 + Text("\n") + line2)
 
-    def _footer_hint(self, width: int) -> str:
-        """Per-mode, width-adaptive key hint. In sorter mode the ``→/1-9 Actions``
-        bridge is the LAST token dropped as width shrinks (discoverability §2); both
-        modes always keep ``t d ? q``."""
-        if self._mode == "action":
+    def _footer_hint(self, width: int, focus: str | None = None) -> str:
+        """Per-focus, width-adaptive key hint. With ACTIONS focused it leads with the
+        run/jump keys; with SORTERS focused it leads with the activate/Actions bridge.
+        Both keep ``t d ? q``. ``focus`` overrides the live (lagging) ``self.focused``."""
+        actions_focused = (focus == "actions") if focus is not None else self._actions_focused()
+        if actions_focused:
             if width >= 92:
                 return ("↑/↓ choose · Enter run · 1-9 jump · ← Sorters · "
                         "t switch · d data · ? help · q quit")
             if width >= 60:
                 return "↑/↓ choose · Enter run · 1-9 jump · ← Sorters · t · d · ? · q quit"
             return "↑↓ run · ← Sorters · ? · q quit"
-        # sorter mode — never drop the "→/1-9 Actions" bridge first.
+        # sorters focused — never drop the "→/1-9 Actions" bridge first.
         if width >= 92:
             return ("↑/↓ choose · Enter activate · →/1-9 Actions · "
                     "t switch · d data · ? help · q quit")
@@ -1319,78 +1314,72 @@ class SpikeMenuApp(App):
             return "↑/↓ choose · Enter activate · →/1-9 Actions · t · d · ? · q quit"
         return "↑↓ choose · →/1-9 Actions · ? · q quit"
 
+    def _actions_focused(self) -> bool:
+        try:
+            return self.focused is self.query_one("#actions", OptionList)
+        except Exception:  # noqa: BLE001 - during mount/teardown
+            return False
+
     def on_option_list_option_highlighted(self, event: OptionList.OptionHighlighted) -> None:
-        """Keep the explanation pane in sync with the highlighted row of the list
-        that's ON SCREEN. Only the current mode's list drives the pane — a highlight
-        event from the hidden list (e.g. fired while (re)building it) must not
-        overwrite the shown list's explanation."""
+        """Keep the INSPECTING panel in sync with the highlighted row of the FOCUSED
+        list. A highlight event from the non-focused list (e.g. fired while rebuilding
+        it) must not overwrite the focused list's blurb."""
         try:
             sorters = self.query_one("#sorters", OptionList)
             actions = self.query_one("#actions", OptionList)
         except Exception:  # noqa: BLE001 - during teardown
             return
-        if event.option_list is sorters and self._mode == "sorter":
+        if event.option_list is sorters and self.focused is sorters:
             oid = event.option.id
             info = next((i for i in self.c.infos if i["name"] == oid), None)
             # header/docker rows (info None) fall back to the active sorter.
+            self.query_one("#inspect").border_title = (
+                f"INSPECTING ▸ {info['name']}" if info
+                else f"INSPECTING ▸ {self.c.active_sorter}")
             self._render_sorter_explain(info)
-        elif event.option_list is actions and self._mode == "action":
+        elif event.option_list is actions and self.focused is actions:
             key = event.option.id
             if key:
+                self.query_one("#inspect").border_title = f"INSPECTING ▸ {key}"
                 self._render_action_explain(self.c.action_explain(key))
 
-    # -- mode switch (the single entry points) ------------------------------- #
+    # -- focus moves (both lists always visible — just move focus) ------------ #
     def action_focus_actions(self) -> None:
-        """Enter ACTION mode: hide the sorter list, reveal + focus the actions list,
-        show the #activebar, render the highlighted action's explanation, re-fit the
-        crest. A no-op if already in action mode."""
-        if self._mode == "action":
-            return
-        self._switch_mode("action")
+        """Move focus to the ACTIONS pane and re-render the INSPECTING panel for its
+        highlighted action. No-op-safe if already focused there."""
+        ol = self.query_one("#actions", OptionList)
+        ol.focus()
+        self._scroll_into_view(ol)
+        self._render_inspect(focus="actions")
+        self._refresh_footer(focus="actions")
 
-    def action_focus_sorter(self) -> None:
-        """Return to SORTER mode: hide the actions list, reveal + focus the sorter
-        list, hide the #activebar, render the highlighted sorter's explanation. A
-        no-op if already in sorter mode."""
-        if self._mode == "sorter":
-            return
-        self._switch_mode("sorter")
+    def action_focus_sorters(self) -> None:
+        """Move focus to the SORTERS pane and re-render the INSPECTING panel for its
+        highlighted sorter. No-op-safe if already focused there."""
+        ol = self.query_one("#sorters", OptionList)
+        ol.focus()
+        self._scroll_into_view(ol)
+        self._render_inspect(focus="sorters")
+        self._refresh_footer(focus="sorters")
 
-    def _switch_mode(self, mode: str) -> None:
-        """The single mode-switch: flip both lists' display, show/hide #activebar,
-        re-render #explain for the now-active list, relayout (re-fit the crest), then
-        focus the now-shown list (never leave focus on the hidden one — a hidden
-        OptionList stays focusable and would keep eating keys)."""
-        self._mode = mode
-        sorters = self.query_one("#sorters", OptionList)
-        actions = self.query_one("#actions", OptionList)
-        sorters.display = mode == "sorter"
-        actions.display = mode == "action"
-        # Invariant (spec): exactly one of the two lists is shown (the accordion).
-        # A cheap regression guard so a future edit can't reveal/hide both at once.
-        assert sorters.display != actions.display
-        self.query_one("#panelabel", Static).update(
-            "SORTERS" if mode == "sorter" else "ACTIONS")
-        self._render_explain_for_mode()
-        self._relayout()                       # re-fit crest + show/hide #activebar
-        shown = sorters if mode == "sorter" else actions
-        shown.focus()
-        # A just-revealed list has no laid-out lines yet — scroll after refresh.
-        self.call_after_refresh(self._scroll_active_list)
-
-    def _scroll_active_list(self) -> None:
-        ol = self.query_one("#sorters" if self._mode == "sorter" else "#actions", OptionList)
+    def _scroll_into_view(self, ol: OptionList) -> None:
         try:
             ol.scroll_to_highlight()
         except Exception:  # noqa: BLE001 - cosmetic only
             pass
 
+    def action_manage_highlighted(self) -> None:
+        """Manage the highlighted sorter (delete its Docker image / clear its saved
+        sort). A no-op-safe stub for now — Stage 5 fills in the ManageSorter modal."""
+        return
+
     def action_cycle_sorter(self) -> None:
         self.c.cycle_active()
         self._rebuild_sorters()
-        self._render_activebar(self.size.width)   # action mode shows the new active sorter
-        if self._mode == "sorter":
-            self._render_sorter_explain(self._highlighted_info())
+        self._render_sortbar(self.size.width)     # the SORT banner names the new active
+        self._refresh_action_title()
+        if self._sorters_focused():
+            self._render_inspect()
         self._refresh_footer()
 
     def action_toggle_motion(self) -> None:
@@ -1415,27 +1404,29 @@ class SpikeMenuApp(App):
                       else Text("⚠ No recording found in that folder", style="#f0883e"))
         self._refresh_footer()
         self._relayout()
-        self._render_explain_for_mode()
+        self._render_inspect()
 
     def action_help(self) -> None:
         self.push_screen(HelpScreen(self.c, self._accent, topic="overview"))
 
     def action_run_index(self, i: int) -> None:
-        """1-9 jump-run action ``i``. From sorter mode, switch to action mode first
-        (revealing the actions list + #activebar + the action explanation) so an
-        action is never run while invisible; then activate it."""
+        """1-9 jump-run action ``i``. Both lists are always visible, so just move
+        focus to the actions list, highlight action ``i`` (rendering its blurb), and
+        run it."""
         if not (0 <= i < len(self.c.actions)):
             return
-        if self._mode != "action":
-            self._switch_mode("action")
         ol = self.query_one("#actions", OptionList)
+        ol.focus()
         if i < ol.option_count:
-            ol.highlighted = i                 # fires the highlight -> renders #explain
+            ol.highlighted = i                 # fires the highlight -> renders INSPECTING
+        self._render_inspect(focus="actions")
         self._activate_action(self.c.actions[i]["key"])
 
     def _set_active_by_name(self, name: str) -> bool:
         if self.c.set_active_by_name(name):
             self._rebuild_sorters()
+            self._render_sortbar(self.size.width)
+            self._refresh_action_title()
             self._refresh_footer()
             return True
         return False
@@ -1458,8 +1449,8 @@ class SpikeMenuApp(App):
         if info is None:
             return
         if info.get("runnable"):
-            # Activate AND auto-advance into action mode — the choose→run flow is one
-            # motion and the actions list appears by doing the obvious thing.
+            # Activate AND move focus to the (always-visible) ACTIONS pane — the
+            # choose→run flow is one motion.
             if self._set_active_by_name(name):
                 self.action_focus_actions()
         elif info.get("group") == "docker":
@@ -1495,7 +1486,7 @@ class SpikeMenuApp(App):
             self._last = Text("Docker sorters off", style="dim")
         self._refresh_footer()
         self._relayout()
-        self._render_explain_for_mode()
+        self._render_inspect()
 
     def _activate_action(self, key: str) -> None:
         if key == "quit":
@@ -1560,8 +1551,9 @@ class SpikeMenuApp(App):
         self.refresh_css()
         self._rebuild_sorters()
         self._rebuild_actions()
-        self._render_explain_for_mode()
-        self._render_activebar(self.size.width)
+        self._render_inspect()
+        self._render_databar(self.size.width)
+        self._render_sortbar(self.size.width)
         self._last = Text(f"Theme → {name}", style=f"bold {self._accent}")
         self._refresh_footer()
 
@@ -1644,7 +1636,7 @@ class SpikeMenuApp(App):
                 self._last = Text(f"reload after compare failed: {e!r}", style="#f85149")
         self._refresh_footer()
         self._relayout()
-        self._render_explain_for_mode()
+        self._render_inspect()
         self.refresh()
 
     # -- the suspend-and-run path -------------------------------------------- #
@@ -1669,7 +1661,7 @@ class SpikeMenuApp(App):
             self._last = Text(f"reload after {key} failed: {e!r}", style="#f85149")
         self._refresh_footer()
         self._relayout()
-        self._render_explain_for_mode()
+        self._render_inspect()
         self.refresh()
 
 
