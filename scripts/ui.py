@@ -194,18 +194,20 @@ _N_FIRE = 0.92     # [0.74,0.92) pulse travels the conduction path
 _NeuronTier = namedtuple("_NeuronTier", "rest path soma dendrites ap")
 
 _NEURON_FULL = _NeuronTier(           # 28 cols x 7 rows
-    rest=[
+    rest=[                            # rounded soma (╭███╮) + 4 converging dendrites
+        "╲                           ",
         " ╲                          ",
-        "  ╲                         ",
-        "   ███                      ",
-        "───███━━━━━━━━━━━━━━━━┳─────",
-        "   ███                      ",
-        "  ╱                         ",
+        "  ╲╭███╮                    ",
+        "───┤███├━━━━━━━━━━━━┳────   ",
+        "  ╱╰███╯                    ",
         " ╱                          ",
+        "╱                           ",
     ],
-    path=[(3, c) for c in range(0, 28)],
-    soma=[(2, 3), (2, 4), (2, 5), (3, 3), (3, 4), (3, 5), (4, 3), (4, 4), (4, 5)],
-    dendrites=[(0, 1), (1, 2), (5, 2), (6, 1), (3, 0), (3, 1), (3, 2)],
+    path=[(3, c) for c in range(0, 25)],
+    soma=[(2, 3), (2, 4), (2, 5), (2, 6), (2, 7),
+          (3, 3), (3, 4), (3, 5), (3, 6), (3, 7),
+          (4, 3), (4, 4), (4, 5), (4, 6), (4, 7)],
+    dendrites=[(0, 0), (1, 1), (2, 2), (4, 2), (5, 1), (6, 0), (3, 0), (3, 1), (3, 2)],
     ap=[(2, 24, "╱"), (1, 25, "╱"), (1, 26, "╲"), (2, 27, "╲")],
 )
 
@@ -224,14 +226,14 @@ _NEURON_COMPACT = _NeuronTier(        # 18 cols x 5 rows
 )
 
 _NEURON_MINI = _NeuronTier(           # 11 cols x 3 rows
-    rest=[
-        " ╲         ",
-        "─██━━━━━┳──",
-        " ╱         ",
+    rest=[                            # spike leaps right off the terminal (┳)
+        "  ╲        ",
+        "─██━━━━━━┳─",
+        "  ╱        ",
     ],
     path=[(1, c) for c in range(0, 11)],
     soma=[(1, 1), (1, 2)],
-    dendrites=[(0, 1), (2, 1), (1, 0)],
+    dendrites=[(0, 2), (2, 2), (1, 0)],
     ap=[(0, 9, "╱"), (0, 10, "╲")],
 )
 
