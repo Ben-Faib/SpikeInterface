@@ -27,6 +27,11 @@ which sorters fit.
 1. **Library-based**, not a single hard-coded real probe — geometry varies per
    recording. Built-in standard presets + user-editable profiles; the current
    placeholder becomes one explicit, labelled choice (`independent`).
+   **Update (user-confirmed):** this recording's real probe is a **NeuroNexus
+   A1x16-3mm-100-703** (16 sites, single shank, 100 µm pitch). It is verified to
+   match the data (channels `raw 1`–`raw 16`; `analog 1`–`analog 6` are aux,
+   dropped before sorting → 16 neural channels), so it ships as a built-in and is
+   the **default active probe** (`nnx-a1x16-3mm-100`), not `independent`.
 2. **Hybrid geometry input:** (a) parametric generators (linear, 2-D grid,
    tetrode, independent), (b) the `probeinterface` real-probe catalog
    (manufacturer + model), (c) import a `probeinterface` JSON file. No raw
@@ -108,8 +113,9 @@ Kind-specific `params`:
   `{ "profiles": [ <profile>, ... ] }`.
 - The **active profile name** persists as a new `active_probe` key in
   `.si_menu.json` (alongside `theme`/`use_docker`/`sorter_params`/`seen_welcome`),
-  plus a new `seen_probe_setup` first-run flag. Default active = `independent`
-  (today's behaviour, now explicit).
+  plus a new `seen_probe_setup` first-run flag. Default active =
+  `nnx-a1x16-3mm-100` (this recording's real probe); `independent` remains a
+  selectable profile for recordings whose geometry is unknown.
 
 `.gitignore` adds `probes.json`.
 
@@ -174,7 +180,8 @@ It always sets device-channel indices and validates the contact count against
 
 - New CLI: `--probe <name>` (look up in the library) and `--probe-file <path>`
   (a `probeinterface` JSON, equivalent to a `file` profile). Default: the active
-  profile from config, falling back to `independent`.
+  profile from config (the NNX A1x16, which matches the 16 kept neural channels),
+  falling back to `independent` if unset.
 - Pipeline order becomes: `read_broadband(attach_probe=False)` → drop analog aux
   channels (`neural_channel_ids`/`select_channels`) → **apply the resolved probe**
   (`probes.build(profile, n_kept)` + `set_probe`) → bandpass → common reference →
@@ -318,17 +325,19 @@ existing action/hint text. `ui.HELP_TOPICS` gains a **Probe geometry** topic
 
 ## Section 5 — Built-in presets
 
-`probes.py: BUILTINS` (ordered; `independent` first / default). Each carries a
-`note` and a `density_class` is derivable so the fit engine can rank against it.
-Values come from the Tracy Cui lab research brief (Appendix) — note that the
-**`independent` default is the honest choice for *this* recording**, since the
-22-channel Blackrock file does not match the lab's published TDT/probe rig (see
-Appendix §2); the Cui-attested probes are offered as clearly-labelled opt-in
-conveniences, not as "your probe."
+`probes.py: BUILTINS` (ordered; the recording's real probe first / default, then
+the placeholder, then standards). Each carries a `note` and a `density_class` is
+derivable so the fit engine can rank against it.
+
+**Default (this recording's real probe — user-confirmed):**
+- **`nnx-a1x16-3mm-100`** *(default)* — NeuroNexus **A1x16-3mm-100-703**: 16 sites,
+  single shank, **100 µm pitch**, ~30 µm contacts → `density_class = sparse`. Maps
+  1:1 onto channels `raw 1`–`raw 16` (the 6 `analog` aux channels are dropped). At
+  100 µm pitch (sparse) the geometry-aware ★ sorter default stays `tridesclous2`.
 
 **Generic / standard:**
-- **`independent`** *(default)* — placeholder, auto-sizes to N channels, 250 µm
-  column. Today's behaviour; `density_class = independent`.
+- **`independent`** — placeholder, auto-sizes to N channels, 250 µm column. The old
+  default; `density_class = independent`. Use when a recording's probe is unknown.
 - **`linear-16-50um`**, **`linear-32-25um`** — single-shank dense linear.
 - **`tetrode-4`** — 4 tetrodes (16 ch), 25 µm within / 300 µm between.
 - **`grid-8x4-50um`** — generic dense 2-D grid.
@@ -336,29 +345,22 @@ conveniences, not as "your probe."
   at 400 µm it's `density_class = independent` (electrically independent).
 
 **Cui-lab-attested (opt-in; from published Methods):**
-- **`cui-neuronexus-a1x16-100um`** — NeuroNexus **A1x16-5mm-100-703-CM16**: 16
-  sites, single shank, 1 column, **100 µm pitch**, ~30 µm sites → `sparse`.
-  (Used as the stiff control in Cui-lab striatum recordings.)
 - **`cui-flexible-16-300um`** — custom flexible polyimide MEA: 16 recording sites,
   single shank, **300 µm pitch** → `independent`.
 - **`cui-transparent-4x4-200um`** — custom transparent MEA: 16 sites, **4×4 grid,
   200 µm pitch** → `independent`.
 
-**"If your 22 came from a 32-site probe" hint:**
-- **`neuronexus-a1x32-poly3-50um`** — 32 sites, 1 shank, 3 columns (10/12/10),
-  **50 µm pitch** → `dense`. The most likely real layout if the 22 channels are a
-  subset of a 32-site front-end (Appendix §2).
-
 The `probeinterface` catalog (NeuroNexus, Cambridge NeuroTech, etc.) is also
 reached **live** via `catalog_manufacturers()` / `catalog_models()` for any model
-not in `BUILTINS`. The `ProbeEditorScreen`/Help shows the **NeuroNexus name
-decoder** so users can read their own model:
+not in `BUILTINS` (e.g. to pull the exact NeuroNexus site-permutation rather than
+the parametric 100 µm linear approximation). The `ProbeEditorScreen`/Help shows the
+**NeuroNexus name decoder**:
 `A{shanks}x{sites/shank}-{length}-{pitch_µm}-{site_area_µm²}` (e.g.
-`A1x16-5mm-100-703` = 1 shank, 16 sites, 5 mm, 100 µm pitch, 30 µm-⌀ sites).
+`A1x16-3mm-100-703` = 1 shank, 16 sites, 3 mm, 100 µm pitch, 703 µm²/~30 µm-⌀ sites).
 
-> Presets are starting points; every one is copy-to-edit. None is forced — the
-> recording's true geometry is unknown, so accuracy is the user's call. The
-> first-run prompt highlights `independent` (safe default) and lists the named
+> Presets are starting points; every one is copy-to-edit. The default is this
+> recording's confirmed probe; the first-run prompt highlights it and lists the
+> other named
 > profiles below it.
 
 ---
@@ -385,13 +387,18 @@ decoder** so users can read their own model:
 
 ## Section 7 — Back-compat & migration
 
-- A fresh clone / existing user with no `active_probe` defaults to `independent`,
-  so behaviour is **identical to today** until a probe is chosen.
+- **Deliberate behaviour change (user-requested):** a fresh clone / existing user
+  with no `active_probe` now defaults to `nnx-a1x16-3mm-100`, so the **sort applies
+  real 100 µm linear geometry** instead of the placeholder. This is verified to
+  match the recording (16 neural channels), and at the `sparse` class the ★ sorter
+  default is unchanged (`tridesclous2`), so the *sorting result* is unaffected — only
+  the (previously non-physical) spatial geometry becomes real. Anyone who prefers
+  the old behaviour selects `independent`.
 - No `probes.json` ⇒ only built-ins; the file is created on first user save.
 - `attach_dummy_probe` stays (now the `independent` build path) so any external
-  caller/notebook keeps working.
-- The geometry caveat text stays for `independent`; only non-placeholder profiles
-  change it.
+  caller/notebook keeps working; `read_broadband(attach_probe=True)` is unchanged.
+- The geometry caveat text stays for `independent`; for a real probe (the new
+  default) it becomes the calm "geometry: <label>" note.
 
 ---
 
@@ -420,24 +427,23 @@ were independently confirmed against primary sources; confidence levels noted.
   - **Floating microelectrode array (FMA, Microprobes)** — 16/32, small 2-D
     bed-of-nails, 400 µm pitch.
 
-### §2 — The 22-channel puzzle (`PFCM7_d0ephys_Block2`) — inference
+### §2 — The 22-channel puzzle (`PFCM7_d0ephys_Block2`) — RESOLVED
 
-22 is not a catalog array size (those cluster at 16/32/64), and the file is
-Blackrock `.ns2/.ns5/.nev` @ 30 kHz — a Blackrock Cerebus / Ripple Grapevine
-fingerprint, **inconsistent with the lab's published TDT pipeline**. Most likely:
-a **32-channel front-end with ~10 channels not saved / dead → 22** (Blackrock amps
-are banked in 32s). So this recording most plausibly came from a different/newer
-rig, a collaborator, or a shared core — *not* the canonical Cui rig. "PFC" =
-prefrontal cortex (standard); "M7" = mouse #7 is plausible but unverified
-(speculation). **Conclusion for the feature:** keep `independent` as the default;
-offer `neuronexus-a1x32-poly3-50um` as the "if it's a 32-site subset" hint and the
-Cui-attested probes as opt-in.
+**Resolved from the data** (channel names read directly from the `.ns5`): the 22
+broadband channels are `raw 1`…`raw 16` (the **16 electrode channels of a
+NeuroNexus A1x16-3mm-100-703**, user-confirmed) plus `analog 1`…`analog 6` (6
+aux channels, dropped by `neural_channel_ids` before sorting → 16 neural channels).
+So it was never a 32-site front-end (the earlier inference) and the acquisition rig
+is Blackrock/Ripple, not TDT. The probe is a 16-site single-shank linear array at
+100 µm pitch — the `nnx-a1x16-3mm-100` default. ("PFC" = prefrontal cortex; "M7"
+remains an unverified label, not load-bearing.)
 
 ### §3 — Default profiles chosen (see Section 5)
 
-`independent` (default, = current behaviour) + standard generators + the three
-Cui-attested presets + the A1x32-poly3 hint. The named real probes can also be
-built live from the `probeinterface` library.
+`nnx-a1x16-3mm-100` (default, = this recording's confirmed probe) + `independent`
+(placeholder, for unknown geometry) + standard generators + the two Cui-attested
+custom MEAs. The exact NeuroNexus site permutation can be built live from the
+`probeinterface` library (the parametric default is a 100 µm linear approximation).
 
 ### §4 — Sorter ↔ geometry mapping (well-supported; backs Section 3)
 
@@ -460,12 +466,15 @@ is supplied.
 
 ### §5 — Confidence
 
-- **Verified:** Cui lab records on TDT (~24–25 kHz); A1x16 + custom flexible
-  single-shank arrays; does not use Blackrock/Ripple in their own recordings;
-  commercial probe geometries; the sorter↔geometry mapping.
-- **Inference:** the 22-channel file is a subset of a 32-channel Blackrock/Ripple
-  front-end, not the canonical Cui TDT pipeline.
-- **Speculation (labelled):** "M7" = mouse #7; the exact origin of `PFCM7`.
+- **Verified from the data + the user:** this recording's probe is a NeuroNexus
+  **A1x16-3mm-100-703** (16 sites, 100 µm) on channels `raw 1`–`raw 16`, with 6
+  `analog` aux channels dropped → 16 neural channels. This is the default profile.
+- **Verified from research (background, for the other presets):** the Cui lab's
+  *published* probes (A1x16, custom flexible/transparent MEAs) and the
+  sorter↔geometry mapping that backs Section 3.
+- **Superseded inference:** the earlier "22 = a 32-site front-end subset" guess —
+  resolved by §2 (it's 16 electrodes + 6 aux).
+- **Speculation (labelled):** "M7" = mouse #7 (not load-bearing).
 
 ### Sources
 
