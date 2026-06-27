@@ -98,3 +98,13 @@ def test_default_probe_is_sparse_not_independent():
     # tridesclous2 stays the geometry-aware default for this recording).
     f = probes.geometry_features(probes.get(probes.DEFAULT_PROBE))
     assert f["klass"] == "sparse" and f["layout"] == "linear"
+
+
+def test_introspection_is_none_safe():
+    # Global constraint: never raises (except build()). A missing profile -> safe defaults.
+    assert probes.geometry_features(None)["klass"] == "sparse"
+    assert probes.contact_count(None) is None
+    assert probes.auto_sizes(None) is False
+    assert isinstance(probes.summary(None), str)   # no AttributeError
+    # get() miss -> None -> summary must not crash
+    assert isinstance(probes.summary(probes.get("does-not-exist")), str)

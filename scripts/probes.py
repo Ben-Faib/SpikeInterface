@@ -169,11 +169,15 @@ def duplicate(name, new_name, new_label=None, path=PROBES_PATH) -> dict:
 # --------------------------------------------------------------------------- #
 def auto_sizes(profile) -> bool:
     """True iff the profile resizes to the recording (only ``independent``)."""
+    if not isinstance(profile, dict):
+        return False
     return profile.get("kind") == "independent"
 
 
 def contact_count(profile) -> "int | None":
     """Fixed contact count for parametric kinds; None for auto/unknown kinds."""
+    if not isinstance(profile, dict):
+        return None
     k, p = profile.get("kind"), profile.get("params", {})
     if k == "linear":
         return int(p.get("n", 0))
@@ -197,6 +201,9 @@ def density_class(min_pitch_um) -> str:
 def geometry_features(profile) -> dict:
     """{n, layout, min_pitch_um, density_class, klass}. Analytic for parametric
     kinds; library/file return a neutral 'unknown' feature set (no network)."""
+    if not isinstance(profile, dict):
+        return {"n": None, "layout": "unknown", "min_pitch_um": None,
+                "density_class": "sparse", "klass": "sparse"}
     k, p = profile.get("kind"), profile.get("params", {})
     if k == "independent":
         pitch = float(p.get("pitch_um", 250.0))
@@ -221,6 +228,8 @@ def geometry_features(profile) -> dict:
 
 def summary(profile) -> str:
     """Human one-liner: '16 contacts · linear · 50 µm pitch'. Never raises."""
+    if not isinstance(profile, dict):
+        return "no probe"
     f = geometry_features(profile)
     n = f["n"]
     layout = {"independent": "independent channels", "linear": "linear",
