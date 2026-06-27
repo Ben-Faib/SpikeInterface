@@ -47,6 +47,7 @@ the actions are always reachable even when the body is taller than the screen.
 from __future__ import annotations
 
 import asyncio
+from time import monotonic
 from typing import Protocol
 
 from rich.text import Text
@@ -57,6 +58,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Checkbox, Input, Label, OptionList, Static
 from textual.widgets.option_list import Option
 
+import download_stats as dlstats  # pure download progress math + formatters
 import sort_progress as _sp  # pure JSON progress protocol (no SI / Textual deps)
 import ui  # shield art + theme palette + plain helpers (single source)
 
@@ -667,23 +669,14 @@ class SortProgressScreen(ModalScreen):
 
 
 class DownloadProgressScreen(ModalScreen):
-    """Pulls a sorter's Docker image in-UI, separate from running a sort.
+    """Expanded telemetry view over the App's live ``DownloadSession``.
 
-    The Textual app never imports the Docker SDK or SpikeInterface; the actual
-    ``docker pull`` happens inside ``MenuController.download_image`` (the registry
-    hook), which we run in a **worker thread** (``run_worker(self._pull,
-    thread=True)``) so the event loop never blocks. The SDK's ``on_progress`` /
-    ``on_status`` callbacks fire on that thread, so every UI touch is marshalled
-    back with ``self.app.call_from_thread(...)``.
-
-    ``on_status`` now emits only a phase+count string ("Downloading N/M layers" /
-    "Verifying…" / "Extracting N/M layers" / "Done"), and ``on_progress`` aggregates
-    correctly over all layers of the current phase. So the layout is: the phase
-    string is a **label above** a determinate bar (the aggregate %), with a **spinner**
-    next to the label that ticks on a ``set_interval`` (~6 fps) while the pull is live
-    — so indeterminate stretches (Waiting / Verifying, which emit no progress) still
-    read as alive. On finish a ✓/✗ line shows, the spinner stops, and Esc/Enter close
-    (returning the ``(ok, message)`` result to ``_after_download``)."""
+    The pull worker is owned by ``SpikeMenuApp`` (so it survives this modal being
+    collapsed), not by this screen. This screen is a pure renderer: it reads
+    ``self.app._download`` each tick and draws the phase caption + spinner, a
+    determinate bar + percent, and a stats block (downloaded/total · speed; ETA ·
+    elapsed). ``c`` collapses back to the dashboard indicator while the download
+    continues; ``Esc`` cancels the download; Enter closes once finished."""
 
     DEFAULT_CSS = """
     DownloadProgressScreen { align: center middle; }
@@ -697,8 +690,9 @@ class DownloadProgressScreen(ModalScreen):
     """
 
     BINDINGS = [
-        Binding("escape", "close", "Close", show=False),
-        Binding("enter", "close", "Close", show=False),
+        Binding("c", "collapse", "Collapse", show=False),
+        Binding("escape", "cancel", "Cancel", show=False),
+        Binding("enter", "close_if_done", "Close", show=False),
     ]
 
     _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
@@ -708,99 +702,85 @@ class DownloadProgressScreen(ModalScreen):
         self._c = controller
         self._name = name
         self._accent = accent
-        self._pct = 0
-        # The phase string from on_status ("Downloading N/M layers" / "Verifying…" /
-        # "Extracting N/M layers" / "Done") — never a raw per-layer status. It is the
-        # label drawn ABOVE the bar.
-        self._status = "starting…"
-        self._done = None              # (ok, message) once the pull finishes
         self._spin = 0
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dldialog"):
             yield Static(f"Downloading {self._name}", id="dltitle")
             yield Static("", id="dlbody")
-            yield Static("This runs once (~1 GB). Esc to close.", id="dlfoot")
+            yield Static("This runs once (~1 GB).  [c] collapse · [Esc] cancel",
+                         id="dlfoot")
 
     def on_mount(self) -> None:
         self.query_one("#dldialog").border_title = "DOWNLOAD"
         self._repaint()
-        # A slow spinner tick keeps the status line visibly alive even while the pull
-        # is in an indeterminate stretch (Waiting / Verifying emit no progress). Cheap
-        # — it stops the moment the pull finishes / the screen unmounts.
-        self._spin_timer = self.set_interval(1.0 / 6, self._tick_spinner)
-        # The pull blocks (network + disk); run it OFF the event loop. The two
-        # callbacks fire on this worker thread, so they hop back via call_from_thread.
-        self.run_worker(self._pull, thread=True, exclusive=True)
+        # Repaint on a timer: the App's worker mutates the shared session from a
+        # thread; this pull-based redraw avoids cross-thread widget touches and also
+        # animates the spinner during indeterminate (verify/extract) stretches.
+        self._timer = self.set_interval(1.0 / 6, self._tick)
 
     def on_unmount(self) -> None:
-        self._stop_spinner()
+        t = getattr(self, "_timer", None)
+        if t is not None:
+            t.stop()
+            self._timer = None
 
-    def _stop_spinner(self) -> None:
-        timer = getattr(self, "_spin_timer", None)
-        if timer is not None:
-            timer.stop()
-            self._spin_timer = None
+    def _session(self):
+        return getattr(self.app, "_download", None)
 
-    def _tick_spinner(self) -> None:
-        # Only animate while the pull is live — once done the ✓/✗ line is the cue.
-        if self._done is not None:
-            return
-        self._spin = (self._spin + 1) % len(self._SPINNER)
+    def _tick(self) -> None:
+        sess = self._session()
+        if sess is not None and sess.result is None:
+            self._spin = (self._spin + 1) % len(self._SPINNER)
         self._repaint()
 
-    def _pull(self) -> None:
-        def on_progress(done, total):
-            pct = int(done / total * 100) if total else 0
-            self.app.call_from_thread(self._set_pct, pct)
-
-        def on_status(text):
-            self.app.call_from_thread(self._set_status, text)
-
-        try:
-            ok, msg = self._c.download_image(self._name, on_progress, on_status)
-        except Exception as e:  # noqa: BLE001 - never let a worker crash kill the app
-            ok, msg = False, f"download failed: {e}"
-        self.app.call_from_thread(self._finish, ok, msg)
-
-    # -- thread-marshalled UI updates (only ever called via call_from_thread) -- #
-    def _set_pct(self, pct: int) -> None:
-        self._pct = pct
-        self._repaint()
-
-    def _set_status(self, text: str) -> None:
-        self._status = text
-        self._repaint()
-
-    def _finish(self, ok: bool, msg: str) -> None:
-        self._done = (ok, msg)
-        if ok:
-            self._pct = 100
-        self._stop_spinner()           # no live spinner once the ✓/✗ line shows
-        self._repaint()
-        self.query_one("#dlfoot", Static).update("Press Enter to close")
-
-    # NB: NOT named ``_render`` — that collides with Textual's Widget._render.
     def _repaint(self) -> None:
+        sess = self._session()
         t = Text()
-        # Phase string (from on_status) ABOVE the bar, with a live spinner alongside
-        # so an indeterminate stretch (Waiting / Verifying) clearly reads as alive.
-        if self._done is None:
+        if sess is None:
+            t.append("download finished", style="dim")
+            self.query_one("#dlbody", Static).update(t)
+            return
+        st = sess.stats
+        live = sess.result is None
+        # Phase caption + spinner.
+        if live:
             t.append(self._SPINNER[self._spin] + " ", style=self._accent)
-        t.append(self._status + "\n", style="dim")
-        fill = int(self._pct / 100 * 24)
+        t.append(sess.phase_caption + "\n", style="dim")
+        # Bar + percent.
+        pct = st.pct
+        fill = int(pct / 100 * 24)
         t.append("█" * fill + "░" * (24 - fill), style=self._accent)
-        t.append(f"  {self._pct:3d}%\n", style="dim")
-        if self._done is not None:
-            ok, msg = self._done
-            t.append(("✓ " if ok else "✗ ") + msg,
+        t.append(f"  {pct:3d}%\n\n", style="dim")
+        # Stats block (size · speed ; ETA · elapsed). During verify/extract the byte
+        # readout/speed/ETA may be unknown -> render as "—" (fmt_* handle None).
+        done, total = sess.bytes_done, sess.bytes_total
+        t.append(f"{dlstats.fmt_bytes(done)} / {dlstats.fmt_bytes(total)}"
+                 f"   {dlstats.fmt_speed(st.speed)}\n", style="dim")
+        t.append(f"ETA {dlstats.fmt_clock(st.eta)}"
+                 f"          elapsed {dlstats.fmt_clock(st.elapsed)}", style="dim")
+        if sess.result is not None:
+            ok, msg = sess.result
+            t.append("\n" + ("✓ " if ok else "✗ ") + msg,
                      style="bold " + ("#3fb950" if ok else "#f85149"))
         self.query_one("#dlbody", Static).update(t)
+        if not live:
+            self.query_one("#dlfoot", Static).update("Press Enter to close")
 
-    def action_close(self) -> None:
-        # Before the pull finishes, Esc/Enter close with a not-done sentinel so the
-        # caller doesn't treat an interrupted view as a completed download.
-        self.dismiss(self._done or (False, "download still running", False))
+    def action_collapse(self) -> None:
+        # Leave the worker running; the dashboard #dlbar takes over the display.
+        self.dismiss("collapsed")
+
+    def action_cancel(self) -> None:
+        sess = self._session()
+        if sess is not None and sess.result is None:
+            sess.cancelled = True          # the worker's should_cancel hook breaks
+        self.dismiss("collapsed")          # close now; finish handling runs on the App
+
+    def action_close_if_done(self) -> None:
+        sess = self._session()
+        if sess is None or sess.result is not None:
+            self.dismiss("collapsed")
 
 
 class ManageSorterScreen(ModalScreen):
@@ -1351,6 +1331,11 @@ class SpikeMenuApp(App):
        (the DATA/SORT info still lives in the d Help topic + the footer). */
     #databar.collapsed, #sortbar.collapsed, #titlebar.collapsed { display: none; }
 
+    /* In-UI download indicator: a one-row banner-area line shown only while a
+       download is live (or just finished, briefly). Hidden otherwise. */
+    #dlbar { height: 1; margin: 0 2 0 2; color: $accentcolor; }
+    #dlbar.hidden { display: none; }
+
     #body { height: 1fr; padding: 1 1 0 1; }
     #body.stacked { layout: vertical; }
 
@@ -1405,6 +1390,7 @@ class SpikeMenuApp(App):
         Binding("shift+tab", "focus_sorters", "Sorters", show=False, priority=True),
         Binding("t", "cycle_sorter", "Switch sorter", show=False),
         Binding("m", "toggle_motion", "Motion", show=False),
+        Binding("w", "watch_download", "Download", show=False),
         # x manages the highlighted sorter (delete image / clear saved sort) — wired
         # to a no-op-safe action now; Stage 5 fills it in.
         Binding("x", "manage_highlighted", "Manage", show=False),
@@ -1426,6 +1412,7 @@ class SpikeMenuApp(App):
         self.c = controller
         self._accent = controller.accent
         self._last = None
+        self._download = None          # the single live DownloadSession (or None)
         super().__init__()
 
     # -- CSS variable plumbing: $accentcolor follows the live theme ----------- #
@@ -1440,6 +1427,7 @@ class SpikeMenuApp(App):
         yield Static(id="titlebar")
         yield Static(id="databar")
         yield Static(id="sortbar")
+        yield Static(id="dlbar")
         with Horizontal(id="body"):
             with Vertical(id="sorterpane"):
                 yield NavList(id="sorters")
@@ -1479,6 +1467,7 @@ class SpikeMenuApp(App):
         self.query_one("#body").set_class(stacked, "stacked")
         self._render_databar(w)
         self._render_sortbar(w)
+        self._render_dlbar(w)
         self._refresh_action_title()
         # Hide the INSPECTING panel on shortness so the lists keep their rows (its
         # blurb is non-essential; the lists themselves must never clip). Stacked panes
@@ -1585,6 +1574,32 @@ class SpikeMenuApp(App):
             t.append(f" · {n} custom params", style="dim")
         t.truncate(max(1, width - 2), overflow="ellipsis")
         self.query_one("#sortbar", Static).update(t)
+
+    def _render_dlbar(self, width: int) -> None:
+        """The collapsed download indicator. Hidden when no session; while live shows
+        '⬇ <name>  NN%  <speed>  ETA m:ss   [w expand]'; on finish a transient
+        '✓ <name> ready' / '✗ …' until _clear_download hides it."""
+        bar = self.query_one("#dlbar", Static)
+        sess = getattr(self, "_download", None)
+        if sess is None:
+            bar.add_class("hidden")
+            bar.update("")
+            return
+        bar.remove_class("hidden")
+        t = Text()
+        if sess.result is not None:
+            ok, msg = sess.result
+            t.append(("✓ " if ok else "✗ "), style="bold " + ("#3fb950" if ok else "#f85149"))
+            t.append(f"{sess.name} {'ready' if ok else 'failed'}",
+                     style="#3fb950" if ok else "#f85149")
+        else:
+            st = sess.stats
+            t.append("⬇ ", style=self._accent)
+            t.append(f"{sess.name}  ", style="bold")
+            t.append(f"{st.pct:d}%  {dlstats.fmt_speed(st.speed)}  "
+                     f"ETA {dlstats.fmt_clock(st.eta)}", style="dim")
+            t.append("   [w expand]", style="#6e7681")
+        bar.update(t)
 
     def _refresh_action_title(self) -> None:
         self.query_one("#actionpane").border_title = f"ACTIONS — on {self.c.active_sorter}"
@@ -2114,8 +2129,7 @@ class SpikeMenuApp(App):
             # Download path — the image must be pulled before this can ever run, and
             # it needs the daemon up. Pulling is SEPARATE from running a sort.
             if self.c.docker_status(refresh=False).get("running"):
-                self.push_screen(DownloadProgressScreen(self.c, name, self._accent),
-                                 self._after_download)
+                self.start_download(name)
             else:
                 self._toggle_docker(offer_from=name)   # get Docker running first
         elif info.get("runnable"):
@@ -2132,24 +2146,109 @@ class SpikeMenuApp(App):
             self._last = Text(f"{name}: {hint}", style="#f0883e")
             self._refresh_footer()
 
-    def _after_download(self, result) -> None:
-        """A finished/interrupted in-UI download. Reload the catalog so the row's
-        download badge + readiness flip, then re-render the sidebar, banner, and
-        INSPECTING panel."""
-        if isinstance(result, tuple):
-            ok, message = result[0], result[1]
-        else:
-            ok, message = False, str(result)
-        self._last = Text(message, style=_result_style(ok, message))
+    # -- in-UI Docker download (worker owned HERE so it survives a collapse) ---- #
+    def start_download(self, name: str) -> None:
+        """Begin pulling ``name``'s image in an App-owned worker and open the
+        expanded view. Refuses a second concurrent download with a footer hint."""
+        if getattr(self, "_download", None) is not None and self._download.result is None:
+            self._last = Text(f"a download is already running · w to view",
+                              style="#f0883e")
+            self._refresh_footer()
+            return
+        img = ""
+        try:
+            img = self.c.image_state(name).get("image") or ""
+        except Exception:  # noqa: BLE001
+            img = ""
+        sess = dlstats.DownloadSession(name=name, image=img)
+        sess.phase_caption = "starting…"
+        sess.bytes_done = None
+        sess.bytes_total = None
+        self._download = sess
+        self._render_dlbar(self.size.width)
+        self.run_worker(lambda: self._download_worker(sess), thread=True)
+        self.push_screen(DownloadProgressScreen(self.c, name, self._accent),
+                         self._after_download)
+
+    def _download_worker(self, sess) -> None:
+        _PHASE = {"Downloading": "downloading", "Verifying": "verifying",
+                  "Extracting": "extracting", "Done": "done"}
+
+        def on_progress(done, total):
+            self.call_from_thread(self._dl_progress, sess, done, total)
+
+        def on_status(text):
+            self.call_from_thread(self._dl_status, sess, text)
+
+        def should_cancel():
+            return sess.cancelled
+
+        try:
+            ok, msg = self.c.download_image(sess.name, on_progress, on_status,
+                                            should_cancel=should_cancel)
+        except Exception as e:  # noqa: BLE001 - never let a worker crash the app
+            ok, msg = False, f"download failed: {e}"
+        self.call_from_thread(self._dl_finish, sess, ok, msg)
+
+    # -- thread-marshalled session mutations (only via call_from_thread) -------- #
+    def _dl_progress(self, sess, done, total) -> None:
+        sess.bytes_done, sess.bytes_total = done, total
+        sess.stats.update(done, total, now=monotonic())
+        self._render_dlbar(self.size.width)
+
+    def _dl_status(self, sess, text) -> None:
+        sess.phase_caption = text
+        word = text.split()[0] if text else ""
+        new_phase = {"Downloading": "downloading", "Verifying": "verifying",
+                     "Extracting": "extracting", "Done": "done"}.get(word)
+        if new_phase and new_phase != sess.phase:
+            sess.phase = new_phase
+            sess.stats.set_phase(new_phase, now=monotonic())
+        self._render_dlbar(self.size.width)
+
+    def _dl_finish(self, sess, ok, msg) -> None:
+        sess.result = (ok, msg)
+        # Reload the catalog so the row badge/readiness flips (existing logic).
+        self._last = Text(msg, style=_result_style(ok, msg))
         try:
             self.c.reload()
             self._rebuild_sorters()
             self._rebuild_actions()
-        except Exception as e:  # noqa: BLE001 - a reload failure must not kill the app
+        except Exception as e:  # noqa: BLE001
             self._last = Text(f"reload after download failed: {e!r}", style="#f85149")
         self._render_sortbar(self.size.width)
         self._refresh_footer()
         self._render_inspect()
+        # Show a transient ✓/✗ in the indicator, then clear the session + hide it.
+        self._render_dlbar(self.size.width)
+        self.set_timer(4.0, self._clear_download)
+
+    def _clear_download(self) -> None:
+        self._download = None
+        self._render_dlbar(self.size.width)
+
+    def action_watch_download(self) -> None:
+        """`w`: re-open the expanded view over the still-running download."""
+        sess = getattr(self, "_download", None)
+        if sess is None or sess.result is not None:
+            self._last = Text("no download in progress", style="dim")
+            self._refresh_footer()
+            return
+        if isinstance(self.screen, DownloadProgressScreen):
+            return
+        self.push_screen(DownloadProgressScreen(self.c, sess.name, self._accent),
+                         self._after_download)
+
+    def _after_download(self, result) -> None:
+        """The expanded modal was dismissed (collapsed / cancelled / closed). The
+        download worker is owned by the App and keeps running; the actual finish
+        (catalog reload, badge flip) happens in ``_dl_finish``. Here we only echo a
+        status so a collapse reads clearly."""
+        if result == "collapsed":
+            sess = getattr(self, "_download", None)
+            if sess is not None and sess.result is None:
+                self._last = Text(f"{sess.name} downloading · w to expand", style="dim")
+        self._refresh_footer()
 
     def _highlight_sorter_by_name(self, name: str) -> bool:
         """Move the SORTERS cursor onto a sorter row by name (focusing the pane so a
