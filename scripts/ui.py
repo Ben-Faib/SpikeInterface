@@ -311,6 +311,56 @@ def pick_neuron(cols, rows=None, reserve=0):
     return _pick(_NEURONS, cols, rows, reserve)
 
 
+# --------------------------------------------------------------------------- #
+# Block-letter "SPIKE" wordmark — the v2 dashboard's static top crest (replaces
+# the firing neuron). Block letters in width-safe glyphs ONLY (full block █ +
+# spaces, same discipline as the shield). Two responsive tiers; below compact the
+# crest hides and the always-present title rule carries the branding. Unlike the
+# shield/neuron (fixed colours baked at build time), the wordmark is coloured at
+# RENDER time from the live accent (wordmark_rows), so it follows the theme.
+# Preview with `uv run python scripts/_wordmark_preview.py`.
+# --------------------------------------------------------------------------- #
+_WORDMARK_FULL = [                    # 19 cols x 5 rows — block "SPIKE"
+    "███ ███ ███ █ █ ███",
+    "█   █ █  █  ██  █  ",
+    "███ ███  █  █   ███",
+    "  █ █    █  ██  █  ",
+    "███ █   ███ █ █ ███",
+]
+_WORDMARK_COMPACT = ["S P I K E"]     # 9 cols x 1 row — letter-spaced caps fallback
+
+_WORDMARKS = [
+    (len(_WORDMARK_FULL[0]), len(_WORDMARK_FULL), _WORDMARK_FULL),
+    (len(_WORDMARK_COMPACT[0]), len(_WORDMARK_COMPACT), _WORDMARK_COMPACT),
+]
+
+
+def _encode_wordmark_row(line, accent):
+    """Run-length-merge a row into (style, segment) fragments: non-space runs get
+    ``accent``, space runs are unstyled — the same row shape _build_logo produces,
+    so menu_app._crest_text renders the wordmark unchanged."""
+    frags, i, n = [], 0, len(line)
+    while i < n:
+        j, blank = i, line[i] == " "
+        while j < n and (line[j] == " ") == blank:
+            j += 1
+        frags.append(("" if blank else accent, line[i:j]))
+        i = j
+    return frags
+
+
+def wordmark_rows(tier, accent):
+    """Built crest rows for ``tier`` (list of equal-width strings) coloured with
+    the live ``accent``. Width is preserved row-for-row."""
+    return [_encode_wordmark_row(row, accent) for row in tier]
+
+
+def pick_wordmark(cols, rows=None, reserve=0):
+    """Largest wordmark tier (full -> compact -> none) that fits — same fit rules
+    as pick_logo. Returns the tier (list[str], truthy) or [] when none fits."""
+    return _pick(_WORDMARKS, cols, rows, reserve)
+
+
 def _term_size():
     """Live (cols, rows). Inside a running prompt_toolkit app, read its output size (so
     the dashboard tracks live resizes); otherwise use the real terminal via shutil.

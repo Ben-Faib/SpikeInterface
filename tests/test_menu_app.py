@@ -1028,6 +1028,33 @@ def test_result_style_amber_for_warning():
     assert menu_app._result_style(False, "✗ Sorted x") == "#f85149"
 
 
+# --- wordmark crest ------------------------------------------------------- #
+def test_wordmark_tiers_equal_width():
+    for tier in (ui._WORDMARK_FULL, ui._WORDMARK_COMPACT):
+        widths = {len(row) for row in tier}
+        assert len(widths) == 1, f"ragged wordmark tier widths: {widths}"
+
+
+def test_wordmark_uses_only_block_and_space():
+    chars = {ch for row in ui._WORDMARK_FULL for ch in row}
+    assert chars <= {"█", " "}, f"non-block glyphs in wordmark: {chars}"
+
+
+def test_pick_wordmark_drops_then_hides():
+    assert ui.pick_wordmark(200, 60) == ui._WORDMARK_FULL          # roomy -> full
+    assert ui.pick_wordmark(200, 60, reserve=58) == ui._WORDMARK_COMPACT  # short -> compact
+    assert ui.pick_wordmark(4, 60) == []                            # too narrow -> hidden
+
+
+def test_wordmark_rows_colours_blocks_with_accent():
+    rows = ui.wordmark_rows(ui._WORDMARK_FULL, "#abcdef")
+    styles = {s for row in rows for s, seg in row if seg.strip()}
+    assert styles == {"#abcdef"}                                    # every block run is accent
+    # width is preserved row-for-row
+    for src, frags in zip(ui._WORDMARK_FULL, rows):
+        assert sum(len(seg) for _, seg in frags) == len(src)
+
+
 # --- firing-neuron crest + preserved Pitt shield -------------------------- #
 def test_neuron_tiers_equal_width():
     for tier in (ui._NEURON_FULL, ui._NEURON_COMPACT, ui._NEURON_MINI):
