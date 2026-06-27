@@ -194,3 +194,8 @@ def test_resolve_probe_file():
     import run_sorting
     p = run_sorting.resolve_probe(None, "/tmp/x.json")
     assert p["kind"] == "file" and p["params"]["path"] == "/tmp/x.json"
+
+
+def test_resolve_probe_unknown_returns_none():
+    import run_sorting
+    assert run_sorting.resolve_probe("definitely-not-a-real-probe", None) is None

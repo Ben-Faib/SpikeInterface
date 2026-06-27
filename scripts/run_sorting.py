@@ -663,7 +663,7 @@ def resolve_probe(name, probe_file):
     """Resolve --probe/--probe-file to a probe profile dict.
 
     --probe-file wins (a one-off file profile); else a named library profile; else
-    the 'independent' placeholder (today's behaviour)."""
+    the active default profile (nnx-a1x16-3mm-100)."""
     import probes
 
     if probe_file:
@@ -742,7 +742,7 @@ def main() -> int:
                         help="JSON file of sorter parameter overrides.")
     parser.add_argument("--probe", default=None,
                         help="Probe-geometry profile name from the library "
-                             "(default: the active profile, else 'independent').")
+                             "(default: nnx-a1x16-3mm-100).")
     parser.add_argument("--probe-file", default=None,
                         help="A probeinterface JSON file to use as the probe geometry.")
     parser.add_argument("--list-sorters", action="store_true",
@@ -863,9 +863,17 @@ def main() -> int:
     # default run never hard-fails on geometry.
     import probes
     explicit = bool(args.probe or args.probe_file)
+    if probe_profile is None:   # explicit --probe name not in the library
+        msg = (f"Unknown probe '{args.probe}'. Pick one from the probe library "
+               "(the menu's 'Set probe geometry' action) or pass --probe-file <probe.json>.")
+        ui.warn(msg)
+        rep.error(msg)
+        return 1
+    applied = False
     try:
         rec = rec.set_probe(probes.build(probe_profile, rec.get_num_channels()))
         _probe_msg = f"probe geometry: {probe_profile.get('label', probe_profile.get('name'))}"
+        applied = True
     except Exception as e:  # noqa: BLE001 - bad geometry / count mismatch
         if explicit:
             ui.warn(f"Probe '{probe_profile.get('name', '?')}' couldn't be applied: {e}")
@@ -876,7 +884,8 @@ def main() -> int:
         _probe_msg = (f"default probe didn't match this recording ({e}) — using the "
                       "independent-channel placeholder; pass --probe to set geometry.")
         ui.warn(_probe_msg)
-    ui.detail(_probe_msg)
+    if applied:
+        ui.detail(_probe_msg)
     rep.detail(_probe_msg)
 
     fs = rec.get_sampling_frequency()
