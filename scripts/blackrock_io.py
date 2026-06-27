@@ -181,8 +181,8 @@ def attach_dummy_probe(recording, pitch_um: float = 250.0):
     Per-channel results are valid; cross-channel *spatial* information is not
     physical until a real map is supplied.
 
-    To swap in the real geometry later, build a ``probeinterface.Probe`` with the
-    true contact positions and call ``recording.set_probe(real_probe)`` instead.
+    To swap in real geometry, build a probe with ``probes.build(profile, n)`` (or a
+    raw ``probeinterface.Probe``) and call ``recording.set_probe(...)`` instead.
     Returns a new recording with the probe attached (does not mutate in place).
     """
     import numpy as np
