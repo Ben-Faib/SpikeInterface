@@ -181,11 +181,19 @@ SI worker tree), reads its stdout, folds each line through the pure
 `scripts/sort_progress.py` protocol (`emit`/`parse_line`/`reduce`; events on stdout,
 human text on stderr — `run_sorting` dup2's fd 1→stderr in json mode so the channel
 stays pure), and renders a **phase checklist + determinate bar + spinner/heartbeat**;
-on success it reloads the dashboard. **In-UI Docker download:**
-`DownloadProgressScreen` pulls the image in a **worker thread**
-(`sorters.pull_docker_image`), marshalling progress to the UI via `call_from_thread`;
-Docker rows show a `⬇ get` / `✓ ready` / `⬇ NN%` badge from the catalog's
-`img_present`. **Manage sorters:** the `manage` action opens `ManageSortersScreen`, a
+on success it reloads the dashboard. **In-UI Docker download:** the pull worker is owned by the **App** (not the modal),
+so the view is **collapsible** — `start_download(name)` runs `sorters.pull_docker_image`
+(now with a `should_cancel` hook) in an App-owned worker thread and opens
+`DownloadProgressScreen`, a pure **telemetry view** over the App's single live
+`download_stats.DownloadSession` (downloaded/total · speed · ETA · elapsed, via the
+stdlib-only `scripts/download_stats.py`: `DownloadStats` EMA speed/eta + `fmt_bytes`/
+`fmt_speed`/`fmt_clock`). `c` collapses the modal back to the dashboard while the
+download continues, leaving the one-row `#dlbar` indicator (`⬇ <name> NN% <speed>
+ETA m:ss`); `w` (`action_watch_download`) re-expands it; `Esc` cancels (sets the
+session's `cancelled` flag → the pull's `should_cancel` breaks). On finish `_dl_finish`
+reloads the catalog (badge/readiness flip) and the indicator shows a transient
+`✓ <name> ready` before clearing. Docker rows still show a `⬇ get`/`✓ ready`/`⬇ NN%`
+badge from the catalog's `img_present`. **Manage sorters:** the `manage` action opens `ManageSortersScreen`, a
 grouped hub over every sorter (per-row `enter`/`g` download, `x` delete image, `c`
 clear saved sort, `r` reload) — destructive ops (`controller.delete_image` →
 `sorters.delete_docker_image`, `controller.clear_saved_sort`) **always confirm**
