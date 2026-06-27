@@ -894,12 +894,17 @@ class MenuController:
         size = sorter_registry.image_size(img) if present else None
         return {"image": img, "present": present, "size": size}
 
-    def download_image(self, name: str, on_progress=None, on_status=None) -> tuple[bool, str]:
-        """Pull a sorter's Docker image, streaming progress to the callbacks."""
+    def download_image(self, name: str, on_progress=None, on_status=None,
+                       should_cancel=None) -> tuple[bool, str]:
+        """Pull a sorter's Docker image, streaming progress to the callbacks.
+
+        ``should_cancel`` (optional callable) lets the in-UI download abort the
+        pull mid-stream once the worker is detached from the modal screen."""
         img = sorter_registry.default_docker_image(name)
         if not img:
             return False, f"No Docker image is known for {name}."
-        ok = sorter_registry.pull_docker_image(img, on_progress, on_status)
+        ok = sorter_registry.pull_docker_image(img, on_progress, on_status,
+                                                should_cancel=should_cancel)
         return (True, f"Downloaded {img}") if ok else (False, f"Couldn't download {img}.")
 
     def delete_image(self, name: str) -> tuple[bool, str]:
