@@ -1055,32 +1055,6 @@ def test_wordmark_rows_colours_blocks_with_accent():
         assert sum(len(seg) for _, seg in frags) == len(src)
 
 
-# --- firing-neuron crest + preserved Pitt shield -------------------------- #
-def test_neuron_tiers_equal_width():
-    for tier in (ui._NEURON_FULL, ui._NEURON_COMPACT, ui._NEURON_MINI):
-        widths = {len(row) for row in tier.rest}
-        assert len(widths) == 1, f"ragged neuron tier widths: {widths}"
-
-
-def test_neuron_frame_width_invariant():
-    for tier in (ui._NEURON_FULL, ui._NEURON_COMPACT, ui._NEURON_MINI):
-        W = len(tier.rest[0])
-        for phase in (0.0, 0.5, 0.80, 0.96):
-            for row in ui.neuron_frame(tier, phase):
-                assert sum(len(seg) for _, seg in row) == W
-
-
-def test_neuron_rest_has_no_spark():
-    styles = {s for row in ui.neuron_frame(ui._NEURON_FULL, 0.0) for s, _ in row}
-    assert ui.NEURON_SPARK not in styles
-    assert ui.NEURON_BODY in styles
-
-
-def test_neuron_fire_has_spark():
-    styles = {s for row in ui.neuron_frame(ui._NEURON_FULL, 0.96) for s, _ in row}
-    assert ui.NEURON_SPARK in styles
-
-
 async def test_dashboard_crest_is_the_wordmark(make_app):
     app = make_app(present=True)
     async with app.run_test(size=(110, 45)) as pilot:
@@ -1089,7 +1063,7 @@ async def test_dashboard_crest_is_the_wordmark(make_app):
         assert crest.display is True
         plain = crest.render().plain
         assert "█" in plain                          # block letters
-        assert "━" not in plain                      # not the neuron axon
+        assert "━" not in plain                      # not the old axon glyph
 
 
 async def test_crest_has_no_animation(make_app):

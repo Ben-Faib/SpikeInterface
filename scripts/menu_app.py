@@ -17,7 +17,7 @@ sorter and its readiness.
 
 Layout (responsive):
 
-    ┌ neuron crest (collapses full→compact→mini→hidden as height shrinks)┐
+    ┌ wordmark crest (collapses full→compact→hidden as height shrinks)   ┐
     │ ── University of Pittsburgh · SpikeInterface ── (#titlebar)         │
     │ DATA  ✓ LFP  ✓ Broadband  ✓ .nev   all 3 streams loaded (#databar)  │
     │ SORT  ★ tridesclous2 · 13 units saved · Ready to run     (#sortbar)  │
@@ -80,7 +80,7 @@ STACK_COLS = 64
 BANNER_ROWS = 2
 # Rows the crest must leave for title + banner + footer + a usable body, so it
 # drops full→compact→mini→hidden well before it would crowd the menu off a short
-# window. (The neuron ladder itself is 7 / 5 / 3 rows tall — see ui._NEURONS.)
+# window. (The wordmark tiers are 5 / 3 rows tall — see ui._WORDMARK_FULL/COMPACT.)
 # Tuned so the big crest is deferential: it only claims the full tier on a tall
 # (≈40+ row) terminal, dropping to the compact crest on the common 34–40 row window
 # so the panes get the vertical room they need to read.
@@ -1179,7 +1179,7 @@ class HelpScreen(ModalScreen):
             body = _setup_body(self._c.data_report, self._accent, self._c.pipeline)
         elif key == "about":
             # The Pitt shield lives here (and on Welcome): the dashboard's top
-            # crest is now the firing neuron, so the shield still has a home here.
+            # crest is now the wordmark, so the shield still has a home here.
             body = _crest_text(ui.SHIELD_COMPACT)
             body.append("\n\n")
             body.append(title + "\n\n", style=f"bold {self._accent}")
@@ -1258,7 +1258,7 @@ def _setup_body(report: dict, accent: str, pipeline=None) -> Text:
 # --------------------------------------------------------------------------- #
 def _crest_text(rows) -> Text:
     """Build a Text from built crest rows (each row = a list of (style, seg)).
-    Works for both the firing neuron (multi-fragment rows) and the blue+gold
+    Works for both the wordmark (multi-fragment rows) and the blue+gold
     shield (one fragment/row)."""
     t = Text()
     for n, line in enumerate(rows):

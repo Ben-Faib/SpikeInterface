@@ -170,153 +170,15 @@ _LOGO_INDENT = 2  # leading "  " before every shield row
 
 # Public aliases: the built shield rows, by size, for screens that render the
 # Pitt crest at a fixed spot (the v2 Welcome screen + Help "About" topic) now
-# that the firing neuron — not the shield — is the dashboard's top crest.
+# that the wordmark — not the shield — is the dashboard's top crest.
 SHIELD_FULL, SHIELD_COMPACT, SHIELD_MINI = _LOGO, _LOGO_COMPACT, _LOGO_MINI
 
 # --------------------------------------------------------------------------- #
-# Firing-neuron hero — the v2 Textual dashboard's animated top crest (replaces
-# the brain). A single neuron: dendrites -> soma -> axon -> action-potential
-# spike, drawn in width-safe glyphs ONLY (box-drawing U+2500.. + the full block
-# █; NO ●/quadrant blocks, which misalign across fonts — same discipline as the
-# shield). menu_app.CrestWidget walks `phase` on a slow timer (receive -> fire ->
-# rest); Welcome/Help/the legacy fallback keep the shield. Preview the art with
-# `uv run python scripts/_neuron_art_preview.py`.
-# --------------------------------------------------------------------------- #
-NEURON_BODY = "#ff6fb5"     # calm pink — the resting neuron body
-NEURON_SPARK = "#ffe066"    # electric yellow — the travelling pulse + firing AP
-NEURON_REST_PHASE = 0.0
-
-# Phase bands over one [0,1) cycle. Most of the cycle is REST (identical frames
-# the widget memoises away); the travel+fire window is brief and subtle.
-_N_TRAVEL = 0.74   # [0,0.74)    rest          (flat, body colour only)
-_N_FIRE = 0.92     # [0.74,0.92) pulse travels the conduction path
-                   # [0.92,1.0)  the action potential fires
-
-# rest      : list[str]      equal-width rows, the resting pose
-# path      : list[(r,c)]    ordered conduction line (dendrite root -> soma ->
-#                            axon terminal); the bright pulse walks it on travel
-# soma      : list[(r,c)]    cells that flash on fire
-# dendrites : list[(r,c)]    tip cells that flash as the signal first arrives
-# ap        : list[(r,c,ch)] action-potential glyphs drawn (spark) over the rest
-#                            pose during the fire band (replace blank cells)
-_NeuronTier = namedtuple("_NeuronTier", "rest path soma dendrites ap")
-
-_NEURON_FULL = _NeuronTier(           # 28 cols x 7 rows
-    rest=[                            # rounded soma (╭███╮) + 4 converging dendrites
-        "╲                           ",
-        " ╲                          ",
-        "  ╲╭███╮                    ",
-        "───┤███├━━━━━━━━━━━━┳────   ",
-        "  ╱╰███╯                    ",
-        " ╱                          ",
-        "╱                           ",
-    ],
-    path=[(3, c) for c in range(0, 25)],
-    soma=[(2, 3), (2, 4), (2, 5), (2, 6), (2, 7),
-          (3, 3), (3, 4), (3, 5), (3, 6), (3, 7),
-          (4, 3), (4, 4), (4, 5), (4, 6), (4, 7)],
-    dendrites=[(0, 0), (1, 1), (2, 2), (4, 2), (5, 1), (6, 0), (3, 0), (3, 1), (3, 2)],
-    ap=[(2, 24, "╱"), (1, 25, "╱"), (1, 26, "╲"), (2, 27, "╲")],
-)
-
-_NEURON_COMPACT = _NeuronTier(        # 18 cols x 5 rows
-    rest=[
-        " ╲                ",
-        "  ██              ",
-        "──██━━━━━━━━━━┳───",
-        "  ██              ",
-        " ╱                ",
-    ],
-    path=[(2, c) for c in range(0, 18)],
-    soma=[(1, 2), (1, 3), (2, 2), (2, 3), (3, 2), (3, 3)],
-    dendrites=[(0, 1), (4, 1), (2, 0), (2, 1)],
-    ap=[(1, 15, "╱"), (0, 16, "╱"), (1, 17, "╲")],
-)
-
-_NEURON_MINI = _NeuronTier(           # 11 cols x 3 rows
-    rest=[                            # spike leaps right off the terminal (┳)
-        "  ╲        ",
-        "─██━━━━━━┳─",
-        "  ╱        ",
-    ],
-    path=[(1, c) for c in range(0, 11)],
-    soma=[(1, 1), (1, 2)],
-    dendrites=[(0, 2), (2, 2), (1, 0)],
-    ap=[(0, 9, "╱"), (0, 10, "╲")],
-)
-
-_NEURONS = [
-    (len(_NEURON_FULL.rest[0]), len(_NEURON_FULL.rest), _NEURON_FULL),
-    (len(_NEURON_COMPACT.rest[0]), len(_NEURON_COMPACT.rest), _NEURON_COMPACT),
-    (len(_NEURON_MINI.rest[0]), len(_NEURON_MINI.rest), _NEURON_MINI),
-]
-
-
-def _encode_neuron_row(chars, styles):
-    """Run-length-merge adjacent cells of equal style into (style, segment)
-    fragments — the same row shape _build_logo produces, so _crest_text renders
-    the neuron unchanged."""
-    frags, i, n = [], 0, len(chars)
-    while i < n:
-        j = i
-        while j < n and styles[j] == styles[i]:
-            j += 1
-        frags.append((styles[i], "".join(chars[i:j])))
-        i = j
-    return frags
-
-
-def neuron_frame(tier, phase=NEURON_REST_PHASE):
-    """Built crest rows for `tier` at animation `phase` in [0,1). Body cells are
-    NEURON_BODY; the travelling pulse and firing AP are NEURON_SPARK; blanks are
-    unstyled. Width is invariant across phases (cells are recoloured/replaced in
-    place, never added/removed)."""
-    H = len(tier.rest)
-    grid = [list(row) for row in tier.rest]
-    styles = [[NEURON_BODY if ch != " " else "" for ch in row] for row in tier.rest]
-
-    def spark(r, c):
-        if 0 <= r < H and 0 <= c < len(grid[r]) and grid[r][c] != " ":
-            styles[r][c] = NEURON_SPARK
-
-    if _N_TRAVEL <= phase < _N_FIRE:                      # signal travels in
-        t = (phase - _N_TRAVEL) / (_N_FIRE - _N_TRAVEL)
-        head = int(t * len(tier.path))
-        for k in (head - 1, head):                        # a 2-cell bright pulse
-            if 0 <= k < len(tier.path):
-                spark(*tier.path[k])
-        if t < 0.25:                                      # tips light as it arrives
-            for rc in tier.dendrites:
-                spark(*rc)
-    elif phase >= _N_FIRE:                                # the AP fires
-        for rc in tier.soma:
-            spark(*rc)
-        for (r, c, ch) in tier.ap:
-            if 0 <= r < H and 0 <= c < len(grid[r]):
-                grid[r][c] = ch
-                styles[r][c] = NEURON_SPARK
-
-    return [_encode_neuron_row(grid[r], styles[r]) for r in range(H)]
-
-
-def neuron_rest(tier):
-    """The resting pose — for static contexts and tests."""
-    return neuron_frame(tier, NEURON_REST_PHASE)
-
-
-def pick_neuron(cols, rows=None, reserve=0):
-    """Largest neuron tier (full -> compact -> mini -> none) that fits — same fit
-    rules as pick_logo. Returns the _NeuronTier (truthy) or [] when even mini
-    won't fit."""
-    return _pick(_NEURONS, cols, rows, reserve)
-
-
-# --------------------------------------------------------------------------- #
-# Block-letter "SPIKE" wordmark — the v2 dashboard's static top crest (replaces
-# the firing neuron). Block letters in width-safe glyphs ONLY (full block █ +
-# spaces, same discipline as the shield). Two responsive tiers; below compact the
-# crest hides and the always-present title rule carries the branding. Unlike the
-# shield/neuron (fixed colours baked at build time), the wordmark is coloured at
+# Block-letter "SPIKE" wordmark — the v2 dashboard's static top crest. Block
+# letters in width-safe glyphs ONLY (full block █ + spaces, same discipline as
+# the shield). Two responsive tiers; below compact the crest hides and the
+# always-present title rule carries the branding. Unlike the shield (fixed
+# colours baked at build time), the wordmark is coloured at
 # RENDER time from the live accent (wordmark_rows), so it follows the theme.
 # Preview with `uv run python scripts/_wordmark_preview.py`.
 # --------------------------------------------------------------------------- #
