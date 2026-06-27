@@ -137,3 +137,34 @@ def test_build_mismatch_raises():
     with pytest.raises(ValueError) as e:
         probes.build(probes.get("linear-16-50um"), 22)
     assert "16" in str(e.value) and "22" in str(e.value)
+
+
+def test_fit_independent_favours_tridesclous_over_herdingspikes():
+    indep = probes.get("independent")
+    assert probes.fit("tridesclous2", indep)["rank"] == "good"
+    assert probes.fit("herdingspikes", indep)["rank"] == "poor"
+    assert "reason" in probes.fit("herdingspikes", indep)
+
+
+def test_fit_dense_favours_dense_sorters():
+    dense = probes.get("linear-32-25um")          # 25 µm -> dense
+    assert probes.fit("spykingcircus2", dense)["rank"] == "good"
+    assert probes.fit("herdingspikes", dense)["rank"] == "good"
+    assert probes.fit("waveclus", dense)["rank"] == "poor"
+
+
+def test_fit_tetrode_favours_low_count_sorters():
+    tet = probes.get("tetrode-4")
+    assert probes.fit("mountainsort4", tet)["rank"] == "good"
+    assert probes.fit("waveclus", tet)["rank"] == "good"
+    assert probes.fit("kilosort4", tet)["rank"] == "poor"
+
+
+def test_ranked_orders_good_first_and_recommends():
+    indep = probes.get("independent")
+    names = ["herdingspikes", "tridesclous2", "spykingcircus2"]
+    order = [r["name"] for r in probes.ranked(names, indep)]
+    assert order[0] == "tridesclous2" and order[-1] == "herdingspikes"
+    assert probes.recommended_for(indep, ["spykingcircus2", "tridesclous2"]) == "tridesclous2"
+    # no good-fit runnable -> None (caller falls back to RECOMMENDED)
+    assert probes.recommended_for(probes.get("linear-32-25um"), ["waveclus"]) is None

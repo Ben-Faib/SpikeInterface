@@ -317,3 +317,81 @@ def catalog_models(manufacturer) -> list[str]:
         return sorted(probe_dict().get(manufacturer, {}).keys())
     except Exception:  # noqa: BLE001
         return []
+
+
+# --------------------------------------------------------------------------- #
+# Sorter fit (geometry -> which sorters suit it). Backs the soft re-rank.
+# Classes: independent | tetrode | sparse | dense (see the design's fit table).
+# --------------------------------------------------------------------------- #
+_RANKS = {"good": 0, "ok": 1, "poor": 2}
+_DEFAULT_FIT = {"independent": "ok", "tetrode": "ok", "sparse": "ok", "dense": "ok"}
+_FIT = {
+    "tridesclous2":   {"independent": "good", "tetrode": "good", "sparse": "good", "dense": "ok"},
+    "tridesclous":    {"independent": "good", "tetrode": "good", "sparse": "ok",   "dense": "ok"},
+    "mountainsort4":  {"independent": "good", "tetrode": "good", "sparse": "good", "dense": "ok"},
+    "mountainsort5":  {"independent": "ok",   "tetrode": "ok",   "sparse": "good", "dense": "good"},
+    "spykingcircus2": {"independent": "ok",   "tetrode": "ok",   "sparse": "good", "dense": "good"},
+    "spykingcircus":  {"independent": "ok",   "tetrode": "ok",   "sparse": "ok",   "dense": "ok"},
+    "waveclus":       {"independent": "good", "tetrode": "good", "sparse": "ok",   "dense": "poor"},
+    "combinato":      {"independent": "good", "tetrode": "good", "sparse": "ok",   "dense": "poor"},
+    "herdingspikes":  {"independent": "poor", "tetrode": "poor", "sparse": "poor", "dense": "good"},
+    "ironclust":      {"independent": "poor", "tetrode": "poor", "sparse": "ok",   "dense": "good"},
+    "hdsort":         {"independent": "poor", "tetrode": "poor", "sparse": "ok",   "dense": "good"},
+    "kilosort4":      {"independent": "poor", "tetrode": "poor", "sparse": "poor", "dense": "good"},
+    "kilosort3":      {"independent": "poor", "tetrode": "poor", "sparse": "poor", "dense": "good"},
+    "kilosort2_5":    {"independent": "poor", "tetrode": "poor", "sparse": "poor", "dense": "good"},
+    "kilosort2":      {"independent": "poor", "tetrode": "poor", "sparse": "poor", "dense": "good"},
+    "kilosort":       {"independent": "poor", "tetrode": "poor", "sparse": "poor", "dense": "good"},
+    "pykilosort":     {"independent": "poor", "tetrode": "poor", "sparse": "poor", "dense": "good"},
+    "yass":           {"independent": "poor", "tetrode": "poor", "sparse": "poor", "dense": "good"},
+}
+_FIT_NOTE = {
+    "tridesclous2": "general-purpose, robust at low channel counts",
+    "tridesclous": "tetrode-oriented legacy sorter",
+    "mountainsort4": "isolation clustering, best at low channel counts",
+    "mountainsort5": "density clustering, scales to many channels",
+    "spykingcircus2": "template matching, strong on dense arrays",
+    "spykingcircus": "legacy template matching",
+    "waveclus": "wavelet clustering for single channels / tetrodes",
+    "combinato": "single-unit clustering for sparse / long recordings",
+    "herdingspikes": "needs dense neighbours (poor above ~60 µm)",
+    "ironclust": "density-based, built for high-density arrays",
+    "hdsort": "dense-array sorter",
+    "kilosort4": "template matching, built for dense probes (≤~40 µm)",
+}
+_KLASS_LABEL = {"independent": "independent channels", "tetrode": "tetrodes",
+                "sparse": "low-density geometry", "dense": "high-density arrays"}
+
+
+def fit(name, profile) -> dict:
+    """{rank, reason} for sorter ``name`` on geometry ``profile``."""
+    klass = geometry_features(profile)["klass"]
+    rank = _FIT.get(name, _DEFAULT_FIT)[klass]
+    note = _FIT_NOTE.get(name, "")
+    label = _KLASS_LABEL[klass]
+    if note:
+        reason = f"{note}; {rank} fit for {label}."
+    else:
+        reason = f"{rank} fit for {label}."
+    return {"rank": rank, "reason": reason[0].upper() + reason[1:]}
+
+
+def ranked(names, profile) -> list[dict]:
+    """Sorters annotated with fit, stable-sorted good→ok→poor (input order breaks ties)."""
+    rows = [dict(name=n, **fit(n, profile)) for n in names]
+    return sorted(rows, key=lambda r: _RANKS[r["rank"]])
+
+
+def recommended_for(profile, runnable_names, prefer=None) -> "str | None":
+    """Top good-fit runnable sorter for ``profile``; None if none rank 'good'.
+
+    ``prefer`` (e.g. ``sorters.RECOMMENDED``) wins when it is runnable AND a good
+    fit, so the established default is kept whenever geometry doesn't argue against
+    it (e.g. the 100 µm 'sparse' A1x16 keeps tridesclous2)."""
+    names = list(runnable_names)
+    if prefer in names and fit(prefer, profile)["rank"] == "good":
+        return prefer
+    for r in ranked(names, profile):
+        if r["rank"] == "good":
+            return r["name"]
+    return None
