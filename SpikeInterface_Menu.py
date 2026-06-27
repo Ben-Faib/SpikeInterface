@@ -695,7 +695,6 @@ class MenuController:
             self.theme_name = ui.DEFAULT_THEME
         self.accent = ui.THEMES[self.theme_name]
         self.use_docker = bool(cfg.get("use_docker", False))
-        self.animate = bool(cfg.get("animate", True))   # crest animation (default on)
         self.sorter_params = dict(cfg.get("sorter_params", {}))
         self.sorters = sorter_registry.runnable(self.use_docker) or [sorter_registry.default_sorter()]
         want = args.sorter if args.sorter else sorter_registry.default_sorter()
@@ -735,12 +734,6 @@ class MenuController:
         self.cfg["theme"] = name
         _save_config(self.cfg)
         return self.accent
-
-    def set_animate(self, on: bool) -> bool:
-        self.animate = bool(on)
-        self.cfg["animate"] = self.animate
-        _save_config(self.cfg)
-        return self.animate
 
     def reload(self) -> None:
         self.pipeline = _pipeline_rows(self.args.data_dir, self.active_sorter)
