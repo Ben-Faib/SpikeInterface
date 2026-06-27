@@ -25,6 +25,28 @@
 
 ---
 
+## Prior tactical work (superseded by this plan)
+
+A separate session shipped a **tactical, hardcoded** fix in the **main checkout's
+working tree** (`wordmark-crest`, **uncommitted**): `attach_a1x16_probe()` +
+`A1X16_*` constants in `blackrock_io.py`, a `--probe {a1x16,independent}` enum in
+`run_sorting.py`, the `sparse=False` analyzer fix, `"probe"` in `run_info.json`,
+and a rebuilt `outputs/tridesclous2/analyzer/` (original at
+`analyzer__indep_sparse_backup/`). It proved that **real A1x16 geometry + a dense
+analyzer fixes the single-channel GUI**.
+
+This plan is the **general, editable-library** version that subsumes it:
+`probes.build(get("nnx-a1x16-3mm-100"), 16)` produces the *identical* geometry as
+`attach_a1x16_probe`, and `--probe <profile-name>` generalizes the enum. The
+**`sparse=False` fix is adopted** here (Task 4). Because the tactical edits are
+uncommitted and live only in the main checkout (not this worktree), nothing needs
+removing here — but when merging `worktree-probe-geometry` → `main`, **discard the
+uncommitted `run_sorting.py`/`blackrock_io.py` tactical edits** (the general
+feature replaces them); keep the rebuilt analyzer data (or re-sort to regenerate
+it). The `wordmark-crest` commits are unrelated and stay.
+
+---
+
 ## File Structure
 
 | File | Responsibility | Action |
@@ -855,6 +877,24 @@ In `scripts/blackrock_io.py`, update the `attach_dummy_probe` docstring's "swap 
     To swap in real geometry, build a probe with ``probes.build(profile, n)`` (or a
     raw ``probeinterface.Probe``) and call ``recording.set_probe(...)`` instead.
 ```
+
+Also build the **`SortingAnalyzer` dense (`sparse=False`)** — a proven fix from
+prior tactical work. SpikeInterface defaults to `sparse=True`, which keeps only
+channels within ~100 µm of each unit's peak; with the old 250 µm placeholder probe
+that collapsed every unit to a single channel, so `spikeinterface-gui` could only
+ever show one site per unit. Dense is cheap for this 16-channel array and always
+shows the full layout. Find the `si.create_sorting_analyzer(...)` call in `main()`
+(`run_sorting.py:~939`) and add `sparse=False`:
+
+```python
+            analyzer = si.create_sorting_analyzer(
+                sorting, rec, folder=str(out / "analyzer"), format="binary_folder",
+                overwrite=True, sparse=False,
+            )
+```
+
+And record the probe in `run_info.json` for provenance — in `_write_run_info`'s
+payload (`run_sorting.py:~403`) add `"probe": getattr(args, "probe", None),`.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -2231,4 +2271,16 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - [ ] **Run the full suite:** `uv run python -m pytest tests/ -q` — expect all green (187 prior + the new probe tests).
 - [ ] **Smoke the launcher:** `uv run python SpikeInterface_Menu.py --help` (shows `--probe`) and `uv run python scripts/run_sorting.py --help` (shows `--probe`/`--probe-file`).
 - [ ] **Smoke the registry:** `uv run python -c "import sys; sys.path.insert(0,'scripts'); import probes; print(probes.summary(probes.get('independent'))); print(probes.fit('herdingspikes', probes.get('independent')))"`.
-- [ ] **Optional real-data smoke (if the recording is present):** `uv run python scripts/run_sorting.py --duration 10 --probe linear-32-25um` then `--probe independent` — confirm the probe line appears in the output and a mismatch profile fails with the friendly message.
+- [ ] **Optional real-data smoke (if the recording is present):** `uv run python scripts/run_sorting.py --duration 10 --probe nnx-a1x16-3mm-100` then `--probe independent` — confirm the probe line appears in the output and an explicit mismatch (`--probe linear-32-25um`) fails with the friendly message while the default falls back to the placeholder.
+- [ ] **Headless geometry / GUI-data check (verifies the single-channel-collapse fix without opening a GUI):** after a real-geometry sort, run:
+
+```bash
+uv run python -c "import sys; sys.path.insert(0,'scripts'); import spikeinterface.full as si; \
+a=si.load_sorting_analyzer('outputs/tridesclous2/analyzer'); \
+import numpy as np; t=a.get_extension('templates').get_data(); \
+print('probe contacts:', a.get_num_channels(), '| template shape:', t.shape); \
+assert a.get_num_channels()==16, 'expected 16 A1x16 contacts'; \
+print('OK: templates span all', t.shape[-1], 'channels')"
+```
+
+Expected: `probe contacts: 16` and templates spanning 16 channels (not 1) — proving the real geometry + dense analyzer reached the saved sort.
