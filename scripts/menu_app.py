@@ -1593,9 +1593,15 @@ class SpikeMenuApp(App):
         t = Text()
         if sess.result is not None:
             ok, msg = sess.result
-            t.append(("✓ " if ok else "✗ "), style="bold " + ("#3fb950" if ok else "#f85149"))
-            t.append(f"{sess.name} {'ready' if ok else 'failed'}",
-                     style="#3fb950" if ok else "#f85149")
+            if sess.cancelled or _is_cancel_msg(msg):
+                # Benign: a cancel reads as neutral, not a failure.
+                t.append("⊘ ", style="bold #8b949e")
+                t.append(f"{sess.name} cancelled", style="#8b949e")
+            else:
+                t.append(("✓ " if ok else "✗ "),
+                         style="bold " + ("#3fb950" if ok else "#f85149"))
+                t.append(f"{sess.name} {'ready' if ok else 'failed'}",
+                         style="#3fb950" if ok else "#f85149")
         else:
             st = sess.stats
             t.append("⬇ ", style=self._accent)
@@ -2159,12 +2165,7 @@ class SpikeMenuApp(App):
                               style="#f0883e")
             self._refresh_footer()
             return
-        img = ""
-        try:
-            img = self.c.image_state(name).get("image") or ""
-        except Exception:  # noqa: BLE001
-            img = ""
-        sess = dlstats.DownloadSession(name=name, image=img)
+        sess = dlstats.DownloadSession(name=name, image="")
         sess.phase_caption = "starting…"
         sess.bytes_done = None
         sess.bytes_total = None
@@ -2208,24 +2209,39 @@ class SpikeMenuApp(App):
 
     def _dl_finish(self, sess, ok, msg) -> None:
         sess.result = (ok, msg)
-        # Reload the catalog so the row badge/readiness flips (existing logic).
-        self._last = Text(msg, style=_result_style(ok, msg))
+        # The catalog reload reflects the finished image regardless of which session
+        # is current, so always do it.
         try:
             self.c.reload()
             self._rebuild_sorters()
             self._rebuild_actions()
+            reload_err = None
         except Exception as e:  # noqa: BLE001
-            self._last = Text(f"reload after download failed: {e!r}", style="#f85149")
+            reload_err = f"reload after download failed: {e!r}"
+        # A newer download may have superseded this one within its finish window —
+        # don't let this stale finish repaint over the live session or schedule a
+        # clear that would null the newer one.
+        if self._download is not sess:
+            return
+        if reload_err is not None:
+            self._last = Text(reload_err, style="#f85149")
+        elif sess.cancelled or _is_cancel_msg(msg):
+            self._last = Text(f"{sess.name} cancelled", style="dim")
+        else:
+            self._last = Text(msg, style=_result_style(ok, msg))
         self._render_sortbar(self.size.width)
         self._refresh_footer()
         self._render_inspect()
-        # Show a transient ✓/✗ in the indicator, then clear the session + hide it.
+        # Show a transient ✓/✗/⊘ in the indicator, then clear the session + hide it.
         self._render_dlbar(self.size.width)
-        self.set_timer(4.0, self._clear_download)
+        self.set_timer(4.0, lambda: self._clear_download(sess))
 
-    def _clear_download(self) -> None:
-        self._download = None
-        self._render_dlbar(self.size.width)
+    def _clear_download(self, sess) -> None:
+        # Only clear if this is still the same finished session — a newer download
+        # started within the 4s window must not be nulled out.
+        if self._download is sess:
+            self._download = None
+            self._render_dlbar(self.size.width)
 
     def action_watch_download(self) -> None:
         """`w`: re-open the expanded view over the still-running download."""
@@ -2246,7 +2262,9 @@ class SpikeMenuApp(App):
         status so a collapse reads clearly."""
         if result == "collapsed":
             sess = getattr(self, "_download", None)
-            if sess is not None and sess.result is None:
+            # Only claim it's still downloading when it genuinely is — a cancelled or
+            # already-finished session must not say "downloading".
+            if sess is not None and sess.result is None and not sess.cancelled:
                 self._last = Text(f"{sess.name} downloading · w to expand", style="dim")
         self._refresh_footer()
 
@@ -2502,6 +2520,11 @@ class SpikeMenuApp(App):
         self._relayout()
         self._render_inspect()
         self.refresh()
+
+
+def _is_cancel_msg(message) -> bool:
+    """A finish message that reads as a user cancellation, not a genuine failure."""
+    return "cancel" in str(message).lower()
 
 
 def _result_style(ok: bool, message) -> str:

@@ -683,13 +683,44 @@ async def test_download_shows_telemetry_then_collapses_and_expands(make_app):
         await pilot.press("w")
         await pilot.pause()
         assert isinstance(app.screen, menu_app.DownloadProgressScreen)
-        # Let the worker finish.
+        # Let the worker finish. With the session-scoped clear timer, `_download`
+        # is only nulled 4s after finish, so poll the session's own result flag.
+        sess = app._download
         app.c.dl_gate.set()
         for _ in range(50):
             await pilot.pause()
-            if app._download is None:
+            if sess.result is not None:
                 break
+        assert sess.result is not None
         assert "mountainsort5" in app.c.downloaded
+        # The catalog badge flips: the freshly-pulled image now reads as present.
+        ms = next(i for i in app.c.infos if i["name"] == "mountainsort5")
+        assert ms["img_present"] is True
+
+
+async def test_download_cancel_sets_flag_and_closes(make_app):
+    # Escape on the expanded download modal cancels: it sets the session's cancel
+    # flag (the worker's should_cancel hook breaks the pull) and closes the modal.
+    import threading
+    app = make_app(present=True, use_docker=True)
+    app.c.dl_gate = threading.Event()           # hold the worker at the gate step
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        app.start_download("mountainsort5")
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.DownloadProgressScreen)
+        sess = app._download
+        await pilot.press("escape")             # the screen's action_cancel
+        await pilot.pause()
+        assert not isinstance(app.screen, menu_app.DownloadProgressScreen)
+        assert sess.cancelled is True
+        assert app._download is None or app._download.cancelled is True
+        # Release the gate so the worker exits cleanly (returns a cancelled result).
+        app.c.dl_gate.set()
+        for _ in range(50):
+            await pilot.pause()
+            if sess.result is not None:
+                break
 
 
 async def test_download_indicator_hidden_when_idle(make_app):

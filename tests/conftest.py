@@ -264,7 +264,6 @@ class FakeController:
         # Stepped fake pull: emit a scripted sequence, polling should_cancel between
         # steps and pausing on a threading.Event the test can release. With no gate
         # set (the default) it runs straight through, preserving old test behaviour.
-        import threading as _t
         self.downloaded.append(name)
         gate = getattr(self, "dl_gate", None)        # a threading.Event or None
         steps = [

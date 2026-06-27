@@ -38,6 +38,7 @@ class DownloadStats:
         # negative. Speed re-warms from the next two samples.
         self._last_t = None
         self._last_done = None
+        self._speed = None
         self._now = now
 
     def update(self, done: int, total: int, now: float) -> None:
