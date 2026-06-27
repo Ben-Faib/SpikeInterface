@@ -95,6 +95,10 @@ _BORDER_DIM = "#3a3f47"
 _CREST_FPS = 6
 _CREST_CYCLE_S = 6.0
 
+# Status-word -> session phase, shared by the download status handler.
+_DL_PHASE = {"Downloading": "downloading", "Verifying": "verifying",
+             "Extracting": "extracting", "Done": "done"}
+
 
 # --------------------------------------------------------------------------- #
 # Controller contract (implemented by SpikeInterface_Menu.MenuController)
@@ -2151,7 +2155,7 @@ class SpikeMenuApp(App):
         """Begin pulling ``name``'s image in an App-owned worker and open the
         expanded view. Refuses a second concurrent download with a footer hint."""
         if getattr(self, "_download", None) is not None and self._download.result is None:
-            self._last = Text(f"a download is already running · w to view",
+            self._last = Text("a download is already running · w to view",
                               style="#f0883e")
             self._refresh_footer()
             return
@@ -2171,9 +2175,6 @@ class SpikeMenuApp(App):
                          self._after_download)
 
     def _download_worker(self, sess) -> None:
-        _PHASE = {"Downloading": "downloading", "Verifying": "verifying",
-                  "Extracting": "extracting", "Done": "done"}
-
         def on_progress(done, total):
             self.call_from_thread(self._dl_progress, sess, done, total)
 
@@ -2199,8 +2200,7 @@ class SpikeMenuApp(App):
     def _dl_status(self, sess, text) -> None:
         sess.phase_caption = text
         word = text.split()[0] if text else ""
-        new_phase = {"Downloading": "downloading", "Verifying": "verifying",
-                     "Extracting": "extracting", "Done": "done"}.get(word)
+        new_phase = _DL_PHASE.get(word)
         if new_phase and new_phase != sess.phase:
             sess.phase = new_phase
             sess.stats.set_phase(new_phase, now=monotonic())
