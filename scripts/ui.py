@@ -212,7 +212,7 @@ def _encode_wordmark_row(line, accent):
 
 
 def wordmark_rows(tier, accent):
-    """Built crest rows for ``tier`` (list of equal-width strings) coloured with
+    """Build crest rows for ``tier`` (list of equal-width strings) coloured with
     the live ``accent``. Width is preserved row-for-row."""
     return [_encode_wordmark_row(row, accent) for row in tier]
 

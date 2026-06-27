@@ -8,8 +8,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import ui  # noqa: E402
 
-ACCENT = next(iter(ui.THEMES.values())) if hasattr(ui, "THEMES") else "#8f8fff"
-
 
 def main() -> int:
     for label, tier in (("FULL", ui._WORDMARK_FULL), ("COMPACT", ui._WORDMARK_COMPACT)):
