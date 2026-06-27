@@ -898,15 +898,38 @@ live download stays visible:
 Run: `uv run python -m pytest tests/test_menu_app.py::test_download_shows_telemetry_then_collapses_and_expands tests/test_menu_app.py::test_download_indicator_hidden_when_idle -v`
 Expected: PASS.
 
-- [ ] **Step 13: Run the full suite (no regressions)**
+- [ ] **Step 13: Remove the three obsolete internal-coupled tests**
+
+Three existing tests in `tests/test_menu_app.py` assert on internals this task
+removes (`screen._done`, `screen._spin_timer`, `screen._set_pct`, `screen._set_status`,
+`screen._finish`, and standalone-constructing the screen with no App session). Their
+behaviour is now covered by the new tests in Step 3 (telemetry render, phase caption,
+collapse/expand, finish→reload). **Delete these three test functions in full:**
+
+- `test_download_screen_reaches_done_and_reloads` (the `_done`/enter-to-reload model is
+  gone — `_dl_finish` reloads on the App, not the screen on close).
+- `test_download_screen_shows_phase_label_and_spinner` (constructs the screen standalone
+  and calls `_set_status`/`_spin_timer` — the screen is now a view over `app._download`).
+- `test_download_screen_never_shows_complete_below_100` (uses `_set_pct`/`_finish`).
+
+**Keep** `test_enter_on_undownloaded_docker_opens_download` and
+`test_enter_on_undownloaded_docker_offers_docker_when_daemon_down` — they exercise
+`_select_sorter` routing (Enter → `start_download` pushes the screen / offers Docker),
+which still holds. Preserve the "no false 'complete' at partial percent" intent by
+adding this assertion inside the new `test_download_shows_telemetry_...` test, right
+after the size-readout assertion (while the worker is gated mid-download):
+
+```python
+        assert "complete" not in str(body).lower()   # never a false "complete" mid-pull
+```
+
+- [ ] **Step 14: Run the full suite (no regressions)**
 
 Run: `uv run python -m pytest tests/ -q`
-Expected: PASS — the whole suite green (the old download test, if it asserted on the
-removed spinner/`_set_pct` internals, must be updated to the new view; if a prior
-`test_*download*` references `#dlfoot` text "Esc to close" or `_set_pct`, update its
-assertions to the new `[c] collapse · [Esc] cancel` footer / `start_download` flow).
+Expected: PASS — the whole suite green, the three deleted tests gone, the new download
+tests passing.
 
-- [ ] **Step 14: Commit**
+- [ ] **Step 15: Commit**
 
 ```bash
 git add scripts/menu_app.py tests/test_menu_app.py
