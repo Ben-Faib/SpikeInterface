@@ -260,19 +260,32 @@ class FakeController:
                 "present": present,
                 "size": 1_100_000_000 if present else None}
 
-    def download_image(self, name: str, on_progress=None, on_status=None) -> tuple[bool, str]:
-        # Drive the screen's callbacks (so the bar/phase-label update path is
-        # exercised) then return synchronously — no real ``docker pull``. on_status
-        # now emits ONLY phase+count strings (the backend contract), so feed the
-        # phase sequence: Downloading -> Extracting. Records the call + caches the
-        # image so a post-download reload() shows ✓ ready.
+    def download_image(self, name, on_progress=None, on_status=None, should_cancel=None):
+        # Stepped fake pull: emit a scripted sequence, polling should_cancel between
+        # steps and pausing on a threading.Event the test can release. With no gate
+        # set (the default) it runs straight through, preserving old test behaviour.
+        import threading as _t
         self.downloaded.append(name)
-        if on_status is not None:
-            on_status("Downloading 1/2 layers")
-        if on_progress is not None:
-            on_progress(50, 100)
-        if on_status is not None:
-            on_status("Extracting 1/2 layers")
+        gate = getattr(self, "dl_gate", None)        # a threading.Event or None
+        steps = [
+            ("status", "Downloading 1/2 layers"),
+            ("progress", (25, 100)),
+            ("gate", None),                            # test may pause the worker here
+            ("progress", (50, 100)),
+            ("status", "Extracting 1/2 layers"),
+            ("progress", (100, 100)),
+        ]
+        for kind, payload in steps:
+            if should_cancel is not None and should_cancel():
+                return False, f"Download of {name} cancelled"
+            if kind == "status" and on_status is not None:
+                on_status(payload)
+            elif kind == "progress" and on_progress is not None:
+                on_progress(*payload)
+            elif kind == "gate" and gate is not None:
+                while not gate.wait(timeout=0.02):
+                    if should_cancel is not None and should_cancel():
+                        return False, f"Download of {name} cancelled"
         self._cached_images.add(name)
         return True, f"Downloaded {name}"
 
