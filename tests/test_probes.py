@@ -108,3 +108,32 @@ def test_introspection_is_none_safe():
     assert isinstance(probes.summary(None), str)   # no AttributeError
     # get() miss -> None -> summary must not crash
     assert isinstance(probes.summary(probes.get("does-not-exist")), str)
+
+
+def test_build_independent_autosizes():
+    probe = probes.build(probes.get("independent"), 22)
+    assert probe.get_contact_count() == 22
+
+
+def test_build_linear_matches_count():
+    probe = probes.build(probes.get("linear-16-50um"), 16)
+    assert probe.get_contact_count() == 16
+    import numpy as np
+    ys = sorted(probe.contact_positions[:, 1])
+    assert np.isclose(ys[1] - ys[0], 50.0)
+
+
+def test_build_grid_count():
+    probe = probes.build(probes.get("grid-8x4-50um"), 32)
+    assert probe.get_contact_count() == 32
+
+
+def test_build_tetrode_count():
+    probe = probes.build(probes.get("tetrode-4"), 16)
+    assert probe.get_contact_count() == 16
+
+
+def test_build_mismatch_raises():
+    with pytest.raises(ValueError) as e:
+        probes.build(probes.get("linear-16-50um"), 22)
+    assert "16" in str(e.value) and "22" in str(e.value)

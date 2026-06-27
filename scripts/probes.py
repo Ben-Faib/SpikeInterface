@@ -244,3 +244,76 @@ def summary(profile) -> str:
     if f["min_pitch_um"]:
         bits.append(f"{f['min_pitch_um']:g} µm pitch")
     return " · ".join(bits)
+
+
+# --------------------------------------------------------------------------- #
+# Construction (lazy probeinterface / numpy)
+# --------------------------------------------------------------------------- #
+def _require_count(profile, n_channels) -> None:
+    want = contact_count(profile)
+    if want is not None and want != n_channels:
+        raise ValueError(
+            f"Probe '{profile['name']}' has {want} contacts but the recording has "
+            f"{n_channels} channels. Pick a matching probe (or 'independent', which "
+            "auto-sizes), or edit this probe's contact count.")
+
+
+def build(profile, n_channels):
+    """Build a probeinterface.Probe for ``profile`` sized to ``n_channels``.
+
+    Sets identity device-channel indices (contact i ↔ channel i), matching the old
+    attach_dummy_probe. Raises ValueError on a fixed-count mismatch.
+    """
+    import numpy as np
+    import probeinterface as pi
+
+    _require_count(profile, n_channels)
+    k, p = profile["kind"], profile.get("params", {})
+
+    if k in ("independent", "linear"):
+        pitch = float(p.get("pitch_um", 250.0 if k == "independent" else 50.0))
+        n = n_channels if k == "independent" else int(p["n"])
+        probe = pi.generate_linear_probe(num_elec=n, ypitch=pitch)
+    elif k == "grid":
+        probe = pi.generate_multi_columns_probe(
+            num_columns=int(p["cols"]), num_contact_per_column=int(p["rows"]),
+            xpitch=float(p["xpitch_um"]), ypitch=float(p["ypitch_um"]))
+    elif k == "tetrode":
+        within, between = float(p["within_um"]), float(p["between_um"])
+        offs = np.array([[0, 0], [within, 0], [0, within], [within, within]], dtype=float)
+        pos = np.vstack([offs + [t * between, 0.0] for t in range(int(p["n_tetrodes"]))])
+        probe = pi.Probe(ndim=2)
+        probe.set_contacts(positions=pos, shapes="circle", shape_params={"radius": 5})
+        probe.create_auto_shape("tip")
+    elif k == "library":
+        probe = pi.get_probe(p["manufacturer"], p["model"])
+    elif k == "file":
+        group = pi.read_probeinterface(p["path"])
+        probe = group.probes[0]
+    else:
+        raise ValueError(f"Unknown probe kind: {k!r}")
+
+    # library/file can carry their own count; validate now that it's known.
+    if probe.get_contact_count() != n_channels:
+        raise ValueError(
+            f"Probe '{profile['name']}' built {probe.get_contact_count()} contacts "
+            f"but the recording has {n_channels} channels.")
+    probe.set_device_channel_indices(np.arange(n_channels))
+    return probe
+
+
+def catalog_manufacturers() -> list[str]:
+    """probeinterface library manufacturers (network); [] on any failure."""
+    try:
+        from probeinterface.library import probe_dict  # type: ignore
+        return sorted(probe_dict().keys())
+    except Exception:  # noqa: BLE001 - older/newer layout or offline
+        return ["neuronexus", "cambridgeneurotech"]
+
+
+def catalog_models(manufacturer) -> list[str]:
+    try:
+        from probeinterface.library import probe_dict  # type: ignore
+        return sorted(probe_dict().get(manufacturer, {}).keys())
+    except Exception:  # noqa: BLE001
+        return []
