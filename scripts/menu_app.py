@@ -17,7 +17,7 @@ sorter and its readiness.
 
 Layout (responsive):
 
-    ┌ neuron crest (collapses full→compact→mini→hidden as height shrinks)┐
+    ┌ wordmark crest (collapses full→compact→hidden as height shrinks)   ┐
     │ ── University of Pittsburgh · SpikeInterface ── (#titlebar)         │
     │ DATA  ✓ LFP  ✓ Broadband  ✓ .nev   all 3 streams loaded (#databar)  │
     │ SORT  ★ tridesclous2 · 13 units saved · Ready to run     (#sortbar)  │
@@ -82,7 +82,7 @@ STACK_COLS = 64
 BANNER_ROWS = 2
 # Rows the crest must leave for title + banner + footer + a usable body, so it
 # drops full→compact→mini→hidden well before it would crowd the menu off a short
-# window. (The neuron ladder itself is 7 / 5 / 3 rows tall — see ui._NEURONS.)
+# window. (The wordmark tiers are 5 / 3 rows tall — see ui._WORDMARK_FULL/COMPACT.)
 # Tuned so the big crest is deferential: it only claims the full tier on a tall
 # (≈40+ row) terminal, dropping to the compact crest on the common 34–40 row window
 # so the panes get the vertical room they need to read.
@@ -90,15 +90,9 @@ SHIELD_RESERVE = 24
 # Unfocused panel border colour (focus uses the live accent).
 _BORDER_DIM = "#3a3f47"
 
-# Crest animation: a slow, subtle receive->fire->rest loop. ~6 fps over a ~6 s
-# cycle; most of the cycle is the (memoised) rest frame, so idle cost is ~nil.
-_CREST_FPS = 6
-_CREST_CYCLE_S = 6.0
-
 # Status-word -> session phase, shared by the download status handler.
 _DL_PHASE = {"Downloading": "downloading", "Verifying": "verifying",
              "Extracting": "extracting", "Done": "done"}
-
 
 # --------------------------------------------------------------------------- #
 # Controller contract (implemented by SpikeInterface_Menu.MenuController)
@@ -120,13 +114,11 @@ class Controller(Protocol):
                                         # duration,active}
     data_report: dict                   # see SpikeInterface_Menu._data_report
     use_docker: bool
-    animate: bool                       # crest animation on/off (persisted)
     want_welcome: bool
 
     def set_active_by_name(self, name: str) -> bool: ...
     def cycle_active(self) -> None: ...
     def set_theme(self, name: str) -> str: ...      # returns the new accent hex
-    def set_animate(self, on: bool) -> bool: ...    # persist + return the new state
     def reload(self) -> None: ...                   # refresh pipeline/infos/data_report
     def set_data_dir(self, path: str | None) -> bool: ...   # repoint + reload; found?
     def toggle_docker(self) -> bool: ...
@@ -1170,7 +1162,7 @@ class HelpScreen(ModalScreen):
             body = _setup_body(self._c.data_report, self._accent, self._c.pipeline)
         elif key == "about":
             # The Pitt shield lives here (and on Welcome): the dashboard's top
-            # crest is now the firing neuron, so the shield still has a home here.
+            # crest is now the wordmark, so the shield still has a home here.
             body = _crest_text(ui.SHIELD_COMPACT)
             body.append("\n\n")
             body.append(title + "\n\n", style=f"bold {self._accent}")
@@ -1249,7 +1241,7 @@ def _setup_body(report: dict, accent: str, pipeline=None) -> Text:
 # --------------------------------------------------------------------------- #
 def _crest_text(rows) -> Text:
     """Build a Text from built crest rows (each row = a list of (style, seg)).
-    Works for both the firing neuron (multi-fragment rows) and the blue+gold
+    Works for both the wordmark (multi-fragment rows) and the blue+gold
     shield (one fragment/row)."""
     t = Text()
     for n, line in enumerate(rows):
@@ -1261,55 +1253,35 @@ def _crest_text(rows) -> Text:
 
 
 class CrestWidget(Static):
-    """The dashboard's animated firing-neuron crest. ``fit(cols, rows)`` picks the
-    largest tier that fits the live window (and hides the widget when even mini
-    won't). A slow timer walks ``phase`` (receive -> fire -> rest); identical rest
-    frames are memoised away. Honours the controller's ``animate`` flag."""
+    """The dashboard's static block-letter "SPIKE" wordmark. ``fit(cols, rows)``
+    picks the largest tier that fits the live window (and hides the widget when
+    none fits). Painted once, in the live accent colour; re-fit on resize/theme."""
 
     def __init__(self, **kw) -> None:
         super().__init__(**kw)
         self._tier = None
-        self._phase = 0.0
-        self._animate = True
-        self._last = None
-        self._timer = None
-
-    def on_mount(self) -> None:
-        self._animate = bool(getattr(self.app.c, "animate", True))
-        self._timer = self.set_interval(
-            1.0 / _CREST_FPS, self._tick, pause=not self._animate
-        )
 
     def fit(self, cols: int, rows: int, reserve: int = SHIELD_RESERVE) -> None:
-        tier = ui.pick_neuron(cols - 4, rows, reserve=reserve)
+        tier = ui.pick_wordmark(cols - 4, rows, reserve=reserve)
         self.display = bool(tier)
         self._tier = tier or None
         self._repaint()
 
-    def set_animate(self, on: bool) -> None:
-        self._animate = bool(on)
-        if self._timer is not None:
-            self._timer.resume() if on else self._timer.pause()
-        if not on:
-            self._phase = 0.0
-        self._repaint()
-
-    def _tick(self) -> None:
-        if not self._animate or not self.display or self._tier is None:
-            return
-        self._phase = (self._phase + 1.0 / (_CREST_FPS * _CREST_CYCLE_S)) % 1.0
-        self._repaint()
+    def _tier_fragments(self):
+        """Flat list of the current (style, segment) fragments — a test seam and
+        the source for _repaint."""
+        if self._tier is None:
+            return []
+        accent = getattr(self.app, "_accent", "")
+        return [frag for row in ui.wordmark_rows(self._tier, accent) for frag in row]
 
     # NB: deliberately NOT named ``_render`` — that collides with Textual's
     # ``Widget._render`` (the layout engine calls it expecting a Visual).
     def _repaint(self) -> None:
         if self._tier is None:
             return
-        phase = self._phase if self._animate else ui.NEURON_REST_PHASE
-        rows = ui.neuron_frame(self._tier, phase)
-        if rows != self._last:
-            self._last = rows
-            self.update(_crest_text(rows))
+        accent = getattr(self.app, "_accent", "")
+        self.update(_crest_text(ui.wordmark_rows(self._tier, accent)))
 
 
 # --------------------------------------------------------------------------- #
@@ -1393,7 +1365,6 @@ class SpikeMenuApp(App):
         Binding("tab", "focus_actions", "Actions", show=False, priority=True),
         Binding("shift+tab", "focus_sorters", "Sorters", show=False, priority=True),
         Binding("t", "cycle_sorter", "Switch sorter", show=False),
-        Binding("m", "toggle_motion", "Motion", show=False),
         Binding("w", "watch_download", "Download", show=False),
         # x manages the highlighted sorter (delete image / clear saved sort) — wired
         # to a no-op-safe action now; Stage 5 fills it in.
@@ -2059,11 +2030,6 @@ class SpikeMenuApp(App):
             self._render_inspect()
         self._refresh_footer()
 
-    def action_toggle_motion(self) -> None:
-        on = self.c.set_animate(not self.c.animate)
-        self.query_one("#crest", CrestWidget).set_animate(on)
-        self.notify(f"Crest animation {'on' if on else 'off'}")
-
     def action_data_help(self) -> None:
         self.push_screen(HelpScreen(self.c, self._accent, topic="data"))
 
@@ -2397,6 +2363,7 @@ class SpikeMenuApp(App):
         self._render_inspect()
         self._render_databar(self.size.width)
         self._render_sortbar(self.size.width)
+        self._relayout()                                  # repaint crest in new accent
         self._last = Text(f"Theme → {name}", style=f"bold {self._accent}")
         self._refresh_footer()
 

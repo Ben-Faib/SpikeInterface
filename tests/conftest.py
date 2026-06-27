@@ -46,7 +46,6 @@ class FakeController:
         self.theme_name = "periwinkle"
         self.accent = self.themes[self.theme_name]
         self.use_docker = use_docker
-        self.animate = True
         self.sorters = (["tridesclous2", "spykingcircus2", "mountainsort5", "herdingspikes"]
                         if use_docker else ["tridesclous2", "spykingcircus2"])
         self.active_sorter = "tridesclous2"
@@ -152,10 +151,6 @@ class FakeController:
         self.theme_name = name
         self.accent = self.themes[name]
         return self.accent
-
-    def set_animate(self, on: bool) -> bool:
-        self.animate = bool(on)
-        return self.animate
 
     def toggle_docker(self) -> bool:
         self.use_docker = not self.use_docker

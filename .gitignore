@@ -54,3 +54,6 @@ desktop.ini
 
 # Local menu preferences (theme, etc.)
 .si_menu.json
+
+# superpowers visual brainstorming companion
+.superpowers/

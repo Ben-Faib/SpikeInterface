@@ -1006,81 +1006,69 @@ def test_result_style_amber_for_warning():
     assert menu_app._result_style(False, "✗ Sorted x") == "#f85149"
 
 
-# --- firing-neuron crest + preserved Pitt shield -------------------------- #
-def test_neuron_tiers_equal_width():
-    for tier in (ui._NEURON_FULL, ui._NEURON_COMPACT, ui._NEURON_MINI):
-        widths = {len(row) for row in tier.rest}
-        assert len(widths) == 1, f"ragged neuron tier widths: {widths}"
+# --- wordmark crest ------------------------------------------------------- #
+def test_wordmark_tiers_equal_width():
+    for tier in (ui._WORDMARK_FULL, ui._WORDMARK_COMPACT):
+        widths = {len(row) for row in tier}
+        assert len(widths) == 1, f"ragged wordmark tier widths: {widths}"
 
 
-def test_neuron_frame_width_invariant():
-    for tier in (ui._NEURON_FULL, ui._NEURON_COMPACT, ui._NEURON_MINI):
-        W = len(tier.rest[0])
-        for phase in (0.0, 0.5, 0.80, 0.96):
-            for row in ui.neuron_frame(tier, phase):
-                assert sum(len(seg) for _, seg in row) == W
+def test_wordmark_uses_only_block_and_space():
+    chars = {ch for row in ui._WORDMARK_FULL for ch in row}
+    assert chars <= {"█", " "}, f"non-block glyphs in wordmark: {chars}"
 
 
-def test_neuron_rest_has_no_spark():
-    styles = {s for row in ui.neuron_frame(ui._NEURON_FULL, 0.0) for s, _ in row}
-    assert ui.NEURON_SPARK not in styles
-    assert ui.NEURON_BODY in styles
+def test_pick_wordmark_drops_then_hides():
+    assert ui.pick_wordmark(200, 60) == ui._WORDMARK_FULL          # roomy -> full
+    assert ui.pick_wordmark(200, 60, reserve=58) == ui._WORDMARK_COMPACT  # short -> compact
+    assert ui.pick_wordmark(4, 60) == []                            # too narrow -> hidden
 
 
-def test_neuron_fire_has_spark():
-    styles = {s for row in ui.neuron_frame(ui._NEURON_FULL, 0.96) for s, _ in row}
-    assert ui.NEURON_SPARK in styles
+def test_wordmark_rows_colours_blocks_with_accent():
+    rows = ui.wordmark_rows(ui._WORDMARK_FULL, "#abcdef")
+    styles = {s for row in rows for s, seg in row if seg.strip()}
+    assert styles == {"#abcdef"}                                    # every block run is accent
+    # width is preserved row-for-row
+    for src, frags in zip(ui._WORDMARK_FULL, rows):
+        assert sum(len(seg) for _, seg in frags) == len(src)
 
 
-async def test_dashboard_crest_is_the_neuron(make_app):
+async def test_dashboard_crest_is_the_wordmark(make_app):
     app = make_app(present=True)
     async with app.run_test(size=(110, 45)) as pilot:
         await pilot.pause()
         crest = app.query_one("#crest", menu_app.CrestWidget)
         assert crest.display is True
         plain = crest.render().plain
-        assert "━" in plain and "█" in plain        # axon + soma, not the shield
+        assert "█" in plain                          # block letters
+        assert "━" not in plain                      # not the old axon glyph
 
 
-async def test_crest_advances_phase_when_animated(make_app):
+async def test_crest_has_no_animation(make_app):
     app = make_app(present=True)
-    app.c.animate = True
     async with app.run_test(size=(110, 45)) as pilot:
         await pilot.pause()
         crest = app.query_one("#crest", menu_app.CrestWidget)
-        assert crest._animate is True
-        p0 = crest._phase
-        crest._tick(); crest._tick()
-        assert crest._phase != p0                    # the timer callback walks phase
+        # Our animation machinery is gone. Assert on attrs that are unambiguously
+        # ours (NB: not Textual's own ``_animate`` BoundAnimator slot, which every
+        # Widget carries regardless of version).
+        assert not hasattr(crest, "_tick")
+        assert not hasattr(crest, "set_animate")
+        assert not hasattr(crest, "_phase")
 
 
-async def test_crest_static_when_disabled(make_app):
+async def test_crest_recolours_with_theme(make_app):
     app = make_app(present=True)
-    app.c.animate = False
     async with app.run_test(size=(110, 45)) as pilot:
         await pilot.pause()
         crest = app.query_one("#crest", menu_app.CrestWidget)
-        assert crest._animate is False
-        before = crest.render().plain
-        crest._tick()                                # no-op while disabled
-        assert crest._phase == 0.0
-        assert crest.render().plain == before
-
-
-async def test_m_key_toggles_animation(make_app):
-    app = make_app(present=True)
-    app.c.animate = True
-    c = app.c
-    async with app.run_test(size=(110, 45)) as pilot:
-        await pilot.pause()
-        crest = app.query_one("#crest", menu_app.CrestWidget)
-        assert crest._animate is True
-        await pilot.press("m")
-        await pilot.pause()
-        assert c.animate is False and crest._animate is False
-        await pilot.press("m")
-        await pilot.pause()
-        assert c.animate is True and crest._animate is True
+        before = {s for s, _ in crest._tier_fragments()}   # accent style in use
+        app.c.theme_name = "amber"                          # fake controller swaps accent
+        # drive the theme-applied path directly (no modal in the test)
+        app._accent = app.c.themes["amber"]
+        app._relayout()
+        after = {s for s, _ in crest._tier_fragments()}
+        assert before != after
 
 
 async def test_welcome_screen_shows_pitt_shield(make_app):

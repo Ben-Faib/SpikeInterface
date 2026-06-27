@@ -403,6 +403,7 @@ def _write_run_info(out: Path, args, **fields) -> None:
         "command": "run_sorting.py",
         "duration_arg": args.duration,
         "keep_analog": args.keep_analog,
+        "probe": args.probe,
         "n_jobs": args.n_jobs,
         **fields,
     }
@@ -739,6 +740,15 @@ def main() -> int:
         help="Keep non-neural 'analog N' aux channels in the sort (default: drop them — "
         "they pollute the common reference and can produce spurious units).",
     )
+    parser.add_argument(
+        "--probe",
+        choices=["a1x16", "independent"],
+        default="a1x16",
+        help="Electrode geometry. 'a1x16' (default) = the real NeuroNexus "
+        "A1x16-3mm-100-703 (16 sites, one column, 100 µm) so the sorter sees real "
+        "spatial neighbours; 'independent' = the placeholder layout (250 µm, no "
+        "neighbours) for arrays without a known geometry.",
+    )
     parser.add_argument("--no-metrics", action="store_true", help="Skip the SortingAnalyzer / quality-metrics step.")
     parser.add_argument(
         "--verbosity",
@@ -832,10 +842,26 @@ def main() -> int:
         n_dropped = rec.get_num_channels() - len(neural)
         if 0 < len(neural) < rec.get_num_channels():
             rec = bio.select_channels(rec, neural)
-            rec = bio.attach_dummy_probe(rec)  # re-size the placeholder probe to the kept channels
             _drop_msg = (f"excluded {n_dropped} non-neural analog aux channel(s) → "
                          f"sorting {len(neural)} electrode(s)")
             ui.detail(_drop_msg)
+
+    # Attach electrode geometry AFTER the channel drop, so the contact count matches
+    # the kept electrodes. Default = the real NeuroNexus A1x16-3mm-100-703 (16 sites,
+    # 100 µm) so the sorter uses true spatial neighbours and the GUI shows real depth;
+    # falls back to the independent-channel placeholder (250 µm) for --probe independent
+    # or any array that isn't the expected 16 channels.
+    if args.probe == "a1x16" and rec.get_num_channels() == bio.A1X16_N_CONTACTS:
+        rec = bio.attach_a1x16_probe(rec)
+        _probe_msg = (f"geometry: NeuroNexus A1x16-3mm-100-703 "
+                      f"({bio.A1X16_N_CONTACTS} ch · {bio.A1X16_PITCH_UM:g} µm linear)")
+    else:
+        rec = bio.attach_dummy_probe(rec)
+        _probe_msg = f"geometry: independent-channel placeholder ({rec.get_num_channels()} ch · 250 µm)"
+        if args.probe == "a1x16":
+            _probe_msg += f" — A1x16 needs {bio.A1X16_N_CONTACTS} channels, got {rec.get_num_channels()}"
+    ui.detail(_probe_msg)
+    rep.detail(_probe_msg)
 
     fs = rec.get_sampling_frequency()
     freq_max = min(args.freq_max, 0.49 * fs)  # keep the high cutoff below Nyquist
@@ -936,8 +962,17 @@ def main() -> int:
                       if rep.enabled else contextlib.nullcontext())
         with metrics_tee, metrics_hb:
             _robust_rmtree(out / "analyzer")  # retry past Windows GUI file-locks before overwrite
+            # sparse=False (dense): SpikeInterface defaults to sparse=True, which keeps
+            # only the channels within ~100 µm of each unit's peak. The placeholder probe
+            # (attach_dummy_probe) spaces channels 250 µm apart so NO channel is within that
+            # radius — sparsity would collapse every unit to its single peak channel and the
+            # spikeinterface-gui inspector could then only ever show one channel per unit.
+            # With this small array (16 ch) dense is cheap and always shows the full layout;
+            # it is the honest choice while geometry is a placeholder, and harmless once a
+            # real probe (e.g. NeuroNexus A1x16, 100 µm) is attached.
             analyzer = si.create_sorting_analyzer(
-                sorting, rec, folder=str(out / "analyzer"), format="binary_folder", overwrite=True
+                sorting, rec, folder=str(out / "analyzer"), format="binary_folder",
+                overwrite=True, sparse=False,
             )
             # One compute per extension so each shows a named 'substep' the moment it
             # starts; i/n span the whole metrics phase (base + metrics + curation).

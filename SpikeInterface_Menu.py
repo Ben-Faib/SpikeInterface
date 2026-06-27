@@ -362,16 +362,28 @@ def action_report(args) -> bool:
     return True
 
 
-# The Blackrock files carry no electrode geometry, so a placeholder
-# independent-channel probe is attached (see blackrock_io.attach_dummy_probe).
-# Surface this before any spatial view so the user isn't misled into reading
-# placeholder channel positions / depths as real anatomy.
-_GEOMETRY_CAVEAT = (
+# Geometry note shown before any spatial view, accurate to how the sort was made
+# (read from run_info.json's 'probe'). A real probe (e.g. the NeuroNexus A1x16)
+# makes the probe-map / depth / multi-channel views physical; the independent-channel
+# placeholder does not — so the user isn't misled either way.
+_GEOMETRY_CAVEAT_PLACEHOLDER = (
     "Placeholder electrode geometry (independent-channel dummy probe — the "
     "Blackrock files carry no map). The probe map, unit-location and depth views "
     "are NOT physical; per-unit metrics, waveforms, correlograms and amplitudes "
     "ARE valid."
 )
+
+
+def _geometry_caveat(sorter: str) -> str:
+    """Probe-aware geometry note for the active sort (see run_info.json 'probe')."""
+    if _read_run_info(sorter).get("probe") == "a1x16":
+        return (
+            "Geometry: NeuroNexus A1x16-3mm-100-703 (16 sites · 100 µm linear). "
+            "Probe map, depth and multi-channel templates ARE physical. Channel→site "
+            "wiring is sequential (tip→top) — confirm the depth ORDER against your "
+            "probe→Ripple adapter map if it matters."
+        )
+    return _GEOMETRY_CAVEAT_PLACEHOLDER
 
 
 def _has_display() -> bool:
@@ -483,7 +495,7 @@ def action_gui(args) -> bool:
 
     analyzer = si.load_sorting_analyzer(analyzer_dir)
     events = _sigui_events(args.data_dir)  # .nev markers -> the GUI's event view
-    ui.warn(_GEOMETRY_CAVEAT)
+    ui.warn(_geometry_caveat(args.sorter))
     try:
         if mode == "web":
             ui.say(f"[{ui.ACCENT}]Opening spikeinterface-gui (web mode)[/] — no display "
@@ -521,10 +533,18 @@ def action_traces(args) -> bool:
                 "session. Use X forwarding (ssh -X) or run locally. (The GUI inspector "
                 "has a browser-based web mode; the trace browser does not.)")
         return False
-    ui.warn(_GEOMETRY_CAVEAT)
+    ui.warn(_geometry_caveat(args.sorter))
     ui.say(f"[{ui.ACCENT}]Opening ephyviewer[/] on the broadband recording "
            f"[{ui.MUTED}](close the window to return) ...[/]")
     rec = bio.read_broadband(args.data_dir)
+    # Match the sort pipeline's geometry: drop the analog aux channels and attach the
+    # real A1x16 so the trace browser orders channels by true depth (falls back to the
+    # placeholder layout if this isn't the expected 16-channel array).
+    neural = bio.neural_channel_ids(rec)
+    if 0 < len(neural) < rec.get_num_channels():
+        rec = bio.select_channels(rec, neural)
+    if rec.get_num_channels() == bio.A1X16_N_CONTACTS:
+        rec = bio.attach_a1x16_probe(rec)
     try:
         sw.plot_traces({"broadband": rec}, backend="ephyviewer", show_channel_ids=True)  # blocks
     except Exception as e:  # noqa: BLE001 - actionable hint instead of a raw Qt traceback
@@ -695,7 +715,6 @@ class MenuController:
             self.theme_name = ui.DEFAULT_THEME
         self.accent = ui.THEMES[self.theme_name]
         self.use_docker = bool(cfg.get("use_docker", False))
-        self.animate = bool(cfg.get("animate", True))   # crest animation (default on)
         self.sorter_params = dict(cfg.get("sorter_params", {}))
         self.sorters = sorter_registry.runnable(self.use_docker) or [sorter_registry.default_sorter()]
         want = args.sorter if args.sorter else sorter_registry.default_sorter()
@@ -735,12 +754,6 @@ class MenuController:
         self.cfg["theme"] = name
         _save_config(self.cfg)
         return self.accent
-
-    def set_animate(self, on: bool) -> bool:
-        self.animate = bool(on)
-        self.cfg["animate"] = self.animate
-        _save_config(self.cfg)
-        return self.animate
 
     def reload(self) -> None:
         self.pipeline = _pipeline_rows(self.args.data_dir, self.active_sorter)
