@@ -44,6 +44,7 @@ import blackrock_io as bio  # noqa: E402
 import report  # noqa: E402
 import sorters as sorter_registry  # noqa: E402  (registry: discovery/status/params/run)
 import ui  # noqa: E402  (rich styling shared-look with run_sorting.py)
+import probes  # noqa: E402  (probe-geometry registry: profiles/features/build/fit)
 
 QUICK_SECONDS = 30
 ACTIONS = ["explore", "sort", "report", "gui", "traces", "compare", "verify"]
@@ -333,6 +334,8 @@ def action_sort(args) -> bool:
         flags += ["--params-file", args.params_file]
     if args.data_dir:
         flags += ["--data-dir", args.data_dir]
+    if getattr(args, "probe", None):
+        flags += ["--probe", args.probe]
     return _shell("run_sorting.py", *flags)
 
 
@@ -702,6 +705,10 @@ class MenuController:
         self.active_sorter = want if want in self.sorters else self.sorters[0]
         self.args.sorter = self.active_sorter
         self.want_welcome = not bool(cfg.get("seen_welcome", False))
+        self.active_probe = cfg.get("active_probe", probes.DEFAULT_PROBE)
+        if probes.get(self.active_probe) is None:
+            self.active_probe = probes.DEFAULT_PROBE
+        self.want_probe_setup = not bool(cfg.get("seen_probe_setup", False))
         self.active_idx = 0
         self.reload()
 
@@ -756,6 +763,7 @@ class MenuController:
             info["overrides"] = len(self.sorter_params.get(info["name"], {}))
         self._mark_active()
         self.data_report = _data_report(self.args.data_dir)
+        self.probe_info = self.active_probe_info()
 
     def set_data_dir(self, path: "str | None") -> bool:
         """Point the dashboard at a different recording folder and reload.
@@ -832,6 +840,99 @@ class MenuController:
         self.want_welcome = False
         self.cfg["seen_welcome"] = True
         _save_config(self.cfg)
+
+    # -- probe geometry -------------------------------------------------------- #
+    def recording_channels(self) -> "int | None":
+        """Best-effort broadband channel count, parsed from the pipeline detail.
+        Advisory only — the real count is validated by probes.build at sort time."""
+        import re
+        bb = next((r for r in self.pipeline if "Broadband" in r.get("stage", "")), None)
+        if not bb or bb.get("status") == "FAIL":
+            return None
+        m = re.search(r"(\d+)\s*(?:ch|channel)", bb.get("detail", ""))
+        return int(m.group(1)) if m else None
+
+    def _probe_match(self, profile) -> tuple[str, str]:
+        """('auto'|'fits'|'mismatch'|'unknown', human detail) vs the recording."""
+        if probes.auto_sizes(profile):
+            return "auto", "auto-sizes to the recording"
+        want = probes.contact_count(profile)
+        have = self.recording_channels()
+        if want is None or have is None:
+            return "unknown", "contact count checked at sort time"
+        if want == have:
+            return "fits", f"matches {have} channels"
+        return "mismatch", f"{want} contacts ≠ {have} recording channels"
+
+    def set_active_probe(self, name: str) -> bool:
+        if probes.get(name) is None:
+            return False
+        self.active_probe = name
+        self.cfg["active_probe"] = name
+        _save_config(self.cfg)
+        self.reload()
+        return True
+
+    def active_probe_info(self) -> dict:
+        prof = probes.get(self.active_probe) or probes.get(probes.DEFAULT_PROBE)
+        feats = probes.geometry_features(prof)
+        match, detail = self._probe_match(prof)
+        return {"name": prof["name"], "label": prof["label"],
+                "summary": probes.summary(prof), "layout": feats["layout"],
+                "density_class": feats["density_class"], "match": match,
+                "match_detail": detail}
+
+    def probe_catalog(self) -> list[dict]:
+        rows = []
+        for prof in probes.library():
+            feats = probes.geometry_features(prof)
+            match, detail = self._probe_match(prof)
+            rows.append({
+                "name": prof["name"], "label": prof["label"], "kind": prof["kind"],
+                "params": dict(prof.get("params", {})),
+                "builtin": prof.get("builtin", False),
+                "active": prof["name"] == self.active_probe,
+                "summary": probes.summary(prof), "n": feats["n"],
+                "density_class": feats["density_class"], "layout": feats["layout"],
+                "auto": probes.auto_sizes(prof), "match": match, "match_detail": detail,
+                "note": prof.get("note", "")})
+        return rows
+
+    def save_probe(self, profile) -> tuple[bool, str]:
+        try:
+            probes.save_profile(profile)
+            self.reload()
+            return True, f"Saved probe {profile['name']}."
+        except Exception as e:  # noqa: BLE001
+            return False, f"Couldn't save probe: {e}"
+
+    def delete_probe(self, name: str) -> tuple[bool, str]:
+        ok, msg = probes.delete_profile(name)
+        if ok and self.active_probe == name:
+            self.active_probe = probes.DEFAULT_PROBE
+            self.cfg["active_probe"] = self.active_probe
+            _save_config(self.cfg)
+        self.reload()
+        return ok, msg
+
+    def duplicate_probe(self, name, new_name, new_label=None) -> dict:
+        dup = probes.duplicate(name, new_name, new_label)
+        self.reload()
+        return dup
+
+    def mark_probe_setup_seen(self) -> None:
+        self.want_probe_setup = False
+        self.cfg["seen_probe_setup"] = True
+        _save_config(self.cfg)
+
+    def sorter_fit(self, name: str) -> dict:
+        return probes.fit(name, probes.get(self.active_probe) or probes.get(probes.DEFAULT_PROBE))
+
+    def catalog_manufacturers(self) -> list[str]:
+        return probes.catalog_manufacturers()
+
+    def catalog_models(self, manufacturer: str) -> list[str]:
+        return probes.catalog_models(manufacturer)
 
     def saved_sorters(self) -> list[str]:
         """Sorters that currently have a saved analyzer (for the compare picker)."""
@@ -931,6 +1032,7 @@ class MenuController:
             argv += ["--docker"]
         if getattr(self.args, "data_dir", None):
             argv += ["--data-dir", str(self.args.data_dir)]
+        argv += ["--probe", self.active_probe]
         overrides = self.get_overrides(self.active_sorter)
         for k, v in overrides.items():
             argv += ["--param", f"{k}={v}"]
@@ -952,6 +1054,7 @@ class MenuController:
         if key == "sort":
             self.args.duration = QUICK_SECONDS if span == "quick" else None
             self.args.docker = self.use_docker
+            self.args.probe = self.active_probe
             params_path = _write_params_file(self.get_overrides(self.active_sorter))
             self.args.params_file = params_path
         try:

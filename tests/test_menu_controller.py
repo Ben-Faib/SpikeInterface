@@ -290,6 +290,7 @@ def test_sort_command_builds_argv(monkeypatch, tmp_path):
     import SpikeInterface_Menu as M
     c = M.MenuController.__new__(M.MenuController)
     c.active_sorter = "tridesclous2"
+    c.active_probe = "nnx-a1x16-3mm-100"
     c.use_docker = False
     c.args = type("A", (), {"data_dir": None})()
     c.get_overrides = lambda name: {}
@@ -298,3 +299,39 @@ def test_sort_command_builds_argv(monkeypatch, tmp_path):
     assert "--progress" in argv and "json" in argv
     assert "--sorter" in argv and "tridesclous2" in argv
     assert "--duration" in argv  # quick → duration set
+
+
+def test_active_probe_defaults_to_nnx_a1x16(monkeypatch, tmp_path):
+    c = _controller(monkeypatch, tmp_path, use_docker=False, cfg={})
+    assert c.active_probe == "nnx-a1x16-3mm-100"        # this recording's real probe
+    assert c.active_probe_info()["name"] == "nnx-a1x16-3mm-100"
+
+
+def test_active_probe_honours_saved_cfg(monkeypatch, tmp_path):
+    c = _controller(monkeypatch, tmp_path, use_docker=False, cfg={"active_probe": "independent"})
+    assert c.active_probe == "independent"
+
+
+def test_set_active_probe_persists(monkeypatch, tmp_path):
+    saved = {}
+    c = _controller(monkeypatch, tmp_path, use_docker=False, cfg={})
+    monkeypatch.setattr(M, "_save_config", lambda cfg: saved.update(cfg))
+    assert c.set_active_probe("linear-16-50um") is True
+    assert c.active_probe == "linear-16-50um"
+    assert saved.get("active_probe") == "linear-16-50um"
+
+
+def test_sort_command_includes_probe(monkeypatch, tmp_path):
+    c = _controller(monkeypatch, tmp_path, use_docker=False, cfg={})
+    c.set_active_probe("linear-16-50um")
+    argv = c.sort_command(None)
+    assert "--probe" in argv and "linear-16-50um" in argv
+
+
+def test_probe_catalog_marks_active_and_match(monkeypatch, tmp_path):
+    c = _controller(monkeypatch, tmp_path, use_docker=False, cfg={})
+    rows = c.probe_catalog()
+    default = next(r for r in rows if r["name"] == "nnx-a1x16-3mm-100")
+    assert default["active"] is True
+    indep = next(r for r in rows if r["name"] == "independent")
+    assert indep["auto"] is True and indep["active"] is False
