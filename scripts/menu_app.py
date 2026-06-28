@@ -17,7 +17,7 @@ sorter and its readiness.
 
 Layout (responsive):
 
-    ┌ neuron crest (collapses full→compact→mini→hidden as height shrinks)┐
+    ┌ wordmark crest (collapses full→compact→hidden as height shrinks)   ┐
     │ ── University of Pittsburgh · SpikeInterface ── (#titlebar)         │
     │ DATA  ✓ LFP  ✓ Broadband  ✓ .nev   all 3 streams loaded (#databar)  │
     │ SORT  ★ tridesclous2 · 13 units saved · Ready to run     (#sortbar)  │
@@ -47,6 +47,7 @@ the actions are always reachable even when the body is taller than the screen.
 from __future__ import annotations
 
 import asyncio
+from time import monotonic
 from typing import Protocol
 
 from rich.text import Text
@@ -57,6 +58,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Checkbox, Input, Label, OptionList, Static
 from textual.widgets.option_list import Option
 
+import download_stats as dlstats  # pure download progress math + formatters
 import sort_progress as _sp  # pure JSON progress protocol (no SI / Textual deps)
 import ui  # shield art + theme palette + plain helpers (single source)
 
@@ -80,7 +82,7 @@ STACK_COLS = 64
 BANNER_ROWS = 2
 # Rows the crest must leave for title + banner + footer + a usable body, so it
 # drops full→compact→mini→hidden well before it would crowd the menu off a short
-# window. (The neuron ladder itself is 7 / 5 / 3 rows tall — see ui._NEURONS.)
+# window. (The wordmark tiers are 5 / 3 rows tall — see ui._WORDMARK_FULL/COMPACT.)
 # Tuned so the big crest is deferential: it only claims the full tier on a tall
 # (≈40+ row) terminal, dropping to the compact crest on the common 34–40 row window
 # so the panes get the vertical room they need to read.
@@ -88,11 +90,9 @@ SHIELD_RESERVE = 24
 # Unfocused panel border colour (focus uses the live accent).
 _BORDER_DIM = "#3a3f47"
 
-# Crest animation: a slow, subtle receive->fire->rest loop. ~6 fps over a ~6 s
-# cycle; most of the cycle is the (memoised) rest frame, so idle cost is ~nil.
-_CREST_FPS = 6
-_CREST_CYCLE_S = 6.0
-
+# Status-word -> session phase, shared by the download status handler.
+_DL_PHASE = {"Downloading": "downloading", "Verifying": "verifying",
+             "Extracting": "extracting", "Done": "done"}
 
 # --------------------------------------------------------------------------- #
 # Controller contract (implemented by SpikeInterface_Menu.MenuController)
@@ -114,13 +114,14 @@ class Controller(Protocol):
                                         # duration,active}
     data_report: dict                   # see SpikeInterface_Menu._data_report
     use_docker: bool
-    animate: bool                       # crest animation on/off (persisted)
     want_welcome: bool
+    active_probe: str
+    want_probe_setup: bool
+    probe_info: dict                    # {name,label,summary,layout,density_class,match,match_detail}
 
     def set_active_by_name(self, name: str) -> bool: ...
     def cycle_active(self) -> None: ...
     def set_theme(self, name: str) -> str: ...      # returns the new accent hex
-    def set_animate(self, on: bool) -> bool: ...    # persist + return the new state
     def reload(self) -> None: ...                   # refresh pipeline/infos/data_report
     def set_data_dir(self, path: str | None) -> bool: ...   # repoint + reload; found?
     def toggle_docker(self) -> bool: ...
@@ -128,6 +129,16 @@ class Controller(Protocol):
     def start_docker(self) -> bool: ...
     def active_blocked_on_docker(self) -> bool: ...
     def mark_welcome_seen(self) -> None: ...
+    def active_probe_info(self) -> dict: ...
+    def probe_catalog(self) -> list[dict]: ...
+    def set_active_probe(self, name: str) -> bool: ...
+    def save_probe(self, profile) -> tuple[bool, str]: ...
+    def delete_probe(self, name: str) -> tuple[bool, str]: ...
+    def duplicate_probe(self, name, new_name, new_label=None) -> dict: ...
+    def mark_probe_setup_seen(self) -> None: ...
+    def sorter_fit(self, name: str) -> dict: ...
+    def catalog_manufacturers(self) -> list[str]: ...
+    def catalog_models(self, manufacturer: str) -> list[str]: ...
     def run(self, key: str, span: str | None) -> tuple[bool, str, bool]: ...
 
 
@@ -667,23 +678,14 @@ class SortProgressScreen(ModalScreen):
 
 
 class DownloadProgressScreen(ModalScreen):
-    """Pulls a sorter's Docker image in-UI, separate from running a sort.
+    """Expanded telemetry view over the App's live ``DownloadSession``.
 
-    The Textual app never imports the Docker SDK or SpikeInterface; the actual
-    ``docker pull`` happens inside ``MenuController.download_image`` (the registry
-    hook), which we run in a **worker thread** (``run_worker(self._pull,
-    thread=True)``) so the event loop never blocks. The SDK's ``on_progress`` /
-    ``on_status`` callbacks fire on that thread, so every UI touch is marshalled
-    back with ``self.app.call_from_thread(...)``.
-
-    ``on_status`` now emits only a phase+count string ("Downloading N/M layers" /
-    "Verifying…" / "Extracting N/M layers" / "Done"), and ``on_progress`` aggregates
-    correctly over all layers of the current phase. So the layout is: the phase
-    string is a **label above** a determinate bar (the aggregate %), with a **spinner**
-    next to the label that ticks on a ``set_interval`` (~6 fps) while the pull is live
-    — so indeterminate stretches (Waiting / Verifying, which emit no progress) still
-    read as alive. On finish a ✓/✗ line shows, the spinner stops, and Esc/Enter close
-    (returning the ``(ok, message)`` result to ``_after_download``)."""
+    The pull worker is owned by ``SpikeMenuApp`` (so it survives this modal being
+    collapsed), not by this screen. This screen is a pure renderer: it reads
+    ``self.app._download`` each tick and draws the phase caption + spinner, a
+    determinate bar + percent, and a stats block (downloaded/total · speed; ETA ·
+    elapsed). ``c`` collapses back to the dashboard indicator while the download
+    continues; ``Esc`` cancels the download; Enter closes once finished."""
 
     DEFAULT_CSS = """
     DownloadProgressScreen { align: center middle; }
@@ -697,8 +699,9 @@ class DownloadProgressScreen(ModalScreen):
     """
 
     BINDINGS = [
-        Binding("escape", "close", "Close", show=False),
-        Binding("enter", "close", "Close", show=False),
+        Binding("c", "collapse", "Collapse", show=False),
+        Binding("escape", "cancel", "Cancel", show=False),
+        Binding("enter", "close_if_done", "Close", show=False),
     ]
 
     _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
@@ -708,99 +711,85 @@ class DownloadProgressScreen(ModalScreen):
         self._c = controller
         self._name = name
         self._accent = accent
-        self._pct = 0
-        # The phase string from on_status ("Downloading N/M layers" / "Verifying…" /
-        # "Extracting N/M layers" / "Done") — never a raw per-layer status. It is the
-        # label drawn ABOVE the bar.
-        self._status = "starting…"
-        self._done = None              # (ok, message) once the pull finishes
         self._spin = 0
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dldialog"):
             yield Static(f"Downloading {self._name}", id="dltitle")
             yield Static("", id="dlbody")
-            yield Static("This runs once (~1 GB). Esc to close.", id="dlfoot")
+            yield Static("This runs once (~1 GB).  [c] collapse · [Esc] cancel",
+                         id="dlfoot")
 
     def on_mount(self) -> None:
         self.query_one("#dldialog").border_title = "DOWNLOAD"
         self._repaint()
-        # A slow spinner tick keeps the status line visibly alive even while the pull
-        # is in an indeterminate stretch (Waiting / Verifying emit no progress). Cheap
-        # — it stops the moment the pull finishes / the screen unmounts.
-        self._spin_timer = self.set_interval(1.0 / 6, self._tick_spinner)
-        # The pull blocks (network + disk); run it OFF the event loop. The two
-        # callbacks fire on this worker thread, so they hop back via call_from_thread.
-        self.run_worker(self._pull, thread=True, exclusive=True)
+        # Repaint on a timer: the App's worker mutates the shared session from a
+        # thread; this pull-based redraw avoids cross-thread widget touches and also
+        # animates the spinner during indeterminate (verify/extract) stretches.
+        self._timer = self.set_interval(1.0 / 6, self._tick)
 
     def on_unmount(self) -> None:
-        self._stop_spinner()
+        t = getattr(self, "_timer", None)
+        if t is not None:
+            t.stop()
+            self._timer = None
 
-    def _stop_spinner(self) -> None:
-        timer = getattr(self, "_spin_timer", None)
-        if timer is not None:
-            timer.stop()
-            self._spin_timer = None
+    def _session(self):
+        return getattr(self.app, "_download", None)
 
-    def _tick_spinner(self) -> None:
-        # Only animate while the pull is live — once done the ✓/✗ line is the cue.
-        if self._done is not None:
-            return
-        self._spin = (self._spin + 1) % len(self._SPINNER)
+    def _tick(self) -> None:
+        sess = self._session()
+        if sess is not None and sess.result is None:
+            self._spin = (self._spin + 1) % len(self._SPINNER)
         self._repaint()
 
-    def _pull(self) -> None:
-        def on_progress(done, total):
-            pct = int(done / total * 100) if total else 0
-            self.app.call_from_thread(self._set_pct, pct)
-
-        def on_status(text):
-            self.app.call_from_thread(self._set_status, text)
-
-        try:
-            ok, msg = self._c.download_image(self._name, on_progress, on_status)
-        except Exception as e:  # noqa: BLE001 - never let a worker crash kill the app
-            ok, msg = False, f"download failed: {e}"
-        self.app.call_from_thread(self._finish, ok, msg)
-
-    # -- thread-marshalled UI updates (only ever called via call_from_thread) -- #
-    def _set_pct(self, pct: int) -> None:
-        self._pct = pct
-        self._repaint()
-
-    def _set_status(self, text: str) -> None:
-        self._status = text
-        self._repaint()
-
-    def _finish(self, ok: bool, msg: str) -> None:
-        self._done = (ok, msg)
-        if ok:
-            self._pct = 100
-        self._stop_spinner()           # no live spinner once the ✓/✗ line shows
-        self._repaint()
-        self.query_one("#dlfoot", Static).update("Press Enter to close")
-
-    # NB: NOT named ``_render`` — that collides with Textual's Widget._render.
     def _repaint(self) -> None:
+        sess = self._session()
         t = Text()
-        # Phase string (from on_status) ABOVE the bar, with a live spinner alongside
-        # so an indeterminate stretch (Waiting / Verifying) clearly reads as alive.
-        if self._done is None:
+        if sess is None:
+            t.append("download finished", style="dim")
+            self.query_one("#dlbody", Static).update(t)
+            return
+        st = sess.stats
+        live = sess.result is None
+        # Phase caption + spinner.
+        if live:
             t.append(self._SPINNER[self._spin] + " ", style=self._accent)
-        t.append(self._status + "\n", style="dim")
-        fill = int(self._pct / 100 * 24)
+        t.append(sess.phase_caption + "\n", style="dim")
+        # Bar + percent.
+        pct = st.pct
+        fill = int(pct / 100 * 24)
         t.append("█" * fill + "░" * (24 - fill), style=self._accent)
-        t.append(f"  {self._pct:3d}%\n", style="dim")
-        if self._done is not None:
-            ok, msg = self._done
-            t.append(("✓ " if ok else "✗ ") + msg,
+        t.append(f"  {pct:3d}%\n\n", style="dim")
+        # Stats block (size · speed ; ETA · elapsed). During verify/extract the byte
+        # readout/speed/ETA may be unknown -> render as "—" (fmt_* handle None).
+        done, total = sess.bytes_done, sess.bytes_total
+        t.append(f"{dlstats.fmt_bytes(done)} / {dlstats.fmt_bytes(total)}"
+                 f"   {dlstats.fmt_speed(st.speed)}\n", style="dim")
+        t.append(f"ETA {dlstats.fmt_clock(st.eta)}"
+                 f"          elapsed {dlstats.fmt_clock(st.elapsed)}", style="dim")
+        if sess.result is not None:
+            ok, msg = sess.result
+            t.append("\n" + ("✓ " if ok else "✗ ") + msg,
                      style="bold " + ("#3fb950" if ok else "#f85149"))
         self.query_one("#dlbody", Static).update(t)
+        if not live:
+            self.query_one("#dlfoot", Static).update("Press Enter to close")
 
-    def action_close(self) -> None:
-        # Before the pull finishes, Esc/Enter close with a not-done sentinel so the
-        # caller doesn't treat an interrupted view as a completed download.
-        self.dismiss(self._done or (False, "download still running", False))
+    def action_collapse(self) -> None:
+        # Leave the worker running; the dashboard #dlbar takes over the display.
+        self.dismiss("collapsed")
+
+    def action_cancel(self) -> None:
+        sess = self._session()
+        if sess is not None and sess.result is None:
+            sess.cancelled = True          # the worker's should_cancel hook breaks
+        self.dismiss("collapsed")          # close now; finish handling runs on the App
+
+    def action_close_if_done(self) -> None:
+        sess = self._session()
+        if sess is None or sess.result is not None:
+            self.dismiss("collapsed")
 
 
 class ManageSorterScreen(ModalScreen):
@@ -1080,6 +1069,237 @@ class ManageSortersScreen(ModalScreen):
         self.dismiss(True)
 
 
+# Kind -> editable numeric params (label, default) for the probe editor.
+_PROBE_KIND_FIELDS = {
+    "independent": [("pitch_um", 250.0)],
+    "linear": [("n", 16), ("pitch_um", 50.0)],
+    "grid": [("rows", 8), ("cols", 4), ("xpitch_um", 50.0), ("ypitch_um", 50.0)],
+    "tetrode": [("n_tetrodes", 4), ("within_um", 25.0), ("between_um", 300.0)],
+}
+
+
+class ProbeEditorScreen(ModalScreen):
+    """Create/edit a parametric probe profile. Numeric fields per kind + name/label."""
+
+    DEFAULT_CSS = """
+    ProbeEditorScreen { align: center middle; }
+    ProbeEditorScreen > #dialog {
+        width: 72; max-width: 94%; height: auto; max-height: 90%;
+        border: round $accentcolor; background: $surface; padding: 1 2;
+    }
+    ProbeEditorScreen #petitle { text-style: bold; color: $accentcolor; height: 1; }
+    ProbeEditorScreen .perow { height: auto; padding: 0 0 1 0; }
+    ProbeEditorScreen .pelabel { color: $accentcolor; text-style: bold; }
+    ProbeEditorScreen Input { width: 100%; }
+    ProbeEditorScreen #peerror { color: #f85149; height: auto; }
+    ProbeEditorScreen #pefoot { color: $text-muted; height: 1; padding: 1 0 0 0; }
+    """
+
+    BINDINGS = [Binding("escape", "cancel", "Cancel"), Binding("ctrl+s", "save", "Save")]
+
+    def __init__(self, profile, accent):
+        super().__init__()
+        self._profile = profile          # the seed profile (a copy to edit)
+        self._accent = accent
+        self._fields = {}
+
+    def compose(self) -> ComposeResult:
+        kind = self._profile["kind"]
+        params = self._profile.get("params", {})
+        with Vertical(id="dialog"):
+            yield Static(f"Edit probe · {kind}", id="petitle")
+            with Vertical(classes="perow"):
+                yield Label("name (unique id)", classes="pelabel")
+                self._fields["name"] = Input(value=self._profile["name"], id="f_name")
+                yield self._fields["name"]
+            with Vertical(classes="perow"):
+                yield Label("label (shown in the UI)", classes="pelabel")
+                self._fields["label"] = Input(value=self._profile.get("label", ""), id="f_label")
+                yield self._fields["label"]
+            for key, default in _PROBE_KIND_FIELDS.get(kind, []):
+                with Vertical(classes="perow"):
+                    yield Label(key, classes="pelabel")
+                    w = Input(value=str(params.get(key, default)), id=f"f_{key}")
+                    self._fields[key] = w
+                    yield w
+            yield Static("", id="peerror")
+            yield Static("Ctrl+S save · Esc cancel", id="pefoot")
+
+    def on_mount(self) -> None:
+        self._fields["name"].focus()
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def action_save(self) -> None:
+        kind = self._profile["kind"]
+        name = self._fields["name"].value.strip()
+        if not name:
+            self.query_one("#peerror", Static).update("name is required")
+            return
+        params = {}
+        for key, default in _PROBE_KIND_FIELDS.get(kind, []):
+            raw = self._fields[key].value.strip()
+            try:
+                params[key] = int(raw) if isinstance(default, int) else float(raw)
+            except ValueError:
+                self.query_one("#peerror", Static).update(f"{key}: expected a number")
+                return
+        self.dismiss({"name": name, "label": self._fields["label"].value.strip() or name,
+                      "kind": kind, "params": params, "builtin": False, "note": ""})
+
+
+class ProbeManagerScreen(ModalScreen):
+    """Manage probe profiles: activate (enter), new (n), edit (e), duplicate (g),
+    delete (x, user profiles only, confirmed). Shows each profile's summary + match."""
+
+    DEFAULT_CSS = """
+    ProbeManagerScreen { align: center middle; }
+    ProbeManagerScreen > #pmdialog {
+        width: 86; max-width: 96%; height: 90%; max-height: 30;
+        border: round $accentcolor; background: $surface; padding: 1 2;
+    }
+    ProbeManagerScreen #pmtitle { text-style: bold; color: $accentcolor; height: 1; }
+    ProbeManagerScreen #probelist { height: 1fr; border: none; background: $surface; }
+    ProbeManagerScreen #probelist:focus { border: none; }
+    ProbeManagerScreen #pmfoot { color: $text-muted; height: auto; padding: 1 0 0 0; }
+    """
+
+    BINDINGS = [
+        Binding("escape", "close", "Close", show=False),
+        Binding("n", "new", "New", show=False),
+        Binding("e", "edit", "Edit", show=False),
+        Binding("g", "duplicate", "Duplicate", show=False),
+        Binding("x", "delete", "Delete", show=False),
+    ]
+    _NEW_KINDS = [("linear", "Linear"), ("grid", "2-D grid"), ("tetrode", "Tetrodes"),
+                  ("independent", "Independent")]
+
+    def __init__(self, controller, accent: str):
+        super().__init__()
+        self._c = controller
+        self._accent = accent
+        self._last = None
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="pmdialog"):
+            yield Static("Probe geometry", id="pmtitle")
+            yield OptionList(id="probelist")
+            yield Static("", id="pmfoot")
+
+    def on_mount(self) -> None:
+        self.query_one("#pmdialog").border_title = "PROBES"
+        self.query_one("#probelist", OptionList).focus()
+        self._rebuild()
+
+    def _rebuild(self) -> None:
+        ol = self.query_one("#probelist", OptionList)
+        keep = ol.highlighted
+        ol.clear_options()
+        for row in self._c.probe_catalog():
+            ol.add_option(Option(self._row_text(row), id=row["name"]))
+        if ol.option_count:
+            ol.highlighted = keep if (keep is not None and keep < ol.option_count) else 0
+        self._render_foot()
+
+    def _row_text(self, row: dict) -> Text:
+        t = Text()
+        t.append("▌ " if row.get("active") else "  ",
+                 style=self._accent if row.get("active") else "")
+        t.append(row["label"], style="bold" if row.get("active") else "")
+        t.append(f"   {row['summary']}", style="dim")
+        if not row.get("builtin"):
+            t.append("  · custom", style="dim")
+        match = row.get("match")
+        if match == "mismatch":
+            t.append(f"   ⚠ {row.get('match_detail','')}", style="#f0883e")
+        elif match in ("fits", "auto"):
+            t.append("   ✓", style="#3fb950")
+        return t
+
+    def _highlighted(self) -> "dict | None":
+        ol = self.query_one("#probelist", OptionList)
+        if ol.highlighted is None:
+            return None
+        oid = ol.get_option_at_index(ol.highlighted).id
+        return next((r for r in self._c.probe_catalog() if r["name"] == oid), None)
+
+    def _render_foot(self) -> None:
+        f = Text()
+        if self._last is not None:
+            f.append(self._last); f.append("\n")
+        f.append("enter activate · n new · e edit · g duplicate · x delete · Esc close",
+                 style="dim")
+        self.query_one("#pmfoot", Static).update(f)
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        event.stop()
+        row = self._highlighted()
+        if row and self._c.set_active_probe(row["name"]):
+            self._last = Text(f"Active probe → {row['label']}", style=f"bold {self._accent}")
+            self._rebuild()
+
+    def action_new(self) -> None:
+        opts = [(k, lbl, "") for k, lbl in self._NEW_KINDS]
+        self.app.push_screen(ChoiceModal("New probe — which kind?", opts),
+                             self._after_new_kind)
+
+    def _after_new_kind(self, kind) -> None:
+        if not kind:
+            return
+        seed = {"name": f"my-{kind}", "label": f"My {kind}", "kind": kind,
+                "params": {}, "builtin": False, "note": ""}
+        self.app.push_screen(ProbeEditorScreen(seed, self._accent), self._after_edit)
+
+    def action_edit(self) -> None:
+        row = self._highlighted()
+        if row is None:
+            return
+        seed = {"name": row["name"], "label": row["label"], "kind": row["kind"],
+                "params": dict(row.get("params", {})), "builtin": row.get("builtin"),
+                "note": ""}
+        if row.get("builtin"):     # built-ins are immutable -> edit a copy
+            seed["name"] = f"{row['name']}-copy"
+            seed["label"] = f"{row['label']} (copy)"
+        self.app.push_screen(ProbeEditorScreen(seed, self._accent), self._after_edit)
+
+    def _after_edit(self, profile) -> None:
+        if not profile:
+            return
+        ok, msg = self._c.save_probe(profile)
+        self._last = Text(msg, style=_result_style(ok, msg))
+        self._rebuild()
+
+    def action_duplicate(self) -> None:
+        row = self._highlighted()
+        if row is None:
+            return
+        self._c.duplicate_probe(row["name"], f"{row['name']}-copy", f"{row['label']} (copy)")
+        self._last = Text(f"Duplicated {row['name']}", style="#3fb950")
+        self._rebuild()
+
+    def action_delete(self) -> None:
+        row = self._highlighted()
+        if row is None or row.get("builtin"):
+            self._last = Text("built-in profiles can't be deleted (duplicate to edit)",
+                              style="#f0883e")
+            self._render_foot()
+            return
+        name = row["name"]
+        self.app.push_screen(
+            ChoiceModal(f"Delete the probe profile {name}?",
+                        [("confirm", "Delete it", ""), ("cancel", "Keep it", "")]),
+            lambda r: self._confirmed_delete(name) if r == "confirm" else None)
+
+    def _confirmed_delete(self, name: str) -> None:
+        ok, msg = self._c.delete_probe(name)
+        self._last = Text(msg, style=_result_style(ok, msg))
+        self._rebuild()
+
+    def action_close(self) -> None:
+        self.dismiss(True)
+
+
 class WelcomeScreen(ModalScreen):
     """First-launch onboarding (shown once; re-openable from Help)."""
 
@@ -1114,6 +1334,72 @@ class WelcomeScreen(ModalScreen):
             yield Static("[ Get started ]  ·  Enter", id="wfoot")
 
     def action_start(self) -> None:
+        self.dismiss(None)
+
+
+class ProbeSetupScreen(ModalScreen):
+    """One-time first-run probe confirmation. The active default is highlighted;
+    keep it (Esc), pick another profile, or open the manager."""
+
+    DEFAULT_CSS = """
+    ProbeSetupScreen { align: center middle; }
+    ProbeSetupScreen > #dialog {
+        width: 72; max-width: 94%; height: auto;
+        border: round $accentcolor; background: $surface; padding: 1 2;
+    }
+    ProbeSetupScreen #pstitle { text-style: bold; color: $accentcolor; padding: 0 0 1 0; }
+    ProbeSetupScreen #psblurb { color: $text-muted; padding: 0 0 1 0; }
+    ProbeSetupScreen OptionList { height: auto; max-height: 14; background: $surface; border: none; }
+    ProbeSetupScreen #psfoot { color: $text-muted; padding: 1 0 0 0; }
+    """
+
+    BINDINGS = [Binding("escape", "skip", "Skip")]
+
+    def __init__(self, controller, accent: str):
+        super().__init__()
+        self._c = controller
+        self._accent = accent
+
+    def compose(self) -> ComposeResult:
+        active = self._c.active_probe
+        self._active_idx = 0
+        opts = []
+        for n, row in enumerate(r for r in self._c.probe_catalog() if r.get("builtin")):
+            is_active = row["name"] == active
+            t = Text("▌ " if is_active else "  ", style=self._accent if is_active else "")
+            t.append(row["label"], style="bold" if is_active else "")
+            t.append(f"   {row['summary']}", style="dim")
+            if is_active:
+                self._active_idx = n
+            opts.append(Option(t, id=f"probe:{row['name']}"))
+        opts.append(Option(Text("Manage probes…", style="bold"), id="__manage__"))
+        opts.append(Option(Text("Keep this probe (change any time with 'p')", style="dim"),
+                           id="__skip__"))
+        info = self._c.active_probe_info()
+        with Vertical(id="dialog"):
+            yield Static("Your probe geometry", id="pstitle")
+            yield Static(f"Active probe: {info['label']}. Keep it, pick another, or open the "
+                         "manager — you can change it any time with 'p'.", id="psblurb")
+            yield NavList(*opts, id="pslist")
+            yield Static("Enter to choose · Esc to keep", id="psfoot")
+
+    def on_mount(self) -> None:
+        ol = self.query_one(OptionList)
+        ol.focus()
+        ol.highlighted = getattr(self, "_active_idx", 0)
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        event.stop()
+        oid = event.option.id or "__skip__"
+        if oid.startswith("probe:"):
+            self._c.set_active_probe(oid.split(":", 1)[1])
+            self.dismiss("set")
+        elif oid == "__manage__":
+            self.dismiss("manage")
+        else:
+            self.dismiss(None)
+
+    def action_skip(self) -> None:
         self.dismiss(None)
 
 
@@ -1186,7 +1472,7 @@ class HelpScreen(ModalScreen):
             body = _setup_body(self._c.data_report, self._accent, self._c.pipeline)
         elif key == "about":
             # The Pitt shield lives here (and on Welcome): the dashboard's top
-            # crest is now the firing neuron, so the shield still has a home here.
+            # crest is now the wordmark, so the shield still has a home here.
             body = _crest_text(ui.SHIELD_COMPACT)
             body.append("\n\n")
             body.append(title + "\n\n", style=f"bold {self._accent}")
@@ -1265,7 +1551,7 @@ def _setup_body(report: dict, accent: str, pipeline=None) -> Text:
 # --------------------------------------------------------------------------- #
 def _crest_text(rows) -> Text:
     """Build a Text from built crest rows (each row = a list of (style, seg)).
-    Works for both the firing neuron (multi-fragment rows) and the blue+gold
+    Works for both the wordmark (multi-fragment rows) and the blue+gold
     shield (one fragment/row)."""
     t = Text()
     for n, line in enumerate(rows):
@@ -1277,55 +1563,35 @@ def _crest_text(rows) -> Text:
 
 
 class CrestWidget(Static):
-    """The dashboard's animated firing-neuron crest. ``fit(cols, rows)`` picks the
-    largest tier that fits the live window (and hides the widget when even mini
-    won't). A slow timer walks ``phase`` (receive -> fire -> rest); identical rest
-    frames are memoised away. Honours the controller's ``animate`` flag."""
+    """The dashboard's static block-letter "SPIKE" wordmark. ``fit(cols, rows)``
+    picks the largest tier that fits the live window (and hides the widget when
+    none fits). Painted once, in the live accent colour; re-fit on resize/theme."""
 
     def __init__(self, **kw) -> None:
         super().__init__(**kw)
         self._tier = None
-        self._phase = 0.0
-        self._animate = True
-        self._last = None
-        self._timer = None
-
-    def on_mount(self) -> None:
-        self._animate = bool(getattr(self.app.c, "animate", True))
-        self._timer = self.set_interval(
-            1.0 / _CREST_FPS, self._tick, pause=not self._animate
-        )
 
     def fit(self, cols: int, rows: int, reserve: int = SHIELD_RESERVE) -> None:
-        tier = ui.pick_neuron(cols - 4, rows, reserve=reserve)
+        tier = ui.pick_wordmark(cols - 4, rows, reserve=reserve)
         self.display = bool(tier)
         self._tier = tier or None
         self._repaint()
 
-    def set_animate(self, on: bool) -> None:
-        self._animate = bool(on)
-        if self._timer is not None:
-            self._timer.resume() if on else self._timer.pause()
-        if not on:
-            self._phase = 0.0
-        self._repaint()
-
-    def _tick(self) -> None:
-        if not self._animate or not self.display or self._tier is None:
-            return
-        self._phase = (self._phase + 1.0 / (_CREST_FPS * _CREST_CYCLE_S)) % 1.0
-        self._repaint()
+    def _tier_fragments(self):
+        """Flat list of the current (style, segment) fragments — a test seam and
+        the source for _repaint."""
+        if self._tier is None:
+            return []
+        accent = getattr(self.app, "_accent", "")
+        return [frag for row in ui.wordmark_rows(self._tier, accent) for frag in row]
 
     # NB: deliberately NOT named ``_render`` — that collides with Textual's
     # ``Widget._render`` (the layout engine calls it expecting a Visual).
     def _repaint(self) -> None:
         if self._tier is None:
             return
-        phase = self._phase if self._animate else ui.NEURON_REST_PHASE
-        rows = ui.neuron_frame(self._tier, phase)
-        if rows != self._last:
-            self._last = rows
-            self.update(_crest_text(rows))
+        accent = getattr(self.app, "_accent", "")
+        self.update(_crest_text(ui.wordmark_rows(self._tier, accent)))
 
 
 # --------------------------------------------------------------------------- #
@@ -1347,9 +1613,15 @@ class SpikeMenuApp(App):
        never shifts when the banner switches between its quiet/loud text. */
     #databar { height: 1; margin: 1 2 0 2; }
     #sortbar { height: 1; margin: 0 2 0 2; }
+    #probebar { height: 1; margin: 0 2 1 2; }
     /* On an extreme-short window the banner + title yield their rows to the lists
        (the DATA/SORT info still lives in the d Help topic + the footer). */
-    #databar.collapsed, #sortbar.collapsed, #titlebar.collapsed { display: none; }
+    #databar.collapsed, #sortbar.collapsed, #titlebar.collapsed, #probebar.collapsed { display: none; }
+
+    /* In-UI download indicator: a one-row banner-area line shown only while a
+       download is live (or just finished, briefly). Hidden otherwise. */
+    #dlbar { height: 1; margin: 0 2 0 2; color: $accentcolor; }
+    #dlbar.hidden { display: none; }
 
     #body { height: 1fr; padding: 1 1 0 1; }
     #body.stacked { layout: vertical; }
@@ -1404,10 +1676,11 @@ class SpikeMenuApp(App):
         Binding("tab", "focus_actions", "Actions", show=False, priority=True),
         Binding("shift+tab", "focus_sorters", "Sorters", show=False, priority=True),
         Binding("t", "cycle_sorter", "Switch sorter", show=False),
-        Binding("m", "toggle_motion", "Motion", show=False),
+        Binding("w", "watch_download", "Download", show=False),
         # x manages the highlighted sorter (delete image / clear saved sort) — wired
         # to a no-op-safe action now; Stage 5 fills it in.
         Binding("x", "manage_highlighted", "Manage", show=False),
+        Binding("p", "probe", "Probe", show=False),
         Binding("d", "data_help", "Data files", show=False),
         Binding("f", "choose_folder", "Data folder", show=False),
         Binding("question_mark", "help", "Help", show=False),
@@ -1426,6 +1699,7 @@ class SpikeMenuApp(App):
         self.c = controller
         self._accent = controller.accent
         self._last = None
+        self._download = None          # the single live DownloadSession (or None)
         super().__init__()
 
     # -- CSS variable plumbing: $accentcolor follows the live theme ----------- #
@@ -1440,6 +1714,8 @@ class SpikeMenuApp(App):
         yield Static(id="titlebar")
         yield Static(id="databar")
         yield Static(id="sortbar")
+        yield Static(id="probebar")
+        yield Static(id="dlbar")
         with Horizontal(id="body"):
             with Vertical(id="sorterpane"):
                 yield NavList(id="sorters")
@@ -1464,9 +1740,20 @@ class SpikeMenuApp(App):
         self._relayout()
         if getattr(self.c, "want_welcome", False):
             self.push_screen(WelcomeScreen(), self._after_welcome)
+        elif getattr(self.c, "want_probe_setup", False):
+            self.push_screen(ProbeSetupScreen(self.c, self._accent), self._after_probe_setup)
 
     def _after_welcome(self, _result) -> None:
         self.c.mark_welcome_seen()
+        if getattr(self.c, "want_probe_setup", False):
+            self.push_screen(ProbeSetupScreen(self.c, self._accent), self._after_probe_setup)
+
+    def _after_probe_setup(self, result) -> None:
+        self.c.mark_probe_setup_seen()
+        if result == "manage":
+            self._open_probes()
+        self._render_probebar(self.size.width)
+        self._rebuild_sorters()
 
     def on_resize(self, event) -> None:
         # self.size lags during a resize event; event.size carries the new size.
@@ -1479,6 +1766,8 @@ class SpikeMenuApp(App):
         self.query_one("#body").set_class(stacked, "stacked")
         self._render_databar(w)
         self._render_sortbar(w)
+        self._render_probebar(w)
+        self._render_dlbar(w)
         self._refresh_action_title()
         # Hide the INSPECTING panel on shortness so the lists keep their rows (its
         # blurb is non-essential; the lists themselves must never clip). Stacked panes
@@ -1489,16 +1778,16 @@ class SpikeMenuApp(App):
         # subtracted), collapse the title + banner so the lists keep their rows. The
         # footer + the d Help topic still carry the DATA/SORT info.
         tiny = h < self.TINY_ROWS
-        for wid in ("#titlebar", "#databar", "#sortbar"):
+        for wid in ("#titlebar", "#databar", "#sortbar", "#probebar"):
             self.query_one(wid).set_class(tiny, "collapsed")
         # Tiny: drop the pane borders too so two stacked panes fit the few body rows.
         self.query_one("#body").set_class(tiny, "tiny")
         # Crest reserve = chrome (title + banner + its top margin + footer + the
-        # crest's own padding row, ~6 rows; ~3 when tiny-collapsed) + a usable min
+        # crest's own padding row, ~7 rows; ~3 when tiny-collapsed) + a usable min
         # body. Side by side, one pane is ~8 rows; stacked, the two panes need ~6 rows
         # between them PLUS the inspect panel when shown, so reserve more so the crest
         # drops a tier rather than the lists losing rows.
-        chrome = 3 if tiny else 6
+        chrome = 3 if tiny else 8
         if tiny:
             body_min = 2 if stacked else 1     # borderless panes: 1 content row each
         elif stacked:
@@ -1585,6 +1874,56 @@ class SpikeMenuApp(App):
             t.append(f" · {n} custom params", style="dim")
         t.truncate(max(1, width - 2), overflow="ellipsis")
         self.query_one("#sortbar", Static).update(t)
+
+    def _render_probebar(self, width: int) -> None:
+        """The PROBE row: active probe label, summary, and channel-match status."""
+        info = self.c.probe_info
+        t = Text()
+        t.append("PROBE  ", style=ui.SECONDARY)
+        label = info.get("label", info.get("name", "unknown probe"))
+        t.append(label, style=f"bold {self._accent}")
+        summary = info.get("summary", "")
+        if summary:
+            t.append(f" · {summary}", style=ui.PRIMARY)
+        match = info.get("match", "")
+        if match in ("fits", "auto"):
+            t.append(" · ✓", style="#3fb950")
+        elif match == "mismatch":
+            t.append(" · ✗ channel count mismatch", style="bold #f0883e")
+        t.truncate(max(1, width - 2), overflow="ellipsis")
+        self.query_one("#probebar", Static).update(t)
+
+    def _render_dlbar(self, width: int) -> None:
+        """The collapsed download indicator. Hidden when no session; while live shows
+        '⬇ <name>  NN%  <speed>  ETA m:ss   [w expand]'; on finish a transient
+        '✓ <name> ready' / '✗ …' until _clear_download hides it."""
+        bar = self.query_one("#dlbar", Static)
+        sess = getattr(self, "_download", None)
+        if sess is None:
+            bar.add_class("hidden")
+            bar.update("")
+            return
+        bar.remove_class("hidden")
+        t = Text()
+        if sess.result is not None:
+            ok, msg = sess.result
+            if sess.cancelled or _is_cancel_msg(msg):
+                # Benign: a cancel reads as neutral, not a failure.
+                t.append("⊘ ", style="bold #8b949e")
+                t.append(f"{sess.name} cancelled", style="#8b949e")
+            else:
+                t.append(("✓ " if ok else "✗ "),
+                         style="bold " + ("#3fb950" if ok else "#f85149"))
+                t.append(f"{sess.name} {'ready' if ok else 'failed'}",
+                         style="#3fb950" if ok else "#f85149")
+        else:
+            st = sess.stats
+            t.append("⬇ ", style=self._accent)
+            t.append(f"{sess.name}  ", style="bold")
+            t.append(f"{st.pct:d}%  {dlstats.fmt_speed(st.speed)}  "
+                     f"ETA {dlstats.fmt_clock(st.eta)}", style="dim")
+            t.append("   [w expand]", style="#6e7681")
+        bar.update(t)
 
     def _refresh_action_title(self) -> None:
         self.query_one("#actionpane").border_title = f"ACTIONS — on {self.c.active_sorter}"
@@ -1712,6 +2051,11 @@ class SpikeMenuApp(App):
             tag = self._GROUP_ROW_TAG.get(info.get("group"))
             if tag:
                 t.append(f"  ·{tag}", style="dim")
+        fit = info.get("fit") or {}
+        if fit.get("rank") == "good" and not active:
+            t.append("  ✓ fits", style="#3fb950")
+        elif fit.get("rank") == "poor":
+            t.append("  △ weak", style="#d29922")
         # Docker rows carry a download badge so the cached/get-it state is scannable
         # without opening INSPECTING: ✓ ready (cached), ⬇ NN% (pulling), or ⬇ get.
         if info.get("group") == "docker":
@@ -1782,6 +2126,11 @@ class SpikeMenuApp(App):
         desc = info.get("description") or ""
         if desc:
             t.append(desc + "\n\n", style=ui.PRIMARY)
+        fit = info.get("fit") or {}
+        if fit.get("reason"):
+            t.append("Fit for this probe  ", style=ui.SECONDARY)
+            colour = {"good": "#3fb950", "poor": "#d29922"}.get(fit.get("rank"), ui.PRIMARY)
+            t.append(fit["reason"] + "\n\n", style=colour)
         # Generic tuning hint (kept generic — no brittle action-index references).
         t.append("Too few / too many units? Edit the sorter parameters "
                  "(Edit sorter parameters).\n\n", style=ui.SECONDARY)
@@ -2025,6 +2374,24 @@ class SpikeMenuApp(App):
         self._refresh_footer()
         self._render_inspect()
 
+    def action_probe(self) -> None:
+        self._open_probes()
+
+    def _open_probes(self) -> None:
+        self.push_screen(ProbeManagerScreen(self.c, self._accent), self._after_probes)
+
+    def _after_probes(self, _result) -> None:
+        try:
+            self.c.reload()
+            self._rebuild_sorters()
+            self._rebuild_actions()
+        except Exception as e:  # noqa: BLE001
+            self._last = Text(f"reload after probe change failed: {e!r}", style="#f85149")
+        self._render_sortbar(self.size.width)
+        self._render_probebar(self.size.width)
+        self._refresh_footer()
+        self._render_inspect()
+
     def action_cycle_sorter(self) -> None:
         self.c.cycle_active()
         self._rebuild_sorters()
@@ -2033,11 +2400,6 @@ class SpikeMenuApp(App):
         if self._sorters_focused():
             self._render_inspect()
         self._refresh_footer()
-
-    def action_toggle_motion(self) -> None:
-        on = self.c.set_animate(not self.c.animate)
-        self.query_one("#crest", CrestWidget).set_animate(on)
-        self.notify(f"Crest animation {'on' if on else 'off'}")
 
     def action_data_help(self) -> None:
         self.push_screen(HelpScreen(self.c, self._accent, topic="data"))
@@ -2114,8 +2476,7 @@ class SpikeMenuApp(App):
             # Download path — the image must be pulled before this can ever run, and
             # it needs the daemon up. Pulling is SEPARATE from running a sort.
             if self.c.docker_status(refresh=False).get("running"):
-                self.push_screen(DownloadProgressScreen(self.c, name, self._accent),
-                                 self._after_download)
+                self.start_download(name)
             else:
                 self._toggle_docker(offer_from=name)   # get Docker running first
         elif info.get("runnable"):
@@ -2132,24 +2493,117 @@ class SpikeMenuApp(App):
             self._last = Text(f"{name}: {hint}", style="#f0883e")
             self._refresh_footer()
 
-    def _after_download(self, result) -> None:
-        """A finished/interrupted in-UI download. Reload the catalog so the row's
-        download badge + readiness flip, then re-render the sidebar, banner, and
-        INSPECTING panel."""
-        if isinstance(result, tuple):
-            ok, message = result[0], result[1]
-        else:
-            ok, message = False, str(result)
-        self._last = Text(message, style=_result_style(ok, message))
+    # -- in-UI Docker download (worker owned HERE so it survives a collapse) ---- #
+    def start_download(self, name: str) -> None:
+        """Begin pulling ``name``'s image in an App-owned worker and open the
+        expanded view. Refuses a second concurrent download with a footer hint."""
+        if getattr(self, "_download", None) is not None and self._download.result is None:
+            self._last = Text("a download is already running · w to view",
+                              style="#f0883e")
+            self._refresh_footer()
+            return
+        sess = dlstats.DownloadSession(name=name, image="")
+        sess.phase_caption = "starting…"
+        sess.bytes_done = None
+        sess.bytes_total = None
+        self._download = sess
+        self._render_dlbar(self.size.width)
+        self.run_worker(lambda: self._download_worker(sess), thread=True)
+        self.push_screen(DownloadProgressScreen(self.c, name, self._accent),
+                         self._after_download)
+
+    def _download_worker(self, sess) -> None:
+        def on_progress(done, total):
+            self.call_from_thread(self._dl_progress, sess, done, total)
+
+        def on_status(text):
+            self.call_from_thread(self._dl_status, sess, text)
+
+        def should_cancel():
+            return sess.cancelled
+
+        try:
+            ok, msg = self.c.download_image(sess.name, on_progress, on_status,
+                                            should_cancel=should_cancel)
+        except Exception as e:  # noqa: BLE001 - never let a worker crash the app
+            ok, msg = False, f"download failed: {e}"
+        self.call_from_thread(self._dl_finish, sess, ok, msg)
+
+    # -- thread-marshalled session mutations (only via call_from_thread) -------- #
+    def _dl_progress(self, sess, done, total) -> None:
+        sess.bytes_done, sess.bytes_total = done, total
+        sess.stats.update(done, total, now=monotonic())
+        self._render_dlbar(self.size.width)
+
+    def _dl_status(self, sess, text) -> None:
+        sess.phase_caption = text
+        word = text.split()[0] if text else ""
+        new_phase = _DL_PHASE.get(word)
+        if new_phase and new_phase != sess.phase:
+            sess.phase = new_phase
+            sess.stats.set_phase(new_phase, now=monotonic())
+        self._render_dlbar(self.size.width)
+
+    def _dl_finish(self, sess, ok, msg) -> None:
+        sess.result = (ok, msg)
+        # The catalog reload reflects the finished image regardless of which session
+        # is current, so always do it.
         try:
             self.c.reload()
             self._rebuild_sorters()
             self._rebuild_actions()
-        except Exception as e:  # noqa: BLE001 - a reload failure must not kill the app
-            self._last = Text(f"reload after download failed: {e!r}", style="#f85149")
+            reload_err = None
+        except Exception as e:  # noqa: BLE001
+            reload_err = f"reload after download failed: {e!r}"
+        # A newer download may have superseded this one within its finish window —
+        # don't let this stale finish repaint over the live session or schedule a
+        # clear that would null the newer one.
+        if self._download is not sess:
+            return
+        if reload_err is not None:
+            self._last = Text(reload_err, style="#f85149")
+        elif sess.cancelled or _is_cancel_msg(msg):
+            self._last = Text(f"{sess.name} cancelled", style="dim")
+        else:
+            self._last = Text(msg, style=_result_style(ok, msg))
         self._render_sortbar(self.size.width)
         self._refresh_footer()
         self._render_inspect()
+        # Show a transient ✓/✗/⊘ in the indicator, then clear the session + hide it.
+        self._render_dlbar(self.size.width)
+        self.set_timer(4.0, lambda: self._clear_download(sess))
+
+    def _clear_download(self, sess) -> None:
+        # Only clear if this is still the same finished session — a newer download
+        # started within the 4s window must not be nulled out.
+        if self._download is sess:
+            self._download = None
+            self._render_dlbar(self.size.width)
+
+    def action_watch_download(self) -> None:
+        """`w`: re-open the expanded view over the still-running download."""
+        sess = getattr(self, "_download", None)
+        if sess is None or sess.result is not None:
+            self._last = Text("no download in progress", style="dim")
+            self._refresh_footer()
+            return
+        if isinstance(self.screen, DownloadProgressScreen):
+            return
+        self.push_screen(DownloadProgressScreen(self.c, sess.name, self._accent),
+                         self._after_download)
+
+    def _after_download(self, result) -> None:
+        """The expanded modal was dismissed (collapsed / cancelled / closed). The
+        download worker is owned by the App and keeps running; the actual finish
+        (catalog reload, badge flip) happens in ``_dl_finish``. Here we only echo a
+        status so a collapse reads clearly."""
+        if result == "collapsed":
+            sess = getattr(self, "_download", None)
+            # Only claim it's still downloading when it genuinely is — a cancelled or
+            # already-finished session must not say "downloading".
+            if sess is not None and sess.result is None and not sess.cancelled:
+                self._last = Text(f"{sess.name} downloading · w to expand", style="dim")
+        self._refresh_footer()
 
     def _highlight_sorter_by_name(self, name: str) -> bool:
         """Move the SORTERS cursor onto a sorter row by name (focusing the pane so a
@@ -2201,6 +2655,8 @@ class SpikeMenuApp(App):
             self._open_params()
         elif key == "manage":
             self.push_screen(ManageSortersScreen(self.c, self._accent), self._after_manage)
+        elif key == "probe":
+            self._open_probes()
         elif self._needs_data(key) and not self.c.data_report.get("present"):
             # Guarded BEFORE the sort branch so sort can't open its modal with no data.
             self._last = Text("✗ ", style="bold #f85149") + Text(
@@ -2280,6 +2736,7 @@ class SpikeMenuApp(App):
         self._render_inspect()
         self._render_databar(self.size.width)
         self._render_sortbar(self.size.width)
+        self._relayout()                                  # repaint crest in new accent
         self._last = Text(f"Theme → {name}", style=f"bold {self._accent}")
         self._refresh_footer()
 
@@ -2403,6 +2860,11 @@ class SpikeMenuApp(App):
         self._relayout()
         self._render_inspect()
         self.refresh()
+
+
+def _is_cancel_msg(message) -> bool:
+    """A finish message that reads as a user cancellation, not a genuine failure."""
+    return "cancel" in str(message).lower()
 
 
 def _result_style(ok: bool, message) -> str:

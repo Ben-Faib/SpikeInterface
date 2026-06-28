@@ -191,7 +191,8 @@ def docker_image_present(image: str) -> bool:
         return False
 
 
-def pull_docker_image(image: str, on_progress=None, on_status=None) -> bool:
+def pull_docker_image(image: str, on_progress=None, on_status=None,
+                      should_cancel=None) -> bool:
     """Pull ``image`` via the Docker SDK, streaming progress. Never raises.
 
     Docker fires its per-layer status strings ("Download complete"/"Pull
@@ -269,6 +270,8 @@ def pull_docker_image(image: str, on_progress=None, on_status=None) -> bool:
     try:
         client = docker.from_env()
         for ev in client.api.pull(repository, tag=tag, stream=True, decode=True):
+            if should_cancel is not None and should_cancel():
+                return False
             if "error" in ev:
                 return False
             status_text = ev.get("status") or ""

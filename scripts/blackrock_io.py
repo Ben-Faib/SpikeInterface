@@ -181,8 +181,8 @@ def attach_dummy_probe(recording, pitch_um: float = 250.0):
     Per-channel results are valid; cross-channel *spatial* information is not
     physical until a real map is supplied.
 
-    To swap in the real geometry later, build a ``probeinterface.Probe`` with the
-    true contact positions and call ``recording.set_probe(real_probe)`` instead.
+    To swap in real geometry, build a probe with ``probes.build(profile, n)`` (or a
+    raw ``probeinterface.Probe``) and call ``recording.set_probe(...)`` instead.
     Returns a new recording with the probe attached (does not mutate in place).
     """
     import numpy as np
@@ -191,6 +191,45 @@ def attach_dummy_probe(recording, pitch_um: float = 250.0):
     n = recording.get_num_channels()
     probe = generate_linear_probe(num_elec=n, ypitch=pitch_um)
     probe.set_device_channel_indices(np.arange(n))
+    return recording.set_probe(probe)
+
+
+# Number of recording sites on the real array used for this dataset.
+A1X16_N_CONTACTS = 16
+A1X16_PITCH_UM = 100.0
+
+
+def attach_a1x16_probe(recording, pitch_um: float = A1X16_PITCH_UM):
+    """Attach the **real** NeuroNexus A1x16-3mm-100-703 geometry.
+
+    This recording was made with a NeuroNexus **A1x16-3mm-100-703**: a single
+    shank with **16 sites in one column, 100 µm apart** (span 1500 µm). Unlike
+    :func:`attach_dummy_probe` (a placeholder that spaces channels 250 µm apart so
+    none are neighbours), this is the true layout, so cross-channel spatial
+    information — neighbours, depth, drift, multi-channel templates — is physical,
+    and the ``spikeinterface-gui`` inspector shows each unit across all 16 sites.
+
+    Wiring is **sequential / identity**: recording channel *i* → site *i*
+    (tip→top), matching ``attach_dummy_probe``. The geometry and pitch are exact
+    for this part; the physical depth *order* depends on the probe→Ripple adapter,
+    which is not in the data — flip the mapping here if a real adapter map says so.
+
+    Requires exactly :data:`A1X16_N_CONTACTS` channels (drop the analog aux inputs
+    with :func:`neural_channel_ids` first). Returns a new recording (no mutation).
+    """
+    import numpy as np
+    from probeinterface import generate_linear_probe
+
+    n = recording.get_num_channels()
+    if n != A1X16_N_CONTACTS:
+        raise ValueError(
+            f"A1x16 probe has {A1X16_N_CONTACTS} sites but the recording has {n} "
+            "channels — drop the non-neural analog aux channels first "
+            "(neural_channel_ids), or use attach_dummy_probe for a different array."
+        )
+    probe = generate_linear_probe(num_elec=A1X16_N_CONTACTS, ypitch=pitch_um)
+    probe.set_device_channel_indices(np.arange(A1X16_N_CONTACTS))
+    probe.annotate(name="A1x16-3mm-100-703", manufacturer="neuronexus")
     return recording.set_probe(probe)
 
 

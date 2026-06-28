@@ -27,6 +27,7 @@ ACTIONS = [
     ("compare", "Compare sorters", "agreement matrix", True),
     ("params", "Edit sorter parameters", "tune the active sorter", False),
     ("manage", "Manage sorters", "download · delete", False),
+    ("probe", "Set probe geometry", "pick / edit geometry", False),
     ("verify", "Verify install", "smoke test", False),
     ("theme", "Change colour theme", "accent", False),
     ("help", "Help", "what each step does · sorters · Docker · data files", False),
@@ -46,7 +47,6 @@ class FakeController:
         self.theme_name = "periwinkle"
         self.accent = self.themes[self.theme_name]
         self.use_docker = use_docker
-        self.animate = True
         self.sorters = (["tridesclous2", "spykingcircus2", "mountainsort5", "herdingspikes"]
                         if use_docker else ["tridesclous2", "spykingcircus2"])
         self.active_sorter = "tridesclous2"
@@ -70,6 +70,26 @@ class FakeController:
         self.want_welcome = False       # off by default so boot tests see no modal
         self.welcome_seen = False
         self._present = present
+        self.active_probe = "nnx-a1x16-3mm-100"
+        self.want_probe_setup = False
+        self._probe_lib = [
+            {"name": "nnx-a1x16-3mm-100",
+             "label": "NeuroNexus A1x16-3mm-100-703 · 16 ch @ 100 µm", "kind": "linear",
+             "params": {"n": 16, "pitch_um": 100.0}, "builtin": True, "auto": False,
+             "match": "fits", "match_detail": "matches 16 channels",
+             "summary": "16 contacts · linear · 100 µm pitch", "n": 16,
+             "density_class": "sparse", "layout": "linear", "note": ""},
+            {"name": "independent", "label": "Independent channels (placeholder)",
+             "kind": "independent", "params": {"pitch_um": 250.0}, "builtin": True,
+             "auto": True, "match": "auto", "match_detail": "auto-sizes to the recording",
+             "summary": "auto-sizes · independent channels", "n": None,
+             "density_class": "independent", "layout": "independent", "note": ""},
+            {"name": "linear-16-50um", "label": "Linear · 16 ch @ 50 µm", "kind": "linear",
+             "params": {"n": 16, "pitch_um": 50.0}, "builtin": True, "auto": False,
+             "match": "fits", "match_detail": "matches 16 channels",
+             "summary": "16 contacts · linear · 50 µm pitch", "n": 16,
+             "density_class": "dense", "layout": "linear", "note": ""},
+        ]
         self.reload()
 
     # A small fake universe spanning all four groups. READY sorters come first so
@@ -105,6 +125,8 @@ class FakeController:
                 "duration": 132.0 if present else 0.0,
                 "active": name == self.active_sorter,
                 "overrides": len(self.sorter_params.get(name, {})),
+                "fit": {"rank": "good" if name == "tridesclous2" else "ok",
+                        "reason": f"{name} fit."},
             }
             if group == "docker":
                 # Cached-image state lives in self._cached_images so a download/delete
@@ -130,6 +152,7 @@ class FakeController:
             ],
             "error": None if self._present else "No Blackrock .nev/.nsX files found in '/data/recordings'.",
         }
+        self.probe_info = self.active_probe_info()
 
     def _mark_active(self) -> None:
         for n, info in enumerate(self.infos):
@@ -152,10 +175,6 @@ class FakeController:
         self.theme_name = name
         self.accent = self.themes[name]
         return self.accent
-
-    def set_animate(self, on: bool) -> bool:
-        self.animate = bool(on)
-        return self.animate
 
     def toggle_docker(self) -> bool:
         self.use_docker = not self.use_docker
@@ -188,6 +207,51 @@ class FakeController:
     def mark_welcome_seen(self) -> None:
         self.want_welcome = False
         self.welcome_seen = True
+
+    def active_probe_info(self) -> dict:
+        return next((p for p in self._probe_lib if p["name"] == self.active_probe),
+                    self._probe_lib[0])
+
+    def probe_catalog(self) -> list[dict]:
+        return [dict(p, active=(p["name"] == self.active_probe)) for p in self._probe_lib]
+
+    def set_active_probe(self, name: str) -> bool:
+        if any(p["name"] == name for p in self._probe_lib):
+            self.active_probe = name
+            self.probe_info = self.active_probe_info()
+            return True
+        return False
+
+    def save_probe(self, profile) -> tuple[bool, str]:
+        self._probe_lib = [p for p in self._probe_lib if p["name"] != profile["name"]]
+        self._probe_lib.append(profile)
+        return True, f"Saved probe {profile['name']}."
+
+    def delete_probe(self, name: str) -> tuple[bool, str]:
+        self._probe_lib = [p for p in self._probe_lib if p["name"] != name]
+        if self.active_probe == name:
+            self.active_probe = self._probe_lib[0]["name"] if self._probe_lib else "independent"
+        return True, f"Deleted probe {name}."
+
+    def duplicate_probe(self, name, new_name, new_label=None) -> dict:
+        src = next((p for p in self._probe_lib if p["name"] == name), None) or {}
+        dup = dict(src, name=new_name,
+                   label=new_label or f"{src.get('label', name)} copy")
+        self._probe_lib.append(dup)
+        return dup
+
+    def mark_probe_setup_seen(self) -> None:
+        self.want_probe_setup = False
+
+    def sorter_fit(self, name: str) -> dict:
+        return {"rank": "good" if name == "tridesclous2" else "ok",
+                "reason": f"{name} fit."}
+
+    def catalog_manufacturers(self) -> list[str]:
+        return ["NeuroNexus", "Cambridge NeuroTech"]
+
+    def catalog_models(self, manufacturer: str) -> list[str]:
+        return [f"{manufacturer} model A", f"{manufacturer} model B"]
 
     def default_params(self, sorter: str) -> dict:
         return {"detect_threshold": 5.0, "freq_min": 300.0, "apply_preprocessing": True}
@@ -260,19 +324,31 @@ class FakeController:
                 "present": present,
                 "size": 1_100_000_000 if present else None}
 
-    def download_image(self, name: str, on_progress=None, on_status=None) -> tuple[bool, str]:
-        # Drive the screen's callbacks (so the bar/phase-label update path is
-        # exercised) then return synchronously — no real ``docker pull``. on_status
-        # now emits ONLY phase+count strings (the backend contract), so feed the
-        # phase sequence: Downloading -> Extracting. Records the call + caches the
-        # image so a post-download reload() shows ✓ ready.
+    def download_image(self, name, on_progress=None, on_status=None, should_cancel=None):
+        # Stepped fake pull: emit a scripted sequence, polling should_cancel between
+        # steps and pausing on a threading.Event the test can release. With no gate
+        # set (the default) it runs straight through, preserving old test behaviour.
         self.downloaded.append(name)
-        if on_status is not None:
-            on_status("Downloading 1/2 layers")
-        if on_progress is not None:
-            on_progress(50, 100)
-        if on_status is not None:
-            on_status("Extracting 1/2 layers")
+        gate = getattr(self, "dl_gate", None)        # a threading.Event or None
+        steps = [
+            ("status", "Downloading 1/2 layers"),
+            ("progress", (25, 100)),
+            ("gate", None),                            # test may pause the worker here
+            ("progress", (50, 100)),
+            ("status", "Extracting 1/2 layers"),
+            ("progress", (100, 100)),
+        ]
+        for kind, payload in steps:
+            if should_cancel is not None and should_cancel():
+                return False, f"Download of {name} cancelled"
+            if kind == "status" and on_status is not None:
+                on_status(payload)
+            elif kind == "progress" and on_progress is not None:
+                on_progress(*payload)
+            elif kind == "gate" and gate is not None:
+                while not gate.wait(timeout=0.02):
+                    if should_cancel is not None and should_cancel():
+                        return False, f"Download of {name} cancelled"
         self._cached_images.add(name)
         return True, f"Downloaded {name}"
 

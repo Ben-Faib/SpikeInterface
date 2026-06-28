@@ -403,7 +403,9 @@ def _write_run_info(out: Path, args, **fields) -> None:
         "command": "run_sorting.py",
         "duration_arg": args.duration,
         "keep_analog": args.keep_analog,
+        "probe": args.probe,
         "n_jobs": args.n_jobs,
+        "probe": getattr(args, "probe", None),
         **fields,
     }
     try:
@@ -658,6 +660,19 @@ def resolve_sorter(name: str, use_docker: bool) -> str:
     )
 
 
+def resolve_probe(name, probe_file):
+    """Resolve --probe/--probe-file to a probe profile dict.
+
+    --probe-file wins (a one-off file profile); else a named library profile; else
+    the active default profile (nnx-a1x16-3mm-100)."""
+    import probes
+
+    if probe_file:
+        return {"name": "file", "label": probe_file, "kind": "file",
+                "params": {"path": probe_file}, "builtin": False, "note": ""}
+    return probes.get(name) if name else probes.get(probes.DEFAULT_PROBE)
+
+
 def resolve_overrides(sorter: str, param_kv: list[str], params_file: "str | None") -> dict:
     """Build the override dict: defaults < --params-file < repeated --param.
 
@@ -726,6 +741,11 @@ def main() -> int:
                         help="Override one sorter parameter (repeatable).")
     parser.add_argument("--params-file", default=None,
                         help="JSON file of sorter parameter overrides.")
+    parser.add_argument("--probe", default=None,
+                        help="Probe-geometry profile name from the library "
+                             "(default: nnx-a1x16-3mm-100).")
+    parser.add_argument("--probe-file", default=None,
+                        help="A probeinterface JSON file to use as the probe geometry.")
     parser.add_argument("--list-sorters", action="store_true",
                         help="Print every sorter and its availability, then exit.")
     parser.add_argument("--output-dir", default=None, help="Where to write results (default: outputs/<sorter>/).")
@@ -773,6 +793,7 @@ def main() -> int:
         args.sorter = sorters.default_sorter()
     args.sorter = resolve_sorter(args.sorter, args.docker)
     overrides = resolve_overrides(args.sorter, args.param, args.params_file)
+    probe_profile = resolve_probe(args.probe, args.probe_file)
 
     json_mode = args.progress == "json"
     total_phases = 3 if args.no_metrics else 4
@@ -816,7 +837,7 @@ def main() -> int:
 
     ui.phase("Read broadband", "(.ns5)")
     rep.phase("Read broadband", "(.ns5)")
-    rec = bio.read_broadband(args.data_dir)  # placeholder independent-channel probe attached
+    rec = bio.read_broadband(args.data_dir, attach_probe=False)  # probe applied below
     total_seconds = rec.get_total_duration()
     _ch_detail = (f"{rec.get_num_channels()} channels · "
                   f"{rec.get_sampling_frequency():g} Hz · {total_seconds:.1f}s")
@@ -832,10 +853,41 @@ def main() -> int:
         n_dropped = rec.get_num_channels() - len(neural)
         if 0 < len(neural) < rec.get_num_channels():
             rec = bio.select_channels(rec, neural)
-            rec = bio.attach_dummy_probe(rec)  # re-size the placeholder probe to the kept channels
             _drop_msg = (f"excluded {n_dropped} non-neural analog aux channel(s) → "
                          f"sorting {len(neural)} electrode(s)")
             ui.detail(_drop_msg)
+
+    # Apply the chosen probe geometry to the kept neural channels. 'independent'
+    # reproduces the old placeholder; a real profile gives physical geometry. An
+    # EXPLICIT --probe/--probe-file that doesn't fit is an error; the DEFAULT probe
+    # not fitting (e.g. a different recording) falls back to the placeholder so a
+    # default run never hard-fails on geometry.
+    import probes
+    explicit = bool(args.probe or args.probe_file)
+    if probe_profile is None:   # explicit --probe name not in the library
+        msg = (f"Unknown probe '{args.probe}'. Pick one from the probe library "
+               "(the menu's 'Set probe geometry' action) or pass --probe-file <probe.json>.")
+        ui.warn(msg)
+        rep.error(msg)
+        return 1
+    applied = False
+    try:
+        rec = rec.set_probe(probes.build(probe_profile, rec.get_num_channels()))
+        _probe_msg = f"probe geometry: {probe_profile.get('label', probe_profile.get('name'))}"
+        applied = True
+    except Exception as e:  # noqa: BLE001 - bad geometry / count mismatch
+        if explicit:
+            ui.warn(f"Probe '{probe_profile.get('name', '?')}' couldn't be applied: {e}")
+            rep.error(str(e))
+            return 1
+        rec = bio.attach_dummy_probe(rec)
+        probe_profile = probes.get(probes.PLACEHOLDER_PROBE)
+        _probe_msg = (f"default probe didn't match this recording ({e}) — using the "
+                      "independent-channel placeholder; pass --probe to set geometry.")
+        ui.warn(_probe_msg)
+    if applied:
+        ui.detail(_probe_msg)
+    rep.detail(_probe_msg)
 
     fs = rec.get_sampling_frequency()
     freq_max = min(args.freq_max, 0.49 * fs)  # keep the high cutoff below Nyquist
@@ -936,8 +988,17 @@ def main() -> int:
                       if rep.enabled else contextlib.nullcontext())
         with metrics_tee, metrics_hb:
             _robust_rmtree(out / "analyzer")  # retry past Windows GUI file-locks before overwrite
+            # sparse=False (dense): SpikeInterface defaults to sparse=True, which keeps
+            # only the channels within ~100 µm of each unit's peak. The placeholder probe
+            # (attach_dummy_probe) spaces channels 250 µm apart so NO channel is within that
+            # radius — sparsity would collapse every unit to its single peak channel and the
+            # spikeinterface-gui inspector could then only ever show one channel per unit.
+            # With this small array (16 ch) dense is cheap and always shows the full layout;
+            # it is the honest choice while geometry is a placeholder, and harmless once a
+            # real probe (e.g. NeuroNexus A1x16, 100 µm) is attached.
             analyzer = si.create_sorting_analyzer(
-                sorting, rec, folder=str(out / "analyzer"), format="binary_folder", overwrite=True
+                sorting, rec, folder=str(out / "analyzer"), format="binary_folder",
+                overwrite=True, sparse=False,
             )
             # One compute per extension so each shows a named 'substep' the moment it
             # starts; i/n span the whole metrics phase (base + metrics + curation).

@@ -44,6 +44,7 @@ import blackrock_io as bio  # noqa: E402
 import report  # noqa: E402
 import sorters as sorter_registry  # noqa: E402  (registry: discovery/status/params/run)
 import ui  # noqa: E402  (rich styling shared-look with run_sorting.py)
+import probes  # noqa: E402  (probe-geometry registry: profiles/features/build/fit)
 
 QUICK_SECONDS = 30
 ACTIONS = ["explore", "sort", "report", "gui", "traces", "compare", "verify"]
@@ -160,18 +161,24 @@ def _saved_summary(sorter: str):
         return False, 0, 0.0
 
 
-def _catalog(active: str, use_docker: bool) -> list[dict]:
-    """Full sidebar catalog over EVERY sorter (not just runnable).
+def _catalog(active: str, use_docker: bool, profile: dict | None = None) -> list[dict]:
+    """Full sidebar catalog over EVERY sorter, annotated with geometry fit.
 
-    Group is membership-precedence (stable); runnable is the dynamic, Docker-aware
-    set. Saved-sort summary is filled where an analyzer exists.
-    """
+    ``profile`` is the active probe profile; when given, each row gets a ``fit``
+    {rank,reason}, the ``recommended`` flag follows the top good-fit runnable
+    sorter (falling back to RECOMMENDED), and members are re-ranked within each
+    group (good→ok→poor, then name)."""
+    import probes
     inst = set(sorter_registry.installed())
     docker = sorter_registry.docker_available()
     runnable = set(sorter_registry.runnable(use_docker))
     # Only probe the local image cache when Docker is at least installed; the
     # daemon-installed check is cached per process, so this stays cheap.
     docker_installed = sorter_registry.docker_state() != "not_installed"
+    rec_name = sorter_registry.RECOMMENDED
+    if profile is not None:
+        rec_name = probes.recommended_for(profile, sorter_registry.runnable(use_docker),
+                                          prefer=sorter_registry.RECOMMENDED) or rec_name
     out = []
     for name in sorter_registry.available():
         present, units, duration = _saved_summary(name)
@@ -180,26 +187,32 @@ def _catalog(active: str, use_docker: bool) -> list[dict]:
             "group": sorter_registry.group_of(name, installed_set=inst),
             "status": sorter_registry.status(name, installed_set=inst, docker=docker),
             "runnable": name in runnable,
-            "recommended": name == sorter_registry.RECOMMENDED,
+            "recommended": name == rec_name,
             "description": sorter_registry.description(name),
             "present": present, "units": units, "duration": duration,
             "active": name == active,
+            "fit": probes.fit(name, profile) if profile is not None else {"rank": "ok", "reason": ""},
         }
         group = info["group"]
         if group == "docker":
             img = sorter_registry.default_docker_image(name)
-            present = bool(img) and docker_installed and \
+            present_img = bool(img) and docker_installed and \
                 sorter_registry.docker_image_present(img)
             info["image"] = img
-            info["img_present"] = present
+            info["img_present"] = present_img
             # Cached image size (bytes) so the Manage dialogs can show "~X GB"
             # without a second probe; only queried for an image we already have.
-            info["img_size"] = sorter_registry.image_size(img) if present else None
+            info["img_size"] = sorter_registry.image_size(img) if present_img else None
         else:
             info["image"] = None
             info["img_present"] = None
             info["img_size"] = None
         out.append(info)
+    # Re-rank within each group: good→ok→poor, then name. The sidebar re-buckets by
+    # group preserving this order, so good-fit sorters float to the top of a group.
+    rank = {"good": 0, "ok": 1, "poor": 2}
+    order = {g: n for n, g in enumerate(["ready", "docker", "gpu", "unavailable"])}
+    out.sort(key=lambda i: (order.get(i["group"], 9), rank.get(i["fit"]["rank"], 1), i["name"]))
     return out
 
 
@@ -307,6 +320,8 @@ def _self(action: str, args) -> bool:
     cmd = [sys.executable, str(ROOT / "SpikeInterface_Menu.py"), action, "--sorter", args.sorter]
     if args.data_dir:
         cmd += ["--data-dir", args.data_dir]
+    if getattr(args, "probe", None):
+        cmd += ["--probe", args.probe]
     if action == "gui" and getattr(args, "gui_mode", "auto") != "auto":
         cmd += ["--gui-mode", args.gui_mode]
     ui.note(f"$ {' '.join(cmd)}")
@@ -333,6 +348,8 @@ def action_sort(args) -> bool:
         flags += ["--params-file", args.params_file]
     if args.data_dir:
         flags += ["--data-dir", args.data_dir]
+    if getattr(args, "probe", None):
+        flags += ["--probe", args.probe]
     return _shell("run_sorting.py", *flags)
 
 
@@ -352,8 +369,9 @@ def _open_in_browser(uri: str) -> None:
 
 def action_report(args) -> bool:
     ui.note(f"Building the report for {args.sorter}…")
+    _probe = _read_run_info(args.sorter).get("probe") or getattr(args, "probe", None)
     out = report.build_report(data_dir=args.data_dir, analyzer_dir=_analyzer_dir(args.sorter),
-                              sorter_label=args.sorter)
+                              sorter_label=args.sorter, probe=_probe)
     uri = out.resolve().as_uri()
     ui.done(f"Report written → {out}")
     ui.link("Open it:", uri)
@@ -362,16 +380,31 @@ def action_report(args) -> bool:
     return True
 
 
-# The Blackrock files carry no electrode geometry, so a placeholder
-# independent-channel probe is attached (see blackrock_io.attach_dummy_probe).
-# Surface this before any spatial view so the user isn't misled into reading
-# placeholder channel positions / depths as real anatomy.
-_GEOMETRY_CAVEAT = (
+# Geometry note shown before any spatial view, accurate to how the sort was made
+# (read from run_info.json's 'probe'). A real probe (e.g. the NeuroNexus A1x16)
+# makes the probe-map / depth / multi-channel views physical; the independent-channel
+# placeholder does not — so the user isn't misled either way.
+_GEOMETRY_CAVEAT_PLACEHOLDER = (
     "Placeholder electrode geometry (independent-channel dummy probe — the "
     "Blackrock files carry no map). The probe map, unit-location and depth views "
     "are NOT physical; per-unit metrics, waveforms, correlograms and amplitudes "
     "ARE valid."
 )
+
+
+def _geometry_note(active_probe: str) -> str:
+    """The geometry caveat, conditional on the active probe.
+
+    For the 'independent' PLACEHOLDER it's the full not-physical warning; for any
+    real profile (incl. the default A1x16) it states the geometry in use (spatial
+    views are then meaningful)."""
+    import probes
+    if active_probe in (None, probes.PLACEHOLDER_PROBE):
+        return _GEOMETRY_CAVEAT_PLACEHOLDER
+    prof = probes.get(active_probe)
+    label = prof["label"] if prof else active_probe
+    return (f"Probe geometry: {active_probe} — {label}. Spatial views (probe map, "
+            "unit locations, depth) reflect this geometry; verify it matches your array.")
 
 
 def _has_display() -> bool:
@@ -483,7 +516,7 @@ def action_gui(args) -> bool:
 
     analyzer = si.load_sorting_analyzer(analyzer_dir)
     events = _sigui_events(args.data_dir)  # .nev markers -> the GUI's event view
-    ui.warn(_GEOMETRY_CAVEAT)
+    ui.warn(_geometry_note(_read_run_info(args.sorter).get("probe") or getattr(args, "probe", None) or "independent"))
     try:
         if mode == "web":
             ui.say(f"[{ui.ACCENT}]Opening spikeinterface-gui (web mode)[/] — no display "
@@ -521,10 +554,20 @@ def action_traces(args) -> bool:
                 "session. Use X forwarding (ssh -X) or run locally. (The GUI inspector "
                 "has a browser-based web mode; the trace browser does not.)")
         return False
-    ui.warn(_GEOMETRY_CAVEAT)
+    ui.warn(_geometry_note(getattr(args, "probe", None) or "independent"))
     ui.say(f"[{ui.ACCENT}]Opening ephyviewer[/] on the broadband recording "
            f"[{ui.MUTED}](close the window to return) ...[/]")
-    rec = bio.read_broadband(args.data_dir)
+    import probes
+    rec = bio.read_broadband(args.data_dir, attach_probe=False)
+    neural = bio.neural_channel_ids(rec)
+    if 0 < len(neural) < rec.get_num_channels():
+        rec = bio.select_channels(rec, neural)
+    try:
+        rec = rec.set_probe(probes.build(
+            probes.get(getattr(args, "probe", None) or "independent")
+            or probes.get(probes.DEFAULT_PROBE), rec.get_num_channels()))
+    except Exception:  # noqa: BLE001 - fall back to the placeholder on mismatch
+        rec = bio.attach_dummy_probe(rec)
     try:
         sw.plot_traces({"broadband": rec}, backend="ephyviewer", show_channel_ids=True)  # blocks
     except Exception as e:  # noqa: BLE001 - actionable hint instead of a raw Qt traceback
@@ -599,10 +642,11 @@ _MENU = [
     ("6", "compare", "Compare sorters",         "pick two saved sorts → comparison.html"),
     ("7", "params",  "Edit sorter parameters",  "tune the active sorter (saved)"),
     ("8", "manage",  "Manage sorters",          "download images · delete · clear saved sorts"),
-    ("9", "docker",  "Toggle Docker sorters",   "show/hide not-installed CPU sorters"),
-    ("10", "verify", "Verify install",          "environment smoke test"),
-    ("11", "theme",  "Change colour theme",     "pick an accent colour (saved for next time)"),
-    ("12", "help",   "Help",                    "what each step does · sorters · Docker · data"),
+    ("9",  "probe",  "Set probe geometry",      "pick / edit the electrode geometry"),
+    ("10", "docker", "Toggle Docker sorters",   "show/hide not-installed CPU sorters"),
+    ("11", "verify", "Verify install",          "environment smoke test"),
+    ("12", "theme",  "Change colour theme",     "pick an accent colour (saved for next time)"),
+    ("13", "help",   "Help",                    "what each step does · sorters · Docker · data"),
 ]
 
 # v2 (Textual) action table — (key, title, hint, needs_data). ``needs_data`` dims
@@ -617,6 +661,7 @@ _ACTIONS = [
     ("compare",    "Compare sorters",         "pick two saved sorts → comparison.html",      True),
     ("params",     "Edit sorter parameters",  "tune the active sorter (saved)",              False),
     ("manage",     "Manage sorters",          "download images · delete · clear saved sorts", False),
+    ("probe",      "Set probe geometry",     "pick / edit the electrode geometry",          False),
     ("verify",     "Verify install",          "environment smoke test",                      False),
     ("theme",      "Change colour theme",     "pick an accent colour (saved)",               False),
     ("help",       "Help",                    "what each step does · sorters · Docker · data files", False),
@@ -651,6 +696,8 @@ _ACTION_DETAIL = {
     "params":  {"what": "Tune the active sorter's parameters (saved per sorter)."},
     "manage":  {"what": "Download Docker sorter images, delete downloaded images, "
                         "and clear saved sort outputs — all in one place."},
+    "probe":   {"what": "Choose, edit, add, or remove the electrode-geometry profile. "
+                        "Geometry decides which sorters fit and powers the spatial views."},
     "verify":  {"what": "Run an environment smoke test (library versions, loaders)."},
     "theme":   {"what": "Pick an accent colour for the menu (saved for next time)."},
     "help":    {"what": "What each step does, sorters, Docker, and data files."},
@@ -695,13 +742,16 @@ class MenuController:
             self.theme_name = ui.DEFAULT_THEME
         self.accent = ui.THEMES[self.theme_name]
         self.use_docker = bool(cfg.get("use_docker", False))
-        self.animate = bool(cfg.get("animate", True))   # crest animation (default on)
         self.sorter_params = dict(cfg.get("sorter_params", {}))
         self.sorters = sorter_registry.runnable(self.use_docker) or [sorter_registry.default_sorter()]
         want = args.sorter if args.sorter else sorter_registry.default_sorter()
         self.active_sorter = want if want in self.sorters else self.sorters[0]
         self.args.sorter = self.active_sorter
         self.want_welcome = not bool(cfg.get("seen_welcome", False))
+        self.active_probe = cfg.get("active_probe", probes.DEFAULT_PROBE)
+        if probes.get(self.active_probe) is None:
+            self.active_probe = probes.DEFAULT_PROBE
+        self.want_probe_setup = not bool(cfg.get("seen_probe_setup", False))
         self.active_idx = 0
         self.reload()
 
@@ -736,19 +786,14 @@ class MenuController:
         _save_config(self.cfg)
         return self.accent
 
-    def set_animate(self, on: bool) -> bool:
-        self.animate = bool(on)
-        self.cfg["animate"] = self.animate
-        _save_config(self.cfg)
-        return self.animate
-
     def reload(self) -> None:
         self.pipeline = _pipeline_rows(self.args.data_dir, self.active_sorter)
         # Snapshot the installed set so per-keystroke action_explain() reuses it via
         # uses_docker(..., installed_set=) instead of re-probing SpikeInterface each
         # key. installed() is process-cached, so this is ~0 ms after the first call.
         self._installed = sorter_registry.installed()
-        self.infos = _catalog(self.active_sorter, self.use_docker)
+        self.infos = _catalog(self.active_sorter, self.use_docker,
+                              probes.get(self.active_probe))
         # Surface the count of saved per-sorter param overrides so the dashboard's
         # Selected-sorter card can show "· N custom params" (invisible until now once
         # the save toast faded).
@@ -756,6 +801,7 @@ class MenuController:
             info["overrides"] = len(self.sorter_params.get(info["name"], {}))
         self._mark_active()
         self.data_report = _data_report(self.args.data_dir)
+        self.probe_info = self.active_probe_info()
 
     def set_data_dir(self, path: "str | None") -> bool:
         """Point the dashboard at a different recording folder and reload.
@@ -833,6 +879,104 @@ class MenuController:
         self.cfg["seen_welcome"] = True
         _save_config(self.cfg)
 
+    # -- probe geometry -------------------------------------------------------- #
+    def recording_channels(self) -> "int | None":
+        """Best-effort neural (sortable) channel count, parsed from the pipeline detail.
+
+        Returns the NEURAL channel count when the broadband detail distinguishes
+        neural from aux (e.g. '16 neural + 6 aux ch, ...'), otherwise falls back
+        to the total channel count.  Advisory only — the real count is validated by
+        probes.build at sort time."""
+        import re
+        bb = next((r for r in self.pipeline if "Broadband" in r.get("stage", "")), None)
+        if not bb or bb.get("status") == "FAIL":
+            return None
+        detail = bb.get("detail", "")
+        m = re.search(r"(\d+)\s*neural", detail) or re.search(r"(\d+)\s*(?:ch|channel)", detail)
+        return int(m.group(1)) if m else None
+
+    def _probe_match(self, profile) -> tuple[str, str]:
+        """('auto'|'fits'|'mismatch'|'unknown', human detail) vs the recording."""
+        if probes.auto_sizes(profile):
+            return "auto", "auto-sizes to the recording"
+        want = probes.contact_count(profile)
+        have = self.recording_channels()
+        if want is None or have is None:
+            return "unknown", "contact count checked at sort time"
+        if want == have:
+            return "fits", f"matches {have} channels"
+        return "mismatch", f"{want} contacts ≠ {have} recording channels"
+
+    def set_active_probe(self, name: str) -> bool:
+        if probes.get(name) is None:
+            return False
+        self.active_probe = name
+        self.cfg["active_probe"] = name
+        _save_config(self.cfg)
+        self.reload()
+        return True
+
+    def active_probe_info(self) -> dict:
+        prof = probes.get(self.active_probe) or probes.get(probes.DEFAULT_PROBE)
+        feats = probes.geometry_features(prof)
+        match, detail = self._probe_match(prof)
+        return {"name": prof["name"], "label": prof["label"],
+                "summary": probes.summary(prof), "layout": feats["layout"],
+                "density_class": feats["density_class"], "match": match,
+                "match_detail": detail}
+
+    def probe_catalog(self) -> list[dict]:
+        rows = []
+        for prof in probes.library():
+            feats = probes.geometry_features(prof)
+            match, detail = self._probe_match(prof)
+            rows.append({
+                "name": prof["name"], "label": prof["label"], "kind": prof["kind"],
+                "params": dict(prof.get("params", {})),
+                "builtin": prof.get("builtin", False),
+                "active": prof["name"] == self.active_probe,
+                "summary": probes.summary(prof), "n": feats["n"],
+                "density_class": feats["density_class"], "layout": feats["layout"],
+                "auto": probes.auto_sizes(prof), "match": match, "match_detail": detail,
+                "note": prof.get("note", "")})
+        return rows
+
+    def save_probe(self, profile) -> tuple[bool, str]:
+        try:
+            probes.save_profile(profile)
+            self.reload()
+            return True, f"Saved probe {profile['name']}."
+        except Exception as e:  # noqa: BLE001
+            return False, f"Couldn't save probe: {e}"
+
+    def delete_probe(self, name: str) -> tuple[bool, str]:
+        ok, msg = probes.delete_profile(name)
+        if ok and self.active_probe == name:
+            self.active_probe = probes.DEFAULT_PROBE
+            self.cfg["active_probe"] = self.active_probe
+            _save_config(self.cfg)
+        self.reload()
+        return ok, msg
+
+    def duplicate_probe(self, name, new_name, new_label=None) -> dict:
+        dup = probes.duplicate(name, new_name, new_label)
+        self.reload()
+        return dup
+
+    def mark_probe_setup_seen(self) -> None:
+        self.want_probe_setup = False
+        self.cfg["seen_probe_setup"] = True
+        _save_config(self.cfg)
+
+    def sorter_fit(self, name: str) -> dict:
+        return probes.fit(name, probes.get(self.active_probe) or probes.get(probes.DEFAULT_PROBE))
+
+    def catalog_manufacturers(self) -> list[str]:
+        return probes.catalog_manufacturers()
+
+    def catalog_models(self, manufacturer: str) -> list[str]:
+        return probes.catalog_models(manufacturer)
+
     def saved_sorters(self) -> list[str]:
         """Sorters that currently have a saved analyzer (for the compare picker)."""
         return [i["name"] for i in self.infos if i.get("present")]
@@ -894,12 +1038,17 @@ class MenuController:
         size = sorter_registry.image_size(img) if present else None
         return {"image": img, "present": present, "size": size}
 
-    def download_image(self, name: str, on_progress=None, on_status=None) -> tuple[bool, str]:
-        """Pull a sorter's Docker image, streaming progress to the callbacks."""
+    def download_image(self, name: str, on_progress=None, on_status=None,
+                       should_cancel=None) -> tuple[bool, str]:
+        """Pull a sorter's Docker image, streaming progress to the callbacks.
+
+        ``should_cancel`` (optional callable) lets the in-UI download abort the
+        pull mid-stream once the worker is detached from the modal screen."""
         img = sorter_registry.default_docker_image(name)
         if not img:
             return False, f"No Docker image is known for {name}."
-        ok = sorter_registry.pull_docker_image(img, on_progress, on_status)
+        ok = sorter_registry.pull_docker_image(img, on_progress, on_status,
+                                                should_cancel=should_cancel)
         return (True, f"Downloaded {img}") if ok else (False, f"Couldn't download {img}.")
 
     def delete_image(self, name: str) -> tuple[bool, str]:
@@ -931,6 +1080,7 @@ class MenuController:
             argv += ["--docker"]
         if getattr(self.args, "data_dir", None):
             argv += ["--data-dir", str(self.args.data_dir)]
+        argv += ["--probe", self.active_probe]
         overrides = self.get_overrides(self.active_sorter)
         for k, v in overrides.items():
             argv += ["--param", f"{k}={v}"]
@@ -948,6 +1098,7 @@ class MenuController:
 
     def run(self, key: str, span: str | None) -> tuple[bool, str, bool]:
         self.args.sorter = self.active_sorter
+        self.args.probe = self.active_probe
         params_path = None
         if key == "sort":
             self.args.duration = QUICK_SECONDS if span == "quick" else None
@@ -1047,6 +1198,32 @@ def _pick_compare_pair(data_dir):
     if second is None:
         return None
     return (first, second)
+
+
+def _probe_typed(cfg: dict) -> None:
+    """Typed 'Set probe geometry' helper: list available probe profiles, then
+    activate one.  Mirrors the Textual ProbeManager in plain text (one round-trip
+    — intentionally non-parity, no editor, just pick & activate)."""
+    lib = probes.library()
+    active_name = cfg.get("active_probe", probes.DEFAULT_PROBE)
+    rows = [
+        {
+            "name": p["name"],
+            "active": p["name"] == active_name,
+            "summary": probes.summary(p),
+            "builtin": p.get("builtin", False),
+        }
+        for p in lib
+    ]
+    ui.print_probes(rows)
+    opts = [(p["name"], p["name"], probes.summary(p)) for p in lib]
+    opts.append(("__done__", "Done — back to menu", ""))
+    default_idx = next((i for i, (n, _, _) in enumerate(opts) if n == active_name), 0)
+    name = ui.select("Set which probe?", opts, default=default_idx)
+    if name not in (None, "__done__"):
+        cfg["active_probe"] = name
+        _save_config(cfg)
+        ui.note(f"Active probe → {name}")
 
 
 def _manage_sorters_typed(args, use_docker: bool) -> None:
@@ -1244,6 +1421,10 @@ def _menu_fallback(args, cfg: dict, theme: str) -> int:
             active_idx = sorter_list.index(args.sorter) if args.sorter in sorter_list else 0
             last = "Managed sorters"
             continue
+        if action == "probe":
+            _probe_typed(cfg)
+            last = f"Active probe → {cfg.get('active_probe', probes.DEFAULT_PROBE)}"
+            continue
         if action == "help":
             topics = [(k, t, "") for k, t, _b in ui.HELP_TOPICS]
             while True:
@@ -1302,6 +1483,7 @@ def main() -> int:
                         help="Run one action directly (default: interactive menu).")
     parser.add_argument("--data-dir", default=None, help="Folder with the .nev/.nsX (default: repo root).")
     parser.add_argument("--sorter", default=None, help="Active sorter (default: auto).")
+    parser.add_argument("--probe", default=None, help="Active probe profile (internal).")
     parser.add_argument("--duration", type=float, default=None, help="For 'sort': first N seconds only.")
     parser.add_argument("--docker", action="store_true",
                         help="For 'sort': run the sorter in its Docker image.")

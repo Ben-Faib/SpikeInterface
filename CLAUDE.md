@@ -17,6 +17,10 @@ There is no package, no test suite, and no build step — it's loader code (`scr
 Spike sorting **is** possible because the raw broadband `.ns5` is present. Two facts shape how it's done here:
 
 - **No electrode geometry.** The Blackrock files carry no probe/channel map (`get_probe()` raises; there are no channel locations), and the real physical layout is unknown. `read_broadband()` therefore attaches a **placeholder "independent-channel" probe** (`attach_dummy_probe()` — channels laid out in a column 250 µm apart so no two are spatial neighbours). Per-unit results are valid; cross-channel *spatial* info is not physical until a real map is supplied — to swap it in, build a `probeinterface.Probe` and call `recording.set_probe(...)`. Don't tell the user sorting is blocked on geometry; it runs without it.
+
+**Probe geometry layer (`scripts/probes.py` — single source of truth):** `probes.library()` returns all profiles (builtins + any user-added); `probes.get(name)` fetches one; `probes.summary(p)` formats a human line; `probes.build(p, n_channels)` returns a `probeinterface.Probe`; `probes.fit(sorter, p)` → `{rank, reason}` (geometry-sorter compatibility dict). The **default active probe** is `nnx-a1x16-3mm-100` (this recording's real NeuroNexus A1x16-3mm-100-703, 16 contacts, 100 µm pitch); the `independent` placeholder remains available. Profiles persist in **`probes.json`** (git-ignored, like `.si_menu.json`) and the active selection + first-run flag in `.si_menu.json` (`active_probe`, `seen_probe_setup`). Geometry **softly re-ranks sorters**: sorters whose spatial requirements fit the active probe get a `✓` fit badge and are floated to the top of the READY group; misfits are demoted (not hidden). On first run a **`ProbeSetupScreen`** greets the user (Textual only). The **`p` hotkey** and the "Set probe geometry" action (menu item 9 in the typed fallback) open the probe manager/editor. `run_sorting.py` gains `--probe <name>` and `--probe-file <path>` to override the active probe for a single run.
+
+
 - **Sorters are discovered dynamically** via `scripts/sorters.py` (the registry — single source of truth). `installed_sorters()` runnable locally today: `tridesclous2`, `spykingcircus2`, `lupin`, `simple`. Not-installed **CPU** sorters (mountainsort5, herdingspikes, spykingcircus, waveclus, combinato, …) can run via **opt-in Docker** (`run_sorter(..., docker_image=True)`) — Docker is detected at runtime. **GPU sorters** (kilosort*, pykilosort, yass) are shown but never offered here: no NVIDIA GPU, and Docker-on-Mac has no GPU passthrough. `sorters.status(name)` → `local`/`docker`/`gpu`/`unavailable`. For the newcomer-friendly menu the registry also exposes `RECOMMENDED` (the badged `★` default = `tridesclous2`), `DESCRIPTIONS`/`description(name)` (one-line plain-language blurb per sorter, generic fallback for unknowns), and `group_of(name)` → `ready`/`docker`/`gpu`/`unavailable` (a **membership-precedence** group that, unlike `status()`, does *not* depend on the live Docker daemon, so a sorter never jumps groups when Docker starts/stops — installed wins first, so an installed GPU sorter on a GPU box lands in `ready`).
 
 ## Commands
@@ -160,10 +164,9 @@ isn't downloaded** opens the in-UI **`DownloadProgressScreen`** (routing through
 Docker-enable flow first if the daemon is down); Enter on the **Docker toggle row**
 (`#sorters` index 0) flips Docker; Enter on a GPU/unavailable sorter shows the block
 reason; Enter on an action runs it. **1–9** jump-run an action (explore 1 … params
-7, **manage 8**, verify 9; theme/help/quit unnumbered). **x** opens the per-sorter
+7, **manage 8**, **probe 9**; verify/theme/help/quit reachable via the list (verify lost its digit when probe was added)). **x** opens the per-sorter
 **`ManageSorterScreen`** (delete downloaded image / clear saved sort — applicable
-ops only, each confirmed). **t** cycles the active sorter, **m** toggles the crest
-animation, **?** opens **Help** and **d** jumps to its *Data files* topic, **f**
+ops only, each confirmed). **t** cycles the active sorter, **?** opens **Help** and **d** jumps to its *Data files* topic, **f**
 re-points the data folder, `q`/Ctrl-C quit (Esc is a deliberate no-op so a reflexive
 back-press never exits). A width-adaptive footer echoes the active sorter + last
 result. A one-time **WelcomeScreen** greets first-time users (gated by `seen_welcome`
@@ -181,11 +184,19 @@ SI worker tree), reads its stdout, folds each line through the pure
 `scripts/sort_progress.py` protocol (`emit`/`parse_line`/`reduce`; events on stdout,
 human text on stderr — `run_sorting` dup2's fd 1→stderr in json mode so the channel
 stays pure), and renders a **phase checklist + determinate bar + spinner/heartbeat**;
-on success it reloads the dashboard. **In-UI Docker download:**
-`DownloadProgressScreen` pulls the image in a **worker thread**
-(`sorters.pull_docker_image`), marshalling progress to the UI via `call_from_thread`;
-Docker rows show a `⬇ get` / `✓ ready` / `⬇ NN%` badge from the catalog's
-`img_present`. **Manage sorters:** the `manage` action opens `ManageSortersScreen`, a
+on success it reloads the dashboard. **In-UI Docker download:** the pull worker is owned by the **App** (not the modal),
+so the view is **collapsible** — `start_download(name)` runs `sorters.pull_docker_image`
+(now with a `should_cancel` hook) in an App-owned worker thread and opens
+`DownloadProgressScreen`, a pure **telemetry view** over the App's single live
+`download_stats.DownloadSession` (downloaded/total · speed · ETA · elapsed, via the
+stdlib-only `scripts/download_stats.py`: `DownloadStats` EMA speed/eta + `fmt_bytes`/
+`fmt_speed`/`fmt_clock`). `c` collapses the modal back to the dashboard while the
+download continues, leaving the one-row `#dlbar` indicator (`⬇ <name> NN% <speed>
+ETA m:ss`); `w` (`action_watch_download`) re-expands it; `Esc` cancels (sets the
+session's `cancelled` flag → the pull's `should_cancel` breaks). On finish `_dl_finish`
+reloads the catalog (badge/readiness flip) and the indicator shows a transient
+`✓ <name> ready` before clearing. Docker rows still show a `⬇ get`/`✓ ready`/`⬇ NN%`
+badge from the catalog's `img_present`. **Manage sorters:** the `manage` action opens `ManageSortersScreen`, a
 grouped hub over every sorter (per-row `enter`/`g` download, `x` delete image, `c`
 clear saved sort, `r` reload) — destructive ops (`controller.delete_image` →
 `sorters.delete_docker_image`, `controller.clear_saved_sort`) **always confirm**
@@ -207,24 +218,21 @@ carry is **relocated to the `d` Data-files topic**, merged in from
 Textual installed it falls back to the legacy `ui.dashboard_menu()`
 (prompt_toolkit full-screen, else a typed numbered menu), which prepends the same
 missing-data guidance in plain text.
-An **animated firing neuron** sits atop the dashboard, drawn by `CrestWidget`
-(`ui.pick_neuron`/`ui.neuron_frame`/`_NEURON_*`): a single neuron — dendrites →
-soma → axon → action-potential spike — in width-safe box-drawing + full-block `█`
-glyphs only (no `●`/quadrant blocks, the same discipline as the shield), picking
-the largest tier (full→compact→mini→hidden) that fits the live window (or hiding
-it). A slow `set_interval` timer walks a phase on a gentle **receive → fire →
-rest** loop (~6 fps over a ~6 s cycle; rest dominates and identical frames are
-memoised, so idle cost is ~nil), gated by an **`animate`** flag persisted in
-`.si_menu.json` (default on; toggle live with **`m`**). The detailed **blue +
+A **static block-letter "SPIKE" wordmark** sits atop the dashboard, drawn by
+`CrestWidget` (`ui.pick_wordmark`/`ui.wordmark_rows`/`ui._WORDMARK_*`): the letters
+in width-safe glyphs only (full block `█` + spaces, the same discipline as the
+shield), picking the largest tier (full 5-row → compact `S P I K E` one-liner →
+hidden) that fits the live window. It is **not animated** — painted once and
+re-painted on resize/theme change — and is coloured at render time from the live
+accent, so it follows the colour theme. Preview it with
+`scripts/_wordmark_preview.py`. The detailed **blue +
 gold Pitt shield** (the `ui._LOGO_ART` ladder — 21/15/11-col grids of only the
 full block `█` and spaces, every row the same width so it aligns in any monospace
 terminal/font with no ambiguous-width glyphs; heraldry in negative space —
 crenellated turrets, a centre keystone notch, roundels over a blue/gold checky
 band, tapering to the base point) now draws only on the **Welcome screen**
 (`#wcrest`, `ui.SHIELD_FULL`) and the **Help "About"** topic (`ui.SHIELD_COMPACT`),
-not the dashboard top. (`neuron_frame`/`pick_neuron`/`_NEURON_*` replaced the
-brain's `pick_brain`/`_BRAIN_*`/`BRAIN_PINK`, and `scripts/_neuron_art_preview.py`
-replaced `scripts/_brain_art_gen.py`.) The **accent colour is themeable**
+not the dashboard top. The **accent colour is themeable**
 (`ui.THEMES`: periwinkle/sea-green/steel-blue/amber/cyan; default periwinkle),
 driven into the Textual **`$accentcolor`** CSS variable (via
 `App.get_css_variables` + `refresh_css`); it is changed through the *Change colour

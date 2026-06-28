@@ -241,26 +241,6 @@ def test_welcome_shown_once_and_persisted(monkeypatch, tmp_path):
     assert c.cfg.get("seen_welcome") is True
 
 
-def test_animate_defaults_on(monkeypatch, tmp_path):
-    c = _controller(monkeypatch, tmp_path)
-    assert c.animate is True
-
-
-def test_animate_reads_saved_off(monkeypatch, tmp_path):
-    c = _controller(monkeypatch, tmp_path, cfg={"animate": False})
-    assert c.animate is False
-
-
-def test_set_animate_updates_attr_and_persists(monkeypatch, tmp_path):
-    c = _controller(monkeypatch, tmp_path)
-    saved = {}
-    monkeypatch.setattr(M, "_save_config", lambda cfg: saved.update(cfg))
-    assert c.set_animate(False) is False
-    assert c.animate is False
-    assert c.cfg["animate"] is False
-    assert saved.get("animate") is False
-
-
 def test_clear_saved_sort_removes_outputs(monkeypatch, tmp_path):
     import SpikeInterface_Menu as M
     import blackrock_io as bio
@@ -290,6 +270,7 @@ def test_sort_command_builds_argv(monkeypatch, tmp_path):
     import SpikeInterface_Menu as M
     c = M.MenuController.__new__(M.MenuController)
     c.active_sorter = "tridesclous2"
+    c.active_probe = "nnx-a1x16-3mm-100"
     c.use_docker = False
     c.args = type("A", (), {"data_dir": None})()
     c.get_overrides = lambda name: {}
@@ -298,3 +279,83 @@ def test_sort_command_builds_argv(monkeypatch, tmp_path):
     assert "--progress" in argv and "json" in argv
     assert "--sorter" in argv and "tridesclous2" in argv
     assert "--duration" in argv  # quick → duration set
+
+
+def test_active_probe_defaults_to_nnx_a1x16(monkeypatch, tmp_path):
+    c = _controller(monkeypatch, tmp_path, use_docker=False, cfg={})
+    assert c.active_probe == "nnx-a1x16-3mm-100"        # this recording's real probe
+    assert c.active_probe_info()["name"] == "nnx-a1x16-3mm-100"
+
+
+def test_active_probe_honours_saved_cfg(monkeypatch, tmp_path):
+    c = _controller(monkeypatch, tmp_path, use_docker=False, cfg={"active_probe": "independent"})
+    assert c.active_probe == "independent"
+
+
+def test_set_active_probe_persists(monkeypatch, tmp_path):
+    saved = {}
+    c = _controller(monkeypatch, tmp_path, use_docker=False, cfg={})
+    monkeypatch.setattr(M, "_save_config", lambda cfg: saved.update(cfg))
+    assert c.set_active_probe("linear-16-50um") is True
+    assert c.active_probe == "linear-16-50um"
+    assert saved.get("active_probe") == "linear-16-50um"
+
+
+def test_sort_command_includes_probe(monkeypatch, tmp_path):
+    c = _controller(monkeypatch, tmp_path, use_docker=False, cfg={})
+    c.set_active_probe("linear-16-50um")
+    argv = c.sort_command(None)
+    assert "--probe" in argv and "linear-16-50um" in argv
+
+
+def test_probe_catalog_marks_active_and_match(monkeypatch, tmp_path):
+    c = _controller(monkeypatch, tmp_path, use_docker=False, cfg={})
+    rows = c.probe_catalog()
+    default = next(r for r in rows if r["name"] == "nnx-a1x16-3mm-100")
+    assert default["active"] is True
+    indep = next(r for r in rows if r["name"] == "independent")
+    assert indep["auto"] is True and indep["active"] is False
+
+
+def test_catalog_has_fit_and_reranks_for_dense_probe(monkeypatch, tmp_path):
+    c = _controller(monkeypatch, tmp_path, use_docker=True, cfg={})
+    c.set_active_probe("independent")
+    # independent -> tridesclous2 is the recommended (good) default
+    td = next(i for i in c.infos if i["name"] == "tridesclous2")
+    assert "fit" in td and td["fit"]["rank"] == "good"
+    assert td["recommended"] is True
+
+
+def test_geometry_caveat_conditional(monkeypatch, tmp_path):
+    c = _controller(monkeypatch, tmp_path, use_docker=False, cfg={})
+    assert M._geometry_note("independent").startswith("Placeholder")
+    real = M._geometry_note("linear-16-50um")
+    assert "Placeholder" not in real and "linear-16-50um" in real
+
+
+def test_probe_match_uses_neural_count(monkeypatch, tmp_path):
+    """recording_channels() must return the NEURAL count (16) not the total (22).
+
+    The default nnx-a1x16 has 16 contacts: it should read 'fits' against a
+    recording reported as '16 neural + 6 aux ch, ...', not 'mismatch'.
+    A 32-contact probe against the same recording must still read 'mismatch'.
+    """
+    import SpikeInterface_Menu as M
+    import report
+    import argparse
+
+    monkeypatch.setattr(report, "_gather", lambda *a, **k: ({}, [
+        {"stage": "Broadband (.ns5)", "status": "PASS",
+         "detail": "16 neural + 6 aux ch, 132.0s @ 30000 Hz"}]))
+    monkeypatch.setattr(M, "_save_config", lambda cfg: None)
+    args = argparse.Namespace(data_dir=str(tmp_path), sorter=None, duration=None,
+                              docker=False, params_file=None, gui_mode="auto")
+    c = M.MenuController(args, {"use_docker": False})
+
+    assert c.recording_channels() == 16, (
+        "expected neural count 16, got something else — "
+        "recording_channels() is not parsing the neural count from the detail string")
+    assert c.active_probe_info()["match"] == "fits", (
+        "default nnx-a1x16 (16 contacts) should 'fit' 16 neural channels, not 'mismatch'")
+    assert c._probe_match(M.probes.get("linear-32-25um"))[0] == "mismatch", (
+        "linear-32-25um (32 contacts) must not fit 16 neural channels")

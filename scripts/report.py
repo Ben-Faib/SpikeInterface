@@ -80,6 +80,23 @@ def _pick_default_analyzer() -> Path:
     return candidates[-1][2]
 
 
+def _probe_caveat(probe, n_drop=0) -> str:
+    """Geometry note HTML, conditional on the active probe NAME (or None).
+
+    Placeholder/independent → the not-physical warning; a real probe → a calm
+    'geometry: <name>' note (spatial views are then meaningful)."""
+    drop = (f' {n_drop} non-neural analog aux channel(s) were excluded from the sort.'
+            if n_drop else "")
+    if probe in (None, "independent"):
+        return ('<div class="caveat">Placeholder independent-channel probe — cross-channel '
+                'spatial structure (depth / probe map) is not physical.' + drop + '</div>')
+    import probes as _probes  # lazy import (probeinterface; not needed unless a real probe is active)
+    prof = _probes.get(probe)
+    label = prof["label"] if prof else str(probe)
+    return (f'<div class="note">Probe geometry: <strong>{html.escape(label)}</strong>. '
+            'Spatial views reflect this geometry; verify it matches your array.' + drop + '</div>')
+
+
 def _getting_started_html(data_dir) -> str:
     """Prominent fresh-clone guidance shown when no recording is present."""
     folder = str(Path(data_dir).expanduser().resolve()) if data_dir else str(bio.REPO_ROOT)
@@ -101,6 +118,25 @@ def _getting_started_html(data_dir) -> str:
 # --------------------------------------------------------------------------- #
 # Loading: every stage isolated so one failure -> a red row, never a crash.
 # --------------------------------------------------------------------------- #
+def _broadband_detail(r) -> str:
+    """Format the broadband stage detail, distinguishing neural vs aux channels.
+
+    When the recording has a mix of neural and non-neural (aux/analog) channels
+    the detail reads "16 neural + 6 aux ch, ..." so downstream tools can parse
+    the NEURAL count directly (e.g. MenuController.recording_channels()).
+    Falls back to the total count when the split cannot be determined.
+    """
+    total = r.get_num_channels()
+    try:
+        n_neural = len(bio.neural_channel_ids(r))
+    except Exception:  # noqa: BLE001 - detail is best-effort
+        n_neural = total
+    base = f"{r.get_total_duration():.1f}s @ {r.get_sampling_frequency():g} Hz"
+    if 0 < n_neural < total:
+        return f"{n_neural} neural + {total - n_neural} aux ch, {base}"
+    return f"{total} ch, {base}"
+
+
 def _gather(data_dir, analyzer_dir):
     """Load each stage independently. Returns (objects: dict, status: list[dict])."""
     objects, status = {}, []
@@ -117,7 +153,7 @@ def _gather(data_dir, analyzer_dir):
     stage("lfp", "LFP (.ns2)", lambda: bio.read_lfp(data_dir),
           lambda r: f"{r.get_num_channels()} ch, {r.get_total_duration():.1f}s @ {r.get_sampling_frequency():g} Hz")
     stage("broadband", "Broadband (.ns5)", lambda: bio.read_broadband(data_dir),
-          lambda r: f"{r.get_num_channels()} ch, {r.get_total_duration():.1f}s @ {r.get_sampling_frequency():g} Hz")
+          _broadband_detail)
     stage("nev", ".nev online units", lambda: bio.read_spikes(data_dir),
           lambda s: f"{len(s.get_unit_ids())} units (id 0 = unsorted)")
 
@@ -236,7 +272,7 @@ def _render_status(status, data_dir=None) -> str:
             f'<tbody>{rows}</tbody></table>')
 
 
-def _render_footer(status) -> str:
+def _render_footer(status, probe=None) -> str:
     import importlib
     versions = []
     for mod in ["spikeinterface", "neo", "plotly", "numpy", "scipy"]:
@@ -245,11 +281,10 @@ def _render_footer(status) -> str:
         except Exception:  # noqa: BLE001
             versions.append(f"{mod} (not importable)")
     return (f'<p class="note">{html.escape(" · ".join(versions))}</p>'
-            '<div class="caveat">Geometry caveat: the Blackrock files carry no electrode map, '
-            'so sorting uses a placeholder independent-channel probe — per-unit results are valid, '
-            'but cross-channel spatial information is not physical. The broadband stream mixes '
-            '16 neural channels (raw 1–16) with 6 analog aux channels (analog 1–6); the sort '
-            'excludes the analog aux channels by default.</div>')
+            + _probe_caveat(probe)
+            + '<p class="note">The broadband stream mixes 16 neural channels (raw 1–16) '
+              'with 6 analog aux channels (analog 1–6); the sort excludes the analog aux '
+              'channels by default.</p>')
 
 
 def _render_lfp(lfp) -> str:
@@ -334,7 +369,7 @@ def _render_nev(nev) -> str:
             + _fig_html(raster) + _fig_html(rate))
 
 
-def _render_sorted(analyzer, sorter_label, info=None) -> str:
+def _render_sorted(analyzer, sorter_label, info=None, probe=None) -> str:
     if analyzer is None:
         return ('<p class="skip">No saved analyzer found — run a sort from the launcher '
                 '(<code>python scripts/make_report.py</code>).</p>')
@@ -373,12 +408,7 @@ def _render_sorted(analyzer, sorter_label, info=None) -> str:
         f'{tot:.0f}s recording were sorted (e.g. a quick <code>--duration</code> test). The LFP '
         f'and .nev sections above cover the full recording — unit counts are not comparable '
         f'across different windows.</div>' if partial else "")
-    n_drop = info.get("n_dropped_analog")
-    probe_html = ('<div class="caveat">Placeholder independent-channel probe — cross-channel '
-                  'spatial structure (depth / probe map) is not physical.'
-                  + (f' {n_drop} non-neural analog aux channel(s) were excluded from the sort.'
-                     if n_drop else '')
-                  + '</div>')
+    probe_html = _probe_caveat(probe, info.get("n_dropped_analog") or 0)
     return (f'<p class="note">Sorted with {sorter_label} over {dur:.1f}s sorted data, '
             f'{len(unit_ids)} units. Toggle units via the legend.</p>'
             + partial_html + probe_html
@@ -451,7 +481,7 @@ def _render_events(events) -> str:
 # --------------------------------------------------------------------------- #
 # Public entry point
 # --------------------------------------------------------------------------- #
-def build_report(data_dir=None, analyzer_dir=None, out_path=None, sorter_label=None) -> Path:
+def build_report(data_dir=None, analyzer_dir=None, out_path=None, sorter_label=None, probe=None) -> Path:
     analyzer_dir = Path(analyzer_dir) if analyzer_dir else _pick_default_analyzer()
     sorter_label = sorter_label or analyzer_dir.parent.name
     out_path = Path(out_path) if out_path else (OUTPUT_DIR / "report.html")
@@ -463,10 +493,10 @@ def build_report(data_dir=None, analyzer_dir=None, out_path=None, sorter_label=N
         _safe_section("status", "Status & provenance", _render_status, status, data_dir),
         _safe_section("lfp", "LFP (.ns2 @ 1 kHz)", _render_lfp, objects.get("lfp")),
         _safe_section("nev", ".nev online units", _render_nev, objects.get("nev")),
-        _safe_section("sorted", f"Sorted units ({sorter_label})", _render_sorted, objects.get("analyzer"), sorter_label, info),
+        _safe_section("sorted", f"Sorted units ({sorter_label})", _render_sorted, objects.get("analyzer"), sorter_label, info, probe),
         _safe_section("qc", "Quality metrics", _render_qc, objects.get("analyzer")),
         _safe_section("events", "Events", _render_events, objects.get("events")),
-        _safe_section("footer", "About", _render_footer, status),
+        _safe_section("footer", "About", _render_footer, status, probe),
     ]
     out_path.write_text(_html_document("PFCM7 recording report", sections), encoding="utf-8")
     return out_path

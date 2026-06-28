@@ -175,3 +175,27 @@ def test_reporter_substep_disabled_noop():
     rep = rs.Reporter(enabled=False, stream=buf, total_phases=4)
     rep.substep("snr", 1, 8)
     assert buf.getvalue() == ""
+
+
+def test_resolve_probe_defaults_to_active_default():
+    import run_sorting, probes
+    p = run_sorting.resolve_probe(None, None)
+    assert p["name"] == probes.DEFAULT_PROBE == "nnx-a1x16-3mm-100"
+    assert p["kind"] == "linear"
+
+
+def test_resolve_probe_named():
+    import run_sorting
+    p = run_sorting.resolve_probe("linear-16-50um", None)
+    assert p["kind"] == "linear" and p["params"]["n"] == 16
+
+
+def test_resolve_probe_file():
+    import run_sorting
+    p = run_sorting.resolve_probe(None, "/tmp/x.json")
+    assert p["kind"] == "file" and p["params"]["path"] == "/tmp/x.json"
+
+
+def test_resolve_probe_unknown_returns_none():
+    import run_sorting
+    assert run_sorting.resolve_probe("definitely-not-a-real-probe", None) is None
