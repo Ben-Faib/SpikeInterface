@@ -1154,3 +1154,24 @@ async def test_inspecting_shows_fit_line(make_app):
         body = app.query_one("#inspectbody", Static)
         text = body.render().plain if hasattr(body.render(), "plain") else str(body.render())
         assert "Fit" in text
+
+
+async def test_sorter_row_fit_badges(make_app):
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        def plain(info):
+            t = app._sorter_text(info)
+            return t.plain if hasattr(t, "plain") else str(t)
+        base = {"name": "x", "group": "ready", "runnable": True, "recommended": False,
+                "present": False, "units": 0, "duration": 0.0, "active": False,
+                "img_present": None}
+        # good fit on a non-active row -> "✓ fits"
+        assert "✓ fits" in plain({**base, "fit": {"rank": "good", "reason": "g"}})
+        # poor fit -> "△ weak"
+        assert "△ weak" in plain({**base, "fit": {"rank": "poor", "reason": "p"}})
+        # good fit on the ACTIVE row -> NO badge (ACTIVE chip is its signal)
+        assert "✓ fits" not in plain({**base, "active": True, "fit": {"rank": "good", "reason": "g"}})
+        # ok fit -> no badge
+        assert "✓ fits" not in plain({**base, "fit": {"rank": "ok", "reason": "o"}})
+        assert "△ weak" not in plain({**base, "fit": {"rank": "ok", "reason": "o"}})
