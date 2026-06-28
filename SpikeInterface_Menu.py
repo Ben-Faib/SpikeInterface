@@ -161,18 +161,24 @@ def _saved_summary(sorter: str):
         return False, 0, 0.0
 
 
-def _catalog(active: str, use_docker: bool) -> list[dict]:
-    """Full sidebar catalog over EVERY sorter (not just runnable).
+def _catalog(active: str, use_docker: bool, profile: dict | None = None) -> list[dict]:
+    """Full sidebar catalog over EVERY sorter, annotated with geometry fit.
 
-    Group is membership-precedence (stable); runnable is the dynamic, Docker-aware
-    set. Saved-sort summary is filled where an analyzer exists.
-    """
+    ``profile`` is the active probe profile; when given, each row gets a ``fit``
+    {rank,reason}, the ``recommended`` flag follows the top good-fit runnable
+    sorter (falling back to RECOMMENDED), and members are re-ranked within each
+    group (good→ok→poor, then name)."""
+    import probes
     inst = set(sorter_registry.installed())
     docker = sorter_registry.docker_available()
     runnable = set(sorter_registry.runnable(use_docker))
     # Only probe the local image cache when Docker is at least installed; the
     # daemon-installed check is cached per process, so this stays cheap.
     docker_installed = sorter_registry.docker_state() != "not_installed"
+    rec_name = sorter_registry.RECOMMENDED
+    if profile is not None:
+        rec_name = probes.recommended_for(profile, sorter_registry.runnable(use_docker),
+                                          prefer=sorter_registry.RECOMMENDED) or rec_name
     out = []
     for name in sorter_registry.available():
         present, units, duration = _saved_summary(name)
@@ -181,26 +187,32 @@ def _catalog(active: str, use_docker: bool) -> list[dict]:
             "group": sorter_registry.group_of(name, installed_set=inst),
             "status": sorter_registry.status(name, installed_set=inst, docker=docker),
             "runnable": name in runnable,
-            "recommended": name == sorter_registry.RECOMMENDED,
+            "recommended": name == rec_name,
             "description": sorter_registry.description(name),
             "present": present, "units": units, "duration": duration,
             "active": name == active,
+            "fit": probes.fit(name, profile) if profile is not None else {"rank": "ok", "reason": ""},
         }
         group = info["group"]
         if group == "docker":
             img = sorter_registry.default_docker_image(name)
-            present = bool(img) and docker_installed and \
+            present_img = bool(img) and docker_installed and \
                 sorter_registry.docker_image_present(img)
             info["image"] = img
-            info["img_present"] = present
+            info["img_present"] = present_img
             # Cached image size (bytes) so the Manage dialogs can show "~X GB"
             # without a second probe; only queried for an image we already have.
-            info["img_size"] = sorter_registry.image_size(img) if present else None
+            info["img_size"] = sorter_registry.image_size(img) if present_img else None
         else:
             info["image"] = None
             info["img_present"] = None
             info["img_size"] = None
         out.append(info)
+    # Re-rank within each group: good→ok→poor, then name. The sidebar re-buckets by
+    # group preserving this order, so good-fit sorters float to the top of a group.
+    rank = {"good": 0, "ok": 1, "poor": 2}
+    order = {g: n for n, g in enumerate(["ready", "docker", "gpu", "unavailable"])}
+    out.sort(key=lambda i: (order.get(i["group"], 9), rank.get(i["fit"]["rank"], 1), i["name"]))
     return out
 
 
@@ -755,7 +767,8 @@ class MenuController:
         # uses_docker(..., installed_set=) instead of re-probing SpikeInterface each
         # key. installed() is process-cached, so this is ~0 ms after the first call.
         self._installed = sorter_registry.installed()
-        self.infos = _catalog(self.active_sorter, self.use_docker)
+        self.infos = _catalog(self.active_sorter, self.use_docker,
+                              probes.get(self.active_probe))
         # Surface the count of saved per-sorter param overrides so the dashboard's
         # Selected-sorter card can show "· N custom params" (invisible until now once
         # the save toast faded).

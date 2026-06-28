@@ -335,3 +335,12 @@ def test_probe_catalog_marks_active_and_match(monkeypatch, tmp_path):
     assert default["active"] is True
     indep = next(r for r in rows if r["name"] == "independent")
     assert indep["auto"] is True and indep["active"] is False
+
+
+def test_catalog_has_fit_and_reranks_for_dense_probe(monkeypatch, tmp_path):
+    c = _controller(monkeypatch, tmp_path, use_docker=True, cfg={})
+    c.set_active_probe("independent")
+    # independent -> tridesclous2 is the recommended (good) default
+    td = next(i for i in c.infos if i["name"] == "tridesclous2")
+    assert "fit" in td and td["fit"]["rank"] == "good"
+    assert td["recommended"] is True
