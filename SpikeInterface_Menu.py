@@ -638,10 +638,11 @@ _MENU = [
     ("6", "compare", "Compare sorters",         "pick two saved sorts → comparison.html"),
     ("7", "params",  "Edit sorter parameters",  "tune the active sorter (saved)"),
     ("8", "manage",  "Manage sorters",          "download images · delete · clear saved sorts"),
-    ("9", "docker",  "Toggle Docker sorters",   "show/hide not-installed CPU sorters"),
-    ("10", "verify", "Verify install",          "environment smoke test"),
-    ("11", "theme",  "Change colour theme",     "pick an accent colour (saved for next time)"),
-    ("12", "help",   "Help",                    "what each step does · sorters · Docker · data"),
+    ("9",  "probe",  "Set probe geometry",      "pick / edit the electrode geometry"),
+    ("10", "docker", "Toggle Docker sorters",   "show/hide not-installed CPU sorters"),
+    ("11", "verify", "Verify install",          "environment smoke test"),
+    ("12", "theme",  "Change colour theme",     "pick an accent colour (saved for next time)"),
+    ("13", "help",   "Help",                    "what each step does · sorters · Docker · data"),
 ]
 
 # v2 (Textual) action table — (key, title, hint, needs_data). ``needs_data`` dims
@@ -1192,6 +1193,32 @@ def _pick_compare_pair(data_dir):
     return (first, second)
 
 
+def _probe_typed(cfg: dict) -> None:
+    """Typed 'Set probe geometry' helper: list available probe profiles, then
+    activate one.  Mirrors the Textual ProbeManager in plain text (one round-trip
+    — intentionally non-parity, no editor, just pick & activate)."""
+    lib = probes.library()
+    active_name = cfg.get("active_probe", probes.DEFAULT_PROBE)
+    rows = [
+        {
+            "name": p["name"],
+            "active": p["name"] == active_name,
+            "summary": probes.summary(p),
+            "builtin": p.get("builtin", False),
+        }
+        for p in lib
+    ]
+    ui.print_probes(rows)
+    opts = [(p["name"], p["name"], probes.summary(p)) for p in lib]
+    opts.append(("__done__", "Done — back to menu", ""))
+    default_idx = next((i for i, (n, _, _) in enumerate(opts) if n == active_name), 0)
+    name = ui.select("Set which probe?", opts, default=default_idx)
+    if name not in (None, "__done__"):
+        cfg["active_probe"] = name
+        _save_config(cfg)
+        ui.note(f"Active probe → {name}")
+
+
 def _manage_sorters_typed(args, use_docker: bool) -> None:
     """Typed 'Manage sorters' hub: list each sorter's install / image-download /
     saved-sort state, then download an image (blocking, simple progress), delete a
@@ -1386,6 +1413,10 @@ def _menu_fallback(args, cfg: dict, theme: str) -> int:
             pipeline, infos = _load_dashboard(args.data_dir, args.sorter, sorter_list, use_docker)
             active_idx = sorter_list.index(args.sorter) if args.sorter in sorter_list else 0
             last = "Managed sorters"
+            continue
+        if action == "probe":
+            _probe_typed(cfg)
+            last = f"Active probe → {cfg.get('active_probe', probes.DEFAULT_PROBE)}"
             continue
         if action == "help":
             topics = [(k, t, "") for k, t, _b in ui.HELP_TOPICS]

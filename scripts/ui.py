@@ -56,6 +56,12 @@ HELP_TOPICS = [
      ["A 'sorter' is the algorithm that detects neurons. tridesclous2 is the ★",
       "recommended default: fast, reliable, needs no GPU. Others appear in the",
       "sidebar grouped by what your computer can run right now."]),
+    ("probe", "Probe geometry",
+     ["The Blackrock files carry no electrode map, so you choose the geometry.",
+      "Press p (or the 'Set probe geometry' action) to pick a profile: a placeholder",
+      "(independent channels), a standard layout, a Cui-lab preset, or your own.",
+      "Geometry decides which sorters fit — good-fit sorters are badged ✓ and float up.",
+      "NeuroNexus model decoder:  A{shanks}x{sites}-{length}-{pitch_um}-{site_area}."]),
     ("docker", "Docker (optional)",
      ["Docker lets you run extra sorters your computer doesn't have installed,",
       "without installing them yourself. It's optional — the ★ recommended sorter",
@@ -496,6 +502,15 @@ def print_catalog(catalog) -> None:
             dimend = "" if info.get("runnable") else "[/]"
             say(f"  {dim}{star}{info['name']:18} {units:>5}   "
                 f"{info.get('description', '')}{dimend}")
+
+
+def print_probes(rows) -> None:
+    """Plain grouped probe listing for the typed fallback (read-only overview)."""
+    say(f"\n[bold {ACCENT}]PROBE GEOMETRY[/]")
+    for r in rows:
+        mark = "▸" if r.get("active") else " "
+        tag = "" if r.get("builtin") else "  (custom)"
+        say(f"  {mark} {r['name']:26} {r.get('summary','')}{tag}")
 
 
 def stream_detail(files, pipeline):

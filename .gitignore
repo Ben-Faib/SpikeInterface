@@ -54,3 +54,6 @@ desktop.ini
 
 # Local menu preferences (theme, etc.)
 .si_menu.json
+
+# Probe-geometry user library (local, like .si_menu.json)
+probes.json

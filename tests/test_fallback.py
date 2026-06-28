@@ -102,3 +102,9 @@ def test_setup_plain_shows_stream_detail_for_present_files(capsys):
     out = " ".join(capsys.readouterr().out.split())
     assert "30000 Hz" in out and "22 ch" in out      # present broadband detail surfaced
     assert "no events" not in out                     # FAIL/.nev row contributes no detail
+
+
+def test_help_has_probe_topic():
+    import ui
+    keys = [k for k, _t, _b in ui.HELP_TOPICS]
+    assert "probe" in keys
