@@ -166,8 +166,7 @@ Docker-enable flow first if the daemon is down); Enter on the **Docker toggle ro
 reason; Enter on an action runs it. **1–9** jump-run an action (explore 1 … params
 7, **manage 8**, **probe 9**; verify/theme/help/quit reachable via the list (verify lost its digit when probe was added)). **x** opens the per-sorter
 **`ManageSorterScreen`** (delete downloaded image / clear saved sort — applicable
-ops only, each confirmed). **t** cycles the active sorter, **m** toggles the crest
-animation, **?** opens **Help** and **d** jumps to its *Data files* topic, **f**
+ops only, each confirmed). **t** cycles the active sorter, **?** opens **Help** and **d** jumps to its *Data files* topic, **f**
 re-points the data folder, `q`/Ctrl-C quit (Esc is a deliberate no-op so a reflexive
 back-press never exits). A width-adaptive footer echoes the active sorter + last
 result. A one-time **WelcomeScreen** greets first-time users (gated by `seen_welcome`
@@ -185,11 +184,19 @@ SI worker tree), reads its stdout, folds each line through the pure
 `scripts/sort_progress.py` protocol (`emit`/`parse_line`/`reduce`; events on stdout,
 human text on stderr — `run_sorting` dup2's fd 1→stderr in json mode so the channel
 stays pure), and renders a **phase checklist + determinate bar + spinner/heartbeat**;
-on success it reloads the dashboard. **In-UI Docker download:**
-`DownloadProgressScreen` pulls the image in a **worker thread**
-(`sorters.pull_docker_image`), marshalling progress to the UI via `call_from_thread`;
-Docker rows show a `⬇ get` / `✓ ready` / `⬇ NN%` badge from the catalog's
-`img_present`. **Manage sorters:** the `manage` action opens `ManageSortersScreen`, a
+on success it reloads the dashboard. **In-UI Docker download:** the pull worker is owned by the **App** (not the modal),
+so the view is **collapsible** — `start_download(name)` runs `sorters.pull_docker_image`
+(now with a `should_cancel` hook) in an App-owned worker thread and opens
+`DownloadProgressScreen`, a pure **telemetry view** over the App's single live
+`download_stats.DownloadSession` (downloaded/total · speed · ETA · elapsed, via the
+stdlib-only `scripts/download_stats.py`: `DownloadStats` EMA speed/eta + `fmt_bytes`/
+`fmt_speed`/`fmt_clock`). `c` collapses the modal back to the dashboard while the
+download continues, leaving the one-row `#dlbar` indicator (`⬇ <name> NN% <speed>
+ETA m:ss`); `w` (`action_watch_download`) re-expands it; `Esc` cancels (sets the
+session's `cancelled` flag → the pull's `should_cancel` breaks). On finish `_dl_finish`
+reloads the catalog (badge/readiness flip) and the indicator shows a transient
+`✓ <name> ready` before clearing. Docker rows still show a `⬇ get`/`✓ ready`/`⬇ NN%`
+badge from the catalog's `img_present`. **Manage sorters:** the `manage` action opens `ManageSortersScreen`, a
 grouped hub over every sorter (per-row `enter`/`g` download, `x` delete image, `c`
 clear saved sort, `r` reload) — destructive ops (`controller.delete_image` →
 `sorters.delete_docker_image`, `controller.clear_saved_sort`) **always confirm**
@@ -211,24 +218,21 @@ carry is **relocated to the `d` Data-files topic**, merged in from
 Textual installed it falls back to the legacy `ui.dashboard_menu()`
 (prompt_toolkit full-screen, else a typed numbered menu), which prepends the same
 missing-data guidance in plain text.
-An **animated firing neuron** sits atop the dashboard, drawn by `CrestWidget`
-(`ui.pick_neuron`/`ui.neuron_frame`/`_NEURON_*`): a single neuron — dendrites →
-soma → axon → action-potential spike — in width-safe box-drawing + full-block `█`
-glyphs only (no `●`/quadrant blocks, the same discipline as the shield), picking
-the largest tier (full→compact→mini→hidden) that fits the live window (or hiding
-it). A slow `set_interval` timer walks a phase on a gentle **receive → fire →
-rest** loop (~6 fps over a ~6 s cycle; rest dominates and identical frames are
-memoised, so idle cost is ~nil), gated by an **`animate`** flag persisted in
-`.si_menu.json` (default on; toggle live with **`m`**). The detailed **blue +
+A **static block-letter "SPIKE" wordmark** sits atop the dashboard, drawn by
+`CrestWidget` (`ui.pick_wordmark`/`ui.wordmark_rows`/`ui._WORDMARK_*`): the letters
+in width-safe glyphs only (full block `█` + spaces, the same discipline as the
+shield), picking the largest tier (full 5-row → compact `S P I K E` one-liner →
+hidden) that fits the live window. It is **not animated** — painted once and
+re-painted on resize/theme change — and is coloured at render time from the live
+accent, so it follows the colour theme. Preview it with
+`scripts/_wordmark_preview.py`. The detailed **blue +
 gold Pitt shield** (the `ui._LOGO_ART` ladder — 21/15/11-col grids of only the
 full block `█` and spaces, every row the same width so it aligns in any monospace
 terminal/font with no ambiguous-width glyphs; heraldry in negative space —
 crenellated turrets, a centre keystone notch, roundels over a blue/gold checky
 band, tapering to the base point) now draws only on the **Welcome screen**
 (`#wcrest`, `ui.SHIELD_FULL`) and the **Help "About"** topic (`ui.SHIELD_COMPACT`),
-not the dashboard top. (`neuron_frame`/`pick_neuron`/`_NEURON_*` replaced the
-brain's `pick_brain`/`_BRAIN_*`/`BRAIN_PINK`, and `scripts/_neuron_art_preview.py`
-replaced `scripts/_brain_art_gen.py`.) The **accent colour is themeable**
+not the dashboard top. The **accent colour is themeable**
 (`ui.THEMES`: periwinkle/sea-green/steel-blue/amber/cyan; default periwinkle),
 driven into the Textual **`$accentcolor`** CSS variable (via
 `App.get_css_variables` + `refresh_css`); it is changed through the *Change colour

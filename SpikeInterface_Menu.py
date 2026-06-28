@@ -380,11 +380,11 @@ def action_report(args) -> bool:
     return True
 
 
-# The Blackrock files carry no electrode geometry, so a placeholder
-# independent-channel probe is attached (see blackrock_io.attach_dummy_probe).
-# Surface this before any spatial view so the user isn't misled into reading
-# placeholder channel positions / depths as real anatomy.
-_GEOMETRY_CAVEAT = (
+# Geometry note shown before any spatial view, accurate to how the sort was made
+# (read from run_info.json's 'probe'). A real probe (e.g. the NeuroNexus A1x16)
+# makes the probe-map / depth / multi-channel views physical; the independent-channel
+# placeholder does not — so the user isn't misled either way.
+_GEOMETRY_CAVEAT_PLACEHOLDER = (
     "Placeholder electrode geometry (independent-channel dummy probe — the "
     "Blackrock files carry no map). The probe map, unit-location and depth views "
     "are NOT physical; per-unit metrics, waveforms, correlograms and amplitudes "
@@ -400,7 +400,7 @@ def _geometry_note(active_probe: str) -> str:
     views are then meaningful)."""
     import probes
     if active_probe in (None, probes.PLACEHOLDER_PROBE):
-        return _GEOMETRY_CAVEAT
+        return _GEOMETRY_CAVEAT_PLACEHOLDER
     prof = probes.get(active_probe)
     label = prof["label"] if prof else active_probe
     return (f"Probe geometry: {active_probe} — {label}. Spatial views (probe map, "
@@ -742,7 +742,6 @@ class MenuController:
             self.theme_name = ui.DEFAULT_THEME
         self.accent = ui.THEMES[self.theme_name]
         self.use_docker = bool(cfg.get("use_docker", False))
-        self.animate = bool(cfg.get("animate", True))   # crest animation (default on)
         self.sorter_params = dict(cfg.get("sorter_params", {}))
         self.sorters = sorter_registry.runnable(self.use_docker) or [sorter_registry.default_sorter()]
         want = args.sorter if args.sorter else sorter_registry.default_sorter()
@@ -786,12 +785,6 @@ class MenuController:
         self.cfg["theme"] = name
         _save_config(self.cfg)
         return self.accent
-
-    def set_animate(self, on: bool) -> bool:
-        self.animate = bool(on)
-        self.cfg["animate"] = self.animate
-        _save_config(self.cfg)
-        return self.animate
 
     def reload(self) -> None:
         self.pipeline = _pipeline_rows(self.args.data_dir, self.active_sorter)
@@ -1045,12 +1038,17 @@ class MenuController:
         size = sorter_registry.image_size(img) if present else None
         return {"image": img, "present": present, "size": size}
 
-    def download_image(self, name: str, on_progress=None, on_status=None) -> tuple[bool, str]:
-        """Pull a sorter's Docker image, streaming progress to the callbacks."""
+    def download_image(self, name: str, on_progress=None, on_status=None,
+                       should_cancel=None) -> tuple[bool, str]:
+        """Pull a sorter's Docker image, streaming progress to the callbacks.
+
+        ``should_cancel`` (optional callable) lets the in-UI download abort the
+        pull mid-stream once the worker is detached from the modal screen."""
         img = sorter_registry.default_docker_image(name)
         if not img:
             return False, f"No Docker image is known for {name}."
-        ok = sorter_registry.pull_docker_image(img, on_progress, on_status)
+        ok = sorter_registry.pull_docker_image(img, on_progress, on_status,
+                                                should_cancel=should_cancel)
         return (True, f"Downloaded {img}") if ok else (False, f"Couldn't download {img}.")
 
     def delete_image(self, name: str) -> tuple[bool, str]:

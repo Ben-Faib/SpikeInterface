@@ -613,3 +613,37 @@ def test_pull_mid_stream_exception_returns_false(monkeypatch):
     fake_docker = type("D", (), {"from_env": staticmethod(lambda: FakeClient())})
     monkeypatch.setitem(__import__("sys").modules, "docker", fake_docker)
     assert sorters.pull_docker_image("spikeinterface/x:latest") is False
+
+
+def test_pull_docker_image_honours_should_cancel(monkeypatch):
+    # A fake docker client whose pull stream yields forever; should_cancel must
+    # break the loop and return False without consuming the whole stream.
+    import sorters
+
+    class _FakeAPI:
+        def pull(self, repository, tag, stream, decode):
+            i = 0
+            while True:
+                i += 1
+                yield {"status": "Downloading", "id": f"L{i}",
+                       "progressDetail": {"current": i, "total": 1000}}
+
+    class _FakeClient:
+        api = _FakeAPI()
+
+    class _FakeDocker:
+        @staticmethod
+        def from_env():
+            return _FakeClient()
+
+    monkeypatch.setitem(__import__("sys").modules, "docker", _FakeDocker)
+
+    calls = {"n": 0}
+
+    def should_cancel():
+        calls["n"] += 1
+        return calls["n"] >= 3        # cancel after a few events
+
+    ok = sorters.pull_docker_image("img:latest", should_cancel=should_cancel)
+    assert ok is False
+    assert calls["n"] >= 3            # the loop actually polled the hook

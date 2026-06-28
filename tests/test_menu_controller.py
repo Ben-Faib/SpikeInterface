@@ -241,26 +241,6 @@ def test_welcome_shown_once_and_persisted(monkeypatch, tmp_path):
     assert c.cfg.get("seen_welcome") is True
 
 
-def test_animate_defaults_on(monkeypatch, tmp_path):
-    c = _controller(monkeypatch, tmp_path)
-    assert c.animate is True
-
-
-def test_animate_reads_saved_off(monkeypatch, tmp_path):
-    c = _controller(monkeypatch, tmp_path, cfg={"animate": False})
-    assert c.animate is False
-
-
-def test_set_animate_updates_attr_and_persists(monkeypatch, tmp_path):
-    c = _controller(monkeypatch, tmp_path)
-    saved = {}
-    monkeypatch.setattr(M, "_save_config", lambda cfg: saved.update(cfg))
-    assert c.set_animate(False) is False
-    assert c.animate is False
-    assert c.cfg["animate"] is False
-    assert saved.get("animate") is False
-
-
 def test_clear_saved_sort_removes_outputs(monkeypatch, tmp_path):
     import SpikeInterface_Menu as M
     import blackrock_io as bio

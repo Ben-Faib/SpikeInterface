@@ -57,3 +57,5 @@ desktop.ini
 
 # Probe-geometry user library (local, like .si_menu.json)
 probes.json
+# superpowers visual brainstorming companion
+.superpowers/

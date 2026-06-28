@@ -665,100 +665,78 @@ async def test_enter_on_undownloaded_docker_opens_download(make_app):
         assert isinstance(app.screen, menu_app.DownloadProgressScreen)
 
 
-async def test_download_screen_reaches_done_and_reloads(make_app):
-    # The download worker drives the bar via the controller's callbacks and finishes
-    # ✓; closing reloads the catalog so the row flips to the cached badge.
-    app = make_app(use_docker=True)
-    c = app.c
+async def test_download_shows_telemetry_then_collapses_and_expands(make_app):
+    import threading
+    app = make_app(present=True, use_docker=True)
+    app.c.dl_gate = threading.Event()           # hold the worker at the gate step
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        app._highlight_sorter_by_name("mountainsort5")
+        # Start the gated download directly (avoids depending on row indices).
+        app.start_download("mountainsort5")
         await pilot.pause()
-        await pilot.press("enter")
-        await pilot.pause()
+        # The expanded modal is up and shows the stats line (downloaded/total + /s).
         screen = app.screen
         assert isinstance(screen, menu_app.DownloadProgressScreen)
-        # let the worker thread run + marshal its callbacks/finish back to the UI
-        await screen.workers.wait_for_complete()
         await pilot.pause()
-        assert screen._done is not None and screen._done[0] is True
-        assert "mountainsort5" in c.downloaded
-        await pilot.press("enter")                   # close -> _after_download reload
+        body = app.screen.query_one("#dlbody", Static).render().plain
+        assert "100" in body or "/" in body   # a size readout rendered
+        assert "complete" not in body.lower()   # never a false "complete" mid-pull
+        # Collapse: modal closes, the dashboard indicator shows.
+        await pilot.press("c")
         await pilot.pause()
         assert not isinstance(app.screen, menu_app.DownloadProgressScreen)
-        ms = next(i for i in c.infos if i["name"] == "mountainsort5")
-        assert ms["img_present"] is True             # cached after the download
+        dlbar = app.query_one("#dlbar", Static)
+        assert dlbar.has_class("hidden") is False
+        assert "mountainsort5" in dlbar.render().plain
+        # Re-expand with w.
+        await pilot.press("w")
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.DownloadProgressScreen)
+        # Let the worker finish. With the session-scoped clear timer, `_download`
+        # is only nulled 4s after finish, so poll the session's own result flag.
+        sess = app._download
+        app.c.dl_gate.set()
+        for _ in range(50):
+            await pilot.pause()
+            if sess.result is not None:
+                break
+        assert sess.result is not None
+        assert "mountainsort5" in app.c.downloaded
+        # The catalog badge flips: the freshly-pulled image now reads as present.
+        ms = next(i for i in app.c.infos if i["name"] == "mountainsort5")
+        assert ms["img_present"] is True
 
 
-async def test_download_screen_shows_phase_label_and_spinner(make_app):
-    # The on_status callback emits a phase+count string ("Downloading N/M layers" /
-    # "Extracting N/M layers") — the screen renders that string as a label and ticks
-    # a spinner next to it. Gate the fake's completion on a threading.Event so the
-    # pull stays "live" while we inspect the spinner, then release it.
+async def test_download_cancel_sets_flag_and_closes(make_app):
+    # Escape on the expanded download modal cancels: it sets the session's cancel
+    # flag (the worker's should_cancel hook breaks the pull) and closes the modal.
     import threading
-    app = make_app(use_docker=True)
-    gate = threading.Event()
-
-    def slow_download(name, on_progress=None, on_status=None):
-        app.c.downloaded.append(name)
-        if on_status:
-            on_status("Downloading 1/2 layers")
-        if on_progress:
-            on_progress(40, 100)
-        gate.wait(5)                              # block the worker until released
-        app.c._cached_images.add(name)
-        return True, f"Downloaded {name}"
-
-    app.c.download_image = slow_download
+    app = make_app(present=True, use_docker=True)
+    app.c.dl_gate = threading.Event()           # hold the worker at the gate step
     async with app.run_test(size=(110, 40)) as pilot:
-        screen = menu_app.DownloadProgressScreen(app.c, "mountainsort5", app._accent)
-        await app.push_screen(screen)
         await pilot.pause()
-        # the spinner timer exists + the worker is still mid-pull (not done yet)
-        assert screen._spin_timer is not None
-        assert screen._done is None
-        body = screen.query_one("#dlbody", Static).render().plain
-        assert "Downloading" in body                  # phase string, not a per-layer status
-        spin0 = screen._spin
-        screen._tick_spinner()                         # the spinner ticks while live
-        assert screen._spin != spin0
-        # an indeterminate phase (Verifying / Extracting) still reads as the phase str
-        screen._set_status("Extracting 2/2 layers")
+        app.start_download("mountainsort5")
         await pilot.pause()
-        body = screen.query_one("#dlbody", Static).render().plain
-        assert "Extracting" in body
-        gate.set()                                     # let the worker finish + unmount
-        await screen.workers.wait_for_complete()
+        assert isinstance(app.screen, menu_app.DownloadProgressScreen)
+        sess = app._download
+        await pilot.press("escape")             # the screen's action_cancel
         await pilot.pause()
+        assert not isinstance(app.screen, menu_app.DownloadProgressScreen)
+        assert sess.cancelled is True
+        assert app._download is None or app._download.cancelled is True
+        # Release the gate so the worker exits cleanly (returns a cancelled result).
+        app.c.dl_gate.set()
+        for _ in range(50):
+            await pilot.pause()
+            if sess.result is not None:
+                break
 
 
-async def test_download_screen_never_shows_complete_below_100(make_app):
-    # Regression: the status label is the phase string, NEVER a raw per-layer status
-    # like "Download complete" while the aggregate pct is still < 100. Use a screen
-    # whose worker is a no-op so it stays mid-pull (the spinner timer still starts in
-    # on_mount), then drive the update methods directly.
-    class _NoPull(menu_app.DownloadProgressScreen):
-        def _pull(self):                              # never calls _finish -> stays live
-            pass
-
-    app = make_app(use_docker=True)
+async def test_download_indicator_hidden_when_idle(make_app):
+    app = make_app(present=True, use_docker=True)
     async with app.run_test(size=(110, 40)) as pilot:
-        screen = _NoPull(app.c, "mountainsort5", app._accent)
-        await app.push_screen(screen)
         await pilot.pause()
-        assert screen._spin_timer is not None and screen._done is None
-        screen._set_pct(20)
-        screen._set_status("Downloading 1/3 layers")
-        await pilot.pause()
-        body = screen.query_one("#dlbody", Static).render().plain
-        assert "20%" in body
-        assert "complete" not in body.lower()          # no false "complete" at 20%
-        # only when finished does the ✓ done line appear (and pct snaps to 100)
-        screen._finish(True, "Downloaded mountainsort5")
-        await pilot.pause()
-        body = screen.query_one("#dlbody", Static).render().plain
-        assert "100%" in body and "✓" in body
-        assert screen._spin_timer is None              # spinner stopped on finish
+        assert app.query_one("#dlbar", Static).has_class("hidden") is True
 
 
 async def test_enter_on_undownloaded_docker_offers_docker_when_daemon_down(make_app):
@@ -1037,81 +1015,69 @@ def test_result_style_amber_for_warning():
     assert menu_app._result_style(False, "✗ Sorted x") == "#f85149"
 
 
-# --- firing-neuron crest + preserved Pitt shield -------------------------- #
-def test_neuron_tiers_equal_width():
-    for tier in (ui._NEURON_FULL, ui._NEURON_COMPACT, ui._NEURON_MINI):
-        widths = {len(row) for row in tier.rest}
-        assert len(widths) == 1, f"ragged neuron tier widths: {widths}"
+# --- wordmark crest ------------------------------------------------------- #
+def test_wordmark_tiers_equal_width():
+    for tier in (ui._WORDMARK_FULL, ui._WORDMARK_COMPACT):
+        widths = {len(row) for row in tier}
+        assert len(widths) == 1, f"ragged wordmark tier widths: {widths}"
 
 
-def test_neuron_frame_width_invariant():
-    for tier in (ui._NEURON_FULL, ui._NEURON_COMPACT, ui._NEURON_MINI):
-        W = len(tier.rest[0])
-        for phase in (0.0, 0.5, 0.80, 0.96):
-            for row in ui.neuron_frame(tier, phase):
-                assert sum(len(seg) for _, seg in row) == W
+def test_wordmark_uses_only_block_and_space():
+    chars = {ch for row in ui._WORDMARK_FULL for ch in row}
+    assert chars <= {"█", " "}, f"non-block glyphs in wordmark: {chars}"
 
 
-def test_neuron_rest_has_no_spark():
-    styles = {s for row in ui.neuron_frame(ui._NEURON_FULL, 0.0) for s, _ in row}
-    assert ui.NEURON_SPARK not in styles
-    assert ui.NEURON_BODY in styles
+def test_pick_wordmark_drops_then_hides():
+    assert ui.pick_wordmark(200, 60) == ui._WORDMARK_FULL          # roomy -> full
+    assert ui.pick_wordmark(200, 60, reserve=58) == ui._WORDMARK_COMPACT  # short -> compact
+    assert ui.pick_wordmark(4, 60) == []                            # too narrow -> hidden
 
 
-def test_neuron_fire_has_spark():
-    styles = {s for row in ui.neuron_frame(ui._NEURON_FULL, 0.96) for s, _ in row}
-    assert ui.NEURON_SPARK in styles
+def test_wordmark_rows_colours_blocks_with_accent():
+    rows = ui.wordmark_rows(ui._WORDMARK_FULL, "#abcdef")
+    styles = {s for row in rows for s, seg in row if seg.strip()}
+    assert styles == {"#abcdef"}                                    # every block run is accent
+    # width is preserved row-for-row
+    for src, frags in zip(ui._WORDMARK_FULL, rows):
+        assert sum(len(seg) for _, seg in frags) == len(src)
 
 
-async def test_dashboard_crest_is_the_neuron(make_app):
+async def test_dashboard_crest_is_the_wordmark(make_app):
     app = make_app(present=True)
     async with app.run_test(size=(110, 45)) as pilot:
         await pilot.pause()
         crest = app.query_one("#crest", menu_app.CrestWidget)
         assert crest.display is True
         plain = crest.render().plain
-        assert "━" in plain and "█" in plain        # axon + soma, not the shield
+        assert "█" in plain                          # block letters
+        assert "━" not in plain                      # not the old axon glyph
 
 
-async def test_crest_advances_phase_when_animated(make_app):
+async def test_crest_has_no_animation(make_app):
     app = make_app(present=True)
-    app.c.animate = True
     async with app.run_test(size=(110, 45)) as pilot:
         await pilot.pause()
         crest = app.query_one("#crest", menu_app.CrestWidget)
-        assert crest._animate is True
-        p0 = crest._phase
-        crest._tick(); crest._tick()
-        assert crest._phase != p0                    # the timer callback walks phase
+        # Our animation machinery is gone. Assert on attrs that are unambiguously
+        # ours (NB: not Textual's own ``_animate`` BoundAnimator slot, which every
+        # Widget carries regardless of version).
+        assert not hasattr(crest, "_tick")
+        assert not hasattr(crest, "set_animate")
+        assert not hasattr(crest, "_phase")
 
 
-async def test_crest_static_when_disabled(make_app):
+async def test_crest_recolours_with_theme(make_app):
     app = make_app(present=True)
-    app.c.animate = False
     async with app.run_test(size=(110, 45)) as pilot:
         await pilot.pause()
         crest = app.query_one("#crest", menu_app.CrestWidget)
-        assert crest._animate is False
-        before = crest.render().plain
-        crest._tick()                                # no-op while disabled
-        assert crest._phase == 0.0
-        assert crest.render().plain == before
-
-
-async def test_m_key_toggles_animation(make_app):
-    app = make_app(present=True)
-    app.c.animate = True
-    c = app.c
-    async with app.run_test(size=(110, 45)) as pilot:
-        await pilot.pause()
-        crest = app.query_one("#crest", menu_app.CrestWidget)
-        assert crest._animate is True
-        await pilot.press("m")
-        await pilot.pause()
-        assert c.animate is False and crest._animate is False
-        await pilot.press("m")
-        await pilot.pause()
-        assert c.animate is True and crest._animate is True
+        before = {s for s, _ in crest._tier_fragments()}   # accent style in use
+        app.c.theme_name = "amber"                          # fake controller swaps accent
+        # drive the theme-applied path directly (no modal in the test)
+        app._accent = app.c.themes["amber"]
+        app._relayout()
+        after = {s for s, _ in crest._tier_fragments()}
+        assert before != after
 
 
 async def test_welcome_screen_shows_pitt_shield(make_app):

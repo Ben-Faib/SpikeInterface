@@ -403,6 +403,7 @@ def _write_run_info(out: Path, args, **fields) -> None:
         "command": "run_sorting.py",
         "duration_arg": args.duration,
         "keep_analog": args.keep_analog,
+        "probe": args.probe,
         "n_jobs": args.n_jobs,
         "probe": getattr(args, "probe", None),
         **fields,
@@ -987,6 +988,14 @@ def main() -> int:
                       if rep.enabled else contextlib.nullcontext())
         with metrics_tee, metrics_hb:
             _robust_rmtree(out / "analyzer")  # retry past Windows GUI file-locks before overwrite
+            # sparse=False (dense): SpikeInterface defaults to sparse=True, which keeps
+            # only the channels within ~100 µm of each unit's peak. The placeholder probe
+            # (attach_dummy_probe) spaces channels 250 µm apart so NO channel is within that
+            # radius — sparsity would collapse every unit to its single peak channel and the
+            # spikeinterface-gui inspector could then only ever show one channel per unit.
+            # With this small array (16 ch) dense is cheap and always shows the full layout;
+            # it is the honest choice while geometry is a placeholder, and harmless once a
+            # real probe (e.g. NeuroNexus A1x16, 100 µm) is attached.
             analyzer = si.create_sorting_analyzer(
                 sorting, rec, folder=str(out / "analyzer"), format="binary_folder",
                 overwrite=True, sparse=False,
