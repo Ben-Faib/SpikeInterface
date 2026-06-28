@@ -320,6 +320,8 @@ def _self(action: str, args) -> bool:
     cmd = [sys.executable, str(ROOT / "SpikeInterface_Menu.py"), action, "--sorter", args.sorter]
     if args.data_dir:
         cmd += ["--data-dir", args.data_dir]
+    if getattr(args, "probe", None):
+        cmd += ["--probe", args.probe]
     if action == "gui" and getattr(args, "gui_mode", "auto") != "auto":
         cmd += ["--gui-mode", args.gui_mode]
     ui.note(f"$ {' '.join(cmd)}")
@@ -368,7 +370,7 @@ def _open_in_browser(uri: str) -> None:
 def action_report(args) -> bool:
     ui.note(f"Building the report for {args.sorter}…")
     out = report.build_report(data_dir=args.data_dir, analyzer_dir=_analyzer_dir(args.sorter),
-                              sorter_label=args.sorter)
+                              sorter_label=args.sorter, probe=getattr(args, "probe", None))
     uri = out.resolve().as_uri()
     ui.done(f"Report written → {out}")
     ui.link("Open it:", uri)
@@ -387,6 +389,21 @@ _GEOMETRY_CAVEAT = (
     "are NOT physical; per-unit metrics, waveforms, correlograms and amplitudes "
     "ARE valid."
 )
+
+
+def _geometry_note(active_probe: str) -> str:
+    """The geometry caveat, conditional on the active probe.
+
+    For the 'independent' PLACEHOLDER it's the full not-physical warning; for any
+    real profile (incl. the default A1x16) it states the geometry in use (spatial
+    views are then meaningful)."""
+    import probes
+    if active_probe in (None, probes.PLACEHOLDER_PROBE):
+        return _GEOMETRY_CAVEAT
+    prof = probes.get(active_probe)
+    label = prof["label"] if prof else active_probe
+    return (f"Probe geometry: {active_probe} — {label}. Spatial views (probe map, "
+            "unit locations, depth) reflect this geometry; verify it matches your array.")
 
 
 def _has_display() -> bool:
@@ -498,7 +515,7 @@ def action_gui(args) -> bool:
 
     analyzer = si.load_sorting_analyzer(analyzer_dir)
     events = _sigui_events(args.data_dir)  # .nev markers -> the GUI's event view
-    ui.warn(_GEOMETRY_CAVEAT)
+    ui.warn(_geometry_note(getattr(args, "probe", None) or "independent"))
     try:
         if mode == "web":
             ui.say(f"[{ui.ACCENT}]Opening spikeinterface-gui (web mode)[/] — no display "
@@ -536,10 +553,17 @@ def action_traces(args) -> bool:
                 "session. Use X forwarding (ssh -X) or run locally. (The GUI inspector "
                 "has a browser-based web mode; the trace browser does not.)")
         return False
-    ui.warn(_GEOMETRY_CAVEAT)
+    ui.warn(_geometry_note(getattr(args, "probe", None) or "independent"))
     ui.say(f"[{ui.ACCENT}]Opening ephyviewer[/] on the broadband recording "
            f"[{ui.MUTED}](close the window to return) ...[/]")
-    rec = bio.read_broadband(args.data_dir)
+    import probes
+    rec = bio.read_broadband(args.data_dir, attach_probe=False)
+    try:
+        rec = rec.set_probe(probes.build(
+            probes.get(getattr(args, "probe", None) or "independent")
+            or probes.get(probes.DEFAULT_PROBE), rec.get_num_channels()))
+    except Exception:  # noqa: BLE001 - fall back to the placeholder on mismatch
+        rec = bio.attach_dummy_probe(rec)
     try:
         sw.plot_traces({"broadband": rec}, backend="ephyviewer", show_channel_ids=True)  # blocks
     except Exception as e:  # noqa: BLE001 - actionable hint instead of a raw Qt traceback
@@ -1063,11 +1087,11 @@ class MenuController:
 
     def run(self, key: str, span: str | None) -> tuple[bool, str, bool]:
         self.args.sorter = self.active_sorter
+        self.args.probe = self.active_probe
         params_path = None
         if key == "sort":
             self.args.duration = QUICK_SECONDS if span == "quick" else None
             self.args.docker = self.use_docker
-            self.args.probe = self.active_probe
             params_path = _write_params_file(self.get_overrides(self.active_sorter))
             self.args.params_file = params_path
         try:
@@ -1418,6 +1442,7 @@ def main() -> int:
                         help="Run one action directly (default: interactive menu).")
     parser.add_argument("--data-dir", default=None, help="Folder with the .nev/.nsX (default: repo root).")
     parser.add_argument("--sorter", default=None, help="Active sorter (default: auto).")
+    parser.add_argument("--probe", default=None, help="Active probe profile (internal).")
     parser.add_argument("--duration", type=float, default=None, help="For 'sort': first N seconds only.")
     parser.add_argument("--docker", action="store_true",
                         help="For 'sort': run the sorter in its Docker image.")
