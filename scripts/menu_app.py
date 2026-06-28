@@ -2055,6 +2055,11 @@ class SpikeMenuApp(App):
             tag = self._GROUP_ROW_TAG.get(info.get("group"))
             if tag:
                 t.append(f"  ·{tag}", style="dim")
+        fit = info.get("fit") or {}
+        if fit.get("rank") == "good" and not active:
+            t.append("  ✓ fits", style="#3fb950")
+        elif fit.get("rank") == "poor":
+            t.append("  △ weak", style="#d29922")
         # Docker rows carry a download badge so the cached/get-it state is scannable
         # without opening INSPECTING: ✓ ready (cached), ⬇ NN% (pulling), or ⬇ get.
         if info.get("group") == "docker":
@@ -2125,6 +2130,11 @@ class SpikeMenuApp(App):
         desc = info.get("description") or ""
         if desc:
             t.append(desc + "\n\n", style=ui.PRIMARY)
+        fit = info.get("fit") or {}
+        if fit.get("reason"):
+            t.append("Fit for this probe  ", style=ui.SECONDARY)
+            colour = {"good": "#3fb950", "poor": "#d29922"}.get(fit.get("rank"), ui.PRIMARY)
+            t.append(fit["reason"] + "\n\n", style=colour)
         # Generic tuning hint (kept generic — no brittle action-index references).
         t.append("Too few / too many units? Edit the sorter parameters "
                  "(Edit sorter parameters).\n\n", style=ui.SECONDARY)

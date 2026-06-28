@@ -1144,3 +1144,13 @@ async def test_probe_banner_shows_active_probe(make_app):
         await pilot.pause()
         probe = app.query_one("#probebar").render().plain
         assert "PROBE" in probe and "A1x16" in probe
+
+
+# --- Sorter fit badge + INSPECTING fit line ------------------------------ #
+async def test_inspecting_shows_fit_line(make_app):
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        body = app.query_one("#inspectbody", Static)
+        text = body.render().plain if hasattr(body.render(), "plain") else str(body.render())
+        assert "Fit" in text
