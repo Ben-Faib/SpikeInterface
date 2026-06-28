@@ -351,3 +351,31 @@ def test_geometry_caveat_conditional(monkeypatch, tmp_path):
     assert M._geometry_note("independent").startswith("Placeholder")
     real = M._geometry_note("linear-16-50um")
     assert "Placeholder" not in real and "linear-16-50um" in real
+
+
+def test_probe_match_uses_neural_count(monkeypatch, tmp_path):
+    """recording_channels() must return the NEURAL count (16) not the total (22).
+
+    The default nnx-a1x16 has 16 contacts: it should read 'fits' against a
+    recording reported as '16 neural + 6 aux ch, ...', not 'mismatch'.
+    A 32-contact probe against the same recording must still read 'mismatch'.
+    """
+    import SpikeInterface_Menu as M
+    import report
+    import argparse
+
+    monkeypatch.setattr(report, "_gather", lambda *a, **k: ({}, [
+        {"stage": "Broadband (.ns5)", "status": "PASS",
+         "detail": "16 neural + 6 aux ch, 132.0s @ 30000 Hz"}]))
+    monkeypatch.setattr(M, "_save_config", lambda cfg: None)
+    args = argparse.Namespace(data_dir=str(tmp_path), sorter=None, duration=None,
+                              docker=False, params_file=None, gui_mode="auto")
+    c = M.MenuController(args, {"use_docker": False})
+
+    assert c.recording_channels() == 16, (
+        "expected neural count 16, got something else — "
+        "recording_channels() is not parsing the neural count from the detail string")
+    assert c.active_probe_info()["match"] == "fits", (
+        "default nnx-a1x16 (16 contacts) should 'fit' 16 neural channels, not 'mismatch'")
+    assert c._probe_match(M.probes.get("linear-32-25um"))[0] == "mismatch", (
+        "linear-32-25um (32 contacts) must not fit 16 neural channels")

@@ -369,8 +369,9 @@ def _open_in_browser(uri: str) -> None:
 
 def action_report(args) -> bool:
     ui.note(f"Building the report for {args.sorter}…")
+    _probe = _read_run_info(args.sorter).get("probe") or getattr(args, "probe", None)
     out = report.build_report(data_dir=args.data_dir, analyzer_dir=_analyzer_dir(args.sorter),
-                              sorter_label=args.sorter, probe=getattr(args, "probe", None))
+                              sorter_label=args.sorter, probe=_probe)
     uri = out.resolve().as_uri()
     ui.done(f"Report written → {out}")
     ui.link("Open it:", uri)
@@ -515,7 +516,7 @@ def action_gui(args) -> bool:
 
     analyzer = si.load_sorting_analyzer(analyzer_dir)
     events = _sigui_events(args.data_dir)  # .nev markers -> the GUI's event view
-    ui.warn(_geometry_note(getattr(args, "probe", None) or "independent"))
+    ui.warn(_geometry_note(_read_run_info(args.sorter).get("probe") or getattr(args, "probe", None) or "independent"))
     try:
         if mode == "web":
             ui.say(f"[{ui.ACCENT}]Opening spikeinterface-gui (web mode)[/] — no display "
@@ -558,6 +559,9 @@ def action_traces(args) -> bool:
            f"[{ui.MUTED}](close the window to return) ...[/]")
     import probes
     rec = bio.read_broadband(args.data_dir, attach_probe=False)
+    neural = bio.neural_channel_ids(rec)
+    if 0 < len(neural) < rec.get_num_channels():
+        rec = bio.select_channels(rec, neural)
     try:
         rec = rec.set_probe(probes.build(
             probes.get(getattr(args, "probe", None) or "independent")
@@ -884,13 +888,18 @@ class MenuController:
 
     # -- probe geometry -------------------------------------------------------- #
     def recording_channels(self) -> "int | None":
-        """Best-effort broadband channel count, parsed from the pipeline detail.
-        Advisory only — the real count is validated by probes.build at sort time."""
+        """Best-effort neural (sortable) channel count, parsed from the pipeline detail.
+
+        Returns the NEURAL channel count when the broadband detail distinguishes
+        neural from aux (e.g. '16 neural + 6 aux ch, ...'), otherwise falls back
+        to the total channel count.  Advisory only — the real count is validated by
+        probes.build at sort time."""
         import re
         bb = next((r for r in self.pipeline if "Broadband" in r.get("stage", "")), None)
         if not bb or bb.get("status") == "FAIL":
             return None
-        m = re.search(r"(\d+)\s*(?:ch|channel)", bb.get("detail", ""))
+        detail = bb.get("detail", "")
+        m = re.search(r"(\d+)\s*neural", detail) or re.search(r"(\d+)\s*(?:ch|channel)", detail)
         return int(m.group(1)) if m else None
 
     def _probe_match(self, profile) -> tuple[str, str]:

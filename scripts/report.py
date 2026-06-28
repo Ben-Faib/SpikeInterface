@@ -90,7 +90,10 @@ def _probe_caveat(probe, n_drop=0) -> str:
     if probe in (None, "independent"):
         return ('<div class="caveat">Placeholder independent-channel probe — cross-channel '
                 'spatial structure (depth / probe map) is not physical.' + drop + '</div>')
-    return (f'<div class="note">Probe geometry: <strong>{html.escape(str(probe))}</strong>. '
+    import probes as _probes  # lazy import (probeinterface; not needed unless a real probe is active)
+    prof = _probes.get(probe)
+    label = prof["label"] if prof else str(probe)
+    return (f'<div class="note">Probe geometry: <strong>{html.escape(label)}</strong>. '
             'Spatial views reflect this geometry; verify it matches your array.' + drop + '</div>')
 
 
@@ -115,6 +118,25 @@ def _getting_started_html(data_dir) -> str:
 # --------------------------------------------------------------------------- #
 # Loading: every stage isolated so one failure -> a red row, never a crash.
 # --------------------------------------------------------------------------- #
+def _broadband_detail(r) -> str:
+    """Format the broadband stage detail, distinguishing neural vs aux channels.
+
+    When the recording has a mix of neural and non-neural (aux/analog) channels
+    the detail reads "16 neural + 6 aux ch, ..." so downstream tools can parse
+    the NEURAL count directly (e.g. MenuController.recording_channels()).
+    Falls back to the total count when the split cannot be determined.
+    """
+    total = r.get_num_channels()
+    try:
+        n_neural = len(bio.neural_channel_ids(r))
+    except Exception:  # noqa: BLE001 - detail is best-effort
+        n_neural = total
+    base = f"{r.get_total_duration():.1f}s @ {r.get_sampling_frequency():g} Hz"
+    if 0 < n_neural < total:
+        return f"{n_neural} neural + {total - n_neural} aux ch, {base}"
+    return f"{total} ch, {base}"
+
+
 def _gather(data_dir, analyzer_dir):
     """Load each stage independently. Returns (objects: dict, status: list[dict])."""
     objects, status = {}, []
@@ -131,7 +153,7 @@ def _gather(data_dir, analyzer_dir):
     stage("lfp", "LFP (.ns2)", lambda: bio.read_lfp(data_dir),
           lambda r: f"{r.get_num_channels()} ch, {r.get_total_duration():.1f}s @ {r.get_sampling_frequency():g} Hz")
     stage("broadband", "Broadband (.ns5)", lambda: bio.read_broadband(data_dir),
-          lambda r: f"{r.get_num_channels()} ch, {r.get_total_duration():.1f}s @ {r.get_sampling_frequency():g} Hz")
+          _broadband_detail)
     stage("nev", ".nev online units", lambda: bio.read_spikes(data_dir),
           lambda s: f"{len(s.get_unit_ids())} units (id 0 = unsorted)")
 
