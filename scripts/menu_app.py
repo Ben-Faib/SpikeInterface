@@ -1130,6 +1130,72 @@ class WelcomeScreen(ModalScreen):
         self.dismiss(None)
 
 
+class ProbeSetupScreen(ModalScreen):
+    """One-time first-run probe confirmation. The active default is highlighted;
+    keep it (Esc), pick another profile, or open the manager."""
+
+    DEFAULT_CSS = """
+    ProbeSetupScreen { align: center middle; }
+    ProbeSetupScreen > #dialog {
+        width: 72; max-width: 94%; height: auto;
+        border: round $accentcolor; background: $surface; padding: 1 2;
+    }
+    ProbeSetupScreen #pstitle { text-style: bold; color: $accentcolor; padding: 0 0 1 0; }
+    ProbeSetupScreen #psblurb { color: $text-muted; padding: 0 0 1 0; }
+    ProbeSetupScreen OptionList { height: auto; max-height: 14; background: $surface; border: none; }
+    ProbeSetupScreen #psfoot { color: $text-muted; padding: 1 0 0 0; }
+    """
+
+    BINDINGS = [Binding("escape", "skip", "Skip")]
+
+    def __init__(self, controller, accent: str):
+        super().__init__()
+        self._c = controller
+        self._accent = accent
+
+    def compose(self) -> ComposeResult:
+        active = self._c.active_probe
+        self._active_idx = 0
+        opts = []
+        for n, row in enumerate(r for r in self._c.probe_catalog() if r.get("builtin")):
+            is_active = row["name"] == active
+            t = Text("▌ " if is_active else "  ", style=self._accent if is_active else "")
+            t.append(row["label"], style="bold" if is_active else "")
+            t.append(f"   {row['summary']}", style="dim")
+            if is_active:
+                self._active_idx = n
+            opts.append(Option(t, id=f"probe:{row['name']}"))
+        opts.append(Option(Text("Manage probes…", style="bold"), id="__manage__"))
+        opts.append(Option(Text("Keep this probe (change any time with 'p')", style="dim"),
+                           id="__skip__"))
+        info = self._c.active_probe_info()
+        with Vertical(id="dialog"):
+            yield Static("Your probe geometry", id="pstitle")
+            yield Static(f"Active probe: {info['label']}. Keep it, pick another, or open the "
+                         "manager — you can change it any time with 'p'.", id="psblurb")
+            yield NavList(*opts, id="pslist")
+            yield Static("Enter to choose · Esc to keep", id="psfoot")
+
+    def on_mount(self) -> None:
+        ol = self.query_one(OptionList)
+        ol.focus()
+        ol.highlighted = getattr(self, "_active_idx", 0)
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        event.stop()
+        oid = event.option.id or "__skip__"
+        if oid.startswith("probe:"):
+            self._c.set_active_probe(oid.split(":", 1)[1])
+            self.dismiss("set")
+        elif oid == "__manage__":
+            self.dismiss("manage")
+        else:
+            self.dismiss(None)
+
+    def action_skip(self) -> None:
+        self.dismiss(None)
+
+
 class HelpScreen(ModalScreen):
     """Interactive Help: a topic list (left) ↔ scrollable content (right). Absorbs
     the old data-setup checklist as the 'Data files' topic."""
@@ -1479,9 +1545,20 @@ class SpikeMenuApp(App):
         self._relayout()
         if getattr(self.c, "want_welcome", False):
             self.push_screen(WelcomeScreen(), self._after_welcome)
+        elif getattr(self.c, "want_probe_setup", False):
+            self.push_screen(ProbeSetupScreen(self.c, self._accent), self._after_probe_setup)
 
     def _after_welcome(self, _result) -> None:
         self.c.mark_welcome_seen()
+        if getattr(self.c, "want_probe_setup", False):
+            self.push_screen(ProbeSetupScreen(self.c, self._accent), self._after_probe_setup)
+
+    def _after_probe_setup(self, result) -> None:
+        self.c.mark_probe_setup_seen()
+        if result == "manage":
+            self._open_probes()
+        self._render_probebar(self.size.width)
+        self._rebuild_sorters()
 
     def on_resize(self, event) -> None:
         # self.size lags during a resize event; event.size carries the new size.
