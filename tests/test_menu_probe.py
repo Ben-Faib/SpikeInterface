@@ -31,3 +31,13 @@ async def test_probe_setup_skip_keeps_default():
         await pilot.pause()
         assert c.want_probe_setup is False
         assert c.active_probe == before          # default kept, not forced to placeholder
+
+
+async def test_probe_setup_lists_builtin_profiles():
+    c = FakeController(present=True)
+    c.want_probe_setup = True
+    app = menu_app.SpikeMenuApp(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        ol = app.screen.query_one(OptionList)
+        assert ol.option_count >= 3   # ≥1 built-in profile + "Manage probes…" + "Keep this probe"

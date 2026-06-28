@@ -74,15 +74,21 @@ class FakeController:
         self.want_probe_setup = False
         self._probe_lib = [
             {"name": "nnx-a1x16-3mm-100",
-             "label": "NeuroNexus A1x16-3mm-100-703 · 16 ch @ 100 µm",
-             "summary": "16 contacts · linear · 100 µm pitch",
-             "layout": "linear", "density_class": "sparse",
-             "match": "fits", "match_detail": "16 ch matches recording"},
-            {"name": "independent",
-             "label": "Independent channels (placeholder)",
-             "summary": "auto-sizes to the recording · independent channels",
-             "layout": "independent", "density_class": "independent",
-             "match": "auto", "match_detail": "auto-sizes"},
+             "label": "NeuroNexus A1x16-3mm-100-703 · 16 ch @ 100 µm", "kind": "linear",
+             "params": {"n": 16, "pitch_um": 100.0}, "builtin": True, "auto": False,
+             "match": "fits", "match_detail": "matches 16 channels",
+             "summary": "16 contacts · linear · 100 µm pitch", "n": 16,
+             "density_class": "sparse", "layout": "linear", "note": ""},
+            {"name": "independent", "label": "Independent channels (placeholder)",
+             "kind": "independent", "params": {"pitch_um": 250.0}, "builtin": True,
+             "auto": True, "match": "auto", "match_detail": "auto-sizes to the recording",
+             "summary": "auto-sizes · independent channels", "n": None,
+             "density_class": "independent", "layout": "independent", "note": ""},
+            {"name": "linear-16-50um", "label": "Linear · 16 ch @ 50 µm", "kind": "linear",
+             "params": {"n": 16, "pitch_um": 50.0}, "builtin": True, "auto": False,
+             "match": "fits", "match_detail": "matches 16 channels",
+             "summary": "16 contacts · linear · 50 µm pitch", "n": 16,
+             "density_class": "dense", "layout": "linear", "note": ""},
         ]
         self.reload()
 
