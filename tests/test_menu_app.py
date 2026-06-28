@@ -34,7 +34,7 @@ async def test_boots_with_both_lists_and_sorter_focus(make_app):
         sorters = app.query_one("#sorters", OptionList)
         actions = app.query_one("#actions", OptionList)
         assert sorters.get_option_at_index(0).id == "__docker__"
-        assert actions.option_count == 12   # 11 base actions + 'manage'
+        assert actions.option_count == 13   # 11 base actions + 'manage' + 'probe'
         assert sorters.display is True and actions.display is True
         assert sorters.highlighted == _sorter_row(app, "tridesclous2")
         assert app.focused is sorters
@@ -392,15 +392,24 @@ async def test_number_key_opens_param_editor(make_app):
 
 
 async def test_action_run_path_is_guarded(make_app):
-    # Pressing a non-data action runs it via the suspend() path; under the headless
-    # test driver suspend() is unsupported, so the guard must fall back to an
-    # in-place run instead of crashing. After 'manage' was inserted at index 7,
-    # verify is index 8 -> key "9".
+    # A non-data action (verify) runs via the suspend() path; under the headless test
+    # driver suspend() is unsupported, so the guard must fall back to an in-place run
+    # instead of crashing. After 'probe' was inserted at index 8 (key "9"), verify
+    # shifted to index 9 (the 10th slot) and lost its single-digit key. Navigate to
+    # it by option id instead.
     app = make_app(present=True)
     c = app.c
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        await pilot.press("9")          # verify
+        # Focus the ACTIONS pane and highlight the verify option by id.
+        actions = app.query_one("#actions", OptionList)
+        verify_idx = next(
+            i for i in range(actions.option_count)
+            if actions.get_option_at_index(i).id == "verify"
+        )
+        actions.highlighted = verify_idx
+        actions.focus()
+        await pilot.press("enter")      # verify (navigated to by id, not number key)
         await pilot.pause()
         assert ("verify", None) in c.ran
         assert app.is_running           # did not crash out

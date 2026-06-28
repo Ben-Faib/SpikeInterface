@@ -656,6 +656,7 @@ _ACTIONS = [
     ("compare",    "Compare sorters",         "pick two saved sorts → comparison.html",      True),
     ("params",     "Edit sorter parameters",  "tune the active sorter (saved)",              False),
     ("manage",     "Manage sorters",          "download images · delete · clear saved sorts", False),
+    ("probe",      "Set probe geometry",     "pick / edit the electrode geometry",          False),
     ("verify",     "Verify install",          "environment smoke test",                      False),
     ("theme",      "Change colour theme",     "pick an accent colour (saved)",               False),
     ("help",       "Help",                    "what each step does · sorters · Docker · data files", False),
@@ -690,6 +691,8 @@ _ACTION_DETAIL = {
     "params":  {"what": "Tune the active sorter's parameters (saved per sorter)."},
     "manage":  {"what": "Download Docker sorter images, delete downloaded images, "
                         "and clear saved sort outputs — all in one place."},
+    "probe":   {"what": "Choose, edit, add, or remove the electrode-geometry profile. "
+                        "Geometry decides which sorters fit and powers the spatial views."},
     "verify":  {"what": "Run an environment smoke test (library versions, loaders)."},
     "theme":   {"what": "Pick an accent colour for the menu (saved for next time)."},
     "help":    {"what": "What each step does, sorters, Docker, and data files."},

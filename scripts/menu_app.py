@@ -1093,6 +1093,237 @@ class ManageSortersScreen(ModalScreen):
         self.dismiss(True)
 
 
+# Kind -> editable numeric params (label, default) for the probe editor.
+_PROBE_KIND_FIELDS = {
+    "independent": [("pitch_um", 250.0)],
+    "linear": [("n", 16), ("pitch_um", 50.0)],
+    "grid": [("rows", 8), ("cols", 4), ("xpitch_um", 50.0), ("ypitch_um", 50.0)],
+    "tetrode": [("n_tetrodes", 4), ("within_um", 25.0), ("between_um", 300.0)],
+}
+
+
+class ProbeEditorScreen(ModalScreen):
+    """Create/edit a parametric probe profile. Numeric fields per kind + name/label."""
+
+    DEFAULT_CSS = """
+    ProbeEditorScreen { align: center middle; }
+    ProbeEditorScreen > #dialog {
+        width: 72; max-width: 94%; height: auto; max-height: 90%;
+        border: round $accentcolor; background: $surface; padding: 1 2;
+    }
+    ProbeEditorScreen #petitle { text-style: bold; color: $accentcolor; height: 1; }
+    ProbeEditorScreen .perow { height: auto; padding: 0 0 1 0; }
+    ProbeEditorScreen .pelabel { color: $accentcolor; text-style: bold; }
+    ProbeEditorScreen Input { width: 100%; }
+    ProbeEditorScreen #peerror { color: #f85149; height: auto; }
+    ProbeEditorScreen #pefoot { color: $text-muted; height: 1; padding: 1 0 0 0; }
+    """
+
+    BINDINGS = [Binding("escape", "cancel", "Cancel"), Binding("ctrl+s", "save", "Save")]
+
+    def __init__(self, profile, accent):
+        super().__init__()
+        self._profile = profile          # the seed profile (a copy to edit)
+        self._accent = accent
+        self._fields = {}
+
+    def compose(self) -> ComposeResult:
+        kind = self._profile["kind"]
+        params = self._profile.get("params", {})
+        with Vertical(id="dialog"):
+            yield Static(f"Edit probe · {kind}", id="petitle")
+            with Vertical(classes="perow"):
+                yield Label("name (unique id)", classes="pelabel")
+                self._fields["name"] = Input(value=self._profile["name"], id="f_name")
+                yield self._fields["name"]
+            with Vertical(classes="perow"):
+                yield Label("label (shown in the UI)", classes="pelabel")
+                self._fields["label"] = Input(value=self._profile.get("label", ""), id="f_label")
+                yield self._fields["label"]
+            for key, default in _PROBE_KIND_FIELDS.get(kind, []):
+                with Vertical(classes="perow"):
+                    yield Label(key, classes="pelabel")
+                    w = Input(value=str(params.get(key, default)), id=f"f_{key}")
+                    self._fields[key] = w
+                    yield w
+            yield Static("", id="peerror")
+            yield Static("Ctrl+S save · Esc cancel", id="pefoot")
+
+    def on_mount(self) -> None:
+        self._fields["name"].focus()
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def action_save(self) -> None:
+        kind = self._profile["kind"]
+        name = self._fields["name"].value.strip()
+        if not name:
+            self.query_one("#peerror", Static).update("name is required")
+            return
+        params = {}
+        for key, default in _PROBE_KIND_FIELDS.get(kind, []):
+            raw = self._fields[key].value.strip()
+            try:
+                params[key] = int(raw) if isinstance(default, int) else float(raw)
+            except ValueError:
+                self.query_one("#peerror", Static).update(f"{key}: expected a number")
+                return
+        self.dismiss({"name": name, "label": self._fields["label"].value.strip() or name,
+                      "kind": kind, "params": params, "builtin": False, "note": ""})
+
+
+class ProbeManagerScreen(ModalScreen):
+    """Manage probe profiles: activate (enter), new (n), edit (e), duplicate (g),
+    delete (x, user profiles only, confirmed). Shows each profile's summary + match."""
+
+    DEFAULT_CSS = """
+    ProbeManagerScreen { align: center middle; }
+    ProbeManagerScreen > #pmdialog {
+        width: 86; max-width: 96%; height: 90%; max-height: 30;
+        border: round $accentcolor; background: $surface; padding: 1 2;
+    }
+    ProbeManagerScreen #pmtitle { text-style: bold; color: $accentcolor; height: 1; }
+    ProbeManagerScreen #probelist { height: 1fr; border: none; background: $surface; }
+    ProbeManagerScreen #probelist:focus { border: none; }
+    ProbeManagerScreen #pmfoot { color: $text-muted; height: auto; padding: 1 0 0 0; }
+    """
+
+    BINDINGS = [
+        Binding("escape", "close", "Close", show=False),
+        Binding("n", "new", "New", show=False),
+        Binding("e", "edit", "Edit", show=False),
+        Binding("g", "duplicate", "Duplicate", show=False),
+        Binding("x", "delete", "Delete", show=False),
+    ]
+    _NEW_KINDS = [("linear", "Linear"), ("grid", "2-D grid"), ("tetrode", "Tetrodes"),
+                  ("independent", "Independent")]
+
+    def __init__(self, controller, accent: str):
+        super().__init__()
+        self._c = controller
+        self._accent = accent
+        self._last = None
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="pmdialog"):
+            yield Static("Probe geometry", id="pmtitle")
+            yield OptionList(id="probelist")
+            yield Static("", id="pmfoot")
+
+    def on_mount(self) -> None:
+        self.query_one("#pmdialog").border_title = "PROBES"
+        self.query_one("#probelist", OptionList).focus()
+        self._rebuild()
+
+    def _rebuild(self) -> None:
+        ol = self.query_one("#probelist", OptionList)
+        keep = ol.highlighted
+        ol.clear_options()
+        for row in self._c.probe_catalog():
+            ol.add_option(Option(self._row_text(row), id=row["name"]))
+        if ol.option_count:
+            ol.highlighted = keep if (keep is not None and keep < ol.option_count) else 0
+        self._render_foot()
+
+    def _row_text(self, row: dict) -> Text:
+        t = Text()
+        t.append("▌ " if row.get("active") else "  ",
+                 style=self._accent if row.get("active") else "")
+        t.append(row["label"], style="bold" if row.get("active") else "")
+        t.append(f"   {row['summary']}", style="dim")
+        if not row.get("builtin"):
+            t.append("  · custom", style="dim")
+        match = row.get("match")
+        if match == "mismatch":
+            t.append(f"   ⚠ {row.get('match_detail','')}", style="#f0883e")
+        elif match in ("fits", "auto"):
+            t.append("   ✓", style="#3fb950")
+        return t
+
+    def _highlighted(self) -> "dict | None":
+        ol = self.query_one("#probelist", OptionList)
+        if ol.highlighted is None:
+            return None
+        oid = ol.get_option_at_index(ol.highlighted).id
+        return next((r for r in self._c.probe_catalog() if r["name"] == oid), None)
+
+    def _render_foot(self) -> None:
+        f = Text()
+        if self._last is not None:
+            f.append(self._last); f.append("\n")
+        f.append("enter activate · n new · e edit · g duplicate · x delete · Esc close",
+                 style="dim")
+        self.query_one("#pmfoot", Static).update(f)
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        event.stop()
+        row = self._highlighted()
+        if row and self._c.set_active_probe(row["name"]):
+            self._last = Text(f"Active probe → {row['label']}", style=f"bold {self._accent}")
+            self._rebuild()
+
+    def action_new(self) -> None:
+        opts = [(k, lbl, "") for k, lbl in self._NEW_KINDS]
+        self.app.push_screen(ChoiceModal("New probe — which kind?", opts),
+                             self._after_new_kind)
+
+    def _after_new_kind(self, kind) -> None:
+        if not kind:
+            return
+        seed = {"name": f"my-{kind}", "label": f"My {kind}", "kind": kind,
+                "params": {}, "builtin": False, "note": ""}
+        self.app.push_screen(ProbeEditorScreen(seed, self._accent), self._after_edit)
+
+    def action_edit(self) -> None:
+        row = self._highlighted()
+        if row is None:
+            return
+        seed = {"name": row["name"], "label": row["label"], "kind": row["kind"],
+                "params": dict(row.get("params", {})), "builtin": row.get("builtin"),
+                "note": ""}
+        if row.get("builtin"):     # built-ins are immutable -> edit a copy
+            seed["name"] = f"{row['name']}-copy"
+            seed["label"] = f"{row['label']} (copy)"
+        self.app.push_screen(ProbeEditorScreen(seed, self._accent), self._after_edit)
+
+    def _after_edit(self, profile) -> None:
+        if not profile:
+            return
+        ok, msg = self._c.save_probe(profile)
+        self._last = Text(msg, style=_result_style(ok, msg))
+        self._rebuild()
+
+    def action_duplicate(self) -> None:
+        row = self._highlighted()
+        if row is None:
+            return
+        self._c.duplicate_probe(row["name"], f"{row['name']}-copy", f"{row['label']} (copy)")
+        self._last = Text(f"Duplicated {row['name']}", style="#3fb950")
+        self._rebuild()
+
+    def action_delete(self) -> None:
+        row = self._highlighted()
+        if row is None or row.get("builtin"):
+            self._last = Text("built-in profiles can't be deleted (duplicate to edit)",
+                              style="#f0883e")
+            self._render_foot()
+            return
+        name = row["name"]
+        self.app.push_screen(
+            ChoiceModal(f"Delete the probe profile {name}?",
+                        [("confirm", "Delete it", ""), ("cancel", "Keep it", "")]),
+            lambda r: self._confirmed_delete(name) if r == "confirm" else None)
+
+    def _confirmed_delete(self, name: str) -> None:
+        ok, msg = self._c.delete_probe(name)
+        self._last = Text(msg, style=_result_style(ok, msg))
+        self._rebuild()
+
+    def action_close(self) -> None:
+        self.dismiss(True)
+
+
 class WelcomeScreen(ModalScreen):
     """First-launch onboarding (shown once; re-openable from Help)."""
 
@@ -1488,6 +1719,7 @@ class SpikeMenuApp(App):
         # x manages the highlighted sorter (delete image / clear saved sort) — wired
         # to a no-op-safe action now; Stage 5 fills it in.
         Binding("x", "manage_highlighted", "Manage", show=False),
+        Binding("p", "probe", "Probe", show=False),
         Binding("d", "data_help", "Data files", show=False),
         Binding("f", "choose_folder", "Data folder", show=False),
         Binding("question_mark", "help", "Help", show=False),
@@ -2136,6 +2368,24 @@ class SpikeMenuApp(App):
         self._refresh_footer()
         self._render_inspect()
 
+    def action_probe(self) -> None:
+        self._open_probes()
+
+    def _open_probes(self) -> None:
+        self.push_screen(ProbeManagerScreen(self.c, self._accent), self._after_probes)
+
+    def _after_probes(self, _result) -> None:
+        try:
+            self.c.reload()
+            self._rebuild_sorters()
+            self._rebuild_actions()
+        except Exception as e:  # noqa: BLE001
+            self._last = Text(f"reload after probe change failed: {e!r}", style="#f85149")
+        self._render_sortbar(self.size.width)
+        self._render_probebar(self.size.width)
+        self._refresh_footer()
+        self._render_inspect()
+
     def action_cycle_sorter(self) -> None:
         self.c.cycle_active()
         self._rebuild_sorters()
@@ -2312,6 +2562,8 @@ class SpikeMenuApp(App):
             self._open_params()
         elif key == "manage":
             self.push_screen(ManageSortersScreen(self.c, self._accent), self._after_manage)
+        elif key == "probe":
+            self._open_probes()
         elif self._needs_data(key) and not self.c.data_report.get("present"):
             # Guarded BEFORE the sort branch so sort can't open its modal with no data.
             self._last = Text("✗ ", style="bold #f85149") + Text(

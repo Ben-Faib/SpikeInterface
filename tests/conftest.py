@@ -27,6 +27,7 @@ ACTIONS = [
     ("compare", "Compare sorters", "agreement matrix", True),
     ("params", "Edit sorter parameters", "tune the active sorter", False),
     ("manage", "Manage sorters", "download · delete", False),
+    ("probe", "Set probe geometry", "pick / edit geometry", False),
     ("verify", "Verify install", "smoke test", False),
     ("theme", "Change colour theme", "accent", False),
     ("help", "Help", "what each step does · sorters · Docker · data files", False),

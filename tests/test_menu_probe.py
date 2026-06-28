@@ -41,3 +41,40 @@ async def test_probe_setup_lists_builtin_profiles():
         await pilot.pause()
         ol = app.screen.query_one(OptionList)
         assert ol.option_count >= 3   # ≥1 built-in profile + "Manage probes…" + "Keep this probe"
+
+
+async def test_p_opens_probe_manager():
+    app = _app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("p")
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.ProbeManagerScreen)
+
+
+async def test_probe_manager_activate_changes_active():
+    c = FakeController(present=True)
+    app = menu_app.SpikeMenuApp(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("p")
+        await pilot.pause()
+        mgr = app.screen
+        ol = mgr.query_one("#probelist", OptionList)
+        # move to the second profile (linear-16) and activate it
+        for i in range(ol.option_count):
+            if ol.get_option_at_index(i).id == "linear-16-50um":
+                ol.highlighted = i
+                break
+        await pilot.press("enter")
+        await pilot.pause()
+        assert c.active_probe == "linear-16-50um"
+
+
+async def test_probe_action_in_actions_list():
+    app = _app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        actions = app.query_one("#actions", OptionList)
+        ids = [actions.get_option_at_index(i).id for i in range(actions.option_count)]
+        assert "probe" in ids
