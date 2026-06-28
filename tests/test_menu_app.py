@@ -1124,3 +1124,14 @@ async def test_help_about_topic_shows_pitt_shield(make_app):
         await pilot.pause()
         body = app.screen.query_one("#helpbody", Static).render().plain
         assert "█" in body and "University of Pittsburgh" in body
+
+
+# --- PROBE banner -------------------------------------------------------- #
+async def test_probe_banner_shows_active_probe(make_app):
+    # The PROBE banner row shows the active probe label (contains 'A1x16' for the
+    # default NeuroNexus A1x16 probe configured in FakeController).
+    app = make_app()
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        probe = app.query_one("#probebar").render().plain
+        assert "PROBE" in probe and "A1x16" in probe

@@ -116,6 +116,9 @@ class Controller(Protocol):
     use_docker: bool
     animate: bool                       # crest animation on/off (persisted)
     want_welcome: bool
+    active_probe: str
+    want_probe_setup: bool
+    probe_info: dict                    # {name,label,summary,layout,density_class,match,match_detail}
 
     def set_active_by_name(self, name: str) -> bool: ...
     def cycle_active(self) -> None: ...
@@ -128,6 +131,16 @@ class Controller(Protocol):
     def start_docker(self) -> bool: ...
     def active_blocked_on_docker(self) -> bool: ...
     def mark_welcome_seen(self) -> None: ...
+    def active_probe_info(self) -> dict: ...
+    def probe_catalog(self) -> list[dict]: ...
+    def set_active_probe(self, name: str) -> bool: ...
+    def save_probe(self, profile) -> tuple[bool, str]: ...
+    def delete_probe(self, name: str) -> tuple[bool, str]: ...
+    def duplicate_probe(self, name, new_name, new_label=None) -> dict: ...
+    def mark_probe_setup_seen(self) -> None: ...
+    def sorter_fit(self, name: str) -> dict: ...
+    def catalog_manufacturers(self) -> list[str]: ...
+    def catalog_models(self, manufacturer: str) -> list[str]: ...
     def run(self, key: str, span: str | None) -> tuple[bool, str, bool]: ...
 
 
@@ -1347,9 +1360,10 @@ class SpikeMenuApp(App):
        never shifts when the banner switches between its quiet/loud text. */
     #databar { height: 1; margin: 1 2 0 2; }
     #sortbar { height: 1; margin: 0 2 0 2; }
+    #probebar { height: 1; margin: 0 2 1 2; }
     /* On an extreme-short window the banner + title yield their rows to the lists
        (the DATA/SORT info still lives in the d Help topic + the footer). */
-    #databar.collapsed, #sortbar.collapsed, #titlebar.collapsed { display: none; }
+    #databar.collapsed, #sortbar.collapsed, #titlebar.collapsed, #probebar.collapsed { display: none; }
 
     #body { height: 1fr; padding: 1 1 0 1; }
     #body.stacked { layout: vertical; }
@@ -1440,6 +1454,7 @@ class SpikeMenuApp(App):
         yield Static(id="titlebar")
         yield Static(id="databar")
         yield Static(id="sortbar")
+        yield Static(id="probebar")
         with Horizontal(id="body"):
             with Vertical(id="sorterpane"):
                 yield NavList(id="sorters")
@@ -1479,6 +1494,7 @@ class SpikeMenuApp(App):
         self.query_one("#body").set_class(stacked, "stacked")
         self._render_databar(w)
         self._render_sortbar(w)
+        self._render_probebar(w)
         self._refresh_action_title()
         # Hide the INSPECTING panel on shortness so the lists keep their rows (its
         # blurb is non-essential; the lists themselves must never clip). Stacked panes
@@ -1489,16 +1505,16 @@ class SpikeMenuApp(App):
         # subtracted), collapse the title + banner so the lists keep their rows. The
         # footer + the d Help topic still carry the DATA/SORT info.
         tiny = h < self.TINY_ROWS
-        for wid in ("#titlebar", "#databar", "#sortbar"):
+        for wid in ("#titlebar", "#databar", "#sortbar", "#probebar"):
             self.query_one(wid).set_class(tiny, "collapsed")
         # Tiny: drop the pane borders too so two stacked panes fit the few body rows.
         self.query_one("#body").set_class(tiny, "tiny")
         # Crest reserve = chrome (title + banner + its top margin + footer + the
-        # crest's own padding row, ~6 rows; ~3 when tiny-collapsed) + a usable min
+        # crest's own padding row, ~7 rows; ~3 when tiny-collapsed) + a usable min
         # body. Side by side, one pane is ~8 rows; stacked, the two panes need ~6 rows
         # between them PLUS the inspect panel when shown, so reserve more so the crest
         # drops a tier rather than the lists losing rows.
-        chrome = 3 if tiny else 6
+        chrome = 3 if tiny else 8
         if tiny:
             body_min = 2 if stacked else 1     # borderless panes: 1 content row each
         elif stacked:
@@ -1585,6 +1601,24 @@ class SpikeMenuApp(App):
             t.append(f" · {n} custom params", style="dim")
         t.truncate(max(1, width - 2), overflow="ellipsis")
         self.query_one("#sortbar", Static).update(t)
+
+    def _render_probebar(self, width: int) -> None:
+        """The PROBE row: active probe label, summary, and channel-match status."""
+        info = self.c.probe_info
+        t = Text()
+        t.append("PROBE  ", style=ui.SECONDARY)
+        label = info.get("label", info.get("name", "unknown probe"))
+        t.append(label, style=f"bold {self._accent}")
+        summary = info.get("summary", "")
+        if summary:
+            t.append(f" · {summary}", style=ui.PRIMARY)
+        match = info.get("match", "")
+        if match in ("fits", "auto"):
+            t.append(" · ✓", style="#3fb950")
+        elif match == "mismatch":
+            t.append(" · ✗ channel count mismatch", style="bold #f0883e")
+        t.truncate(max(1, width - 2), overflow="ellipsis")
+        self.query_one("#probebar", Static).update(t)
 
     def _refresh_action_title(self) -> None:
         self.query_one("#actionpane").border_title = f"ACTIONS — on {self.c.active_sorter}"

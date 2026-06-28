@@ -70,6 +70,20 @@ class FakeController:
         self.want_welcome = False       # off by default so boot tests see no modal
         self.welcome_seen = False
         self._present = present
+        self.active_probe = "nnx-a1x16-3mm-100"
+        self.want_probe_setup = False
+        self._probe_lib = [
+            {"name": "nnx-a1x16-3mm-100",
+             "label": "NeuroNexus A1x16-3mm-100-703 · 16 ch @ 100 µm",
+             "summary": "16 contacts · linear · 100 µm pitch",
+             "layout": "linear", "density_class": "sparse",
+             "match": "fits", "match_detail": "16 ch matches recording"},
+            {"name": "independent",
+             "label": "Independent channels (placeholder)",
+             "summary": "auto-sizes to the recording · independent channels",
+             "layout": "independent", "density_class": "independent",
+             "match": "auto", "match_detail": "auto-sizes"},
+        ]
         self.reload()
 
     # A small fake universe spanning all four groups. READY sorters come first so
@@ -105,6 +119,8 @@ class FakeController:
                 "duration": 132.0 if present else 0.0,
                 "active": name == self.active_sorter,
                 "overrides": len(self.sorter_params.get(name, {})),
+                "fit": {"rank": "good" if name == "tridesclous2" else "ok",
+                        "reason": f"{name} fit."},
             }
             if group == "docker":
                 # Cached-image state lives in self._cached_images so a download/delete
@@ -130,6 +146,7 @@ class FakeController:
             ],
             "error": None if self._present else "No Blackrock .nev/.nsX files found in '/data/recordings'.",
         }
+        self.probe_info = self.active_probe_info()
 
     def _mark_active(self) -> None:
         for n, info in enumerate(self.infos):
@@ -188,6 +205,51 @@ class FakeController:
     def mark_welcome_seen(self) -> None:
         self.want_welcome = False
         self.welcome_seen = True
+
+    def active_probe_info(self) -> dict:
+        return next((p for p in self._probe_lib if p["name"] == self.active_probe),
+                    self._probe_lib[0])
+
+    def probe_catalog(self) -> list[dict]:
+        return [dict(p, active=(p["name"] == self.active_probe)) for p in self._probe_lib]
+
+    def set_active_probe(self, name: str) -> bool:
+        if any(p["name"] == name for p in self._probe_lib):
+            self.active_probe = name
+            self.probe_info = self.active_probe_info()
+            return True
+        return False
+
+    def save_probe(self, profile) -> tuple[bool, str]:
+        self._probe_lib = [p for p in self._probe_lib if p["name"] != profile["name"]]
+        self._probe_lib.append(profile)
+        return True, f"Saved probe {profile['name']}."
+
+    def delete_probe(self, name: str) -> tuple[bool, str]:
+        self._probe_lib = [p for p in self._probe_lib if p["name"] != name]
+        if self.active_probe == name:
+            self.active_probe = self._probe_lib[0]["name"] if self._probe_lib else "independent"
+        return True, f"Deleted probe {name}."
+
+    def duplicate_probe(self, name, new_name, new_label=None) -> dict:
+        src = next((p for p in self._probe_lib if p["name"] == name), None) or {}
+        dup = dict(src, name=new_name,
+                   label=new_label or f"{src.get('label', name)} copy")
+        self._probe_lib.append(dup)
+        return dup
+
+    def mark_probe_setup_seen(self) -> None:
+        self.want_probe_setup = False
+
+    def sorter_fit(self, name: str) -> dict:
+        return {"rank": "good" if name == "tridesclous2" else "ok",
+                "reason": f"{name} fit."}
+
+    def catalog_manufacturers(self) -> list[str]:
+        return ["NeuroNexus", "Cambridge NeuroTech"]
+
+    def catalog_models(self, manufacturer: str) -> list[str]:
+        return [f"{manufacturer} model A", f"{manufacturer} model B"]
 
     def default_params(self, sorter: str) -> dict:
         return {"detect_threshold": 5.0, "freq_min": 300.0, "apply_preprocessing": True}
