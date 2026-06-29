@@ -1047,9 +1047,35 @@ class MenuController:
         img = sorter_registry.default_docker_image(name)
         if not img:
             return False, f"No Docker image is known for {name}."
+        summary = {"pulled": None, "cached": None}
+
+        def _on_summary(pulled, cached):
+            summary["pulled"], summary["cached"] = pulled, cached
+
         ok = sorter_registry.pull_docker_image(img, on_progress, on_status,
-                                                should_cancel=should_cancel)
-        return (True, f"Downloaded {img}") if ok else (False, f"Couldn't download {img}.")
+                                               should_cancel=should_cancel,
+                                               on_summary=_on_summary)
+        if not ok:
+            return False, f"Couldn't download {img}."
+        # Be honest about cache reuse so an instant pull doesn't read as broken:
+        # SpikeInterface sorter images share base layers, so re-downloading after a
+        # delete often reuses most/all of them (Docker dedupes by content hash).
+        pulled, cached = summary["pulled"], summary["cached"]
+        if pulled == 0 and cached == 0:
+            # No layers transferred and none even listed — Docker satisfied the pull
+            # entirely from its on-disk layer cache (it keeps blobs after `rmi`), so
+            # the image is restored instantly with no download. This is why a
+            # just-deleted image can "re-download" in a blink.
+            return True, (f"{img} ready instantly — Docker restored it from its "
+                          f"layer cache (no download needed)")
+        if pulled == 0 and cached:
+            plural = "s" if cached != 1 else ""
+            return True, (f"{img} ready — reused {cached} cached layer{plural} "
+                          f"(shared with your other sorters; nothing to re-download)")
+        if cached:
+            return True, (f"Downloaded {img} — {pulled} layer"
+                          f"{'s' if pulled != 1 else ''} fetched, {cached} reused from cache")
+        return True, f"Downloaded {img}"
 
     def delete_image(self, name: str) -> tuple[bool, str]:
         img = sorter_registry.default_docker_image(name)
@@ -1276,7 +1302,7 @@ def _manage_sorters_typed(args, use_docker: bool) -> None:
             def _on_status(text):
                 ui.note(str(text))
 
-            def _on_progress(done, total):
+            def _on_progress(done, total, is_bytes=True):
                 pct = int(done / total * 100) if total else 0
                 ui.note(f"  … {pct}%")
 

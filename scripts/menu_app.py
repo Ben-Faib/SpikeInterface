@@ -761,13 +761,25 @@ class DownloadProgressScreen(ModalScreen):
         fill = int(pct / 100 * 24)
         t.append("█" * fill + "░" * (24 - fill), style=self._accent)
         t.append(f"  {pct:3d}%\n\n", style="dim")
-        # Stats block (size · speed ; ETA · elapsed). During verify/extract the byte
-        # readout/speed/ETA may be unknown -> render as "—" (fmt_* handle None).
-        done, total = sess.bytes_done, sess.bytes_total
-        t.append(f"{dlstats.fmt_bytes(done)} / {dlstats.fmt_bytes(total)}"
-                 f"   {dlstats.fmt_speed(st.speed)}\n", style="dim")
-        t.append(f"ETA {dlstats.fmt_clock(st.eta)}"
-                 f"          elapsed {dlstats.fmt_clock(st.elapsed)}", style="dim")
+        # Stats block. Size · speed · ETA only make sense for a real byte transfer;
+        # the extract / cached-layer phases report a layer-count fraction (no bytes),
+        # so we show just the elapsed clock there — never a nonsensical "3 B / 9 B".
+        if getattr(sess, "has_bytes", False) and sess.bytes_total:
+            t.append(f"{dlstats.fmt_bytes(sess.bytes_done)} / "
+                     f"{dlstats.fmt_bytes(sess.bytes_total)}"
+                     f"   {dlstats.fmt_speed(st.speed)}\n", style="dim")
+            t.append(f"ETA {dlstats.fmt_clock(st.eta)}"
+                     f"          elapsed {dlstats.fmt_clock(st.elapsed)}", style="dim")
+        else:
+            # Extract / cached phase: Docker reports no bytes, but the layer-completion
+            # rate gives an estimated ETA (tilde = estimate). Falls back to elapsed-only
+            # until the rate warms up.
+            eta = st.eta
+            if eta is not None:
+                t.append(f"~ETA {dlstats.fmt_clock(eta)}"
+                         f"          elapsed {dlstats.fmt_clock(st.elapsed)}", style="dim")
+            else:
+                t.append(f"elapsed {dlstats.fmt_clock(st.elapsed)}", style="dim")
         if sess.result is not None:
             ok, msg = sess.result
             t.append("\n" + ("✓ " if ok else "✗ ") + msg,
@@ -1920,8 +1932,15 @@ class SpikeMenuApp(App):
             st = sess.stats
             t.append("⬇ ", style=self._accent)
             t.append(f"{sess.name}  ", style="bold")
-            t.append(f"{st.pct:d}%  {dlstats.fmt_speed(st.speed)}  "
-                     f"ETA {dlstats.fmt_clock(st.eta)}", style="dim")
+            # Speed/ETA only when we have real bytes; otherwise just the percent
+            # (the extract / cached phases have no byte rate to quote).
+            if getattr(sess, "has_bytes", False) and sess.bytes_total:
+                t.append(f"{st.pct:d}%  {dlstats.fmt_speed(st.speed)}  "
+                         f"ETA {dlstats.fmt_clock(st.eta)}", style="dim")
+            elif st.eta is not None:
+                t.append(f"{st.pct:d}%  ~ETA {dlstats.fmt_clock(st.eta)}", style="dim")
+            else:
+                t.append(f"{st.pct:d}%", style="dim")
             t.append("   [w expand]", style="#6e7681")
         bar.update(t)
 
@@ -2506,6 +2525,7 @@ class SpikeMenuApp(App):
         sess.phase_caption = "starting…"
         sess.bytes_done = None
         sess.bytes_total = None
+        sess.has_bytes = False         # True only once real byte progress arrives
         self._download = sess
         self._render_dlbar(self.size.width)
         self.run_worker(lambda: self._download_worker(sess), thread=True)
@@ -2513,8 +2533,8 @@ class SpikeMenuApp(App):
                          self._after_download)
 
     def _download_worker(self, sess) -> None:
-        def on_progress(done, total):
-            self.call_from_thread(self._dl_progress, sess, done, total)
+        def on_progress(done, total, is_bytes=True):
+            self.call_from_thread(self._dl_progress, sess, done, total, is_bytes)
 
         def on_status(text):
             self.call_from_thread(self._dl_status, sess, text)
@@ -2530,9 +2550,17 @@ class SpikeMenuApp(App):
         self.call_from_thread(self._dl_finish, sess, ok, msg)
 
     # -- thread-marshalled session mutations (only via call_from_thread) -------- #
-    def _dl_progress(self, sess, done, total) -> None:
-        sess.bytes_done, sess.bytes_total = done, total
-        sess.stats.update(done, total, now=monotonic())
+    def _dl_progress(self, sess, done, total, is_bytes=True) -> None:
+        # stats.update drives the bar percent + elapsed for both unit kinds. The rate
+        # window must never mix bytes with layer-counts, so reset it when the unit
+        # flips. Speed (B/s) is shown only for bytes; for the byte-less extract phase
+        # the same window yields a *layers/sec* rate we turn into an estimated ETA.
+        now = monotonic()
+        if is_bytes != getattr(sess, "has_bytes", None):
+            sess.stats.reset_window(now)
+        sess.stats.update(done, total, now=now)
+        sess.has_bytes = is_bytes
+        sess.bytes_done, sess.bytes_total = (done, total) if is_bytes else (None, None)
         self._render_dlbar(self.size.width)
 
     def _dl_status(self, sess, text) -> None:

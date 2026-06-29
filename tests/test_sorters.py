@@ -508,7 +508,7 @@ def test_pull_progress_reaches_done_equals_total(monkeypatch):
     _install_fake_pull(monkeypatch, _two_layer_pull_events())
     progress = []
     sorters.pull_docker_image("spikeinterface/x:latest",
-                              on_progress=lambda d, t: progress.append((d, t)))
+                              on_progress=lambda d, t, b=True: progress.append((d, t)))
     assert progress, "on_progress must fire"
     done, total = progress[-1]
     assert total > 0
@@ -527,7 +527,7 @@ def test_pull_progress_denominator_never_shrinks_in_download_phase(monkeypatch):
     events = []  # ('status', text) | ('progress', done, total)
     sorters.pull_docker_image(
         "spikeinterface/x:latest",
-        on_progress=lambda d, t: events.append(("progress", d, t)),
+        on_progress=lambda d, t, b=True: events.append(("progress", d, t)),
         on_status=lambda s: events.append(("status", s)),
     )
     phase = None
@@ -553,7 +553,7 @@ def test_pull_extracting_drives_progress_in_extract_phase(monkeypatch):
     statuses = []
     sorters.pull_docker_image(
         "spikeinterface/x:latest",
-        on_progress=lambda d, t: progress.append((d, t)),
+        on_progress=lambda d, t, b=True: progress.append((d, t)),
         on_status=statuses.append,
     )
     # Find where the extract phase begins (first Extracting status).
@@ -566,15 +566,123 @@ def test_pull_extracting_drives_progress_in_extract_phase(monkeypatch):
 
 
 def test_pull_status_image_up_to_date_finishes_done(monkeypatch):
-    """A cached image ('Image is up to date') still reaches Done with no layers."""
+    """A cached image ('Image is up to date') still reaches Done with no layers,
+    and snaps the bar to 100% (not a blank bar) — the real fully-cached re-download
+    shape, where Docker streams only 'Pulling from'/'Digest'/'Status:' lines."""
     events = [
+        {"status": "Pulling from library/x", "id": "latest"},
+        {"status": "Digest: sha256:deadbeef"},
         {"status": "Status: Image is up to date for spikeinterface/x:latest"},
     ]
     _install_fake_pull(monkeypatch, events)
     statuses = []
-    ok = sorters.pull_docker_image("spikeinterface/x:latest", on_status=statuses.append)
+    progress = []
+    ok = sorters.pull_docker_image("spikeinterface/x:latest",
+                                   on_progress=lambda d, t, b=True: progress.append((d, t)),
+                                   on_status=statuses.append)
     assert ok is True
     assert statuses[-1] == "Done"
+    assert progress and progress[-1] == (1, 1)   # bar lands full, never blank at 0
+
+
+def _all_cached_pull_events():
+    """A re-download where every layer is already in Docker's blob cache.
+
+    Deleting a sorter image leaves the underlying layer blobs (SpikeInterface
+    images share base layers across sorters), so re-pulling reports each layer as
+    'Already exists' with NO byte sizes, then a final up-to-date Status line.
+    """
+    return [
+        {"status": "Already exists", "id": "aaaa"},
+        {"status": "Already exists", "id": "bbbb"},
+        {"status": "Already exists", "id": "cccc"},
+        {"status": "Status: Image is up to date for spikeinterface/x:latest"},
+    ]
+
+
+def test_pull_progress_moves_when_all_layers_cached(monkeypatch):
+    """Re-download-after-delete: cached 'Already exists' layers carry no byte
+    sizes, so the byte total is 0. The bar must still advance to 100% by completed
+    -layer count (not sit blank), and the caption must reflect the layers — the
+    'redownload looks broken' bug."""
+    _install_fake_pull(monkeypatch, _all_cached_pull_events())
+    progress = []
+    statuses = []
+    ok = sorters.pull_docker_image(
+        "spikeinterface/x:latest",
+        on_progress=lambda d, t, b=True: progress.append((d, t)),
+        on_status=statuses.append,
+    )
+    assert ok is True
+    assert progress, "on_progress must fire even when every layer is cached"
+    done, total = progress[-1]
+    assert total > 0 and done == total          # bar lands full, never blank at 0
+    assert any("3/3 layers" in s for s in statuses)   # caption reflects the layers
+    assert statuses[-1] == "Done"
+
+
+def test_pull_on_summary_reports_pulled_vs_cached(monkeypatch):
+    """on_summary tells the caller how many layers actually downloaded vs were
+    reused from Docker's cache — so the UI can honestly explain an instant pull."""
+    events = [
+        {"status": "Pulling fs layer", "id": "a"},
+        {"status": "Downloading", "id": "a",
+         "progressDetail": {"current": 100, "total": 100}},
+        {"status": "Download complete", "id": "a"},
+        {"status": "Already exists", "id": "b"},
+        {"status": "Already exists", "id": "c"},
+        {"status": "Status: Downloaded newer image for spikeinterface/x:latest"},
+    ]
+    _install_fake_pull(monkeypatch, events)
+    summary = {}
+    ok = sorters.pull_docker_image(
+        "spikeinterface/x:latest",
+        on_summary=lambda pulled, cached: summary.update(pulled=pulled, cached=cached))
+    assert ok is True
+    assert summary == {"pulled": 1, "cached": 2}
+
+
+def test_pull_on_summary_all_cached(monkeypatch):
+    """A fully cached re-pull reports 0 downloaded, N reused."""
+    _install_fake_pull(monkeypatch, _all_cached_pull_events())   # 3 'Already exists'
+    summary = {}
+    sorters.pull_docker_image(
+        "spikeinterface/x:latest",
+        on_summary=lambda pulled, cached: summary.update(pulled=pulled, cached=cached))
+    assert summary == {"pulled": 0, "cached": 3}
+
+
+def test_delete_docker_image_deep_prunes_and_reports_reclaim(monkeypatch):
+    """Deep delete: after removing the image, prune now-dangling layers and report
+    the space reclaimed (image size + pruned bytes)."""
+    import sorters
+
+    class FakeImg:
+        attrs = {"Size": 500_000_000}
+
+    class FakeImages:
+        def __init__(self):
+            self.removed = []
+            self.pruned_filters = None
+        def get(self, image): return FakeImg()
+        def remove(self, image, force=False): self.removed.append(image)
+        def prune(self, filters=None):
+            self.pruned_filters = filters
+            return {"SpaceReclaimed": 100_000_000}
+
+    imgs = FakeImages()
+
+    class FakeClient:
+        images = imgs
+
+    fake_docker = type("D", (), {"from_env": staticmethod(lambda: FakeClient())})
+    monkeypatch.setitem(__import__("sys").modules, "docker", fake_docker)
+
+    ok, msg = sorters.delete_docker_image("spikeinterface/x:latest")
+    assert ok is True
+    assert imgs.removed == ["spikeinterface/x:latest"]
+    assert imgs.pruned_filters == {"dangling": True}    # safe prune only
+    assert "reclaim" in msg.lower()                      # reports space freed
 
 
 def test_pull_error_event_returns_false(monkeypatch):

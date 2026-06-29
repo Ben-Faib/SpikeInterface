@@ -497,8 +497,11 @@ def _prepare_docker_image(ui: "ConsoleUI", sorter: str) -> None:
         ) as prog:
             task = prog.add_task("downloading", total=None)
 
-            def on_progress(done, total):
-                prog.update(task, completed=done, total=total or None)
+            def on_progress(done, total, is_bytes=True):
+                # is_bytes=False means (done,total) are layer counts (cached pull) —
+                # drop the byte-oriented total so DownloadColumn doesn't show "3 B".
+                prog.update(task, completed=done,
+                            total=(total or None) if is_bytes else None)
 
             def on_status(status):
                 prog.update(task, description=status.lower())

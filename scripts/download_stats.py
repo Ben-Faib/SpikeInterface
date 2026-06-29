@@ -9,37 +9,45 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-# EMA weight for new samples — small enough to smooth the bursty per-event byte
-# deltas the Docker SDK emits, large enough to track real speed changes.
-_EMA_ALPHA = 0.3
 _KB = 1024
 _MB = 1024 * 1024
 _GB = 1024 * 1024 * 1024
 
+# Speed is a moving average over the last few seconds of transfer, NOT a per-event
+# instantaneous rate. Docker reveals bytes in bursts (a whole layer "completes" in
+# one event), so an instantaneous rate spikes wildly; averaging over a window gives
+# a steady, honest "downloaded N bytes over the last W seconds" figure.
+_SPEED_WINDOW_S = 5.0
+# Don't quote a speed until at least this much wall-clock has accrued in the window
+# — early on, one or two sub-second samples divide by a near-zero span and produce a
+# meaningless huge number.
+_SPEED_MIN_SPAN_S = 1.0
+
 
 class DownloadStats:
     """Tracks (done, total) byte samples over an injected monotonic clock and
-    derives percent / smoothed speed / ETA / elapsed. A phase change resets the
-    speed window so the download->extract byte-total reset never yields a
-    negative rate."""
+    derives percent / a windowed average speed / ETA / elapsed. A phase change
+    clears the speed window so the download->extract byte-total reset never yields a
+    spurious rate."""
 
     def __init__(self) -> None:
         self._done = 0
         self._total = 0
         self._start: float | None = None      # first-ever sample time -> elapsed
-        self._last_t: float | None = None      # last sample time (for deltas)
-        self._last_done: int | None = None     # last done (for deltas)
         self._now: float = 0.0
-        self._speed: float | None = None       # EMA bytes/s, None until 2 samples
+        # Recent (time, done_bytes) samples within the speed window — the average
+        # rate is the slope across this window, which smooths Docker's bursty deltas.
+        self._samples: list[tuple[float, int]] = []
+
+    def reset_window(self, now: float) -> None:
+        """Drop accumulated samples (NOT the start clock / elapsed) so the rate
+        re-warms cleanly. Used on a phase change AND when the progress unit flips
+        between bytes and layer-counts — a slope across mixed units is meaningless."""
+        self._samples.clear()
+        self._now = now
 
     def set_phase(self, phase: str, now: float) -> None:
-        # Reset the per-sample delta window (NOT the start clock / elapsed): the new
-        # phase counts bytes from ~0, so a delta against the old phase would be wildly
-        # negative. Speed re-warms from the next two samples.
-        self._last_t = None
-        self._last_done = None
-        self._speed = None
-        self._now = now
+        self.reset_window(now)
 
     def update(self, done: int, total: int, now: float) -> None:
         self._done = done
@@ -47,15 +55,12 @@ class DownloadStats:
         self._now = now
         if self._start is None:
             self._start = now
-        if self._last_t is not None and self._last_done is not None:
-            dt = now - self._last_t
-            dbytes = done - self._last_done
-            if dt > 0 and dbytes >= 0:
-                inst = dbytes / dt
-                self._speed = (inst if self._speed is None
-                               else _EMA_ALPHA * inst + (1 - _EMA_ALPHA) * self._speed)
-        self._last_t = now
-        self._last_done = done
+        self._samples.append((now, done))
+        # Drop samples older than the window, but always keep at least one before the
+        # window edge so the slope spans the full window once it's warm.
+        cutoff = now - _SPEED_WINDOW_S
+        while len(self._samples) > 2 and self._samples[1][0] < cutoff:
+            self._samples.pop(0)
 
     @property
     def pct(self) -> int:
@@ -63,14 +68,24 @@ class DownloadStats:
 
     @property
     def speed(self) -> float | None:
-        return self._speed
+        # Average bytes/s across the sample window. None until the window spans at
+        # least _SPEED_MIN_SPAN_S (so the first reading isn't a divide-by-near-zero).
+        if len(self._samples) < 2:
+            return None
+        t0, d0 = self._samples[0]
+        t1, d1 = self._samples[-1]
+        span = t1 - t0
+        if span < _SPEED_MIN_SPAN_S or d1 < d0:
+            return None
+        return (d1 - d0) / span
 
     @property
     def eta(self) -> float | None:
-        if not self._total or not self._speed or self._speed <= 0:
+        speed = self.speed
+        if not self._total or not speed or speed <= 0:
             return None
         remaining = self._total - self._done
-        return remaining / self._speed if remaining > 0 else 0.0
+        return remaining / speed if remaining > 0 else 0.0
 
     @property
     def elapsed(self) -> float:

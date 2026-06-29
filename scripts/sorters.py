@@ -192,7 +192,7 @@ def docker_image_present(image: str) -> bool:
 
 
 def pull_docker_image(image: str, on_progress=None, on_status=None,
-                      should_cancel=None) -> bool:
+                      should_cancel=None, on_summary=None) -> bool:
     """Pull ``image`` via the Docker SDK, streaming progress. Never raises.
 
     Docker fires its per-layer status strings ("Download complete"/"Pull
@@ -237,6 +237,11 @@ def pull_docker_image(image: str, on_progress=None, on_status=None,
     phase = "downloading"   # 'downloading' -> 'extracting' -> 'done'
     last_status = None
     last_progress = None
+    # Which layers actually transferred vs were reused from Docker's cache — lets
+    # the caller honestly explain an instant "download" that only reused cached
+    # (shared base) layers. Keyed by layer id so repeated events don't double-count.
+    pulled_ids: set = set()
+    cached_ids: set = set()
 
     def _emit_status(text):
         nonlocal last_status
@@ -244,11 +249,15 @@ def pull_docker_image(image: str, on_progress=None, on_status=None,
             last_status = text
             on_status(text)
 
-    def _emit_progress(done, total):
+    def _emit_progress(done, total, is_bytes=True):
+        # ``is_bytes`` tells the consumer whether (done, total) are real byte counts
+        # (so it can show size/speed/ETA) or a fallback layer-count fraction (so it
+        # shows only the bar, never a nonsensical "3 B / 9 B").
         nonlocal last_progress
-        if on_progress and (done, total) != last_progress:
-            last_progress = (done, total)
-            on_progress(done, total)
+        key = (done, total, is_bytes)
+        if on_progress and key != last_progress:
+            last_progress = key
+            on_progress(done, total, is_bytes)
 
     def _counts():
         n = len(layers)
@@ -288,6 +297,7 @@ def pull_docker_image(image: str, on_progress=None, on_status=None,
             elif status_text == "Download complete" and lid:
                 ly = _layer(lid)
                 ly["dl_done"] = True
+                pulled_ids.add(lid)            # this layer actually transferred
                 if ly["dl_total"]:
                     ly["dl_cur"] = ly["dl_total"]
             elif status_text == "Extracting" and lid:
@@ -307,15 +317,27 @@ def pull_docker_image(image: str, on_progress=None, on_status=None,
                 continue
             elif status_text.startswith("Status:"):
                 phase = "done"
+                # A fully up-to-date image streams no layer events at all (just
+                # "Pulling from" / "Digest" / "Status:"), so the bar never moved.
+                # Snap it to 100% so a cached re-download reads as complete, not as
+                # a blank/stuck bar that suddenly vanishes.
+                if last_progress is None:
+                    _emit_progress(1, 1, is_bytes=False)
                 _emit_status("Done")
                 continue
+            elif status_text == "Already exists" and lid:
+                # A cached layer (re-download after delete: the blob is still in
+                # Docker's store, often via a sibling SpikeInterface image's shared
+                # base layers). It carries NO byte sizes, so it can't move the
+                # byte-based bar — but it IS a completed layer. Mark it done and fall
+                # through to the emit block, which advances the bar by layer count.
+                ly = _layer(lid)
+                ly["dl_done"] = True
+                ly["ex_done"] = True
+                cached_ids.add(lid)           # reused from Docker's cache
             else:
-                # Any other per-layer chatter (e.g. "Waiting", "Already exists",
-                # "Pulling from …") is not surfaced as a status string.
-                if status_text == "Already exists" and lid:
-                    ly = _layer(lid)
-                    ly["dl_done"] = True
-                    ly["ex_done"] = True
+                # Any other per-layer chatter (e.g. "Waiting", "Pulling from …") is
+                # not surfaced as a status string.
                 continue
 
             n, n_dl, n_ex = _counts()
@@ -326,6 +348,19 @@ def pull_docker_image(image: str, on_progress=None, on_status=None,
             done, total = _progress_for_phase()
             if total:
                 _emit_progress(done, total)
+            elif n:
+                # No byte sizes known yet (every layer so far is a cached "Already
+                # exists"). Fall back to a completed-layer fraction so the bar still
+                # advances and lands full instead of sitting blank at 0%. Flagged
+                # is_bytes=False so the UI shows only the bar, not a fake byte count.
+                _emit_progress(n_ex if phase == "extracting" else n_dl, n,
+                               is_bytes=False)
+        # Safety: a stream that ended without any progress (no layer events, no
+        # "Status:" line) still shows a complete bar rather than a blank one.
+        if last_progress is None:
+            _emit_progress(1, 1, is_bytes=False)
+        if on_summary:
+            on_summary(len(pulled_ids), len(cached_ids))
         return True
     except Exception:  # noqa: BLE001 - daemon / network failure mid-pull
         return False
@@ -341,13 +376,46 @@ def image_size(image: str) -> "int | None":
         return None
 
 
+def _human_bytes(n: int) -> str:
+    """Compact human size for status messages (e.g. '1.1 GB', '512 MB')."""
+    n = float(n or 0)
+    for unit in ("B", "KB", "MB", "GB", "TB"):
+        if n < 1024 or unit == "TB":
+            return f"{n:.0f} {unit}" if unit in ("B", "KB", "MB") else f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n:.1f} TB"
+
+
 def delete_docker_image(image: str) -> "tuple[bool, str]":
-    """Remove a locally cached image. Returns (ok, human_message). Never raises."""
+    """Remove a locally cached image, deeply. Returns (ok, human_message); never
+    raises.
+
+    A plain ``docker rmi`` already frees every layer unique to ``image`` but keeps
+    layers shared with other present images (SpikeInterface sorter images share a
+    base). This *deep* delete additionally prunes any now-**dangling** layers the
+    removal left behind and reports the total space reclaimed, so the user sees
+    that deleting freed real space — while never touching layers a sibling sorter
+    still uses (that would force those sorters to re-download too).
+    """
     try:
         import docker
 
-        docker.from_env().images.remove(image, force=False)
-        return True, f"Removed Docker image {image}"
+        client = docker.from_env()
+        # Image size first (for the reclaim note) — best-effort, never fatal.
+        try:
+            freed = int(client.images.get(image).attrs.get("Size", 0) or 0)
+        except Exception:  # noqa: BLE001 - size is only cosmetic
+            freed = 0
+        client.images.remove(image, force=False)
+        # Deep delete: drop now-dangling (untagged) layers. Dangling-only is the
+        # SAFE filter — it never removes a layer a tagged sibling sorter still uses.
+        try:
+            pruned = client.images.prune(filters={"dangling": True}) or {}
+            freed += int(pruned.get("SpaceReclaimed", 0) or 0)
+        except Exception:  # noqa: BLE001 - prune is best-effort cleanup
+            pass
+        note = f" (reclaimed ~{_human_bytes(freed)})" if freed else ""
+        return True, f"Removed Docker image {image}{note}"
     except Exception as e:  # noqa: BLE001 - missing image / in use / no SDK / daemon down
         return False, f"Couldn't remove {image}: {e}"
 
