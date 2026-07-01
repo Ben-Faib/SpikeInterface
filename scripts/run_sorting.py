@@ -51,6 +51,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import blackrock_io as bio  # noqa: E402
 import sort_progress as _sp  # noqa: E402  (pure JSON progress protocol)
+import sort_summary as _summary  # noqa: E402  (array/yield headline metrics)
 import sorters  # noqa: E402  (sorter registry: discovery / status / params / run)
 
 VERBOSITY_LEVELS = ["quiet", "normal", "verbose"]
@@ -100,8 +101,13 @@ class Reporter:
     def metrics(self, rows: list, csv: str) -> None:
         self._emit({"t": "metrics", "rows": rows, "csv": csv})
 
-    def done_ok(self, *, units: int, out: str, good=None) -> None:
-        self._emit({"t": "done", "ok": True, "units": units, "good": good, "out": str(out)})
+    def summary(self, card: list, summary: dict) -> None:
+        """The array/yield headline card (six metrics) for the sort screen."""
+        self._emit({"t": "summary", "card": card, "summary": summary})
+
+    def done_ok(self, *, units: int, out: str, good=None, note=None) -> None:
+        self._emit({"t": "done", "ok": True, "units": units, "good": good,
+                    "out": str(out), "note": note})
 
     def error(self, message: str) -> None:
         self._emit({"t": "error", "ok": False, "message": message})
@@ -303,6 +309,32 @@ class ConsoleUI:
             _f = sys.stderr if self._stderr else None
             print("\n" + df.round(3).to_string(), flush=True, file=_f)
             print(f"saved -> {csv_path}", flush=True, file=_f)
+
+    def summary_card(self, summary: dict) -> None:
+        """Render the six-metric array/yield card (always shown when available)."""
+        row = _summary.headline_row(summary)
+        if self._c is not None:
+            from rich import box
+            from rich.table import Table
+
+            table = Table(
+                box=box.SIMPLE_HEAVY,
+                header_style=f"bold {self.PALETTE['accent']}",
+                title="[bold]Array / yield summary[/]  [dim](this sort)[/]",
+                title_justify="left",
+                pad_edge=False,
+            )
+            table.add_column("metric", style="bold")
+            table.add_column("value", justify="right")
+            for label, value in row.items():
+                table.add_row(label, str(value))
+            self._c.print()
+            self._c.print(table)
+        else:
+            _f = sys.stderr if self._stderr else None
+            print("\nArray / yield summary (this sort):", flush=True, file=_f)
+            for label, value in row.items():
+                print(f"  {label}: {value}", flush=True, file=_f)
 
     def done(self, out: Path) -> None:
         self._emit(
@@ -979,6 +1011,7 @@ def main() -> int:
     sorting = sorting.save(folder=str(out / "sorting"), overwrite=True)
 
     n_high_quality = None
+    metrics_note = None  # non-fatal: set if the metrics phase failed after a good sort
     if not args.no_metrics and n_units > 0:
         ui.phase("Quality metrics", "(SortingAnalyzer)")
         rep.phase("Quality metrics", "(SortingAnalyzer)")
@@ -989,62 +1022,90 @@ def main() -> int:
         # sub-steps, so pulse it. Plain CLI output is left byte-identical (no hb here).
         metrics_hb = (_Heartbeat(ui, "computing quality metrics", reporter=rep)
                       if rep.enabled else contextlib.nullcontext())
-        with metrics_tee, metrics_hb:
-            _robust_rmtree(out / "analyzer")  # retry past Windows GUI file-locks before overwrite
-            # sparse=False (dense): SpikeInterface defaults to sparse=True, which keeps
-            # only the channels within ~100 µm of each unit's peak. The placeholder probe
-            # (attach_dummy_probe) spaces channels 250 µm apart so NO channel is within that
-            # radius — sparsity would collapse every unit to its single peak channel and the
-            # spikeinterface-gui inspector could then only ever show one channel per unit.
-            # With this small array (16 ch) dense is cheap and always shows the full layout;
-            # it is the honest choice while geometry is a placeholder, and harmless once a
-            # real probe (e.g. NeuroNexus A1x16, 100 µm) is attached.
-            analyzer = si.create_sorting_analyzer(
-                sorting, rec, folder=str(out / "analyzer"), format="binary_folder",
-                overwrite=True, sparse=False,
-            )
-            # One compute per extension so each shows a named 'substep' the moment it
-            # starts; i/n span the whole metrics phase (base + metrics + curation).
-            # Base + quality_metrics are core (must succeed); the curation/inspector
-            # extensions stay best-effort (one bad one is skipped, not fatal).
-            base_steps = [
-                ("random_spikes", lambda: analyzer.compute("random_spikes")),
-                ("waveforms", lambda: analyzer.compute("waveforms")),
-                ("templates", lambda: analyzer.compute("templates")),
-                ("noise_levels", lambda: analyzer.compute("noise_levels")),
-                ("quality_metrics", lambda: analyzer.compute(
-                    "quality_metrics", metric_names=["firing_rate", "snr", "isi_violation"])),
-            ]
-            curation_steps = [(ext, _ext_compute(analyzer, ext)) for ext in _CURATION_EXTENSIONS]
-            n_steps = len(base_steps) + len(curation_steps)
-            for i, (name, fn) in enumerate(base_steps, start=1):
-                rep.substep(name, i, n_steps)
-                fn()  # core extension — let a real failure surface as before
-            qm = analyzer.get_extension("quality_metrics").get_data()
-            qm.to_csv(out / "quality_metrics.csv")
-            ui.detail("computing GUI-inspector extensions (correlograms, ISI, amplitudes, "
-                      "locations, similarity, PCA) …")
-            for j, (name, fn) in enumerate(curation_steps, start=len(base_steps) + 1):
-                rep.substep(name, j, n_steps)
-                try:
-                    fn()
-                except Exception as e:  # noqa: BLE001 - optional curation data, keep going
-                    ui.detail(f"  skipped {name} ({type(e).__name__})")
-        ui.metrics(qm, out / "quality_metrics.csv")
-        if rep.enabled:
-            rows = [{"unit": idx, **{c: (int(r[c]) if "count" in c else float(r[c]))
-                                    for c in qm.columns}}
-                    for idx, r in qm.iterrows()]
-            rep.metrics(rows, str(out / "quality_metrics.csv"))
-        n_total, n_high_quality = _quality_summary(qm)
-        if n_high_quality is not None:
-            ui.result(f"{n_high_quality} of {n_total} units look high-quality "
-                      "(SNR ≥ 5 and few ISI violations — a rough signal, not a substitute "
-                      "for manual curation)")
+        # The sort itself is ALREADY saved (sorting/, above), so a failure in this
+        # phase must not present as a total failure or swallow the error: catch it,
+        # surface the real exception (traceback -> stderr, captured to the sort log),
+        # and continue to report the sort as a success-with-caveat.
+        try:
+            with metrics_tee, metrics_hb:
+                _robust_rmtree(out / "analyzer")  # retry past Windows GUI file-locks before overwrite
+                # sparse=False (dense): SpikeInterface defaults to sparse=True, which keeps
+                # only the channels within ~100 µm of each unit's peak. The placeholder probe
+                # (attach_dummy_probe) spaces channels 250 µm apart so NO channel is within that
+                # radius — sparsity would collapse every unit to its single peak channel and the
+                # spikeinterface-gui inspector could then only ever show one channel per unit.
+                # With this small array (16 ch) dense is cheap and always shows the full layout;
+                # it is the honest choice while geometry is a placeholder, and harmless once a
+                # real probe (e.g. NeuroNexus A1x16, 100 µm) is attached.
+                analyzer = si.create_sorting_analyzer(
+                    sorting, rec, folder=str(out / "analyzer"), format="binary_folder",
+                    overwrite=True, sparse=False,
+                )
+                # One compute per extension so each shows a named 'substep' the moment it
+                # starts; i/n span the whole metrics phase (base + metrics + curation).
+                # Base + quality_metrics are core (must succeed); the curation/inspector
+                # extensions stay best-effort (one bad one is skipped, not fatal).
+                base_steps = [
+                    ("random_spikes", lambda: analyzer.compute("random_spikes")),
+                    ("waveforms", lambda: analyzer.compute("waveforms")),
+                    ("templates", lambda: analyzer.compute("templates")),
+                    ("noise_levels", lambda: analyzer.compute("noise_levels")),
+                    ("quality_metrics", lambda: analyzer.compute(
+                        "quality_metrics", metric_names=["firing_rate", "snr", "isi_violation"])),
+                ]
+                curation_steps = [(ext, _ext_compute(analyzer, ext)) for ext in _CURATION_EXTENSIONS]
+                n_steps = len(base_steps) + len(curation_steps)
+                for i, (name, fn) in enumerate(base_steps, start=1):
+                    rep.substep(name, i, n_steps)
+                    fn()  # core extension — a failure here is caught below (non-fatal)
+                qm = analyzer.get_extension("quality_metrics").get_data()
+                qm.to_csv(out / "quality_metrics.csv")
+                ui.detail("computing GUI-inspector extensions (correlograms, ISI, amplitudes, "
+                          "locations, similarity, PCA) …")
+                for j, (name, fn) in enumerate(curation_steps, start=len(base_steps) + 1):
+                    rep.substep(name, j, n_steps)
+                    try:
+                        fn()
+                    except Exception as e:  # noqa: BLE001 - optional curation data, keep going
+                        ui.detail(f"  skipped {name} ({type(e).__name__})")
+            ui.metrics(qm, out / "quality_metrics.csv")
+            if rep.enabled:
+                rows = [{"unit": idx, **{c: (int(r[c]) if "count" in c else float(r[c]))
+                                        for c in qm.columns}}
+                        for idx, r in qm.iterrows()]
+                rep.metrics(rows, str(out / "quality_metrics.csv"))
+            n_total, n_high_quality = _quality_summary(qm)
+            if n_high_quality is not None:
+                ui.result(f"{n_high_quality} of {n_total} units look high-quality "
+                          "(SNR ≥ 5 and few ISI violations — a rough signal, not a substitute "
+                          "for manual curation)")
+            # Array / yield headline summary (the six lab-requested metrics). Its own
+            # try/except so a summary hiccup never loses the quality metrics above.
+            try:
+                summary = _summary.compute_summary(analyzer, sorter=args.sorter)
+                _summary.write_summary(summary, out)
+                ui.summary_card(summary)
+                if rep.enabled:
+                    rep.summary(_summary.format_card(summary), summary)
+            except Exception as e:  # noqa: BLE001 - summary is best-effort
+                import traceback
+                traceback.print_exc()
+                ui.warn(f"array/yield summary couldn't be computed: {type(e).__name__}: {e}")
+        except Exception as e:  # noqa: BLE001 - metrics are non-fatal; the sort is saved
+            import traceback
+            traceback.print_exc()  # full traceback -> stderr (captured to the sort log)
+            metrics_note = f"quality metrics failed: {type(e).__name__}: {e}"
+            ui.warn(metrics_note + " — the sort itself is saved; re-run metrics later.")
+            rep.detail("⚠ " + metrics_note)
+            # Don't leave half-built / stale derived artifacts that downstream surfaces
+            # (report, comparison, menu) would read as if they matched this sort.
+            _robust_rmtree(out / "analyzer")
+            for stale in ("quality_metrics.csv", "summary.json", "summary.csv"):
+                (out / stale).unlink(missing_ok=True)
 
     _write_run_info(
         out, args, si_version=si.__version__, sorter=args.sorter,
-        n_units=n_units, n_high_quality=n_high_quality,
+        n_units=n_units, n_high_quality=n_high_quality, metrics_note=metrics_note,
         channel_ids=list(rec.get_channel_ids()),
         n_dropped_analog=n_dropped, total_seconds=total_seconds,
         effective_seconds=effective_seconds, freq_min=args.freq_min, freq_max=freq_max,
@@ -1057,12 +1118,18 @@ def main() -> int:
         # stale unit count while the saved sorting says 0 (sidebar/report read them).
         _robust_rmtree(out / "analyzer")
         (out / "quality_metrics.csv").unlink(missing_ok=True)
+        (out / "summary.json").unlink(missing_ok=True)
+        (out / "summary.csv").unlink(missing_ok=True)
         ui.warn(f"Saved to {out}, but no units were found — adjust parameters and re-run.")
         rep.done_ok(units=0, out=out, good=0)
         return 0
     ui.done(out)
-    rep.done_ok(units=n_units, out=out, good=n_high_quality)
-    ui.detail("saved: sorting/ · analyzer/ · quality_metrics.csv")
+    rep.done_ok(units=n_units, out=out, good=n_high_quality, note=metrics_note)
+    if metrics_note:
+        ui.detail("saved: sorting/  (analyzer + quality metrics not written — see the "
+                  "warning above; the units themselves are safe)")
+    else:
+        ui.detail("saved: sorting/ · analyzer/ · quality_metrics.csv · summary.json")
     ui.detail("next: build a report, open the inspector GUI, or compare sorters "
               "(from the menu, or scripts/make_report.py).")
     if args.duration is not None:
@@ -1072,4 +1139,23 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    # Last-resort guard: any exception that escapes main() (outside the sort/metrics
+    # try/excepts — e.g. a bad read, a save error) would otherwise exit non-zero with
+    # only a traceback on stderr, which the in-UI sort screen discards → the unhelpful
+    # "sort exited (1) without finishing". Emit a real error event first (so the modal
+    # shows the actual cause) and still print the traceback to stderr for the log.
+    try:
+        raise SystemExit(main())
+    except SystemExit:
+        raise
+    except BaseException as _exc:  # noqa: BLE001 - re-raised after reporting
+        import traceback
+
+        traceback.print_exc()
+        _rep = _REPORTER
+        if _rep is not None and getattr(_rep, "enabled", False):
+            try:
+                _rep.error(f"{type(_exc).__name__}: {_exc}")
+            except Exception:  # noqa: BLE001 - reporting must never mask the original error
+                pass
+        raise SystemExit(1)

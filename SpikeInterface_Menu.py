@@ -42,6 +42,7 @@ SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import blackrock_io as bio  # noqa: E402
 import report  # noqa: E402
+import sort_summary  # noqa: E402  (array/yield headline metrics — pure load/format)
 import sorters as sorter_registry  # noqa: E402  (registry: discovery/status/params/run)
 import ui  # noqa: E402  (rich styling shared-look with run_sorting.py)
 import probes  # noqa: E402  (probe-geometry registry: profiles/features/build/fit)
@@ -191,6 +192,9 @@ def _catalog(active: str, use_docker: bool, profile: dict | None = None) -> list
             "description": sorter_registry.description(name),
             "present": present, "units": units, "duration": duration,
             "active": name == active,
+            # The array/yield headline summary (six metrics) for the INSPECTING panel;
+            # a cheap SI-free JSON read, None until a sort writes summary.json.
+            "summary": sort_summary.load_summary(_analyzer_dir(name).parent) if present else None,
             "fit": probes.fit(name, profile) if profile is not None else {"rank": "ok", "reason": ""},
         }
         group = info["group"]
@@ -1111,6 +1115,13 @@ class MenuController:
         for k, v in overrides.items():
             argv += ["--param", f"{k}={v}"]
         return argv
+
+    def sort_log_path(self, span: str | None = None) -> Path:
+        """Where the in-UI sort's subprocess stderr (human/rich output + any Python
+        traceback) is captured. The sort screen redirects the child's stderr here so a
+        hard crash that bypasses the JSON error event is still diagnosable (its tail is
+        shown in the modal) instead of a blank 'sort exited (1) without finishing'."""
+        return _analyzer_dir(self.active_sorter).parent / "sort.log"
 
     def run_compare(self, pair) -> tuple[bool, str, bool]:
         """Compare a user-chosen pair of saved sorts (mismatch caveat handled in action)."""

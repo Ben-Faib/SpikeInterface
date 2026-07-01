@@ -57,6 +57,32 @@ def test_reduce_metrics_rows():
     assert state["metrics"]["csv"] == "q.csv"
 
 
+def test_reduce_summary_card():
+    state = sp.new_state()
+    assert state["summary"] is None
+    card = ["V_pp: 22.9 µV", "SNR: 9.84", "yield (% active electrodes): 43.8% (7/16)"]
+    sp.reduce(state, {"t": "summary", "card": card, "summary": {"n_units": 7}})
+    assert state["summary"]["card"] == card
+    assert state["summary"]["summary"]["n_units"] == 7
+
+
+def test_summary_event_roundtrip():
+    buf = io.StringIO()
+    sp.emit({"t": "summary", "card": ["V_pp: 5 µV"], "summary": {"yield_pct": 50.0}}, stream=buf)
+    ev = sp.parse_line(buf.getvalue())
+    assert ev["t"] == "summary" and ev["card"] == ["V_pp: 5 µV"]
+
+
+def test_reduce_done_carries_non_fatal_note():
+    # A sort that saved its units but whose metrics phase failed reports ok=True with
+    # a note — so the screen shows success + caveat, never the blank "exited (1)".
+    state = sp.new_state()
+    sp.reduce(state, {"t": "done", "ok": True, "units": 7, "out": "outputs/x",
+                      "note": "quality metrics failed: ValueError: boom"})
+    assert state["done"]["ok"] is True and state["done"]["units"] == 7
+    assert "quality metrics failed" in state["done"]["note"]
+
+
 def test_substep_roundtrip():
     buf = io.StringIO()
     sp.emit({"t": "substep", "name": "snr", "i": 2, "n": 8}, stream=buf)

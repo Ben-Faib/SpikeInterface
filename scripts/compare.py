@@ -13,6 +13,7 @@ first (the SpikeInterface_Menu.py 'compare' action offers to do this).
 """
 from __future__ import annotations
 
+import html
 import sys
 from pathlib import Path
 
@@ -21,6 +22,7 @@ import plotly.graph_objects as go
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import blackrock_io as bio  # noqa: E402
 import report  # noqa: E402  (reuse the HTML scaffolding helpers)
+import sort_summary  # noqa: E402  (array/yield headline metrics: load/format)
 
 OUTPUT_DIR = bio.REPO_ROOT / "outputs"
 DEFAULT_SORTERS = ("tridesclous2", "spykingcircus2")
@@ -100,6 +102,43 @@ def _match_table(cmp) -> str:
             f'</tr></thead><tbody>' + rows + '</tbody></table>')
 
 
+def _metrics_section() -> dict:
+    """Cross-sorter array/yield table: the six headline metrics for EVERY saved sort.
+
+    Unlike the agreement matrix this is per-sort, so it stays valid even when the
+    sorts cover different windows — but unit-count-derived figures (yield, units/ch)
+    do scale with window length, so each sort's window is shown for honesty.
+    """
+    names = saved_sorters()
+    cards = [(n, sort_summary.load_summary(OUTPUT_DIR / n)) for n in names]
+    cards = [(n, c) for n, c in cards if c is not None]
+    if not cards:
+        body = ('<div class="caveat">No saved array/yield summaries yet — run a sort '
+                '(each writes summary.json) to populate this table.</div>')
+        return {"id": "metrics", "title": "Array / yield metrics by sorter", "html": body}
+
+    metric_labels = list(sort_summary.headline_row(cards[0][1]).keys())  # the six, in order
+    header = "".join(f'<th>{html.escape(n)}</th>' for n, _ in cards)
+
+    def _row(label, value_of):
+        cells = "".join(f"<td>{html.escape(str(value_of(c)))}</td>" for _, c in cards)
+        return f"<tr><td>{html.escape(label)}</td>{cells}</tr>"
+
+    body_rows = _row("units", lambda c: c.get("n_units", 0))
+    body_rows += _row("window (s)", lambda c: "—" if c.get("duration_s") is None
+                      else f"{c['duration_s']:.0f}")
+    for label in metric_labels:
+        body_rows += _row(label, lambda c, _l=label: sort_summary.headline_row(c)[_l])
+
+    table = (f'<table class="qc"><thead><tr><th>metric</th>{header}</tr></thead>'
+             f'<tbody>{body_rows}</tbody></table>')
+    note = ('<p class="note">Headline array/yield metrics for every saved sort. '
+            'Amplitudes (V_pp, noise floor) in µV; noise floor is post-CMR (consistent '
+            'with SNR). Yield = % of electrodes that are the peak channel of ≥1 unit. '
+            'Compare windows before reading unit-count rows across sorters.</p>')
+    return {"id": "metrics", "title": "Array / yield metrics by sorter", "html": note + table}
+
+
 def build_comparison(data_dir=None, sorters=None, out_path=None) -> Path:
     out_path = Path(out_path) if out_path else (OUTPUT_DIR / "comparison.html")
     OUTPUT_DIR.mkdir(exist_ok=True)
@@ -129,7 +168,10 @@ def build_comparison(data_dir=None, sorters=None, out_path=None) -> Path:
                 + report._fig_html(_heatmap(cmp)) + _match_table(cmp))
 
     section = {"id": "compare", "title": f"{s1_name} vs {s2_name}", "html": body}
-    out_path.write_text(report._html_document("Sorter comparison", [section]), encoding="utf-8")
+    # The cross-sorter array/yield table sits first: it summarises EVERY saved sort
+    # (not just the agreement pair) and the six lab-requested metrics live here.
+    sections = [_metrics_section(), section]
+    out_path.write_text(report._html_document("Sorter comparison", sections), encoding="utf-8")
     return out_path
 
 

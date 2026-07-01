@@ -1,0 +1,82 @@
+"""Tests for the pure (SpikeInterface-free) side of the array/yield summary:
+persistence round-trip + the formatting helpers the menu/report/compare render.
+
+``compute_summary`` itself is SpikeInterface-backed and exercised against a real
+saved analyzer elsewhere; here we pin the schema-consuming helpers so the menu
+(which imports no SpikeInterface) and the HTML surfaces stay correct.
+"""
+import sys
+
+sys.path.insert(0, "scripts")
+import sort_summary as ss
+
+
+def _summary(**over):
+    """A representative summary dict (the schema compute_summary emits)."""
+    base = {
+        "sorter": "tridesclous2", "n_units": 14, "n_channels": 16,
+        "n_active_channels": 10, "duration_s": 20.0, "units_in_uV": True,
+        "gain_to_uV": 0.25,
+        "v_pp_uV": {"median": 10.061, "mean": 11.0, "min": 4.0, "max": 30.0},
+        "snr": {"median": 5.247, "mean": 5.5, "min": 3.0, "max": 12.0},
+        "noise_floor_uV": {"median": 1.001, "mean": 1.0, "min": 0.9, "max": 1.7,
+                           "per_channel": [1.0] * 16},
+        "yield_pct": 62.5, "units_per_channel": 0.875, "units_per_active_channel": 1.4,
+        "active_channels": [str(i) for i in range(10)],
+        "per_unit": [{"unit": 1, "v_pp_uV": 10.0, "snr": 5.2, "best_channel": "3"}],
+    }
+    base.update(over)
+    return base
+
+
+def test_headline_row_has_six_metrics_in_uV():
+    row = ss.headline_row(_summary())
+    assert list(row) == ["V_pp", "SNR", "noise floor", "yield (% active electrodes)",
+                         "units / ch", "units / active ch"]
+    assert row["V_pp"] == "10.061 µV"
+    assert row["noise floor"] == "1.001 µV"
+    assert row["yield (% active electrodes)"] == "62.5% (10/16)"
+    assert row["units / ch"] == "0.875"
+    assert row["units / active ch"] == "1.4"
+
+
+def test_headline_row_falls_back_to_au_without_gain():
+    row = ss.headline_row(_summary(units_in_uV=False))
+    assert row["V_pp"].endswith("a.u.")
+    assert row["noise floor"].endswith("a.u.")
+
+
+def test_format_card_lines():
+    card = ss.format_card(_summary())
+    assert any(line.startswith("V_pp: ") for line in card)
+    assert len(card) == 6
+
+
+def test_csv_row_columns_match():
+    r = ss.csv_row(_summary())
+    assert set(r) == set(ss.CSV_COLUMNS)
+    assert r["v_pp_uV_median"] == 10.061
+    assert r["yield_pct"] == 62.5
+    assert r["sorter"] == "tridesclous2"
+
+
+def test_none_medians_render_as_dash():
+    empty = ss._empty_summary("simple", n_channels=16, units_in_uV=True, duration_s=5.0)
+    row = ss.headline_row(empty)
+    assert row["V_pp"] == "—" and row["SNR"] == "—" and row["noise floor"] == "—"
+    # yield/units are real zeros (no units), not dashes
+    assert row["yield (% active electrodes)"] == "0% (0/16)"
+
+
+def test_write_then_load_roundtrip(tmp_path):
+    s = _summary()
+    path = ss.write_summary(s, tmp_path)
+    assert path.exists() and (tmp_path / "summary.csv").exists()
+    loaded = ss.load_summary(tmp_path)
+    assert loaded["n_units"] == 14
+    assert ss.headline_row(loaded)["V_pp"] == "10.061 µV"
+
+
+def test_load_summary_missing_returns_none(tmp_path):
+    assert ss.load_summary(tmp_path) is None
+    assert ss.load_summary(tmp_path / "nope") is None

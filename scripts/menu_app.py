@@ -60,6 +60,7 @@ from textual.widgets.option_list import Option
 
 import download_stats as dlstats  # pure download progress math + formatters
 import sort_progress as _sp  # pure JSON progress protocol (no SI / Textual deps)
+import sort_summary as _ss  # array/yield headline metrics (pure load/format helpers)
 import ui  # shield art + theme palette + plain helpers (single source)
 
 
@@ -111,7 +112,7 @@ class Controller(Protocol):
     pipeline: list[dict]                # {stage,status,detail} (sorter-independent)
     infos: list[dict]                   # full catalog: {name,group,status,runnable,
                                         # recommended,description,present,units,
-                                        # duration,active}
+                                        # duration,active,summary}
     data_report: dict                   # see SpikeInterface_Menu._data_report
     use_docker: bool
     want_welcome: bool
@@ -140,6 +141,8 @@ class Controller(Protocol):
     def catalog_manufacturers(self) -> list[str]: ...
     def catalog_models(self, manufacturer: str) -> list[str]: ...
     def run(self, key: str, span: str | None) -> tuple[bool, str, bool]: ...
+    def sort_command(self, span: str | None) -> list: ...
+    def sort_log_path(self, span: str | None = None): ...
 
 
 # --------------------------------------------------------------------------- #
@@ -536,10 +539,13 @@ class SortProgressScreen(ModalScreen):
 
     _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
-    def __init__(self, argv: list, accent: str):
+    def __init__(self, argv: list, accent: str, log_path=None):
         super().__init__()
         self._argv = list(argv)
         self._accent = accent
+        # The child's stderr (human/rich output + any Python traceback) is captured
+        # here so a hard crash that bypasses the JSON error event is still readable.
+        self._log_path = log_path
         self._state = _sp.new_state()
         self._proc = None
         self._spin = 0
@@ -564,32 +570,72 @@ class SortProgressScreen(ModalScreen):
             timer.stop()
 
     async def _run(self) -> None:
+        # Capture the child's stderr to a log file (not DEVNULL) so a hard crash that
+        # never reaches the JSON error event is still diagnosable: its tail is shown in
+        # the modal and the full traceback is on disk. Falls back to DEVNULL if the log
+        # can't be opened (read-only dir etc.).
+        log_fh = None
+        if self._log_path is not None:
+            try:
+                from pathlib import Path as _P
+                _P(self._log_path).parent.mkdir(parents=True, exist_ok=True)
+                log_fh = open(self._log_path, "w", encoding="utf-8", errors="replace")
+            except Exception:  # noqa: BLE001 - logging is best-effort
+                log_fh = None
+        self._log_fh = log_fh
         try:
             self._proc = await asyncio.create_subprocess_exec(
                 *self._argv,
                 stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.DEVNULL,
+                stderr=(log_fh if log_fh is not None else asyncio.subprocess.DEVNULL),
                 start_new_session=True,
             )
         except Exception as e:  # noqa: BLE001 - bad argv / no python -> friendly error
             self.handle_event({"t": "error", "ok": False,
                                "message": f"couldn't start sort: {e}"})
             return
-        if self._proc.stdout is not None:
-            async for raw in self._proc.stdout:
-                ev = _sp.parse_line(raw.decode("utf-8", "replace"))
-                if ev:
-                    self.handle_event(ev)
-        await self._proc.wait()
+        try:
+            if self._proc.stdout is not None:
+                async for raw in self._proc.stdout:
+                    ev = _sp.parse_line(raw.decode("utf-8", "replace"))
+                    if ev:
+                        self.handle_event(ev)
+            await self._proc.wait()
+        finally:
+            if log_fh is not None:
+                try:
+                    log_fh.close()
+                except Exception:  # noqa: BLE001
+                    pass
         if self._state["done"] is None:
             # The process ended without emitting done/error (e.g. argv was a plain
-            # 'true' in tests, or a hard crash) — synthesise a friendly close state.
+            # 'true' in tests, or a hard crash — segfault / OOM-kill — that bypasses
+            # even run_sorting's last-resort error event) — synthesise a close state,
+            # surfacing the captured stderr tail so the user sees the real cause.
             rc = self._proc.returncode
             if rc == 0:
                 self.handle_event({"t": "done", "ok": True, "units": "?", "out": ""})
             else:
-                self.handle_event({"t": "error", "ok": False,
-                                   "message": f"sort exited ({rc}) without finishing"})
+                tail = self._log_tail()
+                msg = f"sort exited ({rc}) without finishing"
+                if tail:
+                    msg += f"\n{tail}"
+                self.handle_event({"t": "error", "ok": False, "message": msg})
+
+    def _log_tail(self, n_lines: int = 8, max_chars: int = 600) -> str:
+        """Last few non-blank lines of the captured stderr log (the real error)."""
+        if self._log_path is None:
+            return ""
+        try:
+            from pathlib import Path as _P
+            text = _P(self._log_path).read_text(encoding="utf-8", errors="replace")
+        except Exception:  # noqa: BLE001 - no log -> nothing to show
+            return ""
+        lines = [ln.rstrip() for ln in text.splitlines() if ln.strip()]
+        if not lines:
+            return ""
+        tail = "\n".join(lines[-n_lines:])
+        return tail[-max_chars:]
 
     def handle_event(self, ev: dict) -> None:
         """Synchronous: fold one event into the state and re-render. Safe to call
@@ -639,6 +685,13 @@ class SortProgressScreen(ModalScreen):
             spin = self._SPINNER[self._spin]
             t.append(f"  {spin} {s['heartbeat']} … still working "
                      f"({s['heartbeat_secs']}s)\n", style="dim")
+        # The array/yield headline card, once emitted — shown both during the run and
+        # on the final screen so the six metrics stay visible after the sort finishes.
+        card = (s.get("summary") or {}).get("card")
+        if card:
+            t.append("\nArray / yield summary\n", style=f"bold {self._accent}")
+            for line in card:
+                t.append(f"  {line}\n", style="dim")
         if s["done"]:
             d = s["done"]
             if d.get("ok"):
@@ -648,6 +701,9 @@ class SortProgressScreen(ModalScreen):
                 if out:
                     line += f" → {out}"
                 t.append(line + "\n", style="bold #3fb950")
+                # A non-fatal caveat (e.g. the sort saved but quality metrics failed).
+                if d.get("note"):
+                    t.append(f"⚠ {d['note']}\n", style="#d29922")
             else:
                 t.append(f"\n✗ {d.get('message', 'sort failed')}\n", style="bold #f85149")
         self.query_one("#sortbody", Static).update(t)
@@ -2159,6 +2215,16 @@ class SpikeMenuApp(App):
             t.append(f"{info['units']} units · {info['duration']:.0f} s\n", style=ui.PRIMARY)
         else:
             t.append("none yet\n", style="dim")
+        # Array / yield headline (the six lab metrics) for the saved sort, if any.
+        summary = info.get("summary")
+        if summary:
+            t.append("\nArray / yield  ", style=ui.SECONDARY)
+            row = _ss.headline_row(summary)
+            t.append("V_pp " + row["V_pp"] + " · SNR " + row["SNR"]
+                     + " · noise " + row["noise floor"] + "\n", style=ui.PRIMARY)
+            t.append("  yield " + row["yield (% active electrodes)"]
+                     + " · " + row["units / ch"] + " units/ch · "
+                     + row["units / active ch"] + " /active ch\n", style=ui.PRIMARY)
         n_over = info.get("overrides", 0)
         t.append("Custom params  ", style=ui.SECONDARY)
         if n_over:
@@ -2732,7 +2798,8 @@ class SpikeMenuApp(App):
         scrolling stdout: build the run_sorting.py argv (JSON-progress mode) and push
         the modal that spawns it and renders its progress events live."""
         argv = self.c.sort_command(span)
-        self.push_screen(SortProgressScreen(argv, self._accent), self._after_sort)
+        log_path = self.c.sort_log_path(span)
+        self.push_screen(SortProgressScreen(argv, self._accent, log_path), self._after_sort)
 
     def _after_sort(self, result) -> None:
         ok, message, changed = result or (False, "Sort cancelled", False)

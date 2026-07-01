@@ -26,6 +26,7 @@ from plotly.offline import get_plotlyjs
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import blackrock_io as bio  # noqa: E402
+import sort_summary  # noqa: E402  (array/yield headline metrics: load/compute/format)
 
 OUTPUT_DIR = bio.REPO_ROOT / "outputs"
 DEFAULT_ANALYZER_DIR = OUTPUT_DIR / "tridesclous2" / "analyzer"
@@ -454,6 +455,122 @@ def _render_qc(analyzer) -> str:
     return table + scatter
 
 
+def _render_summary(analyzer, analyzer_dir) -> str:
+    """Array / yield headline block: the six lab-requested metrics for this sort.
+
+    Prefers the persisted summary.json (written by run_sorting); falls back to
+    computing it from the saved analyzer for older sorts that predate it.
+    """
+    summary = sort_summary.load_summary(Path(analyzer_dir).parent) if analyzer_dir else None
+    if summary is None and analyzer is not None:
+        try:
+            summary = sort_summary.compute_summary(analyzer)
+        except Exception:  # noqa: BLE001 - degrade to a skip row rather than crash
+            summary = None
+    if summary is None:
+        return '<p class="skip">No saved analyzer — array/yield summary unavailable.</p>'
+    if summary.get("n_units", 0) == 0:
+        return '<p class="skip">No units in this sort — array/yield summary is empty.</p>'
+
+    amp = "µV" if summary.get("units_in_uV", True) else "a.u."
+    row = sort_summary.headline_row(summary)
+    # Headline 6-metric table.
+    head_rows = "".join(f"<tr><td>{html.escape(k)}</td><td>{html.escape(str(v))}</td></tr>"
+                        for k, v in row.items())
+    head_table = ('<table class="qc"><thead><tr><th>metric</th><th>value</th></tr></thead>'
+                  f'<tbody>{head_rows}</tbody></table>')
+
+    # Per-unit V_pp / SNR table (the per-unit basis of the V_pp & SNR headlines).
+    per_unit = summary.get("per_unit", [])
+    pu_rows = ""
+    for p in per_unit:
+        snr = "—" if p.get("snr") is None else f"{p['snr']:.3g}"
+        pu_rows += (f"<tr><td onclick=\"sortTable(this.closest('table'),0,true)\">{p['unit']}</td>"
+                    f"<td>{p['v_pp_uV']:.3g}</td><td>{snr}</td>"
+                    f"<td>{html.escape(str(p.get('best_channel', '')))}</td></tr>")
+    pu_table = (
+        '<p class="note">Per-unit peak-to-peak amplitude on the best channel. Click a header to sort.</p>'
+        '<table class="qc"><thead><tr>'
+        '<th onclick="sortTable(this.closest(\'table\'),0,true)">unit</th>'
+        f'<th onclick="sortTable(this.closest(\'table\'),1,true)">V_pp ({amp})</th>'
+        '<th onclick="sortTable(this.closest(\'table\'),2,true)">SNR</th>'
+        '<th onclick="sortTable(this.closest(\'table\'),3,false)">best ch</th>'
+        f'</tr></thead><tbody>{pu_rows}</tbody></table>')
+
+    # Per-channel noise floor, active channels highlighted.
+    noise = (summary.get("noise_floor_uV") or {}).get("per_channel") or []
+    active = set(summary.get("active_channels", []))
+    chan_ids = [str(c) for c in (analyzer.channel_ids if analyzer is not None else range(len(noise)))]
+    noise_html = ""
+    if noise and len(noise) == len(chan_ids):
+        colours = ["#3fb950" if c in active else "#8b949e" for c in chan_ids]
+        fig = go.Figure(go.Bar(x=chan_ids, y=[0 if v is None else v for v in noise],
+                               marker_color=colours))
+        fig.update_layout(title=f"Noise floor per channel ({amp}) — green = active electrode",
+                          xaxis_title="channel", yaxis_title=f"noise floor ({amp})",
+                          height=360, margin=dict(t=40, b=40))
+        noise_html = _fig_html(fig)
+
+    note = ('<p class="note">Amplitudes are in µV via the recording gain. '
+            'Noise floor is measured on the band-passed + common-median-referenced '
+            'signal the sort uses (so it is a post-CMR figure, consistent with SNR). '
+            '"Active electrode" = the peak channel of ≥1 sorted unit.</p>'
+            if summary.get("units_in_uV", True) else
+            '<p class="note">No µV gain on this recording — amplitudes are raw a.u.</p>')
+    return note + head_table + pu_table + noise_html
+
+
+def _render_probe(analyzer, analyzer_dir) -> str:
+    """Collection-sites map: each electrode contact at its physical (x, y) µm
+    position, labelled by channel, coloured by per-channel noise floor, with the
+    sort's active electrodes ringed. Shows the geometry the sort actually used."""
+    if analyzer is None:
+        return '<p class="skip">No saved analyzer — probe geometry unavailable.</p>'
+    try:
+        loc = np.asarray(analyzer.get_channel_locations())
+    except Exception:  # noqa: BLE001 - no geometry attached
+        return '<p class="skip">This sort has no probe geometry attached.</p>'
+    chan_ids = [str(c) for c in analyzer.channel_ids]
+    summary = sort_summary.load_summary(Path(analyzer_dir).parent) if analyzer_dir else None
+    active = set((summary or {}).get("active_channels", []))
+    noise = (summary or {}).get("noise_floor_uV", {}).get("per_channel") if summary else None
+    x, y = loc[:, 0].astype(float), loc[:, 1].astype(float)
+
+    fig = go.Figure()
+    marker = dict(size=18, line=dict(color="black", width=1))
+    if noise and len(noise) == len(chan_ids) and any(v is not None for v in noise):
+        marker.update(color=[np.nan if v is None else v for v in noise], colorscale="Viridis",
+                      colorbar=dict(title="noise (µV)"), showscale=True)
+        hover = [f"ch {c}<br>({xi:.0f}, {yi:.0f}) µm<br>noise {('' if v is None else f'{v:.2f} µV')}"
+                 for c, xi, yi, v in zip(chan_ids, x, y, noise)]
+    else:
+        marker.update(color=["#3fb950" if c in active else "#8b949e" for c in chan_ids])
+        hover = [f"ch {c}<br>({xi:.0f}, {yi:.0f}) µm" for c, xi, yi in zip(chan_ids, x, y)]
+    fig.add_trace(go.Scatter(x=x, y=y, mode="markers+text", marker=marker,
+                             text=chan_ids, textposition="middle right",
+                             hovertext=hover, hoverinfo="text", name="sites"))
+    if active:
+        ax = [xi for c, xi in zip(chan_ids, x) if c in active]
+        ay = [yi for c, yi in zip(chan_ids, y) if c in active]
+        fig.add_trace(go.Scatter(x=ax, y=ay, mode="markers", name="active electrode",
+                                 marker=dict(size=30, color="rgba(0,0,0,0)",
+                                             line=dict(color="#3fb950", width=3))))
+    fig.update_layout(title="Collection sites (electrode geometry)",
+                      xaxis_title="x (µm)", yaxis_title="depth y (µm)",
+                      yaxis=dict(autorange="reversed"), height=560,
+                      margin=dict(t=40, b=40),
+                      xaxis=dict(range=[x.min() - max((x.max() - x.min()) * 0.6, 60),
+                                        x.max() + max((x.max() - x.min()) * 0.6, 120)]))
+    n_active = sum(1 for c in chan_ids if c in active)
+    note = (f'<p class="note">{len(chan_ids)} contacts'
+            + (f'; {n_active} are active (peak channel of ≥1 unit, ringed green). '
+               'Marker colour = per-channel noise floor. ' if active else '. ')
+            + 'For an interactive channel scroll use the menu’s "Scroll raw traces" '
+            '(ephyviewer); <code>scripts/show_channels.py</code> writes probe_map.png + '
+            'channels.png headless.</p>')
+    return note + _fig_html(fig)
+
+
 def _render_events(events) -> str:
     if events is None:
         return '<p class="skip">Events could not be read (best-effort) — see the status banner.</p>'
@@ -494,6 +611,8 @@ def build_report(data_dir=None, analyzer_dir=None, out_path=None, sorter_label=N
         _safe_section("lfp", "LFP (.ns2 @ 1 kHz)", _render_lfp, objects.get("lfp")),
         _safe_section("nev", ".nev online units", _render_nev, objects.get("nev")),
         _safe_section("sorted", f"Sorted units ({sorter_label})", _render_sorted, objects.get("analyzer"), sorter_label, info, probe),
+        _safe_section("summary", "Array / yield summary", _render_summary, objects.get("analyzer"), analyzer_dir),
+        _safe_section("probe", "Probe geometry & channels", _render_probe, objects.get("analyzer"), analyzer_dir),
         _safe_section("qc", "Quality metrics", _render_qc, objects.get("analyzer")),
         _safe_section("events", "Events", _render_events, objects.get("events")),
         _safe_section("footer", "About", _render_footer, status, probe),

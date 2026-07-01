@@ -469,6 +469,54 @@ async def test_sort_progress_screen_renders_events(make_app):
         assert "Enter" in foot
 
 
+async def test_sort_progress_renders_summary_card_and_note(make_app):
+    # The array/yield headline card shows on the final screen, and a non-fatal
+    # metrics caveat (done.note) renders as a ⚠ line alongside the ✓ success — so a
+    # metrics hiccup never masquerades as a total failure.
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        screen = menu_app.SortProgressScreen(["true"], app._accent)
+        await app.push_screen(screen)
+        await pilot.pause()
+        for ev in [
+            {"t": "phase", "i": 4, "n": 4, "title": "Quality metrics"},
+            {"t": "summary", "card": ["V_pp: 22.9 µV", "yield (% active electrodes): 43.8% (7/16)"],
+             "summary": {"n_units": 7}},
+            {"t": "done", "ok": True, "units": 7, "out": "outputs/x",
+             "note": "quality metrics failed: ValueError: boom"},
+        ]:
+            screen.handle_event(ev)
+            await pilot.pause()
+        body = screen.query_one("#sortbody").render().plain
+        assert "Array / yield summary" in body and "V_pp: 22.9" in body
+        assert "Done" in body and "7 units" in body
+        assert "quality metrics failed" in body          # non-fatal caveat surfaced
+
+
+async def test_sort_progress_surfaces_real_error_from_log(make_app, tmp_path):
+    # End-to-end: a subprocess that dies non-zero WITHOUT emitting a done/error event
+    # (a hard crash) must not collapse to a blank "sort exited (1)". The screen
+    # captures the child's stderr to the log, then surfaces its tail as the real cause.
+    log = tmp_path / "sort.log"
+    argv = ["sh", "-c",
+            "echo 'TypeError: unexpected keyword argument gap_tolerance_ms' >&2; exit 1"]
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        screen = menu_app.SortProgressScreen(argv, app._accent, log_path=str(log))
+        await app.push_screen(screen)
+        # Let the worker spawn the child, capture its stderr, exit, and synthesise the
+        # close state from the non-zero return code + the captured tail.
+        for _ in range(100):
+            await pilot.pause()
+            if screen._state["done"] is not None:
+                break
+        assert screen._state["done"] is not None
+        assert screen._state["done"]["ok"] is False
+        body = screen.query_one("#sortbody").render().plain
+        assert "exited (1)" in body
+        assert "gap_tolerance_ms" in body          # the REAL cause, not just the exit code
+
+
 async def test_sort_progress_renders_substep_and_detail(make_app):
     # Under the current (▶) phase the screen renders both the named substep
     # (→ name (i/n)) and the latest forwarded sorter step line (→ detail), and they

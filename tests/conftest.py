@@ -312,6 +312,11 @@ class FakeController:
         self.sort_span = span
         return ["true"]
 
+    def sort_log_path(self, span: str | None = None):
+        # No stderr capture in tests (the fake argv writes nothing); None makes the
+        # screen fall back to DEVNULL, exercising that path too.
+        return None
+
     # -- Docker image management (Stage 4: in-UI download / state) ------------- #
     def _docker_info(self, name: str) -> dict | None:
         return next((i for i in self.infos

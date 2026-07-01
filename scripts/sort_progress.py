@@ -9,7 +9,8 @@ Events are newline-delimited JSON objects, each with a ``t`` (type) field:
     bar       {t,desc,frac,n,total,elapsed?,remaining?}  determinate progress
     heartbeat {t,label,secs}         "still working" pulse during quiet stretches
     metrics   {t,rows:[...],csv}     quality-metrics table
-    done      {t,ok:true,units,good?,out}     finished OK
+    summary   {t,card:[...],summary} array/yield headline card (six metrics)
+    done      {t,ok:true,units,good?,out,note?}   finished OK (note = non-fatal caveat)
     error     {t,ok:false,message}   finished with a friendly error
 
 No SpikeInterface / Textual imports here so it is trivially unit-testable and
@@ -22,7 +23,7 @@ import sys
 from typing import Any
 
 EVENT_TYPES = frozenset(
-    {"phase", "detail", "substep", "bar", "heartbeat", "metrics", "done", "error"}
+    {"phase", "detail", "substep", "bar", "heartbeat", "metrics", "summary", "done", "error"}
 )
 
 
@@ -64,6 +65,7 @@ def new_state() -> dict:
         "heartbeat": "",
         "heartbeat_secs": 0,
         "metrics": None,       # {rows,csv} or None
+        "summary": None,       # {card:[...],summary} array/yield headline card or None
         "done": None,          # {ok,...} or None
     }
 
@@ -107,6 +109,8 @@ def reduce(state: dict, ev: dict) -> dict:
         state["heartbeat_secs"] = ev.get("secs", 0)
     elif t == "metrics":
         state["metrics"] = {"rows": ev.get("rows", []), "csv": ev.get("csv", "")}
+    elif t == "summary":
+        state["summary"] = {"card": ev.get("card", []), "summary": ev.get("summary", {})}
     elif t in ("done", "error"):
         for p in state["phases"]:
             p["done"] = True
