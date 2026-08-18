@@ -1669,6 +1669,22 @@ wheels = [
 ]
 
 [[package]]
+name = "pytest-textual-snapshot"
+version = "1.0.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "jinja2" },
+    { name = "pytest" },
+    { name = "rich" },
+    { name = "syrupy" },
+    { name = "textual" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8b/75/2ef17ae52fa5bc848ff2d1d7bc317a702cbd6d7ad733ca991b9f899dbbae/pytest_textual_snapshot-1.0.0.tar.gz", hash = "sha256:065217055ed833b8a16f2320a0613f39a0154e8d9fee63535f29f32c6414b9d7", size = 11071, upload-time = "2024-07-22T15:17:44.629Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/70/2e/4bf16ed78b382b3d7c1e545475ec8cf04346870be662815540faf8f16e8c/pytest_textual_snapshot-1.0.0-py3-none-any.whl", hash = "sha256:dd3a421491a6b1987ee7b4336d7f65299524924d2b0a297e69733b73b01570e1", size = 11171, upload-time = "2024-07-22T15:17:43.167Z" },
+]
+
+[[package]]
 name = "python-dateutil"
 version = "2.9.0.post0"
 source = { registry = "https://pypi.org/simple" }
@@ -2076,6 +2092,7 @@ notebooks = [
 dev = [
     { name = "pytest" },
     { name = "pytest-asyncio" },
+    { name = "pytest-textual-snapshot" },
 ]
 
 [package.metadata]
@@ -2107,6 +2124,7 @@ provides-extras = ["notebooks"]
 dev = [
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "pytest-asyncio", specifier = ">=1.4.0" },
+    { name = "pytest-textual-snapshot", specifier = ">=1.0.0" },
 ]
 
 [[package]]
@@ -2121,6 +2139,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/28/e3/55dcc2cfbc3ca9c29519eb6884dd1415ecb53b0e934862d3559ddcb7e20b/stack_data-0.6.3.tar.gz", hash = "sha256:836a778de4fec4dcd1dcd89ed8abff8a221f58308462e1c4aa2a3cf30148f0b9", size = 44707, upload-time = "2023-09-30T13:58:05.479Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/f1/7b/ce1eafaf1a76852e2ec9b22edecf1daa58175c090266e9f6c64afcd81d91/stack_data-0.6.3-py3-none-any.whl", hash = "sha256:d5558e0c25a4cb0853cddad3d77da9891a08cb85dd9f9f91b9f8cd66e511e695", size = 24521, upload-time = "2023-09-30T13:58:03.53Z" },
+]
+
+[[package]]
+name = "syrupy"
+version = "5.5.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pytest" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/e7/39/17dde9f0c76cc5abcdeef1b2243791bb850d498f784147b8e460dd23abe8/syrupy-5.5.3.tar.gz", hash = "sha256:fa21e4ae77c89ec5abfca513338d8a7eb916da6618ca0f8db301476e0768e57a", size = 91614, upload-time = "2026-07-11T15:54:31.46Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/ae/f9/617a194c1a4203279998e1859426cf2635042533a99a93d63d3ee1fb967e/syrupy-5.5.3-py3-none-any.whl", hash = "sha256:0b260a0c9dad55e1fb83818973dc36fbc1aea3fd5381592f442a986686c4171a", size = 54959, upload-time = "2026-07-11T15:54:29.836Z" },
 ]
 
 [[package]]

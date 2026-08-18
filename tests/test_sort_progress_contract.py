@@ -1,0 +1,242 @@
+"""Contract tests for the sort-progress JSON event protocol.
+
+``scripts/sort_progress.py`` is the wire protocol between ``run_sorting.py``
+(emitter subprocess) and the TUI's ``SortProgressScreen`` (consumer). The
+protocol is about to be EXTENDED (elapsed/ETA/result events) — these tests pin
+what must not break while that happens:
+
+- the event vocabulary and each event's required keys (``SHAPES``),
+- extension safety: unknown event types are ignored by consumers, unknown
+  extra keys on known events flow through parse/reduce unharmed,
+- ordering semantics: phases advance monotonically, a new phase resets
+  per-phase transients, done/error are terminal,
+- the emitter (``run_sorting.Reporter``) speaks exactly this protocol,
+- stdout purity in ``--progress json`` mode, including failure paths.
+
+To add a new event type: extend ``EVENT_TYPES`` + the module docstring in
+``sort_progress.py``, then add the type and its required keys to ``SHAPES``
+here — ``test_shapes_table_covers_event_types`` fails until you do, which is
+the point. Adding optional keys to an existing event needs no changes here.
+
+Behavioural reducer details are covered in ``test_sort_progress.py``; this
+module is only about the contract surface.
+"""
+from __future__ import annotations
+
+import io
+import subprocess
+import sys
+from pathlib import Path
+
+import pytest
+
+sys.path.insert(0, "scripts")
+import sort_progress as sp  # noqa: E402
+
+ROOT = Path(__file__).resolve().parent.parent
+
+# Required keys per event type (beyond "t"). Optional keys — phase.sub,
+# bar.n/total/elapsed/remaining, done.good/note — are deliberately absent:
+# consumers must not require them.
+SHAPES = {
+    "phase":     {"i", "n", "title"},
+    "detail":    {"text"},
+    "substep":   {"name", "i", "n"},
+    "bar":       {"desc", "frac"},
+    "heartbeat": {"label", "secs"},
+    "metrics":   {"rows", "csv"},
+    "summary":   {"card", "summary"},
+    "done":      {"ok", "units", "out"},
+    "error":     {"ok", "message"},
+}
+
+# One canonical, fully-populated example of every event type.
+EXAMPLES = {
+    "phase":     {"t": "phase", "i": 2, "n": 4, "title": "Preprocess", "sub": "bandpass + CMR"},
+    "detail":    {"t": "detail", "text": "detect_peaks: 562 peaks found"},
+    "substep":   {"t": "substep", "name": "snr", "i": 2, "n": 8},
+    "bar":       {"t": "bar", "desc": "detect", "frac": 0.5, "n": 5, "total": 10,
+                  "elapsed": 3.2, "remaining": 3.1},
+    "heartbeat": {"t": "heartbeat", "label": "running sorter", "secs": 30},
+    "metrics":   {"t": "metrics", "rows": [{"unit": 1, "snr": 7.2}], "csv": "q.csv"},
+    "summary":   {"t": "summary", "card": ["V_pp: 22.9 µV"], "summary": {"n_units": 7}},
+    "done":      {"t": "done", "ok": True, "units": 7, "good": 5, "out": "outputs/x",
+                  "note": None},
+    "error":     {"t": "error", "ok": False, "message": "Docker isn't running"},
+}
+
+
+# --------------------------------------------------------------------------- #
+# Vocabulary and shapes
+# --------------------------------------------------------------------------- #
+
+def test_shapes_table_covers_event_types():
+    # Extending the protocol means adding the new type HERE too (with its
+    # required keys) — a conscious act, not an accident.
+    assert set(SHAPES) == set(sp.EVENT_TYPES)
+    assert set(EXAMPLES) == set(sp.EVENT_TYPES)
+
+
+@pytest.mark.parametrize("etype", sorted(SHAPES))
+def test_example_roundtrips_with_required_keys(etype):
+    buf = io.StringIO()
+    sp.emit(EXAMPLES[etype], stream=buf)
+    raw = buf.getvalue()
+    assert raw.endswith("\n") and "\n" not in raw[:-1]   # exactly one line
+    ev = sp.parse_line(raw)
+    assert ev == EXAMPLES[etype]
+    assert SHAPES[etype] <= set(ev)
+
+
+@pytest.mark.parametrize("etype", sorted(SHAPES))
+def test_reduce_is_total_on_minimal_events(etype):
+    # A bare {"t": ...} must never crash the consumer: every payload key is
+    # read with defaults, so an emitter can add fields without breaking an
+    # older UI mid-extension.
+    state = sp.new_state()
+    sp.reduce(state, {"t": etype})     # must not raise
+    sp.reduce(state, EXAMPLES[etype])  # nor the full example after it
+
+
+def test_unknown_event_type_is_ignored():
+    # Forward compatibility: a NEW event type from a newer emitter must be
+    # dropped by parse_line (None), never crash or half-apply. The specimen is
+    # deliberately impossible so a real future type never collides with it.
+    assert sp.parse_line('{"t": "__unknown__", "secs": 12}') is None
+    assert sp.parse_line('[1, 2, 3]') is None
+
+
+def test_unknown_extra_keys_flow_through():
+    # The planned extension adds keys to existing events (e.g. bar.eta).
+    # parse_line must keep them, and reduce must tolerate them.
+    line = '{"t": "bar", "desc": "detect", "frac": 0.5, "eta_s": 12.5}'
+    ev = sp.parse_line(line)
+    assert ev is not None and ev["eta_s"] == 12.5
+    state = sp.new_state()
+    sp.reduce(state, ev)               # must not raise
+    # done/error carry their whole payload into state["done"] — the extension
+    # point for richer result events.
+    state = sp.new_state()
+    sp.reduce(state, {"t": "done", "ok": True, "units": 3, "out": "x", "report_path": "r.html"})
+    assert state["done"]["report_path"] == "r.html"
+
+
+# --------------------------------------------------------------------------- #
+# Ordering semantics
+# --------------------------------------------------------------------------- #
+
+def test_phase_progression_and_transient_reset():
+    state = sp.new_state()
+    for i, title in enumerate(["Read broadband", "Preprocess", "Sort", "Quality metrics"], 1):
+        sp.reduce(state, {"t": "phase", "i": i, "n": 4, "title": title})
+        sp.reduce(state, {"t": "detail", "text": f"in {title}"})
+        sp.reduce(state, {"t": "bar", "desc": "work", "frac": 0.5, "total": 10})
+        # every earlier phase is done, the current one is not
+        assert [p["done"] for p in state["phases"]] == [True] * (i - 1) + [False]
+        assert state["phase_i"] == i and state["phase_n"] == 4
+    # each new phase had cleared the previous phase's bar/detail/substep
+    sp.reduce(state, {"t": "substep", "name": "snr", "i": 1, "n": 8})
+    sp.reduce(state, {"t": "phase", "i": 5, "n": 5, "title": "Extra"})
+    assert state["bar"] is None
+    assert state["substep_name"] == "" and state["substep_i"] == 0
+    assert state["detail"] == ""
+
+
+@pytest.mark.parametrize("terminal", [
+    {"t": "done", "ok": True, "units": 3, "out": "outputs/x"},
+    {"t": "error", "ok": False, "message": "boom"},
+])
+def test_terminal_event_completes_all_phases(terminal):
+    state = sp.new_state()
+    sp.reduce(state, {"t": "phase", "i": 1, "n": 2, "title": "A"})
+    sp.reduce(state, {"t": "phase", "i": 2, "n": 2, "title": "B"})
+    sp.reduce(state, terminal)
+    assert all(p["done"] for p in state["phases"])
+    assert state["done"] is not None
+    assert state["done"]["ok"] is terminal["ok"]
+
+
+# --------------------------------------------------------------------------- #
+# The emitter speaks this protocol (Reporter <-> sort_progress lock)
+# --------------------------------------------------------------------------- #
+
+def test_reporter_emits_exactly_this_protocol():
+    # Importing run_sorting pulls SpikeInterface once (slow but shared with the
+    # report tests). Every Reporter method must produce a parseable event with
+    # its SHAPES keys, and together they must cover the whole vocabulary.
+    import run_sorting as rs
+
+    buf = io.StringIO()
+    rep = rs.Reporter(enabled=True, stream=buf, total_phases=4)
+    rep.phase("Read broadband", "(.ns5)")
+    rep.phase("Preprocess", "bandpass + CMR")
+    rep.detail("detect_peaks: 562 peaks found")
+    rep.substep("snr", 2, 8)
+    rep.bar("detect", frac=0.5, n=5, total=10, elapsed=3.2, remaining=3.1)
+    rep.heartbeat("running sorter", 30)
+    rep.metrics([{"unit": 1, "snr": 7.2}], "q.csv")
+    rep.summary(["V_pp: 22.9 µV"], {"n_units": 7})
+    rep.done_ok(units=7, out="outputs/x", good=5)
+    rep.error("boom")
+
+    events = [sp.parse_line(line) for line in buf.getvalue().splitlines()]
+    assert all(ev is not None for ev in events), "Reporter emitted a non-protocol line"
+    for ev in events:
+        assert SHAPES[ev["t"]] <= set(ev)
+    assert {ev["t"] for ev in events} == set(sp.EVENT_TYPES)
+    # phase counter is 1-based and monotonic
+    phases = [ev for ev in events if ev["t"] == "phase"]
+    assert [p["i"] for p in phases] == [1, 2] and all(p["n"] == 4 for p in phases)
+
+
+def test_disabled_reporter_is_silent():
+    import run_sorting as rs
+
+    buf = io.StringIO()
+    rep = rs.Reporter(enabled=False, stream=buf, total_phases=4)
+    rep.phase("Read broadband")
+    rep.error("boom")
+    assert buf.getvalue() == ""
+
+
+# --------------------------------------------------------------------------- #
+# stdout purity in --progress json mode (real subprocess, failure paths)
+# --------------------------------------------------------------------------- #
+
+def _run_sorting(*args: str, timeout: int = 300) -> subprocess.CompletedProcess:
+    # Explicit utf-8 (not the locale code page — cp1252 on the lab's Windows
+    # box) because the child forces utf-8 output full of multibyte glyphs.
+    return subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "run_sorting.py"), *args],
+        capture_output=True, text=True, encoding="utf-8", errors="replace",
+        timeout=timeout, cwd=ROOT,
+    )
+
+
+def test_missing_data_keeps_stdout_pure_and_errors(tmp_path):
+    # No recording in --data-dir: the run must fail (rc != 0) with EVERY stdout
+    # line a parseable protocol event, ending in an error event with a
+    # non-empty message — never a bare traceback on the event channel.
+    # --output-dir keeps the run fully hermetic (no dir created in outputs/).
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    res = _run_sorting("--progress", "json", "--data-dir", str(data_dir),
+                       "--output-dir", str(tmp_path / "out"))
+    assert res.returncode != 0
+    lines = [ln for ln in res.stdout.splitlines() if ln.strip()]
+    events = [sp.parse_line(ln) for ln in lines]
+    assert events, "expected at least an error event on stdout"
+    bad = [ln for ln, ev in zip(lines, events) if ev is None]
+    assert not bad, f"non-protocol stdout lines in --progress json mode: {bad[:3]}"
+    last = events[-1]
+    assert last["t"] == "error" and last["ok"] is False
+    assert last["message"].strip()
+
+
+def test_usage_error_keeps_stdout_empty():
+    # An argparse rejection happens before the sort starts: usage goes to
+    # stderr (rc 2), and the JSON event channel stays completely silent.
+    res = _run_sorting("--progress", "json", "--duration", "-5")
+    assert res.returncode != 0
+    assert res.stdout.strip() == ""
+    assert res.stderr.strip()

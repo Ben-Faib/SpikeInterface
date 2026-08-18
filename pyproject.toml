@@ -34,6 +34,7 @@ package = false
 dev = [
     "pytest>=9.0.3",
     "pytest-asyncio>=1.4.0",
+    "pytest-textual-snapshot>=1.0.0",
 ]
 
 [tool.pytest.ini_options]
