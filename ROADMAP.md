@@ -68,6 +68,8 @@ box) runs alongside everything.
 | 13 | W4 multi-recording | `goals/GOAL_W4_MULTI.md` | gated: W1+W2+lab data |
 | — | WD lab deployment items 1–4 | `goals/GOAL_WD_DEPLOY.md` | gated: lab-box access |
 | B1 | BUG: bare `report` action crashes | prompt below | **SEALED 2026-08-18** (peer, `b43869e`) |
+| C1 | NEV online-vs-sorted comparison (Ben, 2026-08-18 eve) | engine in a builder lane now; menu wiring after D4 | **IN FLIGHT** |
+| D3b | report/compare progress plumbing — §6's last piece (Ben re-confirmed 2026-08-18 eve) | `DESIGN_UX.md` §6 | READY once D3+D4 land |
 
 ## Paste prompts, in run order
 
