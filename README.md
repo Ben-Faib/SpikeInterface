@@ -234,7 +234,8 @@ outputs/tridesclous2/
 ├── sorter_output/        # raw sorter working folder
 ├── sorting/              # saved SI Sorting   (reload: si.load(".../sorting"))
 ├── analyzer/             # SortingAnalyzer    (open in spikeinterface-gui, or reload)
-└── quality_metrics.csv   # per-unit firing rate / SNR / ISI-violation table
+└── quality_metrics.csv   # per-unit metrics: rate/SNR/ISI + presence, amplitude,
+                          #   and PCA isolation metrics where computable
 ```
 
 For an interactive walk-through of the same pipeline (on a short slice, with

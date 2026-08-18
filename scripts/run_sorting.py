@@ -20,7 +20,8 @@ Outputs (git-ignored) land in outputs/<sorter>/:
     sorter_output/        raw sorter working folder
     sorting/              saved SI Sorting   (reload: si.load(".../sorting"))
     analyzer/             SortingAnalyzer    (open in spikeinterface-gui, or reload)
-    quality_metrics.csv   per-unit firing rate / SNR / ISI-violation table
+    quality_metrics.csv   per-unit metrics: rate/SNR/ISI + presence, amplitude
+                          cutoff/median and PCA isolation metrics where computable
     run_info.json         provenance: sorter, window (effective vs total), band,
                           channels sorted, unit count, versions, timestamp
 
@@ -300,7 +301,10 @@ class ConsoleUI:
                 cells = [str(idx)]
                 for col in df.columns:
                     v = row[col]
-                    cells.append(str(int(v)) if "count" in col else f"{v:.3f}")
+                    if v != v:  # NaN — honest gap, not "nan"
+                        cells.append("–")
+                    else:
+                        cells.append(str(int(v)) if "count" in col else f"{v:.3f}")
                 table.add_row(*cells)
             self._c.print()
             self._c.print(table)
@@ -398,17 +402,24 @@ def _robust_rmtree(path: Path, attempts: int = 5, delay: float = 0.5) -> None:
 
 # SortingAnalyzer extensions that the spikeinterface-gui inspector needs for its
 # manual-curation views: correlograms (refractory violations), ISI histograms,
-# spike amplitudes (drift/amplitude-cutoff), spike locations (depth view),
-# template similarity (merge suggestions) and PCA (ND-scatter separability).
+# spike locations (depth view), and template similarity (merge suggestions).
 # Without these precomputed, those inspector panels open blank. They are cheap on
 # this dataset (~5 s on the full 132 s recording) so we compute them at sort time.
 _CURATION_EXTENSIONS = [
     "unit_locations",        # probe / unit-position view (placeholder geometry — see caveat)
     "correlograms",
     "isi_histograms",
-    "spike_amplitudes",
     "spike_locations",
     "template_similarity",
+]
+
+# Computed BEFORE quality_metrics because metrics depend on them: amplitude_cutoff /
+# amplitude_median need spike_amplitudes; the PCA metrics (mahalanobis -> isolation
+# distance + L-ratio, d_prime, nearest_neighbor) need principal_components. Each is
+# still best-effort: a failure drops only its dependent metrics, never the metrics
+# phase — thin metrics beat no metrics.
+_METRIC_DEP_EXTENSIONS = [
+    "spike_amplitudes",
     "principal_components",
 ]
 
@@ -1050,19 +1061,37 @@ def main() -> int:
                     ("waveforms", lambda: analyzer.compute("waveforms")),
                     ("templates", lambda: analyzer.compute("templates")),
                     ("noise_levels", lambda: analyzer.compute("noise_levels")),
-                    ("quality_metrics", lambda: analyzer.compute(
-                        "quality_metrics", metric_names=["firing_rate", "snr", "isi_violation"])),
                 ]
+                dep_steps = [(ext, _ext_compute(analyzer, ext)) for ext in _METRIC_DEP_EXTENSIONS]
                 curation_steps = [(ext, _ext_compute(analyzer, ext)) for ext in _CURATION_EXTENSIONS]
-                n_steps = len(base_steps) + len(curation_steps)
+                n_steps = len(base_steps) + len(dep_steps) + 1 + len(curation_steps)
                 for i, (name, fn) in enumerate(base_steps, start=1):
                     rep.substep(name, i, n_steps)
                     fn()  # core extension — a failure here is caught below (non-fatal)
+                deps_ok: set = set()
+                for j, (name, fn) in enumerate(dep_steps, start=len(base_steps) + 1):
+                    rep.substep(name, j, n_steps)
+                    try:
+                        fn()
+                        deps_ok.add(name)
+                    except Exception as e:  # noqa: BLE001 - drop dependent metrics, keep the rest
+                        ui.detail(f"  skipped {name} ({type(e).__name__}) — its metrics dropped")
+                        # Mirror onto the JSON event channel: a menu user must see WHY
+                        # the metrics table came back thinner (stderr detail is invisible there).
+                        rep.detail(f"⚠ skipped {name} — its quality metrics dropped")
+                metric_names = ["firing_rate", "snr", "isi_violation", "presence_ratio"]
+                if "spike_amplitudes" in deps_ok:
+                    metric_names += ["amplitude_cutoff", "amplitude_median"]
+                if "principal_components" in deps_ok:
+                    metric_names += ["mahalanobis", "d_prime", "nearest_neighbor"]
+                qi = len(base_steps) + len(dep_steps) + 1
+                rep.substep("quality_metrics", qi, n_steps)
+                analyzer.compute("quality_metrics", metric_names=metric_names)
                 qm = analyzer.get_extension("quality_metrics").get_data()
                 qm.to_csv(out / "quality_metrics.csv")
-                ui.detail("computing GUI-inspector extensions (correlograms, ISI, amplitudes, "
-                          "locations, similarity, PCA) …")
-                for j, (name, fn) in enumerate(curation_steps, start=len(base_steps) + 1):
+                ui.detail("computing GUI-inspector extensions (correlograms, ISI, "
+                          "locations, similarity) …")
+                for j, (name, fn) in enumerate(curation_steps, start=qi + 1):
                     rep.substep(name, j, n_steps)
                     try:
                         fn()
@@ -1070,7 +1099,10 @@ def main() -> int:
                         ui.detail(f"  skipped {name} ({type(e).__name__})")
             ui.metrics(qm, out / "quality_metrics.csv")
             if rep.enabled:
-                rows = [{"unit": idx, **{c: (int(r[c]) if "count" in c else float(r[c]))
+                # NaN -> None: some widened metrics (amplitude_cutoff, nn_*) are honestly
+                # NaN for sparse units, and None keeps the event channel strict-JSON clean.
+                rows = [{"unit": idx, **{c: (None if r[c] != r[c] else
+                                             (int(r[c]) if "count" in c else float(r[c])))
                                         for c in qm.columns}}
                         for idx, r in qm.iterrows()]
                 rep.metrics(rows, str(out / "quality_metrics.csv"))

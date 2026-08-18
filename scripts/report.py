@@ -221,7 +221,13 @@ function sortTable(table, col, numeric) {
   var asc = !(table.getAttribute('data-col') == col && table.getAttribute('data-dir') == 'asc');
   rows.sort(function(a, b) {
     var x = a.cells[col].innerText, y = b.cells[col].innerText;
-    if (numeric) { x = parseFloat(x); y = parseFloat(y); }
+    if (numeric) {
+      x = parseFloat(x); y = parseFloat(y);
+      // "–" gap cells parse to NaN; pin them to the bottom in either direction
+      // (a NaN comparator is inconsistent and would interleave rows arbitrarily).
+      if (isNaN(x)) x = asc ? Infinity : -Infinity;
+      if (isNaN(y)) y = asc ? Infinity : -Infinity;
+    }
     return (x > y ? 1 : x < y ? -1 : 0) * (asc ? 1 : -1);
   });
   rows.forEach(function(r) { tbody.appendChild(r); });
@@ -420,8 +426,13 @@ def _render_qc(analyzer) -> str:
     if analyzer is None:
         return '<p class="skip">No saved analyzer — quality metrics unavailable.</p>'
     qm = analyzer.get_extension("quality_metrics").get_data()  # DataFrame, index = unit ids
-    cols = [c for c in ["firing_rate", "snr", "isi_violations_ratio", "isi_violations_count"]
-            if c in qm.columns]
+    # Render whatever the analyzer computed (old saved sorts carry fewer columns):
+    # a preferred reading order first, then any remaining columns appended as-is.
+    preferred = ["firing_rate", "snr", "presence_ratio", "amplitude_median",
+                 "amplitude_cutoff", "isolation_distance", "l_ratio", "d_prime",
+                 "nn_hit_rate", "nn_miss_rate", "isi_violations_ratio", "isi_violations_count"]
+    cols = [c for c in preferred if c in qm.columns]
+    cols += [c for c in qm.columns if c not in cols]
     qm = qm.sort_values("snr", ascending=False) if "snr" in qm.columns else qm
 
     headers = "".join(
@@ -430,12 +441,19 @@ def _render_qc(analyzer) -> str:
     )
     rows = ""
     for uid, r in qm.iterrows():
-        cells = "".join(f"<td>{r[c]:.3g}</td>" for c in cols)
+        cells = "".join(("<td>–</td>" if r[c] != r[c] else f"<td>{r[c]:.3g}</td>")
+                        for c in cols)
         rows += (f'<tr><td onclick="sortTable(this.closest(\'table\'),0,true)">{int(uid)}</td>{cells}</tr>')
-    table = (f'<p class="note">Click a column header to sort.</p>'
+    pca_caveat = ""
+    if "isolation_distance" in qm.columns:
+        pca_caveat = ('<p class="note">PCA isolation metrics are unreliable for units with '
+                      'very few spikes — an astronomically large isolation_distance with a '
+                      'blank l_ratio means a degenerate fit, not superb isolation.</p>')
+    table = (f'<p class="note">Click a column header to sort. "–" = not computable for that '
+             f'unit.</p>'
              f'<table class="qc"><thead><tr>'
              f'<th onclick="sortTable(this.closest(\'table\'),0,true)">unit</th>{headers}</tr></thead>'
-             f'<tbody>{rows}</tbody></table>')
+             f'<tbody>{rows}</tbody></table>' + pca_caveat)
 
     scatter = ""
     if {"firing_rate", "snr"} <= set(qm.columns):

@@ -24,9 +24,11 @@ box) runs alongside everything.
   first. **Every D slice is gated on the veto.**
 - **T1 (testing harness) is RUNNING in the peer session** (dispatched 2026-08-18):
   snapshot baselines of today's UI, report golden checks, progress-protocol contract tests.
-- **Ready to paste now, in parallel with the veto:** prompt M1 (widen the quality metrics)
-  and prompt P1 (probeinterface import) — both engine-side, neither collides with the
-  D-track UI work or with T1's tests/-only scope.
+- **M1 SEALED 2026-08-18 (same session):** quality metrics widened 3 → 12 columns with
+  dependency-aware compute; Fable review verdict **ship**, all findings folded in. B1 (a
+  pre-existing bare-report crash found en route) is filed below, READY.
+- **Ready to paste now, in parallel with the veto:** prompt P1 (probeinterface import) and
+  prompt B1 (small bugfix) — engine-side, no collision with the D-track or T1.
 - **Needs Ben (OPEN in SEALS.md):** the D0 veto; NORTHSTAR arc ratification (now including
   the 2026-08-18 restructure); the lab requirements pass; lab-box access for WD.
 
@@ -53,12 +55,12 @@ box) runs alongside everything.
 | # | Item | Brief | State |
 |---|---|---|---|
 | — | T1 testing harness | `goals/GOAL_T_TESTING.md` | **RUNNING** (peer session) |
-| 1 | M1 widen quality metrics | prompt below (was W0 item 5) | **READY — paste now** |
+| 1 | M1 widen quality metrics | prompt below (was W0 item 5) | **SEALED 2026-08-18** |
 | 2 | P1 probeinterface import | `goals/GOAL_P_PROBES.md` | **READY — paste now** |
 | 3 | D0 veto | `DESIGN_UX.md` | **WAITING ON BEN** |
 | 4 | D1 dashboard | `goals/GOAL_D_UIUX.md` | gated: D0 veto + T1 |
 | 5 | D2 run experience | `goals/GOAL_D_UIUX.md` | gated: D0 veto + T1 |
-| 6 | D3 report | `goals/GOAL_D_UIUX.md` | gated: D0 veto (+ M1 for quality tiles) |
+| 6 | D3 report | `goals/GOAL_D_UIUX.md` | gated: D0 veto (M1 ✓ — quality tiles unblocked) |
 | 7 | D4 flow modals | `goals/GOAL_D_UIUX.md` | gated: after D1 |
 | 8 | T2/T3 journey + honesty tests | `goals/GOAL_T_TESTING.md` | gated: after D1/D2 |
 | 9 | P2 multi-shank · P3 wiring | `goals/GOAL_P_PROBES.md` | after P1; P3 needs adapter map |
@@ -67,10 +69,11 @@ box) runs alongside everything.
 | 12 | W3 face | `goals/GOAL_W3_FACE.md` | gated: Ben's pick, after D track |
 | 13 | W4 multi-recording | `goals/GOAL_W4_MULTI.md` | gated: W1+W2+lab data |
 | — | WD lab deployment items 1–4 | `goals/GOAL_WD_DEPLOY.md` | gated: lab-box access |
+| B1 | BUG: bare `report` action crashes | prompt below | **READY** (found 2026-08-18) |
 
 ## Paste prompts, in run order
 
-### M1 — widen the quality metrics  [READY]
+### M1 — widen the quality metrics  [SEALED 2026-08-18 — prompt kept for provenance]
 
 ```
 The workbench's unit-quality evidence is 3 of SpikeInterface's ~20 metrics while the PCA the
@@ -122,6 +125,23 @@ Authored with `fable-prompt-builder` **when Ben's veto lands**, against the spec
 `goals/GOAL_D_UIUX.md` + the spec sections from DESIGN_UX §7, name the T1 gates
 (deliberate snapshot re-baselining with reviewed diffs), and seal per the contract.
 
+### B1 — bare report action crashes  [READY — small]
+
+```
+A documented invocation is a crash: `uv run python scripts/make_report.py` (and
+`SpikeInterface_Menu.py report`) with no --sorter dies with a TypeError at
+SpikeInterface_Menu.py:109 — _analyzer_dir joins a None sorter (reproduced 2026-08-18 on
+unmodified code). Since a bare non-TTY launcher run silently dispatches the report action,
+check whether piped/CI invocations hit the same path.
+
+Fix the default-sorter resolution for the report action (the active/recommended sorter, or
+the only saved sort, with an honest error naming the fix when nothing is saved), and add a
+regression test for the bare invocation. Done when the bare command builds the report on
+this repo's saved sort, the no-saved-sort case errors honestly instead of crashing, and the
+suite is green. Boundaries: resolution logic only — no report content changes. Seal per the
+between-run contract.
+```
+
 ### T2/T3, P2/P3, W1+ — authored when their gates clear
 
 Same rule: fresh prompts from the briefs at gate-time, constants verified against source.
@@ -139,6 +159,17 @@ Same rule: fresh prompts from the briefs at gate-time, constants verified agains
 
 ## Sealed record
 
+- **2026-08-18 — M1: quality metrics widened, 3 → 12 columns.** Dependency extensions
+  (spike_amplitudes, principal_components) now compute *before* quality_metrics,
+  best-effort — a dependency failure drops only its metrics, surfaced on both output
+  channels, never the phase. New columns: presence_ratio, amplitude_cutoff,
+  amplitude_median, isolation_distance, l_ratio, d_prime, nn_hit_rate, nn_miss_rate.
+  Report renders whatever the analyzer has (old sorts degrade gracefully), NaN as an
+  honest "–" that sorts to the bottom, with a degenerate-PCA caveat. Gates: 301 tests
+  green, smoke canary 4.077/3.975 µV, `--progress json` purity re-proven (46 lines, 0
+  leaks, strict-JSON nulls). Fable review: **ship** (4 low findings, all folded in).
+  *Notes for W1 slice 1:* presence_ratio quantizes to {0,½,1} at 132 s with 60 s bins —
+  consider `bin_duration_s≈15`; consider blanking isolation_distance where l_ratio is NaN.
 - **2026-08-18 — overhaul kickoff** (this session). Ben's directive taken on record
   (NORTHSTAR updated: UPitt researchers, varied probe setups, Faibussowitsch × Al-Olimat,
   UI/UX mandate); `DESIGN_UX.md` D0 spec drafted from screenshots of every surface; GOAL_D /

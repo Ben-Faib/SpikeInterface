@@ -13,9 +13,10 @@ A need left only in a chat summary is a need Ben never sees.*
 - **The pipeline works end to end on the one recording**: load → sort (4 local sorters,
   Docker fallback) → analyzer + six array/yield metrics on four surfaces → report/compare;
   noise-floor canary steady at ~4 µV across all saved sorts.
-- **Science depth is the gap**: quality metrics are still 3 of ~20, the "high-quality" count
-  is a hardcoded SNR≥5 heuristic, there is no curation loop or Phy export, and runs clobber
-  each other with incomplete provenance — the W0→W1→W2 arc exists to close exactly this.
+- **Science depth is the remaining gap, one notch smaller**: quality metrics are now 12
+  columns (M1, 2026-08-18 — presence, amplitude, PCA isolation added), but the
+  "high-quality" count is still a hardcoded SNR≥5 heuristic, there is no curation loop or
+  Phy export, and runs clobber each other with incomplete provenance — W1→W2 close this.
 - **Probe geometry is real** (`nnx-a1x16-3mm-100` default) with channel→site wiring a
   user-accepted identity mapping — true depth order still waits on the lab's adapter map.
 - **Deployment target is the UPitt lab's Windows+GPU box**; Windows Docker-sort cleanup
@@ -46,6 +47,18 @@ A need left only in a chat summary is a need Ben never sees.*
 ---
 
 ## The ledger (newest first)
+
+**2026-08-18 — M1: quality metrics widened**
+- Did: widened per-unit quality metrics from 3 to 12 columns with dependency-aware,
+  best-effort compute ordering, honest NaN rendering everywhere, and a Fable review whose
+  four findings (NaN-sort, silent-skip visibility, stale README, degenerate-PCA caveat)
+  are all folded in.
+- Means: every downstream surface — the report today, D3's verdict tiles, W1's curation
+  thresholds — now stands on a real evidence base instead of 3 metrics.
+- Moved: D3 lost its M1 gate (only the D0 veto remains); B1 filed (pre-existing bare
+  `report` crash, reproduced on unmodified code, prompt READY in ROADMAP).
+- Needs Ben: nothing new — the D0 veto remains the big open item.
+- Next: paste P1 or B1 from ROADMAP; veto DESIGN_UX.md when ready.
 
 **2026-08-18 — overhaul kickoff (D0 + graph)**
 - Did: took Ben's overhaul directive on record (NORTHSTAR: UPitt researchers, varied probes,
