@@ -60,3 +60,6 @@ probes.json
 # superpowers visual brainstorming companion
 .superpowers/
 WORKBENCH_DIRECTIONS.md
+
+# pytest-textual-snapshot failure report (regenerated on any snapshot mismatch)
+/snapshot_report.html

@@ -1,9 +1,9 @@
 """Contract tests for the sort-progress JSON event protocol.
 
 ``scripts/sort_progress.py`` is the wire protocol between ``run_sorting.py``
-(emitter subprocess) and the TUI's ``SortProgressScreen`` (consumer). The
-protocol is about to be EXTENDED (elapsed/ETA/result events) — these tests pin
-what must not break while that happens:
+(emitter subprocess) and the TUI's ``SortProgressScreen`` (consumer). D2
+EXTENDED it (emitter-side ``elapsed``, ``phase_done``, a terminal ``result``
+riding alongside ``done``) — these tests pin the whole surface:
 
 - the event vocabulary and each event's required keys (``SHAPES``),
 - extension safety: unknown event types are ignored by consumers, unknown
@@ -36,33 +36,41 @@ import sort_progress as sp  # noqa: E402
 ROOT = Path(__file__).resolve().parent.parent
 
 # Required keys per event type (beyond "t"). Optional keys — phase.sub,
-# bar.n/total/elapsed/remaining, done.good/note — are deliberately absent:
-# consumers must not require them.
+# phase.elapsed, bar.n/total/elapsed/remaining, result.elapsed, done.good/note —
+# are deliberately absent: consumers must not require them.
 SHAPES = {
-    "phase":     {"i", "n", "title"},
-    "detail":    {"text"},
-    "substep":   {"name", "i", "n"},
-    "bar":       {"desc", "frac"},
-    "heartbeat": {"label", "secs"},
-    "metrics":   {"rows", "csv"},
-    "summary":   {"card", "summary"},
-    "done":      {"ok", "units", "out"},
-    "error":     {"ok", "message"},
+    "phase":      {"i", "n", "title"},
+    "phase_done": {"i", "title", "secs"},
+    "detail":     {"text"},
+    "substep":    {"name", "i", "n"},
+    "bar":        {"desc", "frac"},
+    "heartbeat":  {"label", "secs"},
+    "metrics":    {"rows", "csv"},
+    "summary":    {"card", "summary"},
+    "result":     {"units", "good", "noise_floor_uV", "out",
+                   "effective_seconds", "total_seconds"},
+    "done":       {"ok", "units", "out"},
+    "error":      {"ok", "message"},
 }
 
 # One canonical, fully-populated example of every event type.
 EXAMPLES = {
-    "phase":     {"t": "phase", "i": 2, "n": 4, "title": "Preprocess", "sub": "bandpass + CMR"},
-    "detail":    {"t": "detail", "text": "detect_peaks: 562 peaks found"},
-    "substep":   {"t": "substep", "name": "snr", "i": 2, "n": 8},
-    "bar":       {"t": "bar", "desc": "detect", "frac": 0.5, "n": 5, "total": 10,
-                  "elapsed": 3.2, "remaining": 3.1},
-    "heartbeat": {"t": "heartbeat", "label": "running sorter", "secs": 30},
-    "metrics":   {"t": "metrics", "rows": [{"unit": 1, "snr": 7.2}], "csv": "q.csv"},
-    "summary":   {"t": "summary", "card": ["V_pp: 22.9 µV"], "summary": {"n_units": 7}},
-    "done":      {"t": "done", "ok": True, "units": 7, "good": 5, "out": "outputs/x",
-                  "note": None},
-    "error":     {"t": "error", "ok": False, "message": "Docker isn't running"},
+    "phase":      {"t": "phase", "i": 2, "n": 5, "title": "Preprocess",
+                   "sub": "bandpass + CMR", "elapsed": 3.24},
+    "phase_done": {"t": "phase_done", "i": 2, "title": "Preprocess", "secs": 4.11},
+    "detail":     {"t": "detail", "text": "detect_peaks: 562 peaks found"},
+    "substep":    {"t": "substep", "name": "snr", "i": 2, "n": 8},
+    "bar":        {"t": "bar", "desc": "detect", "frac": 0.5, "n": 5, "total": 10,
+                   "elapsed": 3.2, "remaining": 3.1},
+    "heartbeat":  {"t": "heartbeat", "label": "running sorter", "secs": 30},
+    "metrics":    {"t": "metrics", "rows": [{"unit": 1, "snr": 7.2}], "csv": "q.csv"},
+    "summary":    {"t": "summary", "card": ["V_pp: 22.9 µV"], "summary": {"n_units": 7}},
+    "result":     {"t": "result", "units": 7, "good": 5, "noise_floor_uV": 4.01,
+                   "out": "outputs/x", "effective_seconds": 132.1, "total_seconds": 132.1,
+                   "elapsed": 247.3},
+    "done":       {"t": "done", "ok": True, "units": 7, "good": 5, "out": "outputs/x",
+                   "note": None},
+    "error":      {"t": "error", "ok": False, "message": "Docker isn't running"},
 }
 
 
@@ -142,6 +150,38 @@ def test_phase_progression_and_transient_reset():
     assert state["detail"] == ""
 
 
+def test_phase_done_closes_that_phase_with_its_duration():
+    state = sp.new_state()
+    sp.reduce(state, {"t": "phase", "i": 1, "n": 5, "title": "Read broadband", "elapsed": 0.01})
+    sp.reduce(state, {"t": "phase_done", "i": 1, "title": "Read broadband", "secs": 3.2})
+    assert state["phases"][0]["done"] is True
+    assert state["phases"][0]["secs"] == 3.2
+    # Timing is the EMITTER's: the consumer shows what it is told, keeping a
+    # replayed event log faithful to the run.
+    sp.reduce(state, {"t": "phase", "i": 2, "n": 5, "title": "Preprocess", "elapsed": 3.21})
+    assert state["elapsed"] == 3.21
+    assert state["phases"][1]["secs"] is None      # still running
+
+
+def test_result_rides_alongside_done_and_never_replaces_it():
+    state = sp.new_state()
+    sp.reduce(state, {"t": "phase", "i": 1, "n": 5, "title": "Read broadband"})
+    sp.reduce(state, EXAMPLES["result"])
+    # a result on its own is NOT terminal — done still has to arrive
+    assert state["result"]["units"] == 7 and state["done"] is None
+    sp.reduce(state, {"t": "done", "ok": True, "units": 7, "good": 5, "out": "outputs/x"})
+    assert state["done"]["ok"] is True
+    assert state["result"]["noise_floor_uV"] == 4.01      # survives the terminal event
+
+
+def test_done_without_a_result_still_closes_the_run():
+    # The TUI synthesises `done` from a silent rc-0 exit, so a run can end with
+    # no result event at all: the terminal contract must not depend on one.
+    state = sp.new_state()
+    sp.reduce(state, {"t": "done", "ok": True, "units": "?", "out": ""})
+    assert state["done"] is not None and state["result"] is None
+
+
 @pytest.mark.parametrize("terminal", [
     {"t": "done", "ok": True, "units": 3, "out": "outputs/x"},
     {"t": "error", "ok": False, "message": "boom"},
@@ -161,8 +201,8 @@ def test_terminal_event_completes_all_phases(terminal):
 # --------------------------------------------------------------------------- #
 
 def test_reporter_emits_exactly_this_protocol():
-    # Importing run_sorting pulls SpikeInterface once (slow but shared with the
-    # report tests). Every Reporter method must produce a parseable event with
+    # run_sorting imports SpikeInterface lazily inside main(), so this module
+    # import is fast. Every Reporter method must produce a parseable event with
     # its SHAPES keys, and together they must cover the whole vocabulary.
     import run_sorting as rs
 
@@ -176,6 +216,8 @@ def test_reporter_emits_exactly_this_protocol():
     rep.heartbeat("running sorter", 30)
     rep.metrics([{"unit": 1, "snr": 7.2}], "q.csv")
     rep.summary(["V_pp: 22.9 µV"], {"n_units": 7})
+    rep.result(units=7, good=5, noise_floor_uV=4.01, out="outputs/x",
+               effective_seconds=132.1, total_seconds=132.1)
     rep.done_ok(units=7, out="outputs/x", good=5)
     rep.error("boom")
 
@@ -187,6 +229,45 @@ def test_reporter_emits_exactly_this_protocol():
     # phase counter is 1-based and monotonic
     phases = [ev for ev in events if ev["t"] == "phase"]
     assert [p["i"] for p in phases] == [1, 2] and all(p["n"] == 4 for p in phases)
+    # ...and carries the emitter's clock, monotonically
+    stamps = [p["elapsed"] for p in phases]
+    assert all(isinstance(e, float) and e >= 0 for e in stamps) and stamps == sorted(stamps)
+    # every phase the emitter left behind is closed by a phase_done naming it
+    closed = [ev for ev in events if ev["t"] == "phase_done"]
+    assert [(c["i"], c["title"]) for c in closed] == [(1, "Read broadband"), (2, "Preprocess")]
+    assert all(c["secs"] >= 0 for c in closed)
+    # the rich result rides alongside done, before it — never instead of it
+    types = [ev["t"] for ev in events]
+    assert types.index("result") < types.index("done")
+
+
+def test_error_does_not_close_the_running_phase():
+    # A phase that died did not finish, so no phase_done is claimed for it; the
+    # consumer's terminal handling is what closes the checklist.
+    import run_sorting as rs
+
+    buf = io.StringIO()
+    rep = rs.Reporter(enabled=True, stream=buf, total_phases=4)
+    rep.phase("Sort")
+    rep.error("boom")
+    assert [sp.parse_line(ln)["t"] for ln in buf.getvalue().splitlines()] == ["phase", "error"]
+
+
+def test_abandoned_phase_gets_no_phase_done():
+    # The non-fatal-metrics path: the metrics phase CRASHED but the run still ends
+    # ok (sort saved). abandon_phase() forgets it, so the later result()/done_ok()
+    # close must not fabricate a completed phase with a duration (D2 review #1).
+    import run_sorting as rs
+
+    buf = io.StringIO()
+    rep = rs.Reporter(enabled=True, stream=buf, total_phases=5)
+    rep.phase("Analyze + metrics")
+    rep.abandon_phase()
+    rep.result(units=2, good=None, noise_floor_uV=None, out="x",
+               effective_seconds=30.0, total_seconds=132.0)
+    rep.done_ok(units=2, out="x", note="quality metrics failed: …")
+    types = [sp.parse_line(ln)["t"] for ln in buf.getvalue().splitlines()]
+    assert types == ["phase", "result", "done"]   # no phase_done anywhere
 
 
 def test_disabled_reporter_is_silent():

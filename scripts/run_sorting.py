@@ -57,6 +57,11 @@ import sorters  # noqa: E402  (sorter registry: discovery / status / params / ru
 
 VERBOSITY_LEVELS = ["quiet", "normal", "verbose"]
 
+# The pipeline's phase checklist, in order — an emitter constant (the progress
+# protocol pins neither the count nor the titles). "Analyze + metrics" is skipped
+# by --no-metrics, so the phase total is derived from this list, not hardcoded.
+PHASES = ("Read broadband", "Preprocess", "Sort", "Save sorting", "Analyze + metrics")
+
 
 class Reporter:
     """Mirrors high-level pipeline events into the JSON progress channel.
@@ -72,6 +77,10 @@ class Reporter:
         self.stream = stream if stream is not None else sys.stdout
         self.total = total_phases
         self.i = 0
+        # Every 'elapsed' on the channel is measured here, emitter-side, so a
+        # captured event log replays with the run's real timing.
+        self._t0 = time.monotonic()
+        self._open = None        # (i, title, start) of the phase currently running
         # The pipe-tee reader thread and the main thread both emit, so the write
         # to the event channel must be serialised (one JSON line at a time).
         self._lock = threading.Lock()
@@ -81,9 +90,33 @@ class Reporter:
             with self._lock:
                 _sp.emit(ev, stream=self.stream)
 
+    def _elapsed(self) -> float:
+        return round(time.monotonic() - self._t0, 2)
+
+    # ``_open`` is main-thread-confined: the cross-thread emitters (tee reader,
+    # heartbeat, AlignedTqdm) call only detail/heartbeat/bar — never the phase
+    # lifecycle — so only the line WRITE needs the lock, not ``_open``.
+    def _close_phase(self) -> None:
+        """Emit ``phase_done`` for the phase now running (a no-op if none is)."""
+        if self._open is None:
+            return
+        i, title, started = self._open
+        self._open = None
+        self._emit({"t": "phase_done", "i": i, "title": title,
+                    "secs": round(time.monotonic() - started, 2)})
+
+    def abandon_phase(self) -> None:
+        """Forget the running phase WITHOUT emitting ``phase_done`` — for a phase
+        that failed: a dead phase did not finish, so it gets no duration (the
+        terminal event closes the checklist visually)."""
+        self._open = None
+
     def phase(self, title: str, sub: str = "") -> None:
+        self._close_phase()
         self.i += 1
-        self._emit({"t": "phase", "i": self.i, "n": self.total, "title": title, "sub": sub})
+        self._open = (self.i, title, time.monotonic())
+        self._emit({"t": "phase", "i": self.i, "n": self.total, "title": title, "sub": sub,
+                    "elapsed": self._elapsed()})
 
     def detail(self, text: str) -> None:
         self._emit({"t": "detail", "text": text})
@@ -106,11 +139,31 @@ class Reporter:
         """The array/yield headline card (six metrics) for the sort screen."""
         self._emit({"t": "summary", "card": card, "summary": summary})
 
+    def result(self, *, units: int, good, noise_floor_uV, out: str,
+               effective_seconds, total_seconds) -> None:
+        """The finished run's headline numbers, ready for a result card.
+
+        Rides ALONGSIDE ``done`` (emitted immediately before it) and never
+        replaces it: ``done`` stays the terminal event, which a consumer can also
+        synthesise from a silent rc-0 exit. ``noise_floor_uV``/``good`` are None
+        when not computed (--no-metrics or a metrics failure); a 0-unit run
+        honestly reports ``good=0``.
+        """
+        self._close_phase()
+        _f = lambda v: None if v is None else float(v)  # noqa: E731 - numpy-proof
+        self._emit({"t": "result", "units": int(units),
+                    "good": None if good is None else int(good),
+                    "noise_floor_uV": _f(noise_floor_uV), "out": str(out),
+                    "effective_seconds": _f(effective_seconds),
+                    "total_seconds": _f(total_seconds), "elapsed": self._elapsed()})
+
     def done_ok(self, *, units: int, out: str, good=None, note=None) -> None:
+        self._close_phase()
         self._emit({"t": "done", "ok": True, "units": units, "good": good,
                     "out": str(out), "note": note})
 
     def error(self, message: str) -> None:
+        # No phase_done here: the phase that was running did not finish.
         self._emit({"t": "error", "ok": False, "message": message})
 
 
@@ -842,7 +895,7 @@ def main() -> int:
     probe_profile = resolve_probe(args.probe, args.probe_file)
 
     json_mode = args.progress == "json"
-    total_phases = 3 if args.no_metrics else 4
+    total_phases = len(PHASES) - 1 if args.no_metrics else len(PHASES)
     # In JSON mode stdout must be a *pure* event channel, but sorters/libraries
     # write status lines straight to stdout (fd 1, bypassing sys.stdout). So we
     # dup the real stdout aside for the Reporter to emit events on, then point
@@ -881,8 +934,8 @@ def main() -> int:
     ui.banner(args.sorter)
     _warn_existing_sort(out, ui)  # flag (don't block) before we overwrite it
 
-    ui.phase("Read broadband", "(.ns5)")
-    rep.phase("Read broadband", "(.ns5)")
+    ui.phase(PHASES[0], "(.ns5)")
+    rep.phase(PHASES[0], "(.ns5)")
     rec = bio.read_broadband(args.data_dir, attach_probe=False)  # probe applied below
     total_seconds = rec.get_total_duration()
     _ch_detail = (f"{rec.get_num_channels()} channels · "
@@ -937,8 +990,8 @@ def main() -> int:
 
     fs = rec.get_sampling_frequency()
     freq_max = min(args.freq_max, 0.49 * fs)  # keep the high cutoff below Nyquist
-    ui.phase("Preprocess", "bandpass + common median reference")
-    rep.phase("Preprocess", "bandpass + common median reference")
+    ui.phase(PHASES[1], "bandpass + common median reference")
+    rep.phase(PHASES[1], "bandpass + common median reference")
     # Mirror the real preprocess sub-steps onto the event channel so the consumer
     # sees each one (channel drop, bandpass, common median reference, frame slice).
     if _drop_msg:
@@ -964,8 +1017,8 @@ def main() -> int:
 
     use_container = sorters.uses_docker(args.sorter, args.docker)
     _sort_sub = args.sorter + ("  (docker)" if use_container else "")
-    ui.phase("Sort", _sort_sub)
-    rep.phase("Sort", _sort_sub)
+    ui.phase(PHASES[2], _sort_sub)
+    rep.phase(PHASES[2], _sort_sub)
     if args.docker and not use_container:
         ui.detail(f"{args.sorter} is installed — running it natively (no Docker needed)")
     if overrides:
@@ -1018,14 +1071,17 @@ def main() -> int:
     else:
         ui.result(f"{n_units} units found")
 
+    ui.phase(PHASES[3], "(sorting/)")
+    rep.phase(PHASES[3], "(sorting/)")
     _robust_rmtree(out / "sorting")  # retry past Windows GUI file-locks before overwrite
     sorting = sorting.save(folder=str(out / "sorting"), overwrite=True)
 
+    summary = None
     n_high_quality = None
     metrics_note = None  # non-fatal: set if the metrics phase failed after a good sort
     if not args.no_metrics and n_units > 0:
-        ui.phase("Quality metrics", "(SortingAnalyzer)")
-        rep.phase("Quality metrics", "(SortingAnalyzer)")
+        ui.phase(PHASES[4], "(SortingAnalyzer)")
+        rep.phase(PHASES[4], "(SortingAnalyzer)")
         # In JSON mode tee the analyzer's fd-1 prints into 'detail' events too — the
         # ~8 compute sub-steps otherwise run silently on the event channel.
         metrics_tee = _StdoutTee(rep, enabled=rep.enabled)
@@ -1129,6 +1185,9 @@ def main() -> int:
             metrics_note = f"quality metrics failed: {type(e).__name__}: {e}"
             ui.warn(metrics_note + " — the sort itself is saved; re-run metrics later.")
             rep.detail("⚠ " + metrics_note)
+            # The metrics phase DIED — it must not get a phase_done/duration from
+            # the later result()/done_ok() close (review 2026-08-18 finding #1).
+            rep.abandon_phase()
             # Don't leave half-built / stale derived artifacts that downstream surfaces
             # (report, comparison, menu) would read as if they matched this sort.
             _robust_rmtree(out / "analyzer")
@@ -1155,6 +1214,11 @@ def main() -> int:
                 "Your sort is saved; delete the folder manually if it lingers.")
         ui.warn(note)
         rep.detail("⚠ " + note)
+    # The result event's headline noise floor (µV, median across channels); None
+    # whenever no array/yield summary was computed (--no-metrics, 0 units, a
+    # metrics failure). The consumer renders it; it recomputes nothing.
+    noise_floor = (summary or {}).get("noise_floor_uV", {}).get("median")
+
     if n_units == 0:
         # Don't leave a previous run's analyzer/metrics behind — they'd report a
         # stale unit count while the saved sorting says 0 (sidebar/report read them).
@@ -1163,9 +1227,13 @@ def main() -> int:
         (out / "summary.json").unlink(missing_ok=True)
         (out / "summary.csv").unlink(missing_ok=True)
         ui.warn(f"Saved to {out}, but no units were found — adjust parameters and re-run.")
+        rep.result(units=0, good=0, noise_floor_uV=noise_floor, out=out,
+                   effective_seconds=effective_seconds, total_seconds=total_seconds)
         rep.done_ok(units=0, out=out, good=0)
         return 0
     ui.done(out)
+    rep.result(units=n_units, good=n_high_quality, noise_floor_uV=noise_floor, out=out,
+               effective_seconds=effective_seconds, total_seconds=total_seconds)
     rep.done_ok(units=n_units, out=out, good=n_high_quality, note=metrics_note)
     if metrics_note:
         ui.detail("saved: sorting/  (analyzer + quality metrics not written — see the "
