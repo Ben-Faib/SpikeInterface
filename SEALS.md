@@ -33,12 +33,9 @@ A need left only in a chat summary is a need Ben never sees.*
 
 ## OPEN — needs Ben
 
-- **The D0 veto: approve or amend `DESIGN_UX.md`** — every D slice (dashboard, run
-  experience, report, flow modals) is gated on it. The peer session's 10-finding
-  feasibility critique is already folded in; the spec is ready to read. *(opened
-  2026-08-18)*
-- **Ratify (or amend) the NORTHSTAR arc** — now including the 2026-08-18 restructure into
-  the D/T/M/P dependency graph. *(opened 2026-08-18)*
+- ~~The D0 veto~~ — **CLOSED 2026-08-18: APPROVED by Ben** ("the dashboard needs overhaul
+  for sure"), dashboard first, build authorized to run autonomously. The arc-ratification
+  item closes with it (continuing the graph was the ratification).
 - **Lab requirements pass** — what Tracy's lab needs first (users, fluency, recordings,
   curation-vs-batch pain); shapes the W3 face pick and could reorder W1/W4.
   *(opened 2026-08-18)*

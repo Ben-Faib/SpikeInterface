@@ -81,6 +81,10 @@ this Mac never offers it). Every phase's work must hold on Windows, not just mac
   this NORTHSTAR adopts as the arc.
 - **2026-08-18** — orchestrator installed (this file, LOOPS, goals/, ROADMAP, SEALS,
   LESSONS, agents, skills), patterned on decantv2's loop-engineering setup.
+- **2026-08-18 (Ben, evening)** — **the D0 veto is APPROVED** ("the dashboard needs
+  overhaul for sure") with no amendments, the dashboard named the priority, and the build
+  authorized to **run autonomously**: sessions execute the ROADMAP graph in dependency
+  order without waiting for per-item pastes, sealing per the contract as they go.
 - **2026-08-18 (Ben, same day)** — **the UI/UX overhaul mandate**: drastically improve all
   surfaces — more accessible, less clutter, focused on what matters, clean with good
   spacing/hierarchy and ample room; the UX must feel like the program provides timely

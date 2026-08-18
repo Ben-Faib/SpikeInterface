@@ -17,7 +17,18 @@ box) runs alongside everything.
 
 ---
 
-## ▶ NOW — updated 2026-08-18, the overhaul kickoff (sealing sessions: update this box FIRST)
+## ▶ NOW — updated 2026-08-18 evening: **THE AUTONOMOUS RUN IS ON** (sealing sessions: update this box FIRST)
+
+- **D0 VETO APPROVED (Ben, 2026-08-18): dashboard first, run autonomously.** Live
+  assignments this run: **D1 dashboard** — orchestrating session (Fable, in-tree);
+  **D2 engine half** (protocol extension, disjoint files) — builder agent; **P1 probe
+  import** — peer session. Then D2 view half, D3, D4, B1 in dependency order as lanes
+  free. File-lane rule while parallel: D1 owns menu_app.py/ui.py/SpikeInterface_Menu.py
+  + Pilot/snapshot tests; D2-engine owns run_sorting.py/sort_progress.py + contract
+  tests (smoke via `--sorter simple` to avoid outputs/ clashes); P1 owns probes.py + its
+  new tests.
+
+### Kickoff-era NOW (superseded same day, kept until the run's first seals land)
 
 - **D0 design spec is READY FOR BEN'S VETO** (`DESIGN_UX.md`): drafted from the surface
   screenshots, then hardened with all 10 findings of the peer session's feasibility
