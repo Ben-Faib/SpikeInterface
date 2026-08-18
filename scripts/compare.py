@@ -1,19 +1,37 @@
-"""Build a standalone interactive comparison of the two sorters.
+"""Build a standalone interactive comparison of two sorts.
 
-    uv run python scripts/compare.py     # builds outputs/comparison.html
+    uv run python scripts/compare.py                        # two saved sorters
+    uv run python scripts/compare.py --online tridesclous2  # a sort vs the online .nev units
 
-Compares the saved tridesclous2 and spykingcircus2 sorts with SpikeInterface's
-compare_two_sorters: an agreement-score heatmap + a matched/unmatched unit table.
+The pair mode writes outputs/comparison.html; the online mode writes
+outputs/comparison_online.html — separate files, so building one never silently
+replaces the other.
+
+Sorter-vs-sorter (no flags) compares the saved tridesclous2 and spykingcircus2
+sorts with SpikeInterface's compare_two_sorters: an agreement-score heatmap + a
+matched/unmatched unit table.
 
 IMPORTANT: the comparison is only meaningful if both sorts cover the SAME
 recording window. Sorts are read from outputs/<sorter>/analyzer (the single
 source of truth, same as report.py). If the two durations differ, the page shows
 a clear caveat instead of a misleading matrix; re-sort both over a common window
 first (the SpikeInterface_Menu.py 'compare' action offers to do this).
+
+``--online <sorter>`` compares that sorter's saved sort against the units the rig
+sorted **online**, read from the .nev. Those units are a *reference, not ground
+truth*: online sorting is per-channel threshold + template matching, so it
+typically undercounts units an offline sorter separates across channels. Only the
+online-*sorted* class is used — Blackrock encodes the class in the unit id, and
+0 (unsorted threshold crossings) and 255 (noise/invalidated) are dropped with
+their spike counts stated on the page. The .nev always spans the whole recording,
+so unlike the sorter-vs-sorter mode (which refuses a window mismatch) this mode
+crops the reference to the saved sort's window and says so loudly.
 """
 from __future__ import annotations
 
+import argparse
 import html
+import re
 import sys
 from pathlib import Path
 
@@ -31,6 +49,21 @@ MATCH_SCORE = 0.5     # min agreement to call two units matched
 # Two sorts whose durations differ by more than this (seconds) are treated as
 # non-commensurate: comparing them would just measure the window mismatch.
 DURATION_TOLERANCE_S = 1.0
+
+# --online mode. The Blackrock unit-id classes are a property of the *data*
+# (see blackrock_io.read_spikes): 0 = unsorted threshold crossings,
+# 1..254 = online-sorted units, 255 = noise/invalidated.
+ONLINE_NAME = "online (.nev)"
+UNSORTED_UNIT_ID = 0
+NOISE_UNIT_ID = 255
+CLASS_LABELS = {
+    "sorted": "online-sorted (unit ids 1–254)",
+    "unsorted": "unsorted threshold crossings (unit id 0)",
+    "noise": "noise / invalidated (unit id 255)",
+    "other": "unrecognised label",
+}
+# neo names a .nev spike channel "ch<channel>#<blackrock unit id>".
+_LABEL_RE = re.compile(r"^ch(\d+)#(\d+)$")
 
 
 def saved_sorters() -> list[str]:
@@ -66,25 +99,27 @@ def _heatmap(cmp) -> go.Figure:
     return fig
 
 
+def _partner_id(v):
+    """The matched partner unit id, or None when unmatched.
+
+    The unmatched sentinel varies by SpikeInterface version / dtype: it can be
+    "" (empty string, the case in 0.104.3) or -1, and matched partner ids may be
+    ints or numeric strings. int()-parsing handles every encoding: "" / None /
+    NaN -> unmatched (int() raises), -1 -> unmatched.
+    """
+    try:
+        iv = int(v)
+    except (TypeError, ValueError):
+        return None
+    return None if iv == -1 else iv
+
+
 def _match_table(cmp) -> str:
-    # Hungarian optimal 1:1 assignment. The unmatched sentinel varies by
-    # SpikeInterface version / dtype: it can be "" (empty string, the case in
-    # 0.104.3) or -1, and matched partner ids may be ints or numeric strings.
-    # int()-parsing handles every encoding: "" / None / NaN -> unmatched (int()
-    # raises), -1 -> unmatched.
-    hm = cmp.hungarian_match_12  # sorter1 unit id -> partner unit id
-
-    def _partner(v):
-        try:
-            iv = int(v)
-        except (TypeError, ValueError):
-            return None
-        return None if iv == -1 else iv
-
+    hm = cmp.hungarian_match_12  # Hungarian optimal 1:1: sorter1 unit id -> partner unit id
     rows = ""
     n_matched = 0
     for u1, u2 in hm.items():
-        p = _partner(u2)
+        p = _partner_id(u2)
         if p is None:
             partner, frac = "—", 0.0
         else:
@@ -175,5 +210,302 @@ def build_comparison(data_dir=None, sorters=None, out_path=None) -> Path:
     return out_path
 
 
+# --------------------------------------------------------------------------- #
+# --online mode: a saved sort vs the units the rig sorted online (.nev)
+# --------------------------------------------------------------------------- #
+def online_unit_labels(sorting) -> "list[str] | None":
+    """The ``ch<channel>#<unit>`` names of a .nev Sorting's units, in unit order.
+
+    SpikeInterface numbers .nev units positionally (0..n-1), which throws away the
+    Blackrock unit id — and with it the class (unsorted / sorted / noise) that
+    decides what may be compared. The names neo parsed are still on the extractor
+    and in the same order as the unit ids, so the class is recoverable there.
+    Returns None when the sorting did not come from neo: the caller says so
+    rather than guessing a class it cannot know.
+    """
+    header = getattr(getattr(sorting, "neo_reader", None), "header", None)
+    if header is None:
+        return None
+    return [str(n) for n in header["spike_channels"]["name"]]
+
+
+def _classify(label: str) -> str:
+    """One of "sorted" / "unsorted" / "noise" / "other" for a ch<n>#<unit> label."""
+    m = _LABEL_RE.match(label)
+    if m is None:
+        return "other"
+    unit = int(m.group(2))
+    if unit == UNSORTED_UNIT_ID:
+        return "unsorted"
+    if unit == NOISE_UNIT_ID:
+        return "noise"
+    return "sorted"
+
+
+def _n_spikes(sorting) -> int:
+    return sum(len(sorting.get_unit_spike_train(u)) for u in sorting.get_unit_ids())
+
+
+def split_online_units(sorting, labels):
+    """Split a .nev Sorting into its online-*sorted* units and what was dropped.
+
+    Returns ``(sorting_of_sorted_units_or_None, accounting)``. The kept units are
+    renamed to their ``ch<n>#<unit>`` labels so every table names the channel the
+    online unit came from. ``accounting`` is one row per unit-id class present —
+    units, spikes, kept or dropped — so the page can state what it left out
+    instead of quietly shrinking n.
+    """
+    ids = list(sorting.get_unit_ids())
+    counts = [len(sorting.get_unit_spike_train(u)) for u in ids]
+    classes = [_classify(label) for label in labels]
+
+    accounting = []
+    for key in ("sorted", "unsorted", "noise", "other"):
+        idx = [i for i, c in enumerate(classes) if c == key]
+        if not idx and key != "sorted":
+            continue
+        accounting.append({"key": key, "label": CLASS_LABELS[key], "n_units": len(idx),
+                           "n_spikes": sum(counts[i] for i in idx), "kept": key == "sorted"})
+
+    keep = [i for i, c in enumerate(classes) if c == "sorted"]
+    if not keep:
+        return None, accounting
+    kept = sorting.select_units([ids[i] for i in keep],
+                                renamed_unit_ids=[labels[i] for i in keep])
+    return kept, accounting
+
+
+def _span_frames(sorting) -> int:
+    """Last spike frame + 1. A bare .nev Sorting has no recording registered, so
+    get_total_duration() is unavailable — the spikes themselves are the span."""
+    last = 0
+    for u in sorting.get_unit_ids():
+        train = sorting.get_unit_spike_train(u)
+        if len(train):
+            last = max(last, int(train[-1]))
+    return last + 1
+
+
+def crop_online(sorting, window_s):
+    """Crop the online reference to the saved sort's window.
+
+    The .nev covers the whole recording while a sort may cover only its first
+    seconds, so refusing the mismatch (the sorter-vs-sorter rule) would refuse
+    every quick sort. Cropping is the honest move — and the crop is stated on the
+    page, never silent. Returns ``(sorting, info)``.
+    """
+    fs = float(sorting.get_sampling_frequency())
+    end = int(round(window_s * fs))
+    span = _span_frames(sorting)
+    before = _n_spikes(sorting)
+    info = {"window_s": window_s, "online_span_s": span / fs, "cropped": span > end,
+            "n_spikes_before": before, "n_spikes_after": before, "n_empty": 0}
+    if info["cropped"]:
+        sorting = sorting.frame_slice(start_frame=0, end_frame=end)
+        info["n_spikes_after"] = _n_spikes(sorting)
+    info["n_empty"] = sum(1 for u in sorting.get_unit_ids()
+                          if len(sorting.get_unit_spike_train(u)) == 0)
+    return sorting, info
+
+
+def _crop_note(info) -> str:
+    if info["cropped"]:
+        note = ('<div class="caveat"><strong>Online reference cropped to the first '
+                f'{info["window_s"]:.0f} s to match the sort.</strong> The .nev spans '
+                f'{info["online_span_s"]:.0f} s of recording, the saved sort covers '
+                f'{info["window_s"]:.0f} s, so the reference drops from '
+                f'{info["n_spikes_before"]} to {info["n_spikes_after"]} spikes. Everything '
+                'below is that window only.</div>')
+    else:
+        note = (f'<p class="note">No crop needed — the online units span '
+                f'{info["online_span_s"]:.0f} s, inside the sort\'s '
+                f'{info["window_s"]:.0f} s window.</p>')
+    if info["n_empty"]:
+        note += (f'<p class="note">{info["n_empty"]} online unit(s) have no spikes in this '
+                 'window; they stay in the matrix as empty rows.</p>')
+    return note
+
+
+def _reference_section(accounting, crop_note="") -> dict:
+    """What the online reference is, and exactly what was left out of it."""
+    rows = ""
+    for c in accounting:
+        used = "used here" if c["kept"] else "dropped"
+        rows += (f'<tr><td>{html.escape(c["label"])}</td><td>{c["n_units"]}</td>'
+                 f'<td>{c["n_spikes"]}</td><td>{used}</td></tr>')
+    table = ('<table class="qc"><thead><tr><th>Blackrock unit class</th><th>units</th>'
+             f'<th>spikes</th><th>in this comparison</th></tr></thead><tbody>{rows}'
+             '</tbody></table>')
+    note = ('<p class="note">The .nev carries the rig\'s own sorting, done live during the '
+            'recording: per channel, threshold crossings assigned to units by template. '
+            'Blackrock puts the class in the unit id — 0 = unsorted threshold crossings, '
+            '1–254 = online-sorted, 255 = noise/invalidated — so only the 1–254 class is a '
+            'sort at all. The other classes are counted below and left out.</p>')
+    n_kept = sum(c["n_units"] for c in accounting if c["kept"])
+    return {"id": "online", "title": "The online (.nev) reference",
+            "html": note + table + crop_note, "state": "ok" if n_kept else "warn"}
+
+
+def _online_match_table(cmp, online, offline, sorter):
+    """Per-online-unit best match. Returns (html, n_at_match_score, n_above_chance).
+
+    Best match, not the Hungarian 1:1 assignment: two online units may point at
+    the same offline unit, which is exactly what a channel-local online sort does
+    when an offline sorter splits one channel into several units. That is stated
+    rather than hidden behind a forced 1:1.
+    """
+    n_on = {str(u): len(online.get_unit_spike_train(u)) for u in online.get_unit_ids()}
+    n_off = {str(u): len(offline.get_unit_spike_train(u)) for u in offline.get_unit_ids()}
+    chance = float(cmp.chance_score)
+
+    rows, n_strong, n_any = "", 0, 0
+    for u1, u2 in cmp.best_match_12.items():
+        partner = _partner_id(u2)
+        if partner is None:
+            cells = "<td>—</td><td>—</td><td>—</td>"
+        else:
+            frac = cmp.get_agreement_fraction(u1, u2)
+            n_any += 1
+            n_strong += frac >= MATCH_SCORE
+            cells = (f"<td>{html.escape(str(partner))}</td><td>{frac:.3g}</td>"
+                     f"<td>{n_off.get(str(partner), 0)}</td>")
+        rows += (f'<tr><td>{html.escape(str(u1))}</td>'
+                 f'<td>{n_on.get(str(u1), 0)}</td>{cells}</tr>')
+
+    summary = (f'<p class="note">n = {len(n_on)} online-sorted unit(s). {n_strong} with a best '
+               f'match at agreement ≥ {MATCH_SCORE}, {n_any} above chance ({chance:g}); '
+               f'a dash means no {html.escape(sorter)} unit reached even chance level. '
+               f'delta_time={DELTA_TIME_MS} ms. Click a header to sort.</p>')
+    table = (summary + '<table class="qc"><thead><tr>'
+             '<th onclick="sortTable(this.closest(\'table\'),0,false)">online unit (ch#unit)</th>'
+             '<th onclick="sortTable(this.closest(\'table\'),1,true)">online spikes</th>'
+             f'<th onclick="sortTable(this.closest(\'table\'),2,false)">best match in '
+             f'{html.escape(sorter)}</th>'
+             '<th onclick="sortTable(this.closest(\'table\'),3,true)">agreement</th>'
+             '<th onclick="sortTable(this.closest(\'table\'),4,true)">matched unit spikes</th>'
+             '</tr></thead><tbody>' + rows + '</tbody></table>')
+    return table, n_strong, n_any
+
+
+def _online_compare_html(cmp, online, offline, sorter) -> str:
+    n_on, n_off = len(online.get_unit_ids()), len(offline.get_unit_ids())
+    framing = (f'<p class="note">Agreement between two sorts of the same window — n = {n_on} '
+               f'online-sorted unit(s) against {n_off} {html.escape(sorter)} unit(s). The '
+               'online units are a <strong>reference, not ground truth</strong>: the rig sorts '
+               'one channel at a time from threshold crossings and a template, so it typically '
+               'undercounts units an offline sorter separates across channels. Read a low score '
+               'as two methods disagreeing, not as an error rate for either — nothing on this '
+               'page is accuracy or precision.</p>')
+    table, n_strong, n_any = _online_match_table(cmp, online, offline, sorter)
+    chance = float(cmp.chance_score)
+    caveat = ""
+    if n_any == 0:
+        caveat = ('<div class="caveat"><strong>Zero agreement: no online unit reaches chance '
+                  f'level ({chance:g}) against any {html.escape(sorter)} unit.</strong> The '
+                  'usual causes are a window mismatch (read the crop note above first), a '
+                  'channel mismatch (the sort must cover the channels the online units came '
+                  'from), a systematic spike-time offset between online threshold crossings '
+                  f'and offline peak-aligned spikes (larger than delta_time = {DELTA_TIME_MS} '
+                  "ms), or one online unit's spikes spread thin across several offline "
+                  'units, so no single pair clears chance even where spikes do coincide. '
+                  'The per-unit table below can hint at the last case — an online unit whose '
+                  "spike count is far from every offline unit's is consistent with it — but "
+                  'similar counts with zero agreement suggest the timing-offset case '
+                  'instead.</div>')
+    elif n_strong == 0:
+        caveat = ('<div class="caveat"><strong>Every best match is below the '
+                  f'{MATCH_SCORE} match threshold.</strong> The two sorts overlap but agree on '
+                  'no unit. Worth a look at the raw traces before trusting either — start with '
+                  'the channels of the online units listed below.</div>')
+    return framing + caveat + report._fig_html(_heatmap(cmp)) + table
+
+
+def _caveat_section(sorter, body) -> dict:
+    return {"id": "compare", "title": f"{sorter} vs {ONLINE_NAME}",
+            "html": f'<div class="caveat">{body}</div>', "state": "warn"}
+
+
+def build_online_comparison(sorter, data_dir=None, out_path=None) -> Path:
+    """outputs/comparison_online.html — one saved sort vs the .nev online reference.
+
+    Its OWN file (not the pair page's comparison.html): the two modes must never
+    silently replace each other's output (C1 review F2)."""
+    out_path = Path(out_path) if out_path else (OUTPUT_DIR / "comparison_online.html")
+    OUTPUT_DIR.mkdir(exist_ok=True)
+
+    def _write(sections):
+        out_path.write_text(
+            report._html_document(f"{sorter} vs online (.nev) units", sections,
+                                  subtitle="The rig's live sorting as a reference — "
+                                           "not ground truth. Self-contained, works offline."),
+            encoding="utf-8")
+        return out_path
+
+    offline, window_s = _load(sorter)
+    if offline is None:
+        saved = saved_sorters()
+        have = (" Saved sorts: " + ", ".join(saved) + ".") if saved else ""
+        return _write([_caveat_section(sorter, (
+            f'<strong>No saved sort for {html.escape(str(sorter))}.</strong> Run one first: '
+            f'<code>uv run python scripts/run_sorting.py --sorter {html.escape(str(sorter))} '
+            f'--duration 30</code>, then rebuild this page.{html.escape(have)}'))])
+
+    try:
+        online = bio.read_spikes(data_dir)
+    except FileNotFoundError:
+        return _write([_caveat_section(sorter, (
+            '<strong>No .nev file found.</strong> The online units live in the recording\'s '
+            '.nev — put the Blackrock file set (.nev + .ns5) in the repo root and rebuild. '
+            'Without it, compare two offline sorters instead: '
+            '<code>uv run python scripts/compare.py</code>.'))])
+
+    labels = online_unit_labels(online)
+    if labels is None:
+        return _write([_caveat_section(sorter, (
+            '<strong>Could not read the .nev unit-class labels</strong>, so the unsorted '
+            '(id 0) and noise (id 255) classes cannot be told apart from the online-sorted '
+            'ones. Comparing everything would misstate what the rig sorted, so nothing is '
+            'compared here. Compare two offline sorters instead: '
+            '<code>uv run python scripts/compare.py</code>.'))])
+
+    kept, accounting = split_online_units(online, labels)
+    if kept is None:
+        dropped = sum(c["n_spikes"] for c in accounting if not c["kept"])
+        channels = sum(c["n_units"] for c in accounting if not c["kept"])
+        return _write([_reference_section(accounting), _caveat_section(sorter, (
+            '<strong>This recording has no online-sorted units, so there is nothing to '
+            f'compare against.</strong> Its .nev holds {dropped} spikes across {channels} '
+            'unit-id-0/255 group(s): the rig detected threshold crossings but never assigned '
+            'them to online units. Sort the .nev online in the recording software and '
+            're-export, or compare two offline sorters instead: '
+            '<code>uv run python scripts/compare.py</code>.'))])
+
+    cropped, crop_info = crop_online(kept, window_s)
+
+    import spikeinterface.comparison as sc
+
+    cmp = sc.compare_two_sorters(cropped, offline, sorting1_name=ONLINE_NAME,
+                                 sorting2_name=sorter, delta_time=DELTA_TIME_MS,
+                                 match_score=MATCH_SCORE)
+    return _write([
+        _reference_section(accounting, _crop_note(crop_info)),
+        {"id": "compare", "title": f"{sorter} vs {ONLINE_NAME}",
+         "html": _online_compare_html(cmp, cropped, offline, sorter)},
+    ])
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Build outputs/comparison.html: two saved sorts, or one sort "
+                    "against the recording's online (.nev) units.")
+    parser.add_argument(
+        "--online", metavar="SORTER",
+        help="compare SORTER's saved sort against the online-sorted .nev units "
+             "instead of against a second sorter")
+    args = parser.parse_args(argv)
+    print(build_online_comparison(args.online) if args.online else build_comparison())
+    return 0
+
+
 if __name__ == "__main__":
-    print(build_comparison())
+    raise SystemExit(main())
