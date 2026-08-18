@@ -81,6 +81,15 @@ this Mac never offers it). Every phase's work must hold on Windows, not just mac
   this NORTHSTAR adopts as the arc.
 - **2026-08-18** — orchestrator installed (this file, LOOPS, goals/, ROADMAP, SEALS,
   LESSONS, agents, skills), patterned on decantv2's loop-engineering setup.
+- **2026-08-18 (Ben, late evening)** — **D5, the actions-first main screen**: the D1
+  two-pane layout buried the frequent actions — the always-visible SORTERS panel goes,
+  replaced by a `t` modal picker (live filter input focused on open, grouped list with
+  GPU/not-available collapsed, one-line description footer); the numbered actions become
+  the primary full-width panel with inline one-line descriptions and the MANAGE keys as
+  one dim line; a results section (label + V_pp/SNR/noise/yield line) appears only when a
+  saved sort exists; LAST line and help line stay; INSPECTING dies (its prose moves into
+  the picker footer and inline hints). Plus a visual-fidelity pass (rounded borders,
+  less rustic). Supersedes DESIGN_UX §2's panel layout; §1 language still binds.
 - **2026-08-18 (Ben, evening)** — **the D0 veto is APPROVED** ("the dashboard needs
   overhaul for sure") with no amendments, the dashboard named the priority, and the build
   authorized to **run autonomously**: sessions execute the ROADMAP graph in dependency
