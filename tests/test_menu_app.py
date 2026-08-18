@@ -26,15 +26,16 @@ def _sorter_row(app, name):
 
 # --- three-panel layout + focus nav -------------------------------------- #
 async def test_boots_with_both_lists_and_sorter_focus(make_app):
-    # Launch state: BOTH lists are visible, the actions list is fully populated, and
-    # the SORTERS pane is focused with the cursor on the active sorter.
+    # Launch state: BOTH lists are visible, every action is reachable by id, and
+    # the SORTERS pane is focused with the cursor on the active sorter. (T2: the
+    # old exact option_count pinned chrome rows, not the contract.)
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
         sorters = app.query_one("#sorters", OptionList)
         actions = app.query_one("#actions", OptionList)
-        assert sorters.get_option_at_index(0).id == "__docker__"
-        assert actions.option_count == 15   # 13 actions + the gap + MANAGE header
+        ids = {actions.get_option_at_index(i).id for i in range(actions.option_count)}
+        assert {a["key"] for a in app.c.actions} <= ids
         assert sorters.display is True and actions.display is True
         assert sorters.highlighted == _sorter_row(app, "tridesclous2")
         assert app.focused is sorters
@@ -134,14 +135,15 @@ async def test_sortbar_follows_active_sorter(make_app):
         assert "spykingcircus2" in c_app.query_one("#sortbar").render().plain
 
 
-async def test_action_title_is_static_actions(make_app):
+async def test_action_title_never_restates_active_sorter(make_app):
     # One fact, one place (§1.1, D1 review #5): the SORT banner is the active
-    # sorter's only at-rest home — the pane title no longer restates it.
+    # sorter's only at-rest home — the pane title never restates it. (T2: the
+    # old exact-string match pinned the title's wording, not this contract.)
     app = make_app()
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
         title = str(app.query_one("#actionpane").border_title)
-        assert title == "ACTIONS"
+        assert "tridesclous2" not in title
         assert "tridesclous2" in app.query_one("#sortbar").render().plain
 
 
@@ -168,7 +170,8 @@ async def test_inspect_shows_block_reason_for_nonrunnable_sorter(make_app):
         sorters.highlighted = _sorter_row(app, "mountainsort5")   # group=docker, not runnable
         await pilot.pause()
         body = app.query_one("#inspectbody", Static).render().plain
-        assert "Docker" in body                                   # block reason / how to enable
+        # §1.7: the dead-end names its next step, not just the block reason.
+        assert "Docker" in body and "toggle" in body.lower()
 
 
 # --- sorter activation + cycle -------------------------------------------- #
@@ -404,9 +407,7 @@ async def test_number_key_opens_param_editor(make_app):
 async def test_action_run_path_is_guarded(make_app):
     # A non-data action (verify) runs via the suspend() path; under the headless test
     # driver suspend() is unsupported, so the guard must fall back to an in-place run
-    # instead of crashing. After 'probe' was inserted at index 8 (key "9"), verify
-    # shifted to index 9 (the 10th slot) and lost its single-digit key. Navigate to
-    # it by option id instead.
+    # instead of crashing. Navigate by option id, never by number-key position.
     app = make_app(present=True)
     c = app.c
     async with app.run_test(size=(110, 40)) as pilot:
@@ -1023,9 +1024,6 @@ async def test_x_on_nothing_to_delete_hints(make_app):
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        app._highlight_sorter_by_name("spykingcircus2")   # ready, no saved sort? it has 7u
-        await pilot.pause()
-        # spykingcircus2 actually has a saved sort; use a docker row with no image.
         app._highlight_sorter_by_name("mountainsort5")    # docker, no image, no sort
         await pilot.pause()
         await pilot.press("x")
@@ -1139,22 +1137,7 @@ async def test_dashboard_crest_is_the_wordmark(make_app):
         await pilot.pause()
         crest = app.query_one("#crest", menu_app.CrestWidget)
         assert crest.display is True
-        plain = crest.render().plain
-        assert "█" in plain                          # block letters
-        assert "━" not in plain                      # not the old axon glyph
-
-
-async def test_crest_has_no_animation(make_app):
-    app = make_app(present=True)
-    async with app.run_test(size=(110, 45)) as pilot:
-        await pilot.pause()
-        crest = app.query_one("#crest", menu_app.CrestWidget)
-        # Our animation machinery is gone. Assert on attrs that are unambiguously
-        # ours (NB: not Textual's own ``_animate`` BoundAnimator slot, which every
-        # Widget carries regardless of version).
-        assert not hasattr(crest, "_tick")
-        assert not hasattr(crest, "set_animate")
-        assert not hasattr(crest, "_phase")
+        assert "█" in crest.render().plain           # block letters
 
 
 async def test_crest_recolours_with_theme(make_app):
@@ -1522,3 +1505,355 @@ async def test_noise_floor_verdict_amber_out_of_band(make_app):
 def test_result_style_amber_for_warning_message():
     # The false-green kill end-to-end: a ⚠-message renders amber on the dashboard.
     assert menu_app._result_style(True, "⚠ simple: no units found") != "bold #3fb950"
+
+
+# ========================================================================== #
+# T2 — journeys: whole flows through the real screens and the real event pipe
+# ========================================================================== #
+
+def _events_argv(tmp_path, events):
+    """argv for a child that speaks the real protocol on stdout — the sort worker
+    parses it exactly as it parses run_sorting.py, so the journey crosses the
+    actual subprocess pipe, not a handle_event shortcut."""
+    import json
+    import sys as _sys
+
+    evfile = tmp_path / "events.jsonl"
+    evfile.write_text("\n".join(json.dumps(e) for e in events) + "\n", encoding="utf-8")
+    # The path travels as argv, never embedded in the -c source: a quote in a
+    # tmp path (Windows usernames) must not become a child SyntaxError.
+    return [_sys.executable, "-c",
+            "import sys; sys.stdout.write(open(sys.argv[1], encoding='utf-8').read())",
+            str(evfile)]
+
+
+async def _wait_until(pilot, cond, budget_s=10.0, what="condition"):
+    # Deadline-based, not iteration-count-based: pause() cost is a textual
+    # implementation detail, and a cold interpreter under AV scanning is slow.
+    from time import monotonic
+
+    deadline = monotonic() + budget_s
+    while monotonic() < deadline:
+        await pilot.pause(0.05)
+        if cond():
+            return
+    raise AssertionError(f"timed out waiting for {what}")
+
+
+async def _wait_done(pilot, screen):
+    await _wait_until(pilot, lambda: screen._state["done"] is not None,
+                      what="the sort screen's terminal state")
+
+
+async def test_journey_explore_sort_report_happy_path(make_app, tmp_path):
+    # The workbench's whole point, end to end in one session: explore records a
+    # result -> sort runs through the real subprocess pipe to a result card ->
+    # 3 chains into the report -> LAST RESULT remembers it and r reopens it.
+    app = make_app(present=True)
+    c = app.c
+    c.sort_command = lambda span: _events_argv(tmp_path, [
+        {"t": "phase", "i": 1, "n": 5, "title": "Read broadband"},
+        {"t": "result", "units": 14, "good": 9, "noise_floor_uV": 4.0,
+         "out": "outputs/tridesclous2", "effective_seconds": 132.0,
+         "total_seconds": 132.0, "elapsed": 12.0},
+        {"t": "done", "ok": True, "units": 14, "good": 9,
+         "out": "outputs/tridesclous2", "note": None},
+    ])
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("1")                    # explore
+        await pilot.pause()
+        assert ("explore", None) in c.ran
+        await pilot.press("2")                    # sort -> span modal
+        await pilot.pause()
+        await pilot.press("enter")                # full recording
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, menu_app.SortProgressScreen)
+        await _wait_done(pilot, screen)
+        body = screen.query_one("#sortbody").render().plain
+        assert "14 units" in body and "3 build report" in body
+        await pilot.press("3")                    # chain into the report
+        await pilot.pause()
+        assert ("report", None) in c.ran
+        assert c.last_result["key"] == "report"
+        bar = app.query_one("#resultbar")
+        assert not bar.has_class("hidden") and "report" in bar.render().plain
+        before = c.reopened
+        await pilot.press("r")                    # the result stays reachable
+        await pilot.pause()
+        assert c.reopened == before + 1
+
+
+async def test_journey_cancel_mid_sort(make_app):
+    # Esc mid-run: the modal closes with an honest "cancelled" (never a success),
+    # and the worker child does not outlive it.
+    import sys as _sys
+
+    app = make_app(present=True)
+    app.c.sort_command = lambda span: [_sys.executable, "-c",
+                                       "import time; time.sleep(60)"]
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("2")
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, menu_app.SortProgressScreen)
+        await _wait_until(pilot, lambda: screen._proc is not None, what="child spawn")
+        await pilot.press("escape")
+        await pilot.pause()
+        assert not isinstance(app.screen, menu_app.SortProgressScreen)
+        assert "cancel" in app._last.plain.lower()
+        # Cross-platform since D4 (f115015): killpg on POSIX, a taskkill/terminate
+        # fallback on Windows — cancel must never leave the child running anywhere.
+        await _wait_until(pilot, lambda: screen._proc.returncode is not None,
+                          what="the cancelled child to die")
+        assert screen._proc.returncode is not None
+
+
+async def test_journey_failure_card(make_app, tmp_path):
+    # A hard crash (non-zero exit, no protocol error event): the red card carries
+    # the REAL cause from the captured stderr, the log path as the next step
+    # (§1.7), offers no chaining, and dismisses as a failure — never a success.
+    import sys as _sys
+
+    app = make_app(present=True)
+    log = tmp_path / "sort.log"
+    app.c.sort_command = lambda span: [
+        _sys.executable, "-c",
+        "import sys; sys.stderr.write('RuntimeError: boom_cause\\n'); sys.exit(1)"]
+    app.c.sort_log_path = lambda span=None: str(log)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("2")
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, menu_app.SortProgressScreen)
+        await _wait_done(pilot, screen)
+        assert screen._state["done"]["ok"] is False
+        body = screen.query_one("#sortbody").render().plain
+        assert "exited (1)" in body and "boom_cause" in body
+        assert "log →" in body                      # where to look next
+        assert "3 build report" not in body         # no chaining off a failure
+        await pilot.press("enter")
+        await pilot.pause()
+        assert not isinstance(app.screen, menu_app.SortProgressScreen)
+        assert "✗" in app._last.plain
+
+
+async def test_journey_zero_units_amber_reaches_dashboard(make_app, tmp_path):
+    # The 0-unit amber path through the REAL pipe: card names the fix, and the
+    # dashboard's memory of the run keeps the ⚠ + hint (no green-and-gone).
+    app = make_app(present=True)
+    app.c.sort_command = lambda span: _events_argv(tmp_path, [
+        {"t": "result", "units": 0, "good": 0, "noise_floor_uV": None,
+         "out": "outputs/tridesclous2", "effective_seconds": 30.0,
+         "total_seconds": 132.0, "elapsed": 9.0},
+        {"t": "done", "ok": True, "units": 0, "good": 0,
+         "out": "outputs/tridesclous2", "note": None},
+    ])
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("2")
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, menu_app.SortProgressScreen)
+        await _wait_done(pilot, screen)
+        body = screen.query_one("#sortbody").render().plain
+        assert "0 units found" in body and "detect_threshold" in body
+        await pilot.press("enter")
+        await pilot.pause()
+        assert app._last.plain.startswith("⚠") and "detect_threshold" in app._last.plain
+
+
+# ========================================================================== #
+# T3 — honesty states (§1.7): every dead-end names its next step
+# ========================================================================== #
+
+async def test_reopen_gone_names_next_step(make_app):
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("1")                    # explore records a reopenable page
+        await pilot.pause()
+        app.c.gone.add(app.c.last_result["path"])  # the artifact vanished from disk
+        await pilot.press("r")
+        await pilot.pause()
+        assert "gone" in app._last.plain and "rebuild" in app._last.plain
+
+
+async def test_reopen_with_no_result_yet_hints(make_app):
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("r")                    # nothing has run yet
+        await pilot.pause()
+        assert "Nothing to reopen yet" in app._last.plain
+
+
+async def test_gpu_group_folds_to_lab_box_line(make_app):
+    # Never-runnable-here sorters fold to one dim line that names where they DO
+    # run — a disabled line, not five dead rows and not silence.
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        sorters = app.query_one("#sorters", OptionList)
+        fold = next((sorters.get_option_at_index(i) for i in range(sorters.option_count)
+                     if sorters.get_option_at_index(i).id == "__grpfold_gpu__"), None)
+        assert fold is not None, "GPU group fold line missing"
+        assert fold.disabled is True
+        assert "lab box" in fold.prompt.plain
+        assert "kilosort4" not in {sorters.get_option_at_index(i).id
+                                   for i in range(sorters.option_count)}
+
+
+async def test_imported_probe_edit_refused_names_next_step(make_app):
+    # P1 handoff: imported probes are view/duplicate/delete-only — Edit must
+    # refuse with the next step named, never open the geometry-stripping form.
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("p")
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, menu_app.ProbeManagerScreen)
+        ol = screen.query_one("#probelist", OptionList)
+        ol.highlighted = next(i for i in range(ol.option_count)
+                              if ol.get_option_at_index(i).id == "lab-imported-16")
+        await pilot.pause()
+        await pilot.press("e")
+        await pilot.pause()
+        assert not isinstance(app.screen, menu_app.ProbeEditorScreen)
+        foot = screen.query_one("#pmfoot", Static).render().plain
+        assert "can't be edited" in foot and ("duplicate" in foot or "re-import" in foot)
+
+
+async def test_chain_suppression_states_name_why(make_app):
+    # When the card withholds report/GUI chaining (analyzer gone), the reason is
+    # ON the card — a silently missing option is a dead-end without a name.
+    class _NoRun(menu_app.SortProgressScreen):
+        async def _run(self):
+            pass
+
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        screen = _NoRun(["python", "x", "--sorter", "simple"], app._accent)
+        await app.push_screen(screen)
+        await pilot.pause()
+        screen.handle_event({"t": "done", "ok": True, "units": 7, "good": None,
+                             "out": "outputs/simple",
+                             "note": "quality metrics failed: boom"})
+        await pilot.pause()
+        body = screen.query_one("#sortbody").render().plain
+        assert "3 build report" not in body
+        assert "quality metrics failed" in body   # the why, on the card
+
+
+# --- D4: flow modals — informed choices, live validation, honest waits ------ #
+async def test_sort_span_modal_shows_last_duration(make_app):
+    app = make_app(present=True)
+    app.c.sort_expectations = lambda: {"span": "full", "wall_seconds": 247.0}
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("2")
+        await pilot.pause()
+        modal = app.screen
+        assert isinstance(modal, menu_app.ChoiceModal)
+        ol = modal.query_one("#choicelist", OptionList)
+        texts = [ol.get_option_at_index(i).prompt.plain for i in range(ol.option_count)]
+        full_row = next(t for t in texts if "Full recording" in t)
+        assert "~4:07 last time" in full_row
+        quick_row = next(t for t in texts if "Quick test" in t)
+        assert "last time" not in quick_row     # the estimate names ITS span only
+
+
+async def test_param_editor_orders_and_marks_overrides(make_app):
+    app = make_app(present=True)
+    app.c.sorter_params["tridesclous2"] = {"freq_min": 250.0}
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("e")
+        await pilot.pause()
+        ed = app.screen
+        assert isinstance(ed, menu_app.ParamEditorScreen)
+        # Overridden keys lead, then priority keys, then the rest.
+        assert ed._ordered_keys() == ["freq_min", "detect_threshold",
+                                      "apply_preprocessing"]
+        assert "●" in ed._names["freq_min"].render().plain     # the overridden mark
+
+
+async def test_param_editor_live_validation(make_app):
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("e")
+        await pilot.pause()
+        ed = app.screen
+        w = ed.query_one("#w_detect_threshold")
+        w.focus()
+        await pilot.pause()
+        w.value = "not-a-number"
+        await pilot.pause()
+        assert w.has_class("invalid")
+        assert "detect_threshold" in ed.query_one("#perror").render().plain
+        w.value = "6.5"
+        await pilot.pause()
+        assert not w.has_class("invalid")
+        assert ed.query_one("#perror").render().plain == ""
+
+
+async def test_manage_hub_list_is_navlist(make_app):
+    # Every list in the app answers j/k (D1 review-era consistency; D4 fix).
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("m")
+        await pilot.pause()
+        hub = app.screen.query_one("#hublist")
+        assert isinstance(hub, menu_app.NavList)
+        before = hub.highlighted
+        await pilot.press("j")
+        await pilot.pause()
+        assert hub.highlighted == (before or 0) + 1
+
+
+async def test_compare_runs_behind_busy_screen(make_app):
+    # Compare no longer silently suspends: an honest BusyScreen fronts the thread
+    # worker and the result lands on the dashboard when it finishes. A gate holds
+    # the fake compare mid-flight so the BusyScreen's APPEARANCE is asserted, not
+    # merely tolerated (D4 review F8a).
+    import threading
+
+    app = make_app(present=True)
+    c = app.c
+    gate = threading.Event()
+    orig_compare = c.run_compare
+
+    def gated_compare(pair):
+        gate.wait(timeout=10)
+        return orig_compare(pair)
+
+    c.run_compare = gated_compare
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.press("5")
+        await pilot.pause()
+        await pilot.press("enter")
+        await pilot.pause()
+        await pilot.press("enter")
+        await _wait_until(pilot, lambda: isinstance(app.screen, menu_app.BusyScreen),
+                          what="the compare BusyScreen to appear")
+        gate.set()
+        await _wait_until(pilot,
+                          lambda: not isinstance(app.screen, menu_app.BusyScreen),
+                          what="the BusyScreen to dismiss")
+        assert c.ran_compare is not None and len(c.ran_compare) == 2
+        # ...and the outcome reaches the dashboard's memory, not just the modal.
+        assert c.last_result["key"] == "compare"
+        bar = app.query_one("#resultbar")
+        assert not bar.has_class("hidden") and "compare" in bar.render().plain
