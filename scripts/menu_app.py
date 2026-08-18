@@ -151,6 +151,8 @@ class Controller(Protocol):
     def catalog_models(self, manufacturer: str) -> list[str]: ...
     def run(self, key: str, span: str | None) -> tuple[bool, str, bool]: ...
     def sort_command(self, span: str | None) -> list: ...
+    def report_command(self) -> list: ...
+    def report_log_path(self): ...
     def sort_log_path(self, span: str | None = None): ...
     def record_result(self, key: str, ok: bool) -> None: ...
     def reopen_last(self) -> tuple[bool, str]: ...
@@ -302,6 +304,216 @@ class DataFolderScreen(ModalScreen):
 
     def action_cancel(self) -> None:
         self.dismiss(None)
+
+
+def _kill_proc_tree(proc) -> None:
+    """Cross-platform best-effort kill of an asyncio subprocess AND its children
+    (POSIX killpg -> Windows taskkill /T /F, rc-checked -> terminate())."""
+    if proc is None or proc.returncode is not None:
+        return
+    import os
+    import signal
+    import subprocess
+    import sys as _sys
+    killed = False
+    if hasattr(os, "killpg"):
+        try:
+            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            killed = True
+        except Exception:  # noqa: BLE001 - group already gone -> fall through
+            killed = False
+    elif _sys.platform == "win32":
+        try:
+            res = subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"],
+                                 capture_output=True, timeout=3)
+            killed = res.returncode in (0, 128)   # 128 = already gone
+        except Exception:  # noqa: BLE001 - fall through to terminate()
+            killed = False
+    if not killed:
+        try:
+            proc.terminate()
+        except Exception:  # noqa: BLE001 - already gone
+            pass
+
+
+def _read_log_tail(log_path, n_lines: int = 8, max_chars: int = 600) -> str:
+    """Last few non-blank lines of a captured stderr log (the real crash cause)."""
+    if log_path is None:
+        return ""
+    try:
+        from pathlib import Path as _P
+        text = _P(log_path).read_text(encoding="utf-8", errors="replace")
+    except Exception:  # noqa: BLE001 - no log -> nothing to show
+        return ""
+    lines = [ln.rstrip() for ln in text.splitlines() if ln.strip()]
+    return "\n".join(lines[-n_lines:])[-max_chars:] if lines else ""
+
+
+class BuildProgressScreen(ModalScreen):
+    """Progress modal for a protocol-speaking BUILD subprocess (the report, D3b).
+
+    A leaner sibling of SortProgressScreen: spawns ``argv`` (a --progress json
+    child), folds its events through ``sort_progress.reduce``, and renders the
+    phase checklist with per-phase durations + a ticking elapsed clock. Esc
+    cancels (kills the child's tree); Enter closes when done. Dismisses
+    ``(ok, message)`` — the app records the result and reopens the artifact."""
+
+    DEFAULT_CSS = """
+    BuildProgressScreen { align: center middle; }
+    BuildProgressScreen > #builddialog {
+        width: 64; max-width: 92%; height: auto; max-height: 90%;
+        border: round $accentcolor; background: $surface; padding: 1 2;
+    }
+    BuildProgressScreen #buildtitle { text-style: bold; color: $accentcolor; padding: 0 0 1 0; }
+    BuildProgressScreen #buildbody { height: auto; }
+    BuildProgressScreen #buildfoot { color: $text-muted; padding: 1 0 0 0; }
+    """
+
+    BINDINGS = [
+        Binding("escape", "cancel", "Cancel", show=False),
+        Binding("enter", "close_if_done", "Close", show=False),
+    ]
+
+    _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+    def __init__(self, argv: list, accent: str, noun: str = "Report",
+                 done_verb: str = "built", log_path=None):
+        super().__init__()
+        self._argv = list(argv)
+        self._accent = accent
+        self._noun = noun
+        self._done_verb = done_verb
+        self._log_path = log_path
+        self._state = _sp.new_state()
+        self._proc = None
+        self._spin = 0
+        self._t0 = monotonic()
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="builddialog"):
+            yield Static("", id="buildtitle")
+            yield Static("", id="buildbody")
+            yield Static("Esc to cancel", id="buildfoot")
+
+    def on_mount(self) -> None:
+        self.query_one("#builddialog").border_title = f"{self._noun.upper()} BUILD"
+        self._repaint()
+        self._timer = self.set_interval(0.2, self._tick)
+        self.run_worker(self._run(), exclusive=True)
+
+    def on_unmount(self) -> None:
+        timer = getattr(self, "_timer", None)
+        if timer is not None:
+            timer.stop()
+
+    async def _run(self) -> None:
+        # Capture the child's stderr so a crash BEFORE any error event (import
+        # failure, SI version skew — the lab's known failure class) stays
+        # diagnosable (D3b review F3, mirroring the sort modal).
+        log_fh = None
+        if self._log_path is not None:
+            try:
+                from pathlib import Path as _P
+                _P(self._log_path).parent.mkdir(parents=True, exist_ok=True)
+                log_fh = open(self._log_path, "w", encoding="utf-8", errors="replace")
+            except Exception:  # noqa: BLE001 - logging is best-effort
+                log_fh = None
+        try:
+            self._proc = await asyncio.create_subprocess_exec(
+                *self._argv,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=(log_fh if log_fh is not None else asyncio.subprocess.DEVNULL),
+                start_new_session=True,
+            )
+        except Exception as e:  # noqa: BLE001
+            self.handle_event({"t": "error", "ok": False,
+                               "message": f"couldn't start: {e}"})
+            return
+        try:
+            if self._proc.stdout is not None:
+                async for raw in self._proc.stdout:
+                    ev = _sp.parse_line(raw.decode("utf-8", "replace"))
+                    if ev:
+                        self.handle_event(ev)
+            await self._proc.wait()
+        finally:
+            if log_fh is not None:
+                try:
+                    log_fh.close()
+                except Exception:  # noqa: BLE001
+                    pass
+        if self._state["done"] is None:
+            rc = self._proc.returncode
+            if rc == 0:
+                self.handle_event({"t": "done", "ok": True, "units": None, "out": ""})
+            else:
+                tail = _read_log_tail(self._log_path)
+                msg = f"build exited ({rc}) without finishing"
+                if tail:
+                    msg += f"\n{tail}"
+                self.handle_event({"t": "error", "ok": False, "message": msg})
+
+    def handle_event(self, ev: dict) -> None:
+        _sp.reduce(self._state, ev)
+        self._repaint()
+        if self._state["done"] is not None:
+            self.query_one("#buildfoot", Static).update("Press Enter to close")
+
+    def _tick(self) -> None:
+        if self._state["done"] is None:
+            self._spin = (self._spin + 1) % len(self._SPINNER)
+            self._repaint()
+
+    def _repaint(self) -> None:
+        s = self._state
+        running = s["done"] is None
+        secs = int(monotonic() - self._t0)
+        head = Text()
+        head.append(f"Building {self._noun.lower()}… " if running
+                    else (f"{self._noun} {self._done_verb} "
+                          if s["done"].get("ok") else f"{self._noun} build failed "),
+                    style=f"bold {self._accent}" if running else
+                    ("bold #3fb950" if s["done"].get("ok") else "bold #f85149"))
+        head.append(f"{secs // 60}:{secs % 60:02d}", style="dim")
+        self.query_one("#buildtitle", Static).update(head)
+        t = Text()
+        for p in s["phases"]:
+            done = p["done"]
+            t.append("✓ " if done else f"{self._SPINNER[self._spin]} ",
+                     style="#3fb950" if done else f"bold {self._accent}")
+            t.append(f"{p['title']}", style="" if done else "bold")
+            if done and p.get("secs") is not None:
+                t.append(f"   {p['secs']:.1f} s", style="dim")
+            t.append("\n")
+        if s["done"]:
+            d = s["done"]
+            if d.get("ok"):
+                out = d.get("out", "")
+                t.append(f"\n✓ {self._done_verb}", style="bold #3fb950")
+                if out:
+                    t.append(f" → {out}", style="dim")
+                t.append("\n")
+            else:
+                t.append(f"\n✗ {d.get('message', 'build failed')}\n",
+                         style="bold #f85149")
+        self.query_one("#buildbody", Static).update(t)
+
+    def action_cancel(self) -> None:
+        # A reflexive Esc AFTER completion must not discard a real result as
+        # "cancelled" — the artifact is already on disk (D3b review F5).
+        if self._state["done"] is not None:
+            return self.action_close_if_done()
+        _kill_proc_tree(self._proc)
+        self.dismiss((False, f"{self._noun} build cancelled"))
+
+    def action_close_if_done(self) -> None:
+        if self._state["done"] is None:
+            return
+        d = self._state["done"]
+        ok = bool(d.get("ok"))
+        msg = (f"✓ {self._noun} {self._done_verb}" if ok
+               else f"✗ {d.get('message', 'build failed')}")
+        self.dismiss((ok, msg))
 
 
 class BusyScreen(ModalScreen):
@@ -978,36 +1190,17 @@ class SortProgressScreen(ModalScreen):
         return not (isinstance(units, int) and units == 0)
 
     def action_cancel(self) -> None:
+        # A reflexive Esc AFTER completion closes normally — the sort already
+        # happened; calling it "cancelled" would misrecord a real result (F5).
+        if self._state["done"] is not None:
+            return self.action_close_if_done()
         # Kill the whole worker tree, cross-platform (T2/T3 review found the lab-box
         # gap: os.killpg is POSIX-only and the old blanket except swallowed the
         # AttributeError — Windows showed "Sort cancelled" while the sort kept
         # burning CPU). POSIX: SIGTERM the process group (start_new_session gave us
         # one). Windows: taskkill /T /F takes the tree, since terminate() alone
         # would orphan SpikeInterface's spawn workers. Last resort: terminate().
-        if self._proc is not None and self._proc.returncode is None:
-            import os
-            import signal
-            import subprocess
-            import sys as _sys
-            killed = False
-            if hasattr(os, "killpg"):
-                try:
-                    os.killpg(os.getpgid(self._proc.pid), signal.SIGTERM)
-                    killed = True
-                except Exception:  # noqa: BLE001 - group already gone -> fall through
-                    killed = False
-            elif _sys.platform == "win32":
-                try:
-                    res = subprocess.run(["taskkill", "/PID", str(self._proc.pid),
-                                          "/T", "/F"], capture_output=True, timeout=3)
-                    killed = res.returncode in (0, 128)   # 128 = already gone
-                except Exception:  # noqa: BLE001 - fall through to terminate()
-                    killed = False
-            if not killed:
-                try:
-                    self._proc.terminate()
-                except Exception:  # noqa: BLE001 - already gone
-                    pass
+        _kill_proc_tree(self._proc)
         self.dismiss((False, "Sort cancelled", False, None))
 
     def _dismiss_message(self) -> tuple:
@@ -3183,6 +3376,16 @@ class SpikeMenuApp(App):
             self.push_screen(ManageSortersScreen(self.c, self._accent), self._after_manage)
         elif key == "probe":
             self._open_probes()
+        elif key == "report" and self.c.data_report.get("present"):
+            log_path = None
+            try:
+                log_path = self.c.report_log_path()
+            except Exception:  # noqa: BLE001 - logging is best-effort
+                log_path = None
+            self.push_screen(
+                BuildProgressScreen(self.c.report_command(), self._accent,
+                                    noun="Report", log_path=log_path),
+                self._after_report)
         elif self._needs_data(key) and not self.c.data_report.get("present"):
             # Guarded BEFORE the sort branch so sort can't open its modal with no data.
             self._last = Text("✗ ", style="bold #f85149") + Text(
@@ -3274,6 +3477,17 @@ class SpikeMenuApp(App):
             # Dispatch through the normal action path so its guards (needs_data,
             # Docker, the _self fresh-process route for gui) all apply.
             self._activate_action(next_action)
+
+    def _after_report(self, res) -> None:
+        ok, message = res or (False, "report build failed")
+        cancelled = _is_cancel_msg(message)
+        if not cancelled:
+            self.c.record_result("report", ok)
+        self._last = Text(message, style=_result_style(ok, message))
+        self._refresh_footer()
+        if ok:
+            # The child never opens a browser; the LAST RESULT path is the opener.
+            self.c.reopen_last()
 
     def _open_theme(self) -> None:
         opts = [(n, n, "(current)" if n == self.c.theme_name else "") for n in self.c.themes]

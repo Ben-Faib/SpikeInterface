@@ -489,3 +489,45 @@ def test_sort_expectations_reads_provenance(monkeypatch, tmp_path):
         {"effective_seconds": 132.0, "total_seconds": 132.0}))
     exp = c.sort_expectations()
     assert exp["span"] == "full" and exp["wall_seconds"] is None
+
+
+# --- D3b: the report progress plumbing -------------------------------------- #
+def test_report_command_argv(monkeypatch, tmp_path):
+    _mock_registry(monkeypatch)
+    c = _controller(monkeypatch, tmp_path)
+    import SpikeInterface_Menu as M
+    # No saved analyzer for the active sorter -> --sorter is OMITTED so the
+    # child's default pick serves (D3b review F2)…
+    monkeypatch.setattr(M, "_analyzer_dir", lambda name: tmp_path / name / "analyzer")
+    argv = c.report_command()
+    assert argv[1].endswith("report.py")
+    assert "--sorter" not in argv
+    assert ("--probe" in argv and c.active_probe in argv)   # geometry truth (F1)
+    assert "--progress" in argv and "json" in argv
+    assert "--data-dir" in argv           # the controller was built with one
+    # …and with a saved analyzer, the active sorter IS passed.
+    (tmp_path / c.active_sorter / "analyzer").mkdir(parents=True)
+    argv = c.report_command()
+    assert "--sorter" in argv and c.active_sorter in argv
+
+
+def test_report_cli_speaks_the_protocol(tmp_path):
+    # The report's json mode emits protocol-pure stdout ending in done/error —
+    # even on an empty data dir (honest-skip report, rc 0).
+    import subprocess
+    import sys as _sys
+    sys.path.insert(0, str(ROOT / "scripts"))
+    import sort_progress as sp
+    res = subprocess.run(
+        [_sys.executable, str(ROOT / "scripts" / "report.py"),
+         "--data-dir", str(tmp_path), "--out", str(tmp_path / "r.html"),
+         "--progress", "json"],
+        capture_output=True, encoding="utf-8", errors="replace", timeout=300)
+    lines = [ln for ln in res.stdout.splitlines() if ln.strip()]
+    events = [sp.parse_line(ln) for ln in lines]
+    assert all(e is not None for e in events), f"non-protocol stdout: {lines}"
+    types = [e["t"] for e in events]
+    assert types[-1] in ("done", "error")
+    assert "phase" in types and "phase_done" in types
+    if types[-1] == "done":
+        assert res.returncode == 0 and (tmp_path / "r.html").exists()

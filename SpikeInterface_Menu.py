@@ -1237,6 +1237,29 @@ class MenuController:
             argv += ["--param", f"{k}={v}"]
         return argv
 
+    def report_command(self) -> list:
+        """argv for report.py in JSON-progress mode, for the in-UI report modal
+        (D3b). Mirrors sort_command; the child never opens a browser — the app
+        reopens via the LAST RESULT path after the modal closes.
+
+        --sorter is passed only when the active sorter actually HAS a saved
+        analyzer — otherwise the child's default pick (the most complete saved
+        sort) serves, instead of a ✓ over an empty page (D3b review F2). --probe
+        is always passed: the geometry caveat must tell the truth (F1 — the same
+        compensation the menu makes for the sort, per the CLAUDE.md gotcha)."""
+        argv = [sys.executable, str(SCRIPTS / "report.py"), "--progress", "json"]
+        if _analyzer_dir(self.active_sorter).is_dir():
+            argv += ["--sorter", self.active_sorter]
+        argv += ["--probe", self.active_probe]
+        if getattr(self.args, "data_dir", None):
+            argv += ["--data-dir", str(self.args.data_dir)]
+        return argv
+
+    def report_log_path(self) -> Path:
+        """Where the in-UI report build's stderr is captured (crash diagnosis —
+        D3b review F3, mirroring the sort modal's log)."""
+        return bio.REPO_ROOT / "outputs" / "report_build.log"
+
     def sort_log_path(self, span: str | None = None) -> Path:
         """Where the in-UI sort's subprocess stderr (human/rich output + any Python
         traceback) is captured. The sort screen redirects the child's stderr here so a

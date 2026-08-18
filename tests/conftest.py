@@ -348,6 +348,13 @@ class FakeController:
         """Expected-duration facts for the span picker (D4). None = no history yet."""
         return {"span": None, "wall_seconds": None}
 
+    def report_command(self) -> list[str]:
+        # Harmless argv for BuildProgressScreen tests (exits 0 at once).
+        return ["true"]
+
+    def report_log_path(self):
+        return None
+
     def sort_command(self, span: str | None) -> list[str]:
         # A harmless argv so SortProgressScreen's worker can spawn + exit cleanly in
         # tests (no real run_sorting.py / SpikeInterface). ``true`` exits 0 at once.

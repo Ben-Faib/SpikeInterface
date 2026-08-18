@@ -1369,10 +1369,18 @@ async def test_sort_result_card_chains_into_report(make_app):
         assert isinstance(screen, menu_app.SortProgressScreen)
         _drive_finished_sort(screen)
         await pilot.pause()
-        await pilot.press("3")            # chain: close + build report
+        await pilot.press("3")            # chain: close + build report (D3b modal)
         await pilot.pause()
-        assert ("report", None) in c.ran
+        screen2 = app.screen
+        assert isinstance(screen2, menu_app.BuildProgressScreen)
+        for _ in range(20):               # fake argv exits 0 -> synthesized done
+            await pilot.pause()
+            if screen2._state["done"] is not None:
+                break
+        await pilot.press("enter")
+        await pilot.pause()
         assert c.last_result["key"] == "report"   # the chained action recorded last
+        assert c.reopened == 1                    # the app opened the built page
 
 
 async def test_sort_chain_keys_noop_while_running(make_app):
@@ -1573,9 +1581,16 @@ async def test_journey_explore_sort_report_happy_path(make_app, tmp_path):
         await _wait_done(pilot, screen)
         body = screen.query_one("#sortbody").render().plain
         assert "14 units" in body and "3 build report" in body
-        await pilot.press("3")                    # chain into the report
+        await pilot.press("3")                    # chain into the report (modal)
         await pilot.pause()
-        assert ("report", None) in c.ran
+        screen2 = app.screen
+        assert isinstance(screen2, menu_app.BuildProgressScreen)
+        for _ in range(20):
+            await pilot.pause()
+            if screen2._state["done"] is not None:
+                break
+        await pilot.press("enter")
+        await pilot.pause()
         assert c.last_result["key"] == "report"
         bar = app.query_one("#resultbar")
         assert not bar.has_class("hidden") and "report" in bar.render().plain

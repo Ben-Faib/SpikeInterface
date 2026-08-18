@@ -1,7 +1,14 @@
 """Build a single self-contained interactive HTML report for the recording.
 
-    uv run python scripts/make_report.py   # interactive launcher (preferred)
-    uv run python -c "import sys; sys.path.insert(0,'scripts'); import report; report.build_report()"
+    uv run python scripts/report.py --sorter tridesclous2         # build + print path
+    uv run python scripts/report.py --sorter X --progress json    # protocol mode (the
+                                        # launcher's progress modal rides this: phase /
+                                        # phase_done / done / error on a pure stdout)
+    uv run python scripts/make_report.py   # legacy shim through the launcher
+
+Flags: --data-dir, --sorter (explicit + missing analyzer = hard error), --probe
+(geometry-caveat truth; falls back to run_info), --out, --progress json. This CLI
+never opens a browser — callers decide.
 
 Writes outputs/report.html — one offline file (Plotly JS inlined), laid out
 verdict-first per DESIGN_UX §4: a stat-tile header answering "how many units,
@@ -184,7 +191,7 @@ def _gather(data_dir, analyzer_dir):
           lambda r: f"{r.get_num_channels()} ch, {r.get_total_duration():.1f}s @ {r.get_sampling_frequency():g} Hz")
     stage("broadband", "Broadband (.ns5)", lambda: bio.read_broadband(data_dir),
           _broadband_detail)
-    stage("nev", ".nev online units", lambda: bio.read_spikes(data_dir),
+    stage("nev", ".nev online detections", lambda: bio.read_spikes(data_dir),
           lambda s: f"{len(s.get_unit_ids())} units (id 0 = unsorted)")
 
     def load_analyzer():
@@ -510,7 +517,7 @@ def _render_verdict(analyzer, analyzer_dir, info, sorter_label, status, data_dir
     wall of FileNotFoundError reprs in the provenance table.
     """
     data_stages = [r for r in status if r["stage"] in ("LFP (.ns2)", "Broadband (.ns5)",
-                                                       ".nev online units")]
+                                                       ".nev online detections")]
     lead = (_getting_started_html(data_dir)
             if data_stages and all(r["status"] != "PASS" for r in data_stages) else "")
     if analyzer is None:
@@ -891,7 +898,11 @@ def _render_nev(nev) -> str:
         total = None
     raster, rate = _spike_figs(unit_ids, lambda u: nev.get_unit_spike_train(u) / fs,
                                "Online (.nev)", total_duration=total)
-    return ('<p class="note">Already-detected online units from the .nev — the rig\'s own '
+    return ('<p class="note">Spike events the rig detected in real time (.nev). SpikeInterface '
+            'renumbers them positionally — the Blackrock class (sorted unit vs unsorted threshold '
+            'crossing vs noise) lives in the channel labels; <code>compare.py --online</code> '
+            'gives the honest accounting. In this recording all are unsorted threshold '
+            'crossings — the rig\'s own '
             'threshold crossings, not this sort. Blackrock convention: unit 0 = unsorted '
             'threshold crossings, 1..n = sorted, 255 = noise.</p>'
             + _figure(raster, f"Spike raster of the {len(unit_ids)} online .nev units, one row per unit.")
@@ -932,7 +943,7 @@ def _render_context(lfp, nev, events) -> str:
            'input context for the sort above, not results of it.</p>']
     for sub_id, title, render, obj in (
             ("lfp", "LFP (.ns2 @ 1 kHz)", _render_lfp, lfp),
-            ("nev", "Online units (.nev)", _render_nev, nev),
+            ("nev", "Online detections (.nev)", _render_nev, nev),
             ("events", "Event markers (.nev)", _render_events, events)):
         try:
             body = render(obj)
@@ -983,24 +994,31 @@ def _render_provenance(status, probe=None, info=None) -> str:
 # --------------------------------------------------------------------------- #
 # Public entry point
 # --------------------------------------------------------------------------- #
-def build_report(data_dir=None, analyzer_dir=None, out_path=None, sorter_label=None, probe=None) -> Path:
+def build_report(data_dir=None, analyzer_dir=None, out_path=None, sorter_label=None,
+                 probe=None, progress=None) -> Path:
+    """Build the report. ``progress``, when given, is called with each phase title
+    as it starts (D3b: the launcher's progress modal rides these through the JSON
+    event channel via ``main()``)."""
+    _p = progress or (lambda title: None)
     analyzer_dir = Path(analyzer_dir) if analyzer_dir else _pick_default_analyzer()
     sorter_label = sorter_label or analyzer_dir.parent.name
     out_path = Path(out_path) if out_path else (OUTPUT_DIR / "report.html")
     OUTPUT_DIR.mkdir(exist_ok=True)
 
     info = _run_info(analyzer_dir)
+    _p("Load data")
     objects, status = _gather(data_dir, analyzer_dir)
     analyzer = objects.get("analyzer")
 
     # TOC glyphs: what a reader will actually find in each section.
     sorted_state = "ok" if analyzer is not None else "skip"
-    ctx_rows = [r for r in status if r["stage"] in ("LFP (.ns2)", ".nev online units",
+    ctx_rows = [r for r in status if r["stage"] in ("LFP (.ns2)", ".nev online detections",
                                                     "Events (.nev markers)")]
     ctx_state = ("warn" if any(r["status"] == "FAIL" for r in ctx_rows)
                  else "ok" if any(r["status"] == "PASS" for r in ctx_rows) else "skip")
     prov_state = "warn" if any(r["status"] == "FAIL" for r in status) else "ok"
 
+    _p("Render figures")
     sections = [
         _safe_section("verdict", "Verdict", _render_verdict, analyzer, analyzer_dir, info,
                       sorter_label, status, data_dir, state=sorted_state),
@@ -1027,6 +1045,7 @@ def build_report(data_dir=None, analyzer_dir=None, out_path=None, sorter_label=N
         elif sec.get("state") == "ok" and body.lstrip().startswith('<p class="skip">'):
             sec["state"] = "skip"
 
+    _p("Inline Plotly + write")
     rec = _recording_name(data_dir) or "Recording"
     sorted_at = str(info.get("created", "")).replace("T", " ")[:16]
     subtitle = " · ".join([html.escape(str(sorter_label))]
@@ -1037,5 +1056,90 @@ def build_report(data_dir=None, analyzer_dir=None, out_path=None, sorter_label=N
     return out_path
 
 
+def main() -> int:
+    """CLI for the launcher's report progress modal (D3b, DESIGN_UX §6).
+
+    ``--progress json`` speaks the sort_progress event protocol on stdout —
+    phase / phase_done / done / error, emitter-side elapsed — while every other
+    write is pushed to stderr, mirroring run_sorting's purity rule. Plain mode
+    just builds and prints the path. This entry NEVER opens a browser; the
+    caller decides (the menu reopens via the LAST RESULT path)."""
+    import argparse
+    import time
+
+    import sort_progress as _sp
+
+    import os
+
+    ap = argparse.ArgumentParser(description="Build the recording report.")
+    ap.add_argument("--data-dir", default=None)
+    ap.add_argument("--sorter", default=None, help="report this sorter's saved analyzer")
+    ap.add_argument("--probe", default=None,
+                    help="active probe name (the geometry caveat must tell the truth; "
+                         "falls back to the sort's run_info)")
+    ap.add_argument("--out", default=None)
+    ap.add_argument("--progress", choices=["json"], default=None)
+    args = ap.parse_args()
+    analyzer_dir = (OUTPUT_DIR / args.sorter / "analyzer") if args.sorter else None
+    # Explicit --sorter with nothing saved is a hard, honest error (the repo's
+    # explicit-fails-hard / default-falls-back-soft asymmetry) — never a ✓ over
+    # an empty report while a good sort sits unused (D3b review F2).
+    err = (f"no saved analyzer for --sorter {args.sorter} — run a sort first: "
+           f"uv run python scripts/run_sorting.py --sorter {args.sorter}"
+           if args.sorter and not (analyzer_dir and analyzer_dir.is_dir()) else None)
+    analyzer_dir = analyzer_dir or _pick_default_analyzer()   # resolved ONCE (F4)
+    # The caveat must describe the geometry the sort actually used (F1): the
+    # explicit flag wins, else the sort's own provenance.
+    probe = args.probe or _run_info(analyzer_dir).get("probe")
+
+    if args.progress != "json":
+        if err:
+            print(err, file=sys.stderr)
+            return 1
+        out = build_report(data_dir=args.data_dir, analyzer_dir=analyzer_dir,
+                           out_path=args.out, sorter_label=args.sorter, probe=probe)
+        print(out)
+        return 0
+
+    # fd-level purity (F6, run_sorting.py's proven trick): keep a private dup of
+    # the real stdout as the event channel, then point fd 1 at stderr so ANY
+    # fd-1 writer — spawned SI workers included — can never corrupt the channel.
+    chan = os.fdopen(os.dup(1), "w", encoding="utf-8", newline="\n")
+    os.dup2(2, 1)
+    t0 = time.monotonic()
+    state = {"open": None, "i": 0}
+
+    def emit(ev):
+        _sp.emit(ev, stream=chan)
+
+    def phase(title):
+        if state["open"] is not None:
+            i, t, started = state["open"]
+            emit({"t": "phase_done", "i": i, "title": t,
+                  "secs": round(time.monotonic() - started, 2)})
+        state["i"] += 1
+        state["open"] = (state["i"], title, time.monotonic())
+        emit({"t": "phase", "i": state["i"], "n": 3, "title": title,
+              "elapsed": round(time.monotonic() - t0, 2)})
+
+    try:
+        if err:
+            emit({"t": "error", "ok": False, "message": err})
+            return 1
+        out = build_report(data_dir=args.data_dir, analyzer_dir=analyzer_dir,
+                           out_path=args.out, sorter_label=args.sorter, probe=probe,
+                           progress=phase)
+        if state["open"] is not None:
+            i, t, started = state["open"]
+            emit({"t": "phase_done", "i": i, "title": t,
+                  "secs": round(time.monotonic() - started, 2)})
+        n_units = _run_info(analyzer_dir).get("n_units")   # the SAME dir we built (F4)
+        emit({"t": "done", "ok": True, "units": n_units, "out": str(out), "note": None})
+        return 0
+    except Exception as e:  # noqa: BLE001 - last-resort protocol error
+        emit({"t": "error", "ok": False, "message": f"report build failed: {e!r}"})
+        return 1
+
+
 if __name__ == "__main__":
-    print(build_report())
+    raise SystemExit(main())
