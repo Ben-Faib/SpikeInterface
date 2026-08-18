@@ -30,28 +30,6 @@ box) runs alongside everything.
   SpikeInterface_Menu.py). P1 handoffs are already routed (editor guard shipped in D1;
   P3 items recorded in the brief).
 
-### Kickoff-era NOW (superseded same day, kept until the run's first seals land)
-
-- **D0 design spec is READY FOR BEN'S VETO** (`DESIGN_UX.md`): drafted from the surface
-  screenshots, then hardened with all 10 findings of the peer session's feasibility
-  critique (`docs/design/DESIGN_CRITIQUE_2026-08-18.md`, committed `a11b259`) folded in —
-  report-progress plumbing moved into D3, result-card modal contract named, new
-  `.si_menu.json` keys decided, canary tile de-scienced, traces kept, glyph legend added,
-  single-dark-palette scoping, emitter-side timing, sigui persistence made conditional,
-  one-commit renumbering. **Every D slice is gated on the veto.**
-- **T1 SEALED 2026-08-18 (peer session, `6171816`)**: 8 deterministic SVG snapshot
-  baselines of today's UI, a fresh-build report golden check (`REQUIRED_SECTION_ORDER` is
-  D3's baseline to edit), and protocol contract tests (new event types gate on the SHAPES
-  table; new optional keys flow free). Suite 302 green; re-baselining procedure in
-  `tests/README.md`.
-- **M1 SEALED 2026-08-18 (same session):** quality metrics widened 3 → 12 columns with
-  dependency-aware compute; Fable review verdict **ship**, all findings folded in. B1 (a
-  pre-existing bare-report crash found en route) is filed below, READY.
-- **Ready to paste now, in parallel with the veto:** prompt P1 (probeinterface import) and
-  prompt B1 (small bugfix) — engine-side, no collision with the D-track or T1.
-- **Needs Ben (OPEN in SEALS.md):** the D0 veto; NORTHSTAR arc ratification (now including
-  the 2026-08-18 restructure); the lab requirements pass; lab-box access for WD.
-
 ## The dependency graph
 
 ```
@@ -80,7 +58,7 @@ box) runs alongside everything.
 | 3 | D0 veto | `DESIGN_UX.md` | **APPROVED 2026-08-18** |
 | 4 | D1 dashboard | `goals/GOAL_D_UIUX.md` | **SEALED 2026-08-18** (`18a5279`) |
 | 5 | D2 run experience | `goals/GOAL_D_UIUX.md` | engine half **SEALED** (`fc19579`); view half **READY** |
-| 6 | D3 report | `goals/GOAL_D_UIUX.md` | gated: D0 veto (M1 ✓ — quality tiles unblocked) |
+| 6 | D3 report | `goals/GOAL_D_UIUX.md` | **READY** (veto ✓, M1 ✓) |
 | 7 | D4 flow modals | `goals/GOAL_D_UIUX.md` | **READY** (D1 ✓) |
 | 8 | T2/T3 journey + honesty tests | `goals/GOAL_T_TESTING.md` | gated: after D1/D2 |
 | 9 | P2 multi-shank · P3 wiring | `goals/GOAL_P_PROBES.md` | after P1; P3 needs adapter map |
@@ -89,7 +67,7 @@ box) runs alongside everything.
 | 12 | W3 face | `goals/GOAL_W3_FACE.md` | gated: Ben's pick, after D track |
 | 13 | W4 multi-recording | `goals/GOAL_W4_MULTI.md` | gated: W1+W2+lab data |
 | — | WD lab deployment items 1–4 | `goals/GOAL_WD_DEPLOY.md` | gated: lab-box access |
-| B1 | BUG: bare `report` action crashes | prompt below | **READY** (found 2026-08-18) |
+| B1 | BUG: bare `report` action crashes | prompt below | **SEALED 2026-08-18** (peer, `b43869e`) |
 
 ## Paste prompts, in run order
 
@@ -145,7 +123,7 @@ Authored with `fable-prompt-builder` **when Ben's veto lands**, against the spec
 `goals/GOAL_D_UIUX.md` + the spec sections from DESIGN_UX §7, name the T1 gates
 (deliberate snapshot re-baselining with reviewed diffs), and seal per the contract.
 
-### B1 — bare report action crashes  [READY — small]
+### B1 — bare report action crashes  [SEALED 2026-08-18 — `b43869e`]
 
 ```
 A documented invocation is a crash: `uv run python scripts/make_report.py` (and

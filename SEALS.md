@@ -49,6 +49,21 @@ A need left only in a chat summary is a need Ben never sees.*
 
 ## The ledger (newest first)
 
+**2026-08-18 — B1: bare report crash fixed (peer session, `b43869e`)**
+- Did: the documented bare invocations (`make_report.py`, the launcher's report action, and
+  the silent non-TTY dispatch CI/piped runs hit) now resolve a sorter — explicit flag >
+  persisted active sorter with a saved sort > the most-complete saved sort — instead of
+  crashing on a None path join, and error honestly (naming a command that works) when
+  nothing is saved.
+- Means: the report front door works with zero arguments, and the default it picks is the
+  most complete sort rather than a leftover 30 s smoke — the review talked us out of the
+  queued recommended-default step on exactly that scenario.
+- Moved: 9 regression tests pin the precedence and the exact reported command; isolated
+  worktree suite 341 green; review verdict ship (7 findings, 4 folded in).
+- Needs Ben: nothing.
+- Next: siblings recorded, not fixed — bare `gui` and bare `sort` still crash on a None
+  sorter (pre-existing; a good D4-adjacent small fix).
+
 **2026-08-18 — D1: the dashboard overhaul (`18a5279`)**
 - Did: rebuilt the dashboard to the approved spec — two-line banner, one home for the
   active sorter, six numbered workflow actions over a dim MANAGE tier, signal-budget
