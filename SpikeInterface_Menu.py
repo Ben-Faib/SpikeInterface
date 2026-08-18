@@ -382,15 +382,44 @@ def _open_in_browser(uri: str) -> None:
             pass
 
 
+def _resolve_report_sorter(args) -> "str | None":
+    """Default-sorter resolution for the report action.
+
+    A bare ``report`` (no --sorter) used to crash joining a None sorter into the
+    analyzer path. Precedence: explicit ``--sorter`` > the persisted
+    ``active_sorter`` if it has a saved sort (real user intent, dashboard
+    semantics) > the report module's own pick (the most complete saved sort).
+    Deliberately NO recommended-default step between those: it carries no user
+    intent and would prefer a leftover 30 s smoke over another sorter's
+    full-recording sort — the case ``_pick_default_analyzer`` exists to displace.
+    Returns None when nothing is saved anywhere — the caller errors honestly.
+    """
+    if args.sorter:
+        return args.sorter
+    persisted = _load_config().get("active_sorter")
+    if persisted and _analyzer_dir(persisted).is_dir():
+        return persisted
+    picked = Path(report._pick_default_analyzer())
+    if picked.is_dir():
+        return picked.parent.name
+    return None
+
+
 def action_report(args) -> bool:
-    ui.note(f"Building the report for {args.sorter}…")
-    _probe = _read_run_info(args.sorter).get("probe") or getattr(args, "probe", None)
-    out = report.build_report(data_dir=args.data_dir, analyzer_dir=_analyzer_dir(args.sorter),
-                              sorter_label=args.sorter, probe=_probe)
+    sorter = _resolve_report_sorter(args)
+    if sorter is None:
+        ui.warn("No saved sort to report on — run a sort first: "
+                "uv run python scripts/run_sorting.py")
+        return False
+    ui.note(f"Building the report for {sorter}…")
+    _probe = _read_run_info(sorter).get("probe") or getattr(args, "probe", None)
+    out = report.build_report(data_dir=args.data_dir, analyzer_dir=_analyzer_dir(sorter),
+                              sorter_label=sorter, probe=_probe)
     uri = out.resolve().as_uri()
     ui.done(f"Report written → {out}")
     ui.link("Open it:", uri)
-    ui.note("Opening it in your browser…")
+    if sys.stdin.isatty():          # piped/CI runs never open one — don't claim to
+        ui.note("Opening it in your browser…")
     _open_in_browser(uri)
     return True
 
