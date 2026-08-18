@@ -68,8 +68,9 @@ box) runs alongside everything.
 | 13 | W4 multi-recording | `goals/GOAL_W4_MULTI.md` | gated: W1+W2+lab data |
 | — | WD lab deployment items 1–4 | `goals/GOAL_WD_DEPLOY.md` | gated: lab-box access |
 | B1 | BUG: bare `report` action crashes | prompt below | **SEALED 2026-08-18** (peer, `b43869e`) |
-| C1 | NEV online-vs-sorted comparison (Ben, 2026-08-18 eve) | engine **SEALED** (`39ca919`) — FINDING: this .nev has ZERO online-sorted units (6 groups of unsorted threshold crossings); menu wiring deferred until a re-exported .nev exists | **SEALED** |
-| D5 | Actions-first main screen (Ben, 2026-08-18 late) | NORTHSTAR decision of record; supersedes DESIGN_UX §2 layout | **IN FLIGHT** (orchestrating session) |
+| C1 | NEV online-vs-sorted comparison (Ben, 2026-08-18 eve) | engine **SEALED** (`39ca919`) — FINDING: the original .nev has ZERO online-sorted units | **SEALED** |
+| C2 | Manual-sort comparison (`--nev`/`--delta-ms`, containment column) | **SEALED** (`4ffcfda`) — all 7 manual units 97-100% contained in tdc2's merges; ~0.6 ms crossing-vs-peak offset measured | **SEALED 2026-08-18** |
+| D5 | Actions-first main screen (Ben, 2026-08-18 late) | NORTHSTAR decision of record | **SEALED 2026-08-18** (`63fe05c`) |
 | D3b | report/compare progress plumbing — §6's last piece (Ben re-confirmed 2026-08-18 eve) | `DESIGN_UX.md` §6 | **SEALED 2026-08-18** (`a1907b5`) |
 
 ## Paste prompts, in run order

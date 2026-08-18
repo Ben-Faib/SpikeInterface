@@ -49,6 +49,26 @@ A need left only in a chat summary is a need Ben never sees.*
 
 ## The ledger (newest first)
 
+**2026-08-18 — D5 + C2: the actions-first screen, and the manual sort answered (`63fe05c`, `4ffcfda`)**
+- Did: rebuilt the main screen to Ben's late directive (actions primary, sorter list
+  behind a filtering t-picker, RESULTS section, MANAGE line) with its review's two
+  invisible-to-the-suite bugs fixed and pinned; and wired Ben's manually sorted .nev
+  into the comparison machinery (--nev, --delta-ms, a containment column).
+- Means: a first-time lab member lands on what they can do; and the sorter question is
+  answered with numbers — tridesclous2 finds 97-100% of every manually sorted unit's
+  spikes but merges each channel's pair into one unit, which is also exactly why its
+  active-channel ISI violations run high (the huge ratios elsewhere are the metric's
+  low-rate blowup, not brokenness).
+- Moved: a measured ~0.6 ms crossing-vs-peak timestamp offset is now compensated and
+  documented in the compare defaults; params were checked (all defaults — not the
+  cause); repo memory corrected twice about the .nev.
+- Needs Ben: nothing blocking — next-step options are his: a spykingcircus2 full-sort
+  comparison, tdc2 clustering tuning, or W1 curation (splitting merges is exactly that
+  slice, and the manual export is now its validation reference).
+- Next: W1 curation is the highest-value queued science; T-track follow-ups and the
+  D5-review's noted controller dead code ride the next pass.
+
+
 **2026-08-18 — T2/T3: journeys + honesty states (peer session, `fc4652b` + `7e6938d`)**
 - Did: retired six layout-detail assertions the redesign obsoleted (each enumerated in the
   commit message), added four journeys that cross the real screens and the real subprocess
