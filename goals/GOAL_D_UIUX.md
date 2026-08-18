@@ -43,6 +43,12 @@ against spec §4. Each slice gets the fresh-context Fable review before sealing.
 
 - The menu view still imports no SpikeInterface; controller Protocol boundary holds.
 - `--progress json` stdout purity is untouchable; new events ride the same channel rules.
+  **Extend, don't repurpose, `done`/`error`** (T1 coordination, 2026-08-18): the TUI
+  synthesizes `done` from a silent rc-0 exit and the contract tests pin `done`'s required
+  keys (ok/units/out) — D2's richer `result` payload is a NEW event riding alongside
+  `done`, never a replacement; genuinely new event types must be added to the contract
+  tests' SHAPES table (designed friction), while new optional keys on existing events
+  need no test change.
 - NO_COLOR/mono-font safety and the responsive yield order are law (spec §1.5, §8).
 - Esc stays a no-op on the dashboard; destructive ops keep their confirm modals.
 - spikeinterface-gui is upstream — stance per spec §5, no forking for looks.

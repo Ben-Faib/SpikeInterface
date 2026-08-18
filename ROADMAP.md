@@ -26,8 +26,11 @@ box) runs alongside everything.
   `.si_menu.json` keys decided, canary tile de-scienced, traces kept, glyph legend added,
   single-dark-palette scoping, emitter-side timing, sigui persistence made conditional,
   one-commit renumbering. **Every D slice is gated on the veto.**
-- **T1 (testing harness) is RUNNING in the peer session** (dispatched 2026-08-18):
-  snapshot baselines of today's UI, report golden checks, progress-protocol contract tests.
+- **T1 SEALED 2026-08-18 (peer session, `6171816`)**: 8 deterministic SVG snapshot
+  baselines of today's UI, a fresh-build report golden check (`REQUIRED_SECTION_ORDER` is
+  D3's baseline to edit), and protocol contract tests (new event types gate on the SHAPES
+  table; new optional keys flow free). Suite 302 green; re-baselining procedure in
+  `tests/README.md`.
 - **M1 SEALED 2026-08-18 (same session):** quality metrics widened 3 → 12 columns with
   dependency-aware compute; Fable review verdict **ship**, all findings folded in. B1 (a
   pre-existing bare-report crash found en route) is filed below, READY.
@@ -43,7 +46,7 @@ box) runs alongside everything.
         │                     D2 run experience
         │                     D3 report ◄─────── M1 metrics (ready now)
         │                                            │
-  T1 harness (peer, running) ─baselines/contracts──► D1 D2 D3        M1 ──► W1 curation ──► W2 repro
+  T1 harness (SEALED ✓) ─────baselines/contracts──► D1 D2 D3        M1 (SEALED ✓) ──► W1 curation ──► W2 repro
         └────────────────► T2 journey refactor + T3 honesty states         (W1 slice 4 TUI triage
                               (after D1/D2)                                  inherits DESIGN_UX §1)
 
@@ -58,7 +61,7 @@ box) runs alongside everything.
 
 | # | Item | Brief | State |
 |---|---|---|---|
-| — | T1 testing harness | `goals/GOAL_T_TESTING.md` | **RUNNING** (peer session) |
+| — | T1 testing harness | `goals/GOAL_T_TESTING.md` | **SEALED 2026-08-18** (peer, `6171816`) |
 | 1 | M1 widen quality metrics | prompt below (was W0 item 5) | **SEALED 2026-08-18** |
 | 2 | P1 probeinterface import | `goals/GOAL_P_PROBES.md` | **READY — paste now** |
 | 3 | D0 veto | `DESIGN_UX.md` | **WAITING ON BEN** |
@@ -163,6 +166,16 @@ Same rule: fresh prompts from the briefs at gate-time, constants verified agains
 
 ## Sealed record
 
+- **2026-08-18 — T1: the testing harness (peer session, `6171816` + `4ba6205`).** Eight
+  deterministic SVG snapshot baselines of today's dashboard + modals
+  (pytest-textual-snapshot), a fresh-build structural golden check for the report
+  (section order pinned in `REQUIRED_SECTION_ORDER` — D3 edits that baseline in its
+  commit), contract tests locking the sort-progress protocol (SHAPES table gates new
+  event types; optional keys on existing events flow free; `done`/`error` stay as-is),
+  and `tests/README.md`'s deliberate re-baselining procedure. Suite 302 green in ~30 s.
+  Fable review: 7 findings, none blocking, six folded in pre-seal; LESSONS S4 recorded
+  (Windows-safe subprocess text capture). Also produced the 10-finding DESIGN_UX
+  feasibility critique (`a11b259`).
 - **2026-08-18 — M1: quality metrics widened, 3 → 12 columns.** Dependency extensions
   (spike_amplitudes, principal_components) now compute *before* quality_metrics,
   best-effort — a dependency failure drops only its metrics, surfaced on both output

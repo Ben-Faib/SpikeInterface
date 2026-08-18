@@ -25,8 +25,9 @@ A need left only in a chat summary is a need Ben never sees.*
   surfaces redesigned for accessibility/focus/hierarchy + a timely-updates UX + real
   testing procedures + probe flexibility for a lab whose setups differ. `DESIGN_UX.md`
   (D0) is drafted and **waits on Ben's veto**; T1 (testing harness) is sealed — snapshot,
-  report-golden, and protocol-contract gates now guard the redesigns (`6171816`); prompts
-  M1 (metrics) and P1 (probe import) are ready to paste in parallel.
+  report-golden, and protocol-contract gates now guard the redesigns (`6171816`); M1
+  (metrics, 12 columns) is sealed too; prompts P1 (probe import) and B1 (bare-report
+  crash) are ready to paste in parallel.
   Product facts on record: built by Benjamin Faibussowitsch with Aleece Al-Olimat for
   UPitt researchers on industry-standard SpikeInterface.
 
