@@ -30,13 +30,20 @@ OUTPUTS = ROOT / "outputs"
 # The section ids the report must carry, in this relative order. Additions
 # between/around them are fine; removals and reorders are a conscious
 # re-baseline (edit this list in the redesign commit).
+# Re-baselined for the D3 report redesign (DESIGN_UX §4.3): verdict first,
+# evidence in reader order, the raw streams demoted into one "recording context"
+# section, provenance merged into one home at the end.
 REQUIRED_SECTION_ORDER = [
-    "status", "lfp", "nev", "sorted", "summary", "probe", "qc", "events", "footer",
+    "verdict", "sorted", "qc", "summary", "probe", "context", "provenance",
 ]
 
 # Attributes after the id are redesign-legal; the id staying first is not
 # load-bearing beyond keeping this parse simple.
 _SECTION_RE = re.compile(r'<section id="([^"]+)"[^>]*>.*?</section>', re.S)
+
+# Sub-blocks inside a section (the LFP / .nev / events blocks of "context"),
+# which carry their own anchors and their own honest-skip degradation.
+_SUB_RE = re.compile(r'<div class="subsec" id="([^"]+)"[^>]*>(.*?)(?=<div class="subsec" id="|</section>)', re.S)
 
 
 @pytest.fixture(scope="module")
@@ -89,7 +96,9 @@ def test_no_section_crashed(built_report):
     # of a crash — good for the reader, but any such box in a freshly built
     # report is a regression the suite must surface.
     html, _, _ = built_report
-    assert "Section failed to render" not in html
+    # Both the section-level and sub-block-level crash boxes are defects
+    # (D3 review #3: the sub-block string is "Failed to render").
+    assert "failed to render" not in html.lower()
 
 
 def test_no_section_is_empty(built_report):
@@ -130,14 +139,41 @@ def test_data_sections_render_when_data_present(built_report):
     # _safe_section would turn a loader failure into an honest note (non-empty,
     # no crash box), which the generic checks above accept. So when the data
     # exists, require the loaders to have actually delivered: no FAIL badge in
-    # the status table, and real figures in the LFP and .nev sections.
+    # the provenance table, and real figures in the LFP and .nev sub-blocks of
+    # the recording-context section.
     html, _, data_present = built_report
     if not data_present:
         pytest.skip("no raw recording on this machine")
     secs = _sections(html)
-    assert 'class="badge FAIL"' not in secs["status"]
-    assert "plotly-graph-div" in secs["lfp"]
-    assert "plotly-graph-div" in secs["nev"]
+    assert 'class="badge FAIL"' not in secs["provenance"]
+    subs = dict(_SUB_RE.findall(secs["context"]))
+    assert "plotly-graph-div" in subs["lfp"]
+    assert "plotly-graph-div" in subs["nev"]
+
+
+def test_verdict_tiles_lead_the_report(built_report):
+    # The answer a researcher opens the report for (DESIGN_UX §4.1): four stat
+    # tiles, with the noise-floor tile stating its expected band and making no
+    # pass/fail claim.
+    html, _, _ = built_report
+    verdict = _sections(html)["verdict"]
+    assert verdict.count('<p class="label">') == 4
+    for label in ("units", "pass quality", "noise floor", "window sorted"):
+        assert f">{label}</p>" in verdict, f"verdict tile missing: {label}"
+    assert "expected" in verdict and "post-bandpass" in verdict
+
+
+def test_no_raw_nan_cells(built_report):
+    # Non-computable metrics render as an en-dash; a raw "nan" in a table cell
+    # is the honesty artifact leaking through a new formatter.
+    html, _, _ = built_report
+    assert not re.search(r">\s*nan\s*<", html, re.I)
+
+
+def test_figures_have_alt_text(built_report):
+    # §8: every figure carries alt text.
+    html, _, _ = built_report
+    assert html.count("plotly-graph-div") <= html.count('<figcaption class="sr-only">')
 
 
 def test_summary_metrics_when_saved(built_report):
