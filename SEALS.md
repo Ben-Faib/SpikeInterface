@@ -24,8 +24,9 @@ A need left only in a chat summary is a need Ben never sees.*
 - **Current focus (2026-08-18, updated same day): THE OVERHAUL.** Ben's directive — all
   surfaces redesigned for accessibility/focus/hierarchy + a timely-updates UX + real
   testing procedures + probe flexibility for a lab whose setups differ. `DESIGN_UX.md`
-  (D0) is drafted and **waits on Ben's veto**; T1 (testing harness) runs in the peer
-  session; prompts M1 (metrics) and P1 (probe import) are ready to paste in parallel.
+  (D0) is drafted and **waits on Ben's veto**; T1 (testing harness) is sealed — snapshot,
+  report-golden, and protocol-contract gates now guard the redesigns (`6171816`); prompts
+  M1 (metrics) and P1 (probe import) are ready to paste in parallel.
   Product facts on record: built by Benjamin Faibussowitsch with Aleece Al-Olimat for
   UPitt researchers on industry-standard SpikeInterface.
 
@@ -48,6 +49,21 @@ A need left only in a chat summary is a need Ben never sees.*
 ---
 
 ## The ledger (newest first)
+
+**2026-08-18 — T1 testing harness (peer session)**
+- Did: built the redesign safety net — 8 deterministic SVG snapshot baselines of today's
+  dashboard + modals (pytest-textual-snapshot in the dev group), a fresh-build structural
+  golden check for the report, contract tests locking the sort-progress protocol (shapes,
+  ordering, emitter, stdout purity), and tests/README.md's re-baselining procedure
+  (`6171816`) — plus the 10-finding DESIGN_UX feasibility critique (`a11b259`, folded in).
+- Means: D-track sessions can rewrite every visible surface and land it as reviewable
+  SVG/structure diffs, with the protocol's extension points pre-agreed (new event types
+  gate on the SHAPES table; new optional keys flow free; done/error stay as-is).
+- Moved: the suite is 302 tests / ~30 s, green including a fresh report build; the Fable
+  review returned 7 findings, none blocking, all six actionable ones folded in pre-seal.
+- Needs Ben: nothing new — the D0 veto stays the gate this work serves.
+- Next: D1/D2 re-baseline snapshots deliberately per tests/README.md; ROADMAP's T1 node
+  needs flipping to done (orchestrating session owns that file this run).
 
 **2026-08-18 — M1: quality metrics widened**
 - Did: widened per-unit quality metrics from 3 to 12 columns with dependency-aware,

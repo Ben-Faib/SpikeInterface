@@ -8,6 +8,14 @@ process lessons.*
 
 ---
 
+**S4 (2026-08-18) — `subprocess.run(text=True)` without `encoding=` is a Windows landmine.**
+Review of the T1 stdout-purity tests caught that text-mode capture decodes with the locale
+code page (cp1252 on the lab box) while our children force UTF-8 output full of multibyte
+glyphs — one typographic quote in future output turns the test into a UnicodeDecodeError.
+Lesson: on this repo, every text-mode subprocess capture passes `encoding="utf-8",
+errors="replace"`. Encoded: `tests/test_sort_progress_contract.py`'s `_run_sorting` helper
+is the pattern to copy.
+
 **S3 (2026-08-18) — Docs drift silently until audited against source.** The CLAUDE.md
 rewrite (`49dd4a3`) exposed stale claims (e.g. an in-code comment citing an SI behavior that
 0.104 no longer has). Lesson: module docstrings are the API source of truth and claims about
