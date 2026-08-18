@@ -32,8 +32,9 @@ A need left only in a chat summary is a need Ben never sees.*
 ## OPEN — needs Ben
 
 - **The D0 veto: approve or amend `DESIGN_UX.md`** — every D slice (dashboard, run
-  experience, report, flow modals) is gated on it; the peer session's feasibility critique
-  folds in first. *(opened 2026-08-18)*
+  experience, report, flow modals) is gated on it. The peer session's 10-finding
+  feasibility critique is already folded in; the spec is ready to read. *(opened
+  2026-08-18)*
 - **Ratify (or amend) the NORTHSTAR arc** — now including the 2026-08-18 restructure into
   the D/T/M/P dependency graph. *(opened 2026-08-18)*
 - **Lab requirements pass** — what Tracy's lab needs first (users, fluency, recordings,

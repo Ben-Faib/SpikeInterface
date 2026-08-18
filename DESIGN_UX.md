@@ -3,8 +3,9 @@
 *Drafted 2026-08-18 from Ben's overhaul directive and screenshots of every surface (dashboard,
 sort-progress modal, sort-how-much modal, the HTML report, spikeinterface-gui). **Ben veto
 gate: nothing in D1–D4 is built until Ben approves or amends this spec.** Section §7 maps
-spec → implementation tasks. Feasibility critique from the peer session lands in
-`docs/design/DESIGN_CRITIQUE_2026-08-18.md` and gets folded in before the veto pass.*
+spec → implementation tasks. The peer session's feasibility critique
+(`docs/design/DESIGN_CRITIQUE_2026-08-18.md`, 10 findings) was folded in the same day —
+the spec below is the post-critique version, ready for the veto.*
 
 Ben's brief, verbatim goals: more accessible · less clutter · focused on what matters ·
 clean, with clarity, good spacing and hierarchy, ample room · the UX feels like the program
@@ -57,16 +58,17 @@ restating them; INSPECTING clipped at 7 lines and unscrollable.
   SORT   tridesclous2 · 13 units · 30 s window · ready to re-run
 
   WORKFLOW ──────────────────────────   SORTERS ──────────────────────────
-  1  Explore   raw traces + events      READY
+  1  Explore   figures: LFP + events    READY
   2  Sort      run tridesclous2      ▌ tridesclous2   13u        ● 
   3  Report    build + open HTML        spykingcircus2  8u        ●
   4  Inspect   GUI on the saved sort    lupin          11u        ●
   5  Compare   two saved sorts          simple          5u        ●
-                                        DOCKER (on)
-  MANAGE (dim) ────────────────────     mountainsort4  16u        ◌
-  p probe · e params · m sorters        mountainsort5   5u        ◌
-  t theme · v verify · ? help · q quit  …                        
-                                        GPU — needs the lab box   (folded)
+  6  Traces    scroll raw (window)      DOCKER (on)
+                                        mountainsort4  16u        ◌
+  MANAGE (dim) ────────────────────     mountainsort5   5u        ◌
+  p probe · e params · m sorters        …
+  t theme · v verify · ? help · q quit  GPU — needs the lab box   (folded)
+                                        ● ready · ◌ needs download · – unavailable
 
   INSPECTING · tridesclous2 ────────────────────────────────────────────
   Fast, reliable, CPU-only — the recommended default for this probe.
@@ -90,7 +92,20 @@ restating them; INSPECTING clipped at 7 lines and unscrollable.
 - **INSPECTING auto-sizes and scrolls** (kills the 7-line clip), and closes with the
   actions valid for the inspected row. It never re-states the ACTIVE chip.
 - **A persistent LAST RESULT line** — the newest run's outcome glyph, time, artifact path,
-  and a reopen key. Results stop evaporating on the next keystroke (§1.6).
+  and a reopen key (`r`, free at dashboard level today). Results stop evaporating on the
+  next keystroke (§1.6). **Persistence decision (critique #3):** both the active sorter and
+  LAST RESULT persist to `.si_menu.json` as new keys `active_sorter` and `last_result`
+  ({action, ok, when, path}) — D1 updates CLAUDE.md's exactly-these-keys list in the same
+  slice.
+- **Traces stays a workflow action** (critique #5): `6 Traces — scroll raw signal (desktop
+  window)` joins WORKFLOW rather than being absorbed into Explore (which stays static
+  figures) or demoted to MANAGE; its explainer names the window-launch honestly.
+- **The glyph legend is the text neighbor** (critique #6): a dim one-liner under the
+  SORTERS panel — `● ready · ◌ needs download · – unavailable` — satisfies §8 for the
+  availability column; the cached-vs-not download detail lives in INSPECTING.
+- **Renumbering moves as one commit** (critique #10): the action table, its
+  `tests/conftest.py` mirror, help/hint text, and the Pilot journeys change together in
+  D1 — the suite is never half-renumbered.
 
 ## §3 The sort experience (screenshots: SORTING modal ×2, "Sort how much?")
 
@@ -131,6 +146,10 @@ On completion the same modal becomes the **result card** (no green-and-gone):
 - **0 units is an amber card** with the detect_threshold hint — the false-green dead-end
   dies at the source. **Failure is a red card** with the last stderr lines inline and the
   log path (the log already exists on disk; surface it).
+- **Result-card actions are a modal-contract change, named as such** (critique #2): the
+  dismissal shape grows an optional `next_action` the app dispatches after the pop —
+  report via `DISPATCH`, inspect via the `_self` fresh-process path — and the Pilot tests
+  that pin the `(ok, message, changed)` contract are updated deliberately in D2.
 - Sub-status lines are **translated where known** (a small mapping from common sorter
   messages to plain phrases), truncated to one line otherwise.
 - "Sort how much?" keeps its shape; it gains expected durations from the last run of that
@@ -147,8 +166,13 @@ link-row for navigation.
 **Redesign — verdict first, evidence below, one visual system.**
 
 1. **Verdict header**: recording · sorter · date, then four stat tiles — **units**,
-   **pass-quality count** (post-M1; yield % until then), **noise floor with canary state**
-   (`4.0 µV ✓`), **window sorted** (with the partial-sort caveat inline when eff < total).
+   **pass-quality count** (M1's widened metrics are live; the threshold *rule* stays W1's),
+   **noise floor**, **window sorted** (with the partial-sort caveat inline when eff <
+   total). **The noise-floor tile makes no pass/fail claim** (critique #4): the ~4 µV
+   canary is an observed regression signal, not a validated threshold — the tile shows the
+   number with its expected band as text ("4.0 µV · expected ≈3.9–4.1 for this rig,
+   post-bandpass+CMR"), and only an *outside-band* value turns the tile amber with the
+   double-scaling explanation. Never a green ✓ science claim.
 2. **Sticky table of contents** (left rail ≥1100 px, collapsing to a top bar below) with
    per-section status glyphs — the current status table becomes navigation.
 3. **Sections re-cut in reader order**: 1 Verdict · 2 Sorted units (raster, rates,
@@ -168,21 +192,33 @@ link-row for navigation.
 
 Upstream code — we do not restyle it, and we do not fork it for looks. Stance: it is the
 expert's deep-inspection escape hatch; the workbench's own surfaces carry the curated
-experience. What we own: launching it with a sane default layout if it supports layout
-persistence, and the caveat that currently flashes past during `suspend()` moving into the
-INSPECTING panel for the Inspect action (a correctness-relevant note shown *before* launch,
-per §1.7). The real answer to "sigui is overwhelming" is W1's in-TUI unit triage; W1 slice 4
-inherits this spec's language.
+experience. The committed deliverable (critique #9): the caveat that currently flashes past
+during `suspend()` moves into the INSPECTING panel for the Inspect action — a
+correctness-relevant note shown *before* launch, per §1.7. A curated default layout is
+**conditional**: D4 first verifies whether spikeinterface-gui actually supports layout
+persistence (nothing in our code touches it today); if it doesn't, the caveat move is the
+whole §5 deliverable. The real answer to "sigui is overwhelming" is W1's in-TUI unit
+triage; W1 slice 4 inherits this spec's language.
 
 ## §6 The timeliness system (cross-cutting)
 
-- **Report and Compare builds get progress + cancel** — today the terminal just goes quiet
-  (a top audit friction). Same modal pattern as sorting: named phases (load analyzer,
-  render figures, inline Plotly, write file), elapsed, Esc.
-- **The progress protocol grows, contract-tested**: `sort_progress` events gain `elapsed`,
-  `phase m of n`, and a terminal `result` payload (units, canary, quality counts, paths)
-  that drives the result cards. Existing event shapes stay valid (T1 pins them); stdout
-  purity in `--progress json` is untouchable.
+- **Report and Compare builds get progress + cancel — scoped honestly** (critique #1):
+  today both run blocking, in-process, under `suspend()` with no progress channel, so
+  "same modal as sorting" means building the plumbing a second time — a progress-emitting
+  report path, a `report_command()` argv on the controller mirroring `sort_command()`, a
+  real subprocess (cancel only works cleanly with a killable process group), and the modal
+  wiring. **The report half lands with D3** (report.py is being rewritten there anyway);
+  D2 gives Compare the interim honest treatment: an indeterminate modal with named step,
+  ticking elapsed, and a stated no-cancel — never a silent terminal.
+- **The progress protocol grows, contract-tested**: events gain **emitter-side** timing
+  (critique #8) — each `phase` event carries `elapsed` seconds since run start, and a
+  `phase_done` event carries the finished phase's duration, so a captured event log
+  replays faithfully with no consumer-side clock skew. A terminal `result` event (units,
+  noise floor, quality counts, paths) **rides alongside `done`, never replaces it** — the
+  TUI synthesizes `done` from a silent rc-0 exit and its required keys are contract-pinned
+  (T1). The phase list growing to five ("Save sorting") is an emitter constant; T1
+  deliberately pins neither phase count nor titles. Stdout purity in `--progress json` is
+  untouchable.
 - **Live elapsed everywhere**: any visible run ticks; a stalled subprocess becomes visually
   distinguishable from a slow one (heartbeat gap → "no output for 90 s" amber note, not a
   frozen spinner — mountainsort4-is-slow-not-hung, LESSONS S2, gets an honest face).
@@ -192,10 +228,10 @@ inherits this spec's language.
 
 | Task | Builds | Spec | Depends on |
 |---|---|---|---|
-| D1 | Dashboard: panels, banner, signal budget, INSPECTING, LAST RESULT, MANAGE, help accuracy, persist active sorter | §2 | D0 veto; T1 baselines |
-| D2 | Progress modals + result cards, protocol extension, report/compare progress, 0-unit/failure cards | §3 §6 | D0 veto; T1 protocol tests |
-| D3 | Report redesign | §4 | D0 veto; M1 for quality tiles (yield-only until then) |
-| D4 | Flow modals: sort-how-much timing, param editor pass (recommended-first ordering, overridden-vs-default marks), Manage-hub NavList consistency | §3 §1 | D0 veto; after D1 |
+| D1 | Dashboard: panels, banner, signal budget, INSPECTING, LAST RESULT, MANAGE, help accuracy, persist active sorter + last result (new `.si_menu.json` keys, CLAUDE.md list updated same slice) | §2 | D0 veto; T1 baselines |
+| D2 | Progress modals + result cards (modal-contract change named in §3), protocol extension (emitter-side timing, `result` alongside `done`), Compare interim progress, 0-unit/failure cards | §3 §6 | D0 veto; T1 protocol tests |
+| D3 | Report redesign **+ the report progress plumbing** (progress-emitting report path, `report_command()`, subprocess + modal) | §4 §6 | D0 veto (M1 ✓) |
+| D4 | Flow modals: sort-how-much timing, param editor pass (recommended-first ordering, overridden-vs-default marks), Manage-hub NavList consistency, sigui layout-persistence check (§5) | §3 §5 §1 | D0 veto; after D1 |
 
 Old W0 items live here now: false-green 0-unit → D2 · INSPECTING clip → D1 · persist
 active sorter → D1 · keyboard help → D1 · metric widening → M1 (unchanged, not a UI task).
@@ -203,7 +239,10 @@ active sorter → D1 · keyboard help → D1 · metric widening → M1 (unchange
 ## §8 Accessibility commitments
 
 Shape-first signals and NO_COLOR safety stay law. Additions: secondary text is dim but
-contrast-tested in both themes (no gray-on-gray); every glyph has a text neighbor; focus is
+contrast-tested **across all accent themes on the one dark palette** (critique #7: the app
+has a single dark palette with accent-color themes — a light theme would be a new palette
+abstraction over all CSS and rich styles, out of the D track's scope; slice it later only
+if Ben wants it); every glyph has a text neighbor (a panel legend counts, §2); focus is
 always visible; keyboard model unchanged (arrows/enter/numbers/letters — no chords); all
 information available at the smallest supported terminal via the yield order; report meets
 sensible-contrast + keyboard-navigable TOC + alt text on every figure.

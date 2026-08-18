@@ -19,9 +19,13 @@ box) runs alongside everything.
 
 ## ▶ NOW — updated 2026-08-18, the overhaul kickoff (sealing sessions: update this box FIRST)
 
-- **D0 design spec drafted (`DESIGN_UX.md`) — waiting on Ben's veto pass.** The peer
-  session's feasibility critique (`docs/design/DESIGN_CRITIQUE_2026-08-18.md`) folds in
-  first. **Every D slice is gated on the veto.**
+- **D0 design spec is READY FOR BEN'S VETO** (`DESIGN_UX.md`): drafted from the surface
+  screenshots, then hardened with all 10 findings of the peer session's feasibility
+  critique (`docs/design/DESIGN_CRITIQUE_2026-08-18.md`, committed `a11b259`) folded in —
+  report-progress plumbing moved into D3, result-card modal contract named, new
+  `.si_menu.json` keys decided, canary tile de-scienced, traces kept, glyph legend added,
+  single-dark-palette scoping, emitter-side timing, sigui persistence made conditional,
+  one-commit renumbering. **Every D slice is gated on the veto.**
 - **T1 (testing harness) is RUNNING in the peer session** (dispatched 2026-08-18):
   snapshot baselines of today's UI, report golden checks, progress-protocol contract tests.
 - **M1 SEALED 2026-08-18 (same session):** quality metrics widened 3 → 12 columns with
