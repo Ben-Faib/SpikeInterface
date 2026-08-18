@@ -26,8 +26,8 @@ A need left only in a chat summary is a need Ben never sees.*
   testing procedures + probe flexibility for a lab whose setups differ. `DESIGN_UX.md`
   (D0) is drafted and **waits on Ben's veto**; T1 (testing harness) is sealed — snapshot,
   report-golden, and protocol-contract gates now guard the redesigns (`6171816`); M1
-  (metrics, 12 columns) is sealed too; prompts P1 (probe import) and B1 (bare-report
-  crash) are ready to paste in parallel.
+  (metrics, 12 columns) and P1 (probeinterface import, `384884e`) are sealed too;
+  prompt B1 (bare-report crash) is ready to paste.
   Product facts on record: built by Benjamin Faibussowitsch with Aleece Al-Olimat for
   UPitt researchers on industry-standard SpikeInterface.
 
@@ -47,6 +47,23 @@ A need left only in a chat summary is a need Ben never sees.*
 ---
 
 ## The ledger (newest first)
+
+**2026-08-18 — P1 probeinterface import (peer session)**
+- Did: probes.py now imports probeinterface .json/.prb via CLI, materialising geometry
+  (positions, pitch, layout, wiring, provenance) into a self-contained library profile
+  with honest channel-count verdicts and named refusals (partial wiring, ProbeGroups,
+  name collisions, unwritable store), hardened per the Fable review (`384884e`).
+- Means: a probe the lab already has a standard description for drops straight in — real
+  density-based sorter fits included — instead of being hand-entered parameter by
+  parameter, and declared wiring is honoured rather than silently discarded.
+- Moved: gates ran in an isolated worktree against HEAD (main tree churns with D1/D2):
+  suite 313 green, 30 s sort with an imported probe at noise floor 3.984 µV, report probe
+  section faithful, mismatch asymmetry intact; review verdict ship, 3 medium findings all
+  folded in.
+- Needs Ben: nothing new.
+- Next: D1 should make imported probes view/duplicate/delete-only in the probe editor
+  (a geometry-less rename now fails honestly instead of saving a broken probe), and P3
+  inherits the on-record `--probe-file` identity-wiring trap plus tetrode-import classing.
 
 **2026-08-18 — T1 testing harness (peer session)**
 - Did: built the redesign safety net — 8 deterministic SVG snapshot baselines of today's

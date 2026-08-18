@@ -74,7 +74,7 @@ box) runs alongside everything.
 |---|---|---|---|
 | — | T1 testing harness | `goals/GOAL_T_TESTING.md` | **SEALED 2026-08-18** (peer, `6171816`) |
 | 1 | M1 widen quality metrics | prompt below (was W0 item 5) | **SEALED 2026-08-18** |
-| 2 | P1 probeinterface import | `goals/GOAL_P_PROBES.md` | **READY — paste now** |
+| 2 | P1 probeinterface import | `goals/GOAL_P_PROBES.md` | **SEALED 2026-08-18** (peer, `384884e`) |
 | 3 | D0 veto | `DESIGN_UX.md` | **WAITING ON BEN** |
 | 4 | D1 dashboard | `goals/GOAL_D_UIUX.md` | gated: D0 veto + T1 |
 | 5 | D2 run experience | `goals/GOAL_D_UIUX.md` | gated: D0 veto + T1 |
@@ -115,7 +115,7 @@ slice 1's job); no UI changes beyond the report's existing table rendering what 
 analyzer has. Seal per the between-run contract.
 ```
 
-### P1 — probeinterface import  [READY]
+### P1 — probeinterface import  [SEALED 2026-08-18 — `384884e`]
 
 ```
 The UPitt researchers' probes have different setups, and today the workbench only knows its
