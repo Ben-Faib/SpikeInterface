@@ -48,6 +48,12 @@ class FrozenSortScreen(menu_app.SortProgressScreen):
     def _tick_spinner(self) -> None:
         pass
 
+    # Freeze the header's wall clock: a loaded machine crossing 1 s between push
+    # and snapshot would otherwise flip the baseline's "0:00" (flaky snapshot).
+    @staticmethod
+    def _fmt_mmss(secs: float) -> str:
+        return "0:00"
+
 
 # A believable mid-sort event sequence: two phases done, the Sort phase live
 # with a substep + forwarded sorter print + determinate bar + heartbeat all

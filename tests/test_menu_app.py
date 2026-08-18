@@ -499,7 +499,11 @@ async def test_sort_progress_renders_summary_card_and_note(make_app):
             await pilot.pause()
         body = screen.query_one("#sortbody").render().plain
         assert "Array / yield summary" in body and "V_pp: 22.9" in body
-        assert "Done" in body and "7 units" in body
+        # D2: completion renders the RESULT CARD, not a bare Done line. This run
+        # carries a metrics-failure note, so the analyzer is GONE — the card must
+        # not offer report/GUI chaining (F2), only the close.
+        assert "7 units" in body and "3 build report" not in body
+        assert "↵ close" in body
         assert "quality metrics failed" in body          # non-fatal caveat surfaced
 
 
@@ -551,7 +555,8 @@ async def test_sort_progress_renders_substep_and_detail(make_app):
             await pilot.pause()
         body = screen.query_one("#sortbody").render().plain
         assert "computing waveforms" in body and "2/8" in body       # substep line
-        assert "detect_peaks: 562 peaks found" in body               # forwarded detail
+        # D2: known sorter jargon is translated; the real counts stay.
+        assert "detecting peaks: 562 peaks found" in body
         assert "still working" in body and "12s" in body             # heartbeat coexists
         # a new phase clears the prior substep/detail (reducer contract)
         screen.handle_event({"t": "phase", "i": 3, "n": 4, "title": "Quality metrics"})
@@ -1302,3 +1307,218 @@ def test_fmt_when_relative_dates():
     out = menu_app._fmt_when(old.isoformat(timespec="minutes"))
     assert out.endswith("09:05") and len(out) > len("09:05")   # carries its date
     assert menu_app._fmt_when("12:00") == "12:00"              # pre-ISO fallback
+
+
+# --- D2 view half: result cards, chaining, honest progress ------------------ #
+def _drive_finished_sort(screen, units=14, good=9):
+    for ev in [
+        {"t": "phase", "i": 1, "n": 5, "title": "Read broadband", "elapsed": 0.1},
+        {"t": "phase_done", "i": 1, "title": "Read broadband", "secs": 0.09},
+        {"t": "phase", "i": 5, "n": 5, "title": "Analyze + metrics", "elapsed": 7.0},
+        {"t": "phase_done", "i": 5, "title": "Analyze + metrics", "secs": 8.5},
+        {"t": "result", "units": units, "good": good, "noise_floor_uV": 4.02,
+         "out": "outputs/tridesclous2", "effective_seconds": 30.0,
+         "total_seconds": 132.0, "elapsed": 15.4},
+        {"t": "done", "ok": True, "units": units, "good": good,
+         "out": "outputs/tridesclous2", "note": None},
+    ]:
+        screen.handle_event(ev)
+
+
+async def test_sort_result_card_shows_numbers_and_durations(make_app):
+    class _NoRun(menu_app.SortProgressScreen):
+        async def _run(self):
+            pass
+
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        argv = ["python", "run_sorting.py", "--sorter", "tridesclous2",
+                "--progress", "json", "--duration", "30"]
+        screen = _NoRun(argv, app._accent)
+        await app.push_screen(screen)
+        await pilot.pause()
+        _drive_finished_sort(screen)
+        await pilot.pause()
+        body = screen.query_one("#sortbody").render().plain
+        assert "14 units" in body and "9 high-quality" in body
+        assert "noise floor 4.02 µV" in body and "expected" in body
+        assert "0:15" in body                                   # emitter elapsed
+        assert "partial: first 30 s of 132 s" in body           # honest window
+        assert "0.1 s" in body                                  # per-phase duration
+        assert "3 build report" in body and "4 inspect in GUI" in body
+        title = screen.query_one("#sorttitle").render().plain
+        assert "tridesclous2" in title and "quick test" in title
+
+
+async def test_sort_zero_units_is_amber_with_fix(make_app):
+    class _NoRun(menu_app.SortProgressScreen):
+        async def _run(self):
+            pass
+
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        screen = _NoRun(["python", "x", "--sorter", "simple"], app._accent)
+        await app.push_screen(screen)
+        await pilot.pause()
+        screen.handle_event({"t": "result", "units": 0, "good": 0,
+                             "noise_floor_uV": None, "out": "outputs/simple",
+                             "effective_seconds": 30.0, "total_seconds": 132.0,
+                             "elapsed": 9.0})
+        screen.handle_event({"t": "done", "ok": True, "units": 0, "good": 0,
+                             "out": "outputs/simple", "note": None})
+        await pilot.pause()
+        body = screen.query_one("#sortbody").render().plain
+        assert "0 units found" in body and "detect_threshold" in body
+        # The dismissal message carries the same amber hint (no green 0-unit).
+        ok, msg, changed = screen._dismiss_message()
+        assert ok and msg.startswith("⚠") and "detect_threshold" in msg
+
+
+async def test_sort_result_card_chains_into_report(make_app):
+    app = make_app(present=True)
+    c = app.c
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.press("2")            # sort -> span modal
+        await pilot.pause()
+        await pilot.press("enter")        # full recording -> progress modal
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, menu_app.SortProgressScreen)
+        _drive_finished_sort(screen)
+        await pilot.pause()
+        await pilot.press("3")            # chain: close + build report
+        await pilot.pause()
+        assert ("report", None) in c.ran
+        assert c.last_result["key"] == "report"   # the chained action recorded last
+
+
+async def test_sort_chain_keys_noop_while_running(make_app):
+    class _NoRun(menu_app.SortProgressScreen):
+        async def _run(self):
+            pass
+
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        screen = _NoRun(["python", "x", "--sorter", "simple"], app._accent)
+        await app.push_screen(screen)
+        await pilot.pause()
+        screen.handle_event({"t": "phase", "i": 3, "n": 5, "title": "Sort"})
+        await pilot.pause()
+        await pilot.press("3")
+        await pilot.pause()
+        assert app.screen is screen       # still up — no chain mid-run
+
+
+async def test_sort_full_bar_yields_to_heartbeat(make_app):
+    # A bar at 100% under a still-running step is a lie of completion (§3): once
+    # frac hits 1.0 it disappears and the heartbeat carries aliveness.
+    class _NoRun(menu_app.SortProgressScreen):
+        async def _run(self):
+            pass
+
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        screen = _NoRun(["python", "x", "--sorter", "simple"], app._accent)
+        await app.push_screen(screen)
+        await pilot.pause()
+        screen.handle_event({"t": "phase", "i": 3, "n": 5, "title": "Sort"})
+        screen.handle_event({"t": "bar", "desc": "clustering", "frac": 0.6,
+                             "n": 6, "total": 10})
+        await pilot.pause()
+        assert "60%" in screen.query_one("#sortbody").render().plain
+        screen.handle_event({"t": "bar", "desc": "clustering", "frac": 1.0,
+                             "n": 10, "total": 10})
+        screen.handle_event({"t": "heartbeat", "label": "clustering", "secs": 8})
+        await pilot.pause()
+        body = screen.query_one("#sortbody").render().plain
+        assert "100%" not in body and "still working" in body
+
+
+
+async def test_sort_bar_hides_before_rounding_lies(make_app):
+    # frac 0.996 would round to a displayed "100%" under a running step — the bar
+    # must yield before rounding can lie (D2v review F1).
+    class _NoRun(menu_app.SortProgressScreen):
+        async def _run(self):
+            pass
+
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        screen = _NoRun(["python", "x", "--sorter", "simple"], app._accent)
+        await app.push_screen(screen)
+        await pilot.pause()
+        screen.handle_event({"t": "phase", "i": 3, "n": 5, "title": "Sort"})
+        screen.handle_event({"t": "bar", "desc": "clustering", "frac": 0.996,
+                             "n": 996, "total": 1000})
+        await pilot.pause()
+        assert "100%" not in screen.query_one("#sortbody").render().plain
+
+
+async def test_chain_suppressed_when_analyzer_missing(make_app):
+    # 0 units or failed metrics -> run_sorting deleted the analyzer -> report/GUI
+    # would dead-end; the card must not offer them (D2v review F2).
+    class _NoRun(menu_app.SortProgressScreen):
+        async def _run(self):
+            pass
+
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        # note case (metrics failed on a units-found sort)
+        screen = _NoRun(["python", "x", "--sorter", "simple"], app._accent)
+        await app.push_screen(screen)
+        await pilot.pause()
+        screen.handle_event({"t": "done", "ok": True, "units": 7, "good": None,
+                             "out": "outputs/simple",
+                             "note": "quality metrics failed: boom"})
+        await pilot.pause()
+        body = screen.query_one("#sortbody").render().plain
+        assert "3 build report" not in body and "↵ close" in body
+        await pilot.press("3")            # must be a no-op
+        await pilot.pause()
+        assert app.screen is screen
+        await pilot.press("enter")
+        await pilot.pause()
+        # zero-unit case
+        screen2 = _NoRun(["python", "x", "--sorter", "simple"], app._accent)
+        await app.push_screen(screen2)
+        await pilot.pause()
+        screen2.handle_event({"t": "result", "units": 0, "good": 0,
+                              "noise_floor_uV": None, "out": "outputs/simple",
+                              "effective_seconds": 30.0, "total_seconds": 132.0,
+                              "elapsed": 9.0})
+        screen2.handle_event({"t": "done", "ok": True, "units": 0, "good": 0,
+                              "out": "outputs/simple", "note": None})
+        await pilot.pause()
+        body = screen2.query_one("#sortbody").render().plain
+        assert "3 build report" not in body
+        assert "partial: first 30 s" in body          # F8: window fact on amber too
+        await pilot.press("4")
+        await pilot.pause()
+        assert app.screen is screen2
+
+
+async def test_noise_floor_verdict_amber_out_of_band(make_app):
+    # The canary renders as a verdict (D2v review F5): ~1 uV means double-scaling.
+    class _NoRun(menu_app.SortProgressScreen):
+        async def _run(self):
+            pass
+
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        screen = _NoRun(["python", "x", "--sorter", "simple"], app._accent)
+        await app.push_screen(screen)
+        await pilot.pause()
+        screen.handle_event({"t": "result", "units": 5, "good": 2,
+                             "noise_floor_uV": 1.02, "out": "o",
+                             "effective_seconds": 132.0, "total_seconds": 132.0,
+                             "elapsed": 20.0})
+        screen.handle_event({"t": "done", "ok": True, "units": 5, "good": 2,
+                             "out": "o", "note": None})
+        await pilot.pause()
+        body = screen.query_one("#sortbody").render().plain
+        assert "outside the expected" in body and "twice" in body
+
+
+def test_result_style_amber_for_warning_message():
+    # The false-green kill end-to-end: a ⚠-message renders amber on the dashboard.
+    assert menu_app._result_style(True, "⚠ simple: no units found") != "bold #3fb950"

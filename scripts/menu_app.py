@@ -546,9 +546,25 @@ class SortProgressScreen(ModalScreen):
     BINDINGS = [
         Binding("escape", "cancel", "Cancel", show=False),
         Binding("enter", "close_if_done", "Close", show=False),
+        # Result-card chaining (DESIGN_UX §3): after an OK sort, 3/4 close the modal
+        # AND queue the next step — dispatched by the app after the pop (the modal
+        # contract carries an optional next_action; a running sort ignores them).
+        Binding("3", "chain('report')", "Build report", show=False),
+        Binding("4", "chain('gui')", "Inspect in GUI", show=False),
     ]
 
     _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+    # Friendly names for the sorter internals that leak into detail lines — the
+    # counts stay (they're real information); only the jargon head is translated.
+    _DETAIL_FRIENDLY = {
+        "detect_peaks": "detecting peaks",
+        "select_peaks": "selecting peaks",
+        "extract_waveforms": "extracting waveforms",
+        "split_clusters": "splitting clusters",
+        "merge_clusters": "merging clusters",
+        "find_spikes": "finding spikes",
+    }
 
     def __init__(self, argv: list, accent: str, log_path=None):
         super().__init__()
@@ -560,6 +576,16 @@ class SortProgressScreen(ModalScreen):
         self._state = _sp.new_state()
         self._proc = None
         self._spin = 0
+        # Context for the header + result card, read off the argv (the modal knows
+        # no controller): the sorter name and whether this is the quick span.
+        try:
+            self._sorter = argv[argv.index("--sorter") + 1]
+        except (ValueError, IndexError):
+            self._sorter = ""
+        self._quick = "--duration" in argv
+        # Local wall clock for the ticking header; the emitter's `elapsed` is the
+        # authoritative number and lands on the result card.
+        self._t0 = monotonic()
 
     def compose(self) -> ComposeResult:
         with Vertical(id="sortdialog"):
@@ -654,45 +680,85 @@ class SortProgressScreen(ModalScreen):
         _sp.reduce(self._state, ev)
         self._repaint()
         if self._state["done"] is not None:
+            # The result card carries the chaining keys (one home, §1.1); the
+            # footer stays the plain close hint.
             self.query_one("#sortfoot", Static).update("Press Enter to close")
 
     def _tick_spinner(self) -> None:
-        # The heartbeat ("still working") line carries the live spinner glyph; it can
-        # now coexist with a bar/substep/detail, so animate whenever it will show.
+        # While running, every tick advances the spinner AND the header's elapsed
+        # clock — a quiet subprocess must still look alive (DESIGN_UX §1.6).
         s = self._state
-        if s["done"] is None and s["heartbeat"]:
+        if s["done"] is None:
             self._spin = (self._spin + 1) % len(self._SPINNER)
             self._repaint()
+
+    @staticmethod
+    def _fmt_mmss(secs: float) -> str:
+        secs = max(0, int(secs))
+        return f"{secs // 60}:{secs % 60:02d}"
+
+    def _friendly_detail(self, detail: str) -> str:
+        # Translate the jargon head, keep EVERYTHING after it verbatim — counts and
+        # qualifiers are real information (D2v review F3).
+        for head, nice in self._DETAIL_FRIENDLY.items():
+            if detail.startswith(head):
+                rest = detail[len(head):]
+                if rest.startswith("()"):
+                    rest = rest[2:]
+                return (nice + rest).strip()
+        return detail
 
     # NB: deliberately NOT named ``_render`` — that collides with Textual's
     # ``Widget._render`` (the layout engine calls it expecting a Visual).
     def _repaint(self) -> None:
         s = self._state
+        running = s["done"] is None
+        # Header: what · how much · a ticking clock — the run always looks alive.
+        head = Text()
+        span = "quick test" if self._quick else "full recording"
+        head.append("Sorting… " if running else
+                    ("Sorted " if s["done"].get("ok") else "Sort failed "),
+                    style=f"bold {self._accent}" if running else
+                    ("bold #3fb950" if s["done"].get("ok") else "bold #f85149"))
+        if self._sorter:
+            head.append(f"{self._sorter} · ", style="bold")
+        head.append(f"{span} · {self._fmt_mmss(monotonic() - self._t0)}", style="dim")
+        self.query_one("#sorttitle", Static).update(head)
         t = Text()
+        # The phase checklist — finished phases carry their real (emitter-side)
+        # durations; the running one carries the live detail below it.
         for p in s["phases"]:
             done = p["done"]
             t.append("✓ " if done else "▶ ",
                      style="#3fb950" if done else f"bold {self._accent}")
-            t.append(f"{p['title']}\n", style="" if done else "bold")
-        # Live detail for the current phase — substep, latest sorter step line, the
-        # determinate bar, and the heartbeat all stack (whichever apply). They're
-        # cleared on each new phase by the reducer, so this only ever shows the
-        # running phase's progress.
-        if s["done"] is None:
+            t.append(f"{p['title']}", style="" if done else "bold")
+            if done and p.get("secs") is not None:
+                t.append(f"   {p['secs']:.1f} s", style="dim")
+            t.append("\n")
+        if running and s.get("phase_n"):
+            i = s.get("phase_i") or len(s["phases"])
+            t.append(f"  phase {i} of {s['phase_n']}\n", style="dim")
+        # Live detail for the current phase — substep, latest (translated) sorter
+        # step line, the determinate bar, and the heartbeat stack (whichever apply);
+        # the reducer clears them at each new phase.
+        if running:
             if s.get("substep_name"):
                 t.append(f"  → {s['substep_name']} "
                          f"({s['substep_i']}/{s['substep_n']})\n",
                          style=f"bold {self._accent}")
             if s.get("detail"):
-                t.append(f"  → {s['detail']}\n", style="dim")
+                t.append(f"  → {self._friendly_detail(s['detail'])}\n", style="dim")
         bar = s["bar"]
-        if bar and bar.get("total"):
+        # Honest progress (§3): a full bar under a still-running step reads as a
+        # finished phase — the bar yields to the spinner/heartbeat before ROUNDING
+        # can print "100%" (F1: 0.996 must not display as a full-looking 100%).
+        if running and bar and bar.get("total") and (bar.get("frac") or 0.0) < 0.995:
             frac = bar.get("frac") or 0.0
             fill = int(frac * 24)
             t.append(f"  {bar.get('desc', '')} ", style="dim")
             t.append("█" * fill + "░" * (24 - fill), style=self._accent)
-            t.append(f"  {frac * 100:3.0f}%\n", style="dim")
-        if s["heartbeat"] and s["done"] is None:
+            t.append(f"  {int(frac * 100):3d}%\n", style="dim")
+        if s["heartbeat"] and running:
             spin = self._SPINNER[self._spin]
             t.append(f"  {spin} {s['heartbeat']} … still working "
                      f"({s['heartbeat_secs']}s)\n", style="dim")
@@ -704,20 +770,85 @@ class SortProgressScreen(ModalScreen):
             for line in card:
                 t.append(f"  {line}\n", style="dim")
         if s["done"]:
-            d = s["done"]
-            if d.get("ok"):
-                units = d.get("units", "?")
-                out = d.get("out", "")
-                line = f"\n✓ Done · {units} units"
-                if out:
-                    line += f" → {out}"
-                t.append(line + "\n", style="bold #3fb950")
-                # A non-fatal caveat (e.g. the sort saved but quality metrics failed).
-                if d.get("note"):
-                    t.append(f"⚠ {d['note']}\n", style="#d29922")
-            else:
-                t.append(f"\n✗ {d.get('message', 'sort failed')}\n", style="bold #f85149")
+            t.append(self._result_card())
         self.query_one("#sortbody", Static).update(t)
+
+    def _result_card(self) -> Text:
+        """The run's closing card (DESIGN_UX §3): the result presented, never a
+        green-and-gone. Success leads with the numbers; 0 units is amber with the
+        fix named; failure is red with the log's tail."""
+        s = self._state
+        d = s["done"]
+        r = s.get("result") or {}
+        t = Text()
+        if not d.get("ok"):
+            t.append(f"\n✗ {d.get('message', 'sort failed')}\n", style="bold #f85149")
+            tail = self._log_tail()
+            msg = str(d.get("message", ""))
+            if tail and tail not in msg:
+                t.append(tail + "\n", style="dim")
+            if self._log_path:
+                t.append(f"log → {self._log_path}\n", style="dim")
+            return t
+        units = r.get("units", d.get("units", "?"))
+        is_zero = isinstance(units, int) and units == 0
+        if is_zero:
+            t.append("\n⚠ 0 units found", style="bold #d29922")
+            t.append(f" · {self._fmt_mmss(r.get('elapsed') or 0)}\n", style="dim")
+            t.append("  lower detect_threshold (close, then e Edit parameters) and "
+                     "re-run — the recording loaded and preprocessed fine.\n",
+                     style="#d29922")
+        else:
+            t.append(f"\n✓ {units} units", style="bold #3fb950")
+            good = r.get("good", d.get("good"))
+            if good is not None:
+                t.append(f" · {good} high-quality (SNR≥5 + ISI rule)", style="")
+            if r.get("elapsed") is not None:
+                t.append(f" · {self._fmt_mmss(r['elapsed'])}", style="dim")
+            t.append("\n")
+            nf = r.get("noise_floor_uV")
+            if nf is not None:
+                # The canary is a verdict here (F5): in the observed band it reads
+                # as checked; outside it goes amber with the known cause named —
+                # never displayed as a mute number.
+                if 3.5 <= nf <= 4.5:
+                    t.append(f"  noise floor {nf:.2f} µV ✓", style="#3fb950")
+                    t.append(" (expected ≈3.9–4.1 for this rig)\n", style="dim")
+                else:
+                    t.append(f"  ⚠ noise floor {nf:.2f} µV — outside the expected "
+                             "≈3.9–4.1 band; check the run (a ~1 µV reading means "
+                             "the µV scaling was applied twice)\n", style="#d29922")
+        # The window fact matters in BOTH branches (F8): a 0-unit quick test's
+        # likeliest fix is running the full recording.
+        eff, tot = r.get("effective_seconds"), r.get("total_seconds")
+        if eff and tot and eff < tot - 1.0:
+            t.append(f"  partial: first {eff:.0f} s of {tot:.0f} s — re-run "
+                     "full for the whole recording\n", style="#d29922")
+        out = r.get("out", d.get("out", ""))
+        if out:
+            t.append(f"  saved → {out}\n", style="dim")
+        if d.get("note"):
+            t.append(f"  ⚠ {d['note']}\n", style="#d29922")
+        # Chain keys only where the chained action can SUCCEED (F2): with 0 units
+        # or failed metrics run_sorting deleted the analyzer, so report/GUI would
+        # dead-end — offering them as next steps would be the dishonesty this
+        # card exists to kill.
+        if self._chainable():
+            t.append("\n  ↵ close · 3 build report · 4 inspect in GUI",
+                     style=f"bold {self._accent}")
+        else:
+            t.append("\n  ↵ close", style=f"bold {self._accent}")
+        return t
+
+    def _chainable(self) -> bool:
+        """3/4 chaining is offered/allowed only when the saved analyzer exists:
+        an OK sort with units and no metrics-failure note."""
+        s = self._state
+        d = s.get("done") or {}
+        if not d.get("ok") or d.get("note"):
+            return False
+        units = (s.get("result") or {}).get("units", d.get("units"))
+        return not (isinstance(units, int) and units == 0)
 
     def action_cancel(self) -> None:
         # Kill the whole process group so SpikeInterface's worker children die too.
@@ -728,20 +859,37 @@ class SortProgressScreen(ModalScreen):
                 os.killpg(os.getpgid(self._proc.pid), signal.SIGTERM)
             except Exception:  # noqa: BLE001 - already gone / no group -> ignore
                 pass
-        self.dismiss((False, "Sort cancelled", False))
+        self.dismiss((False, "Sort cancelled", False, None))
+
+    def _dismiss_message(self) -> tuple:
+        """(ok, message, changed) for the current terminal state. The 0-unit case
+        carries the detect_threshold fix so it lands amber on the dashboard too —
+        the same hint the result card shows (never a green '0 units')."""
+        d = self._state["done"]
+        ok = bool(d.get("ok"))
+        units = (self._state.get("result") or {}).get("units", d.get("units", ""))
+        if ok and isinstance(units, int) and units == 0:
+            sorter = self._sorter or "sort"
+            return (ok, f"⚠ {sorter}: no units found — lower detect_threshold "
+                        f"(Edit parameters) and re-run", ok)
+        if ok:
+            return (ok, f"✓ Sorted {units} units".rstrip(), ok)
+        return (ok, f"✗ {d.get('message', 'sort failed')}", ok)
 
     def action_close_if_done(self) -> None:
         if self._state["done"] is None:
             return                                  # still running — Enter is a no-op
-        d = self._state["done"]
-        ok = bool(d.get("ok"))
-        if ok:
-            units = d.get("units", "")
-            msg = f"✓ Sorted {units} units".rstrip()
-        else:
-            msg = f"✗ {d.get('message', 'sort failed')}"
+        ok, msg, changed = self._dismiss_message()
         # Only an OK sort changed the saved-sort universe (cancel/error did not).
-        self.dismiss((ok, msg, ok))
+        self.dismiss((ok, msg, changed, None))
+
+    def action_chain(self, next_action: str) -> None:
+        """3/4 on the result card: close AND hand the app the next step. Only an
+        OK finished sort chains — running or failed, the keys are no-ops."""
+        if self._state["done"] is None or not self._chainable():
+            return
+        ok, msg, changed = self._dismiss_message()
+        self.dismiss((ok, msg, changed, next_action))
 
 
 class DownloadProgressScreen(ModalScreen):
@@ -2937,7 +3085,9 @@ class SpikeMenuApp(App):
         self.push_screen(SortProgressScreen(argv, self._accent, log_path), self._after_sort)
 
     def _after_sort(self, result) -> None:
-        ok, message, changed = result or (False, "Sort cancelled", False)
+        # The modal contract (DESIGN_UX §3): (ok, message, changed, next_action) —
+        # next_action set when the result card chained into report/inspect.
+        ok, message, changed, next_action = result or (False, "Sort cancelled", False, None)
         # Record real outcomes on the LAST RESULT line; a cancel is benign noise,
         # not a result (the modal ran nothing to completion).
         if result is not None and not _is_cancel_msg(message):
@@ -2954,6 +3104,10 @@ class SpikeMenuApp(App):
         self._relayout()
         self._render_inspect()
         self.refresh()
+        if next_action:
+            # Dispatch through the normal action path so its guards (needs_data,
+            # Docker, the _self fresh-process route for gui) all apply.
+            self._activate_action(next_action)
 
     def _open_theme(self) -> None:
         opts = [(n, n, "(current)" if n == self.c.theme_name else "") for n in self.c.themes]

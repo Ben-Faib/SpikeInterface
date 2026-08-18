@@ -57,7 +57,7 @@ box) runs alongside everything.
 | 2 | P1 probeinterface import | `goals/GOAL_P_PROBES.md` | **SEALED 2026-08-18** (peer, `384884e`) |
 | 3 | D0 veto | `DESIGN_UX.md` | **APPROVED 2026-08-18** |
 | 4 | D1 dashboard | `goals/GOAL_D_UIUX.md` | **SEALED 2026-08-18** (`18a5279`) |
-| 5 | D2 run experience | `goals/GOAL_D_UIUX.md` | engine half **SEALED** (`fc19579`); view half **READY** |
+| 5 | D2 run experience | `goals/GOAL_D_UIUX.md` | **SEALED 2026-08-18** both halves (`fc19579` + view); D2b manifest follow-up filed |
 | 6 | D3 report | `goals/GOAL_D_UIUX.md` | **READY** (veto ✓, M1 ✓) |
 | 7 | D4 flow modals | `goals/GOAL_D_UIUX.md` | **READY** (D1 ✓) |
 | 8 | T2/T3 journey + honesty tests | `goals/GOAL_T_TESTING.md` | gated: after D1/D2 |

@@ -24,6 +24,12 @@ dated, then the slices run against it.
   honest progress (no 100%-while-running), translated sub-status, result cards (success /
   amber 0-unit with the detect_threshold hint / red failure with log path), protocol
   extension (`elapsed`, `phase m/n`, `result` payload), report+compare progress with cancel.
+  **Scope of record (2026-08-18 seals):** report progress moved to D3 (critique #1);
+  compare's interim honest modal moved to D4 with the other flow modals. Two §3 features
+  were trimmed from the view half, on record via its review (F4): the upfront
+  pending-phase manifest (needs a new protocol event — SHAPES-table friction — filed for
+  a D2b follow-up) and a live per-phase timer on the running row (the header clock +
+  heartbeat carry aliveness; revisit only if users ask).
 - **D3 — the report** (spec §4): verdict header + stat tiles, sticky TOC, reader-order
   sections, one chart theme + shared unit colormap, styled tables with folds.
 - **D4 — flow modals** (spec §3 §1): sort-how-much expected durations, param-editor pass
