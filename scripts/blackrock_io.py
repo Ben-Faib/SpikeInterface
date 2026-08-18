@@ -299,17 +299,28 @@ def read_broadband(
 def read_spikes(
     data_dir: "Path | str | None" = None,
     sampling_frequency: float = NEV_TIMESTAMP_RATE,
+    nev_path: "Path | str | None" = None,
 ):
-    """Read spike events from the ``.nev`` file as a SpikeInterface Sorting.
+    """Read spike events from a ``.nev`` file as a SpikeInterface Sorting.
+
+    By default reads the recording set's own ``.nev``; ``nev_path`` reads an
+    EXPLICIT file instead — e.g. a re-exported, manually/online-sorted `.nev`
+    for the same recording (``compare.py --nev``). A missing explicit path is a
+    hard error (the explicit-fails-hard convention).
 
     Blackrock unit-id convention: ``0`` = unsorted threshold crossings,
     ``1..n`` = online-sorted units, ``255`` = noise / invalidated.
     """
     import spikeinterface.extractors as se
 
-    base = find_blackrock_base(data_dir)
+    if nev_path is not None:
+        target = Path(nev_path).expanduser()
+        if not target.exists():
+            raise FileNotFoundError(f"no such .nev: {target}")
+    else:
+        target = Path(str(find_blackrock_base(data_dir)) + ".nev")
     sorting = se.read_blackrock_sorting(
-        str(base) + ".nev",
+        str(target),
         sampling_frequency=sampling_frequency,
     )
     return sorting

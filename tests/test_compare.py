@@ -148,7 +148,7 @@ def online_page(tmp_path, monkeypatch):
         monkeypatch.setattr(compare, "OUTPUT_DIR", tmp_path)
         monkeypatch.setattr(compare, "_load", lambda s: (offline, window_s))
 
-        def _read_spikes(data_dir=None):
+        def _read_spikes(data_dir=None, **kw):
             if exc is not None:
                 raise exc
             return online
@@ -235,7 +235,7 @@ def test_cli_without_flags_still_builds_the_two_sorter_page(monkeypatch, capsys)
     calls = []
     monkeypatch.setattr(compare, "build_comparison", lambda: calls.append("pair") or "out.html")
     monkeypatch.setattr(compare, "build_online_comparison",
-                        lambda *a, **k: pytest.fail("online mode ran without --online"))
+                        lambda *a, **kw: pytest.fail("online mode ran without --online"))
 
     assert compare.main([]) == 0
     assert calls == ["pair"]
@@ -247,11 +247,18 @@ def test_cli_online_flag_selects_the_nev_mode(monkeypatch, capsys):
     monkeypatch.setattr(compare, "build_comparison",
                         lambda *a, **k: pytest.fail("pair mode ran with --online"))
     monkeypatch.setattr(compare, "build_online_comparison",
-                        lambda sorter: seen.append(sorter) or "online.html")
+                        lambda sorter, **kw: seen.append((sorter, kw.get("nev_path")))
+                        or "online.html")
 
     assert compare.main(["--online", "spykingcircus2"]) == 0
-    assert seen == ["spykingcircus2"]
-    assert capsys.readouterr().out.strip() == "online.html"
+    assert seen == [("spykingcircus2", None)]
+    # --nev threads the explicit reference through; bare --nev is refused.
+    assert compare.main(["--online", "spykingcircus2", "--nev", "x.nev"]) == 0
+    assert seen[-1] == ("spykingcircus2", "x.nev")
+    with pytest.raises(SystemExit):
+        compare.main(["--nev", "x.nev"])
+    out = capsys.readouterr().out.strip().splitlines()
+    assert out and all(ln == "online.html" for ln in out)
 
 
 # --------------------------------------------------------------------------- #

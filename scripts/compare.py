@@ -44,7 +44,13 @@ import sort_summary  # noqa: E402  (array/yield headline metrics: load/format)
 
 OUTPUT_DIR = bio.REPO_ROOT / "outputs"
 DEFAULT_SORTERS = ("tridesclous2", "spykingcircus2")
-DELTA_TIME_MS = 0.4   # coincidence window for a "match"
+DELTA_TIME_MS = 0.4   # coincidence window for a "match" (offline vs offline)
+# Online/manual .nev references are THRESHOLD-CROSSING timestamped, while offline
+# sorters are peak-aligned — a systematic ~0.6 ms lead measured on this recording
+# (manual re-export vs tridesclous2: median signed Δt −0.60…−0.67 ms on every real
+# pairing). 0.4 ms would score genuine matches as zero agreement, so the online
+# mode defaults wider; override with --delta-ms.
+ONLINE_DELTA_TIME_MS = 2.0
 MATCH_SCORE = 0.5     # min agreement to call two units matched
 # Two sorts whose durations differ by more than this (seconds) are treated as
 # non-commensurate: comparing them would just measure the window mismatch.
@@ -346,7 +352,7 @@ def _reference_section(accounting, crop_note="") -> dict:
             "html": note + table + crop_note, "state": "ok" if n_kept else "warn"}
 
 
-def _online_match_table(cmp, online, offline, sorter):
+def _online_match_table(cmp, online, offline, sorter, delta_ms=ONLINE_DELTA_TIME_MS):
     """Per-online-unit best match. Returns (html, n_at_match_score, n_above_chance).
 
     Best match, not the Hungarian 1:1 assignment: two online units may point at
@@ -362,12 +368,45 @@ def _online_match_table(cmp, online, offline, sorter):
     for u1, u2 in cmp.best_match_12.items():
         partner = _partner_id(u2)
         if partner is None:
-            cells = "<td>—</td><td>—</td><td>—</td>"
+            # Below SI's chance cutoff — but "no partner" hides a real structure
+            # when the reference unit sits INSIDE a much larger merged unit (the
+            # agreement dilution above). Show the best-anything match with its
+            # containment, marked below-chance, instead of a shrug.
+            best_p, best_frac, matched = None, 0.0, None
+            try:
+                row = cmp.agreement_scores.loc[u1]
+                best_p = row.idxmax()
+                best_frac = float(row.max())
+                matched = float(cmp.match_event_count.at[u1, best_p])
+            except Exception:  # noqa: BLE001 - no scores at all
+                best_p = None
+            if best_p is not None and best_frac > 0:
+                n1 = n_on.get(str(u1), 0) or 1
+                contain = f"{100.0 * (matched or 0) / n1:.0f}%"
+                cells = (f"<td>{html.escape(str(best_p))} <span class=\"note\">"
+                         f"(below chance)</span></td><td>{best_frac:.3g}</td>"
+                         f"<td>{contain}</td>"
+                         f"<td>{n_off.get(str(best_p), 0)}</td>")
+            else:
+                cells = "<td>—</td><td>—</td><td>—</td><td>—</td>"
         else:
             frac = cmp.get_agreement_fraction(u1, u2)
             n_any += 1
             n_strong += frac >= MATCH_SCORE
+            # Containment: what fraction of THIS reference unit's spikes the best
+            # match accounts for. Symmetric agreement is diluted whenever the
+            # offline unit is a MERGE holding many more events (753 fully-matched
+            # spikes inside a 5877-spike unit score only 0.13 agreement) — the
+            # containment column is what actually answers "did the sorter see
+            # this unit's spikes?".
+            try:
+                matched = float(cmp.match_event_count.at[u1, u2])
+            except Exception:  # noqa: BLE001 - matrix indexing differences
+                matched = None
+            n1 = n_on.get(str(u1), 0) or 1
+            contain = (f"{100.0 * matched / n1:.0f}%" if matched is not None else "–")
             cells = (f"<td>{html.escape(str(partner))}</td><td>{frac:.3g}</td>"
+                     f"<td>{contain}</td>"
                      f"<td>{n_off.get(str(partner), 0)}</td>")
         rows += (f'<tr><td>{html.escape(str(u1))}</td>'
                  f'<td>{n_on.get(str(u1), 0)}</td>{cells}</tr>')
@@ -375,19 +414,22 @@ def _online_match_table(cmp, online, offline, sorter):
     summary = (f'<p class="note">n = {len(n_on)} online-sorted unit(s). {n_strong} with a best '
                f'match at agreement ≥ {MATCH_SCORE}, {n_any} above chance ({chance:g}); '
                f'a dash means no {html.escape(sorter)} unit reached even chance level. '
-               f'delta_time={DELTA_TIME_MS} ms. Click a header to sort.</p>')
+               f'delta_time={delta_ms:g} ms (wide on purpose for a crossing-stamped '
+               f'reference vs a peak-aligned sort). Click a header to sort.</p>')
     table = (summary + '<table class="qc"><thead><tr>'
              '<th onclick="sortTable(this.closest(\'table\'),0,false)">online unit (ch#unit)</th>'
              '<th onclick="sortTable(this.closest(\'table\'),1,true)">online spikes</th>'
              f'<th onclick="sortTable(this.closest(\'table\'),2,false)">best match in '
              f'{html.escape(sorter)}</th>'
              '<th onclick="sortTable(this.closest(\'table\'),3,true)">agreement</th>'
-             '<th onclick="sortTable(this.closest(\'table\'),4,true)">matched unit spikes</th>'
+             '<th onclick="sortTable(this.closest(\'table\'),4,true)">of its spikes matched</th>'
+             '<th onclick="sortTable(this.closest(\'table\'),5,true)">matched unit spikes</th>'
              '</tr></thead><tbody>' + rows + '</tbody></table>')
     return table, n_strong, n_any
 
 
-def _online_compare_html(cmp, online, offline, sorter) -> str:
+def _online_compare_html(cmp, online, offline, sorter,
+                         delta_ms=ONLINE_DELTA_TIME_MS) -> str:
     n_on, n_off = len(online.get_unit_ids()), len(offline.get_unit_ids())
     framing = (f'<p class="note">Agreement between two sorts of the same window — n = {n_on} '
                f'online-sorted unit(s) against {n_off} {html.escape(sorter)} unit(s). The '
@@ -396,7 +438,8 @@ def _online_compare_html(cmp, online, offline, sorter) -> str:
                'undercounts units an offline sorter separates across channels. Read a low score '
                'as two methods disagreeing, not as an error rate for either — nothing on this '
                'page is accuracy or precision.</p>')
-    table, n_strong, n_any = _online_match_table(cmp, online, offline, sorter)
+    table, n_strong, n_any = _online_match_table(cmp, online, offline, sorter,
+                                                 delta_ms=delta_ms)
     chance = float(cmp.chance_score)
     caveat = ""
     if n_any == 0:
@@ -405,7 +448,7 @@ def _online_compare_html(cmp, online, offline, sorter) -> str:
                   'usual causes are a window mismatch (read the crop note above first), a '
                   'channel mismatch (the sort must cover the channels the online units came '
                   'from), a systematic spike-time offset between online threshold crossings '
-                  f'and offline peak-aligned spikes (larger than delta_time = {DELTA_TIME_MS} '
+                  f'and offline peak-aligned spikes (larger than delta_time = {delta_ms:g} '
                   "ms), or one online unit's spikes spread thin across several offline "
                   'units, so no single pair clears chance even where spikes do coincide. '
                   'The per-unit table below can hint at the last case — an online unit whose '
@@ -425,18 +468,24 @@ def _caveat_section(sorter, body) -> dict:
             "html": f'<div class="caveat">{body}</div>', "state": "warn"}
 
 
-def build_online_comparison(sorter, data_dir=None, out_path=None) -> Path:
-    """outputs/comparison_online.html — one saved sort vs the .nev online reference.
+def build_online_comparison(sorter, data_dir=None, out_path=None, nev_path=None,
+                            delta_ms=ONLINE_DELTA_TIME_MS) -> Path:
+    """outputs/comparison_online.html — one saved sort vs a .nev sorted reference.
 
+    Default reference: the recording's own .nev (the rig's LIVE sorting).
+    ``nev_path`` compares against an explicit re-exported .nev instead — e.g. a
+    MANUALLY sorted export for the same recording; the page names the file.
     Its OWN file (not the pair page's comparison.html): the two modes must never
     silently replace each other's output (C1 review F2)."""
     out_path = Path(out_path) if out_path else (OUTPUT_DIR / "comparison_online.html")
     OUTPUT_DIR.mkdir(exist_ok=True)
+    ref_note = (f"Reference: {Path(nev_path).name} (explicit re-export)" if nev_path
+                else "The rig's live sorting as a reference")
 
     def _write(sections):
         out_path.write_text(
-            report._html_document(f"{sorter} vs online (.nev) units", sections,
-                                  subtitle="The rig's live sorting as a reference — "
+            report._html_document(f"{sorter} vs sorted .nev units", sections,
+                                  subtitle=f"{ref_note} — "
                                            "not ground truth. Self-contained, works offline."),
             encoding="utf-8")
         return out_path
@@ -451,7 +500,7 @@ def build_online_comparison(sorter, data_dir=None, out_path=None) -> Path:
             f'--duration 30</code>, then rebuild this page.{html.escape(have)}'))])
 
     try:
-        online = bio.read_spikes(data_dir)
+        online = bio.read_spikes(data_dir, nev_path=nev_path)
     except FileNotFoundError:
         return _write([_caveat_section(sorter, (
             '<strong>No .nev file found.</strong> The online units live in the recording\'s '
@@ -485,12 +534,13 @@ def build_online_comparison(sorter, data_dir=None, out_path=None) -> Path:
     import spikeinterface.comparison as sc
 
     cmp = sc.compare_two_sorters(cropped, offline, sorting1_name=ONLINE_NAME,
-                                 sorting2_name=sorter, delta_time=DELTA_TIME_MS,
+                                 sorting2_name=sorter, delta_time=delta_ms,
                                  match_score=MATCH_SCORE)
     return _write([
         _reference_section(accounting, _crop_note(crop_info)),
         {"id": "compare", "title": f"{sorter} vs {ONLINE_NAME}",
-         "html": _online_compare_html(cmp, cropped, offline, sorter)},
+         "html": _online_compare_html(cmp, cropped, offline, sorter,
+                                      delta_ms=delta_ms)},
     ])
 
 
@@ -502,8 +552,20 @@ def main(argv=None) -> int:
         "--online", metavar="SORTER",
         help="compare SORTER's saved sort against the online-sorted .nev units "
              "instead of against a second sorter")
+    parser.add_argument(
+        "--nev", metavar="PATH", default=None,
+        help="with --online: use this explicit .nev as the sorted reference "
+             "(e.g. a manually sorted re-export) instead of the recording's own")
+    parser.add_argument(
+        "--delta-ms", type=float, default=ONLINE_DELTA_TIME_MS,
+        help="with --online: the coincidence window (default %(default)s ms — wide "
+             "because crossing timestamps lead peak-aligned ones by ~0.6 ms here)")
     args = parser.parse_args(argv)
-    print(build_online_comparison(args.online) if args.online else build_comparison())
+    if args.nev and not args.online:
+        parser.error("--nev requires --online SORTER")
+    print(build_online_comparison(args.online, nev_path=args.nev,
+                                  delta_ms=args.delta_ms)
+          if args.online else build_comparison())
     return 0
 
 

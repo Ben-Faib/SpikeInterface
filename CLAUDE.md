@@ -74,8 +74,11 @@ Menu actions: `explore | sort | report | gui | traces | compare | verify`.
 `verify_install.py` is the loader smoke test — run it after changing `blackrock_io.py`.
 
 Scripts document their own flags in their module docstrings (kept current — read those
-rather than a list here). `compare.py`'s one flag is `--online SORTER` (offline sort vs
-the .nev online reference; flagless = the two-sorter page); `make_report.py` is a thin shim
+rather than a list here). `compare.py`'s flags: `--online SORTER` (offline sort vs a
+sorted .nev reference; flagless = the two-sorter page), `--nev PATH` (an explicit
+re-exported .nev, e.g. a manual sort), `--delta-ms` (coincidence window — the online
+default is deliberately wide, crossing-stamps lead peak-aligned spikes ~0.6 ms here);
+`make_report.py` is a thin shim
 that forwards argv to the launcher's `report` action.
 
 ## Where things live
