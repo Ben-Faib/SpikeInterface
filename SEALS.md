@@ -24,11 +24,11 @@ A need left only in a chat summary is a need Ben never sees.*
 - **Current focus (2026-08-18, updated same day): THE OVERHAUL.** Ben's directive — all
   surfaces redesigned for accessibility/focus/hierarchy + a timely-updates UX + real
   testing procedures + probe flexibility for a lab whose setups differ. `DESIGN_UX.md`
-  (D0) was **approved by Ben the same evening** and the autonomous run is executing the
-  graph: **D1 (dashboard, `18a5279`) and D2's engine half (protocol timing/results,
-  `fc19579`) are sealed**, alongside T1 (testing harness, `6171816`), M1 (metrics, 12
-  columns), and P1 (probeinterface import, `384884e`). Next in dependency order: the D2
-  view half (result cards), D3 report, D4 flow modals, B1.
+  (D0) was **approved by Ben the same evening** and the autonomous run delivered the
+  whole D track in one day: D1 dashboard (`18a5279`), D2 both halves (`fc19579` +
+  `29e96f8`), D3 report (`d12ff5c`), D4 flow modals (`f115015`) — plus T1 harness, M1
+  metrics, P1 probe import, B1 (peer). Remaining from the overhaul: D3b progress
+  plumbing (READY); in flight: C1, Ben's NEV online-vs-sorted comparison.
   Product facts on record: built by Benjamin Faibussowitsch with Aleece Al-Olimat for
   UPitt researchers on industry-standard SpikeInterface.
 
@@ -48,6 +48,22 @@ A need left only in a chat summary is a need Ben never sees.*
 ---
 
 ## The ledger (newest first)
+
+**2026-08-18 — D3 + D4: the report and the flow modals (`d12ff5c`, `f115015`)**
+- Did: sealed the overhaul's last two built slices — the verdict-first report (four honest
+  stat tiles, truthful TOC glyphs, reader-order sections, one chart language; built by a
+  builder agent, hardened by a fix-first review) and the flow modals (informed sort-span
+  choice from real wall-time provenance, live param validation with ● marks, compare
+  behind an honest BusyScreen with failure causes surfaced, bare gui/sort crashes fixed,
+  and Esc-mid-sort now genuinely kills the worker tree on Windows).
+- Means: every surface Ben screenshotted this afternoon is rebuilt to the approved spec
+  and on main, verified by 382 tests, per-slice Fable reviews, and a real launch.
+- Moved: D3b (report/compare progress plumbing) is unblocked and READY; C1 (Ben's
+  NEV online-vs-sorted comparison) has its engine building in a lane now.
+- Needs Ben: open outputs/report.html — the redesign's only unperformed check is a human
+  eyeball in a real browser (no Chrome connection tonight from any session).
+- Next: peer seals T2/T3 (in progress); then C1 review + menu wiring and D3b.
+
 
 **2026-08-18 — B1: bare report crash fixed (peer session, `b43869e`)**
 - Did: the documented bare invocations (`make_report.py`, the launcher's report action, and
