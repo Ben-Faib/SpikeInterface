@@ -93,7 +93,21 @@ class FakeController:
              "match": "fits", "match_detail": "matches 16 channels",
              "summary": "16 contacts · linear · 50 µm pitch", "n": 16,
              "density_class": "dense", "layout": "linear", "note": ""},
+            # A P1-imported probe: geometry materialised at import, so the editor
+            # must refuse it (view/duplicate/delete only) — the T3 state test.
+            {"name": "lab-imported-16", "label": "lab_probe · 16 ch (imported)",
+             "kind": "imported",
+             "params": {"positions": [[0.0, 100.0 * i] for i in range(16)],
+                        "min_pitch_um": 100.0, "layout": "linear"},
+             "builtin": False, "auto": False,
+             "match": "fits", "match_detail": "matches 16 channels",
+             "summary": "16 contacts · linear · 100 µm pitch", "n": 16,
+             "density_class": "sparse", "layout": "linear",
+             "note": "Imported from lab_probe.json"},
         ]
+        # Paths a test marks as vanished-from-disk, so reopen_last can mirror the
+        # real controller's is-it-still-there check.
+        self.gone: set[str] = set()
         self.reload()
 
     # A small fake universe spanning all four groups. READY sorters come first so
@@ -325,8 +339,14 @@ class FakeController:
         path = self.last_result.get("path") or ""
         if not path.endswith(".html"):
             return False, f"{self.last_result.get('key')} has no page to reopen"
+        if path in self.gone:                       # mirrors the real existence check
+            return False, f"{path} is gone — rebuild it"
         self.reopened += 1
         return True, f"Reopened {path}"
+
+    def sort_expectations(self) -> dict:
+        """Expected-duration facts for the span picker (D4). None = no history yet."""
+        return {"span": None, "wall_seconds": None}
 
     def sort_command(self, span: str | None) -> list[str]:
         # A harmless argv so SortProgressScreen's worker can spawn + exit cleanly in
