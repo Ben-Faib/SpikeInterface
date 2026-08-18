@@ -29,6 +29,33 @@ Raw data is git-ignored (the `.ns5` is ~176 MB, over GitHub's 100 MB limit), so 
 clone has no data. Loaders auto-discover any Blackrock file set by base name; a missing
 set surfaces as a clear `FileNotFoundError` from `find_blackrock_base()`.
 
+## Orchestration — how build work runs here (installed 2026-08-18, decantv2 pattern)
+
+The workbench is being built into a lab tool for Tracy's UPitt lab via loop engineering.
+Read order for a build session: `NORTHSTAR.md` (product + decisions of record, wins
+conflicts below it) → `LOOPS.md` (method + gates) → the active brief in `goals/` →
+`ROADMAP.md` (the live queue Ben pastes prompts from — keep its NOW box and constants true;
+a stale marker is a defect). Conversational/small-fix sessions don't need any of it.
+
+**The between-run contract.** Every phase/slice run ends **sealed**: work committed with a
+descriptive message (explicit paths — see concurrent-edit rule below), ROADMAP.md updated,
+any surprise worth keeping written to `LESSONS.md` (one lesson per entry, encode the fix
+into a skill or brief), and **one five-line block appended to `SEALS.md`** — what you did,
+what it means, what moved, what needs Ben, what is next, one sentence each. Update SEALS.md's
+pinned "Where we stand" lines if your work changed one; add/close OPEN items. `/status`
+reads SEALS.md and reports nothing that is not in it. Git history + those files are the
+state tracker — a fresh session re-enters by reading them, never by asking Ben what
+happened. A run that stops short commits partial state and says plainly what is done, what
+is not, and why.
+
+**Verification is the `verify-spike` skill** (change-type → gates; the ~4 µV noise-floor
+canary is a verdict). **Substantive slices get one fresh-context Fable review** of the full
+diff against the brief and this file's invariants before sealing (the `reviewer` agent —
+reviews always run on Fable); findings addressed or recorded. No stacked self-verification
+beyond that. Agents: `scout`/`builder` on Opus, `reviewer`/`finalizer` on Fable; workflow
+`agent()` calls pass `model` explicitly. The closing chat summary says the same five things
+as the SEALS block and stops — under 200 words; the long version already exists on disk.
+
 ## Commands
 
 ```bash
