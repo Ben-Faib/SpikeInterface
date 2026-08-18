@@ -44,6 +44,13 @@ provides **timely updates and results**.
 
 ## §2 The dashboard (screenshot: SPIKE crest + SORTERS/ACTIONS/INSPECTING)
 
+> **SUPERSEDED 2026-08-18 (late) by D5** — Ben's actions-first directive (NORTHSTAR
+> decision of record): the SORTERS panel and INSPECTING are gone; the sorter list
+> lives behind the `t` picker (filter input, grouped list, one-line description
+> footer), the numbered actions are the primary full-width panel, MANAGE is one dim
+> line, and a RESULTS section appears when a saved sort exists. §1's language still
+> binds; the mock below is historical.
+
 **Findings.** Strong bones (responsive yield, grouped catalog, shape-marked ACTIVE) buried
 under noise: quadruple-stated active sorter; five-signal rows; 13 equal-weight action lines
 mixing the scientific workflow with housekeeping; three dense banner rows plus a footer

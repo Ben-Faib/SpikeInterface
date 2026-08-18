@@ -102,7 +102,7 @@ sync with the code, which is why this file does not restate them.
 The six metrics `sort_summary` owns: **V_pp**, **SNR**, **noise floor**, **yield**
 (% of electrodes that are peak channel of ≥1 unit), **units/ch**, **units/active-ch**.
 They surface in four places — the `run_sorting` terminal card, `report.html`, the menu's
-INSPECTING panel, and `comparison.html`. Change the computation in one place only.
+RESULTS section, and `comparison.html`. Change the computation in one place only.
 
 ## Invariants that bite
 
@@ -211,8 +211,9 @@ placeholder (no two channels neighbours) remains available.
 - **Esc is a deliberate no-op**, so a reflexive back-press never exits the dashboard.
 - Sorting runs *in-UI* via a `run_sorting.py --progress json` subprocess, never `suspend()`.
   Actions needing a fresh process re-invoke the launcher itself (`_self`).
-- Responsive breakpoints are constants (`STACK_COLS`, `STACK_SHORT_ROWS`, `TINY_ROWS`): chrome
-  yields under pressure so the lists never clip — pinned by the never-clip Pilot tests.
+- Responsive yield is budget arithmetic around `TINY_ROWS` (D5): chrome — crest, then
+  RESULTS, then banner/manage/LAST — yields under pressure so the action list never
+  clips; pinned by the painted-rows and never-clip Pilot tests.
 
 ## Conventions
 

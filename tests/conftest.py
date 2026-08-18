@@ -145,6 +145,14 @@ class FakeController:
                 "overrides": len(self.sorter_params.get(name, {})),
                 "fit": {"rank": "good" if name == "tridesclous2" else "ok",
                         "reason": f"{name} fit."},
+                # Array/yield headline (sort_summary shape) for saved sorts, so the
+                # D5 RESULTS section renders real metric text in tests.
+                "summary": ({"n_units": units, "units_in_uV": True,
+                             "v_pp_uV": {"median": 34.2}, "snr": {"median": 5.0},
+                             "noise_floor_uV": {"median": 4.07},
+                             "yield_pct": 75.0, "n_active_channels": 12,
+                             "n_channels": 16, "units_per_channel": 0.81,
+                             "units_per_active_channel": 1.08} if present else None),
             }
             if group == "docker":
                 # Cached-image state lives in self._cached_images so a download/delete

@@ -80,17 +80,26 @@ async def drive(data_dir: "str | None") -> bool:
         for name, sel in panels:
             buf.append(f"=== {name} ===")
             buf.append(_text(app.query_one(sel, Static)))
-        buf.append("=== SORTERS ===")
-        buf.append(_optionlist_text(app.query_one("#sorters", OptionList)))
         buf.append("=== ACTIONS ===")
         buf.append(_optionlist_text(app.query_one("#actions", OptionList)))
+        buf.append("=== MANAGEBAR ===")
+        buf.append(_text(app.query_one("#managebar", Static)))
+        buf.append("=== RESULTS ===")
+        buf.append(_text(app.query_one("#results", Static)))
 
-        # Exercise navigation: focus the Actions pane and move — must not crash.
-        await pilot.press("right")
-        await pilot.pause()
+        # Exercise navigation (D5): move in the actions list, then open + close
+        # the sorter picker — must not crash.
         await pilot.press("down")
         await pilot.pause()
-        buf.append("=== FOOTER after right,down ===")
+        await pilot.press("t")
+        await pilot.pause()
+        buf.append("=== PICKER open? ===")
+        buf.append(type(app.screen).__name__)
+        assert type(app.screen).__name__ == "SorterPickerScreen", \
+            f"t did not open the sorter picker (got {type(app.screen).__name__})"
+        await pilot.press("escape")
+        await pilot.pause()
+        buf.append("=== FOOTER after down,t,esc ===")
         buf.append(_text(app.query_one("#footer", Static)))
 
         svg = app.export_screenshot(title="SpikeInterface Menu")

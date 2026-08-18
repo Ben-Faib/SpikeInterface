@@ -121,16 +121,17 @@ def test_sort_span_modal(snap_compare, make_app):
 
 
 def test_docker_confirm_modal(snap_compare, make_app):
-    # The real journey: Enter on the SORTERS list opens the Docker confirm.
+    # The real journey (D5): the Docker toggle row lives in the sorter picker.
     # installed-not-running is the richest state ([s] start + [r] re-check).
     app = make_app(present=True)
     app.c.docker_state = "installed_not_running"
 
     async def open_modal(pilot):
         await pilot.pause()
-        sorters = pilot.app.query_one("#sorters")
-        sorters.highlighted = 0
-        pilot.app.set_focus(sorters)
+        await pilot.press("t")
+        await pilot.pause()
+        picklist = pilot.app.screen.query_one("#picklist")
+        picklist.highlighted = 0                    # the [ ] Docker toggle row
         await pilot.press("enter")
         await pilot.pause()
 

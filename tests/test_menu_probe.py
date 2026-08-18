@@ -71,10 +71,13 @@ async def test_probe_manager_activate_changes_active():
         assert c.active_probe == "linear-16-50um"
 
 
-async def test_probe_action_in_actions_list():
+async def test_probe_reachable_from_manage_line():
+    # D5: probe is a MANAGE action — on the dim line and the p key, not a list row.
     app = _app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        actions = app.query_one("#actions", OptionList)
-        ids = [actions.get_option_at_index(i).id for i in range(actions.option_count)]
-        assert "probe" in ids
+        assert "p probe" in app.query_one("#managebar").render().plain
+        await pilot.press("p")
+        await pilot.pause()
+        import menu_app
+        assert isinstance(app.screen, menu_app.ProbeManagerScreen)

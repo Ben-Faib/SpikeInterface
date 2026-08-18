@@ -16,53 +16,6 @@ import ui
 from textual.widgets import OptionList, Static
 
 
-def _sorter_row(app, name):
-    ol = app.query_one("#sorters", OptionList)
-    for i in range(ol.option_count):
-        if ol.get_option_at_index(i).id == name:
-            return i
-    raise AssertionError(f"sorter row {name!r} not found")
-
-
-# --- three-panel layout + focus nav -------------------------------------- #
-async def test_boots_with_both_lists_and_sorter_focus(make_app):
-    # Launch state: BOTH lists are visible, every action is reachable by id, and
-    # the SORTERS pane is focused with the cursor on the active sorter. (T2: the
-    # old exact option_count pinned chrome rows, not the contract.)
-    app = make_app(present=True)
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        sorters = app.query_one("#sorters", OptionList)
-        actions = app.query_one("#actions", OptionList)
-        ids = {actions.get_option_at_index(i).id for i in range(actions.option_count)}
-        assert {a["key"] for a in app.c.actions} <= ids
-        assert sorters.display is True and actions.display is True
-        assert sorters.highlighted == _sorter_row(app, "tridesclous2")
-        assert app.focused is sorters
-
-
-async def test_both_lists_visible_and_focus_moves(make_app):
-    app = make_app()
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        sorters = app.query_one("#sorters")
-        actions = app.query_one("#actions")
-        # both always visible now
-        assert sorters.display is True and actions.display is True
-        assert app.focused is sorters
-        await pilot.press("right")
-        await pilot.pause()
-        assert app.focused is actions
-        await pilot.press("left")
-        await pilot.pause()
-        assert app.focused is sorters
-        await pilot.press("tab")
-        await pilot.pause()
-        assert app.focused is actions
-        await pilot.press("shift+tab")
-        await pilot.pause()
-        assert app.focused is sorters
-
 
 async def test_down_moves_action_highlight(make_app):
     app = make_app(present=True)
@@ -126,15 +79,6 @@ async def test_sortbar_shows_active_and_readiness(make_app):
         assert "tridesclous2" in sort and "Ready" in sort
 
 
-async def test_sortbar_follows_active_sorter(make_app):
-    c_app = make_app()
-    async with c_app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        await pilot.press("t")             # cycle to spykingcircus2
-        await pilot.pause()
-        assert "spykingcircus2" in c_app.query_one("#sortbar").render().plain
-
-
 async def test_action_title_never_restates_active_sorter(make_app):
     # One fact, one place (§1.1, D1 review #5): the SORT banner is the active
     # sorter's only at-rest home — the pane title never restates it. (T2: the
@@ -148,123 +92,6 @@ async def test_action_title_never_restates_active_sorter(make_app):
 
 
 # --- merged INSPECTING ---------------------------------------------------- #
-async def test_inspect_follows_focused_pane(make_app):
-    app = make_app()
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        body = app.query_one("#inspectbody").render().plain
-        assert "tridesclous2" in body          # sorter highlighted at boot
-        await pilot.press("right")             # focus ACTIONS (row 0 = explore)
-        await pilot.pause()
-        body = app.query_one("#inspectbody").render().plain
-        assert "figures" in body.lower() or "explore" in body.lower()
-
-
-async def test_inspect_shows_block_reason_for_nonrunnable_sorter(make_app):
-    # Highlighting a non-runnable (Docker) sorter must show WHY it can't run in the
-    # INSPECTING panel — spec State A.
-    app = make_app(present=True)
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        sorters = app.query_one("#sorters", OptionList)
-        sorters.highlighted = _sorter_row(app, "mountainsort5")   # group=docker, not runnable
-        await pilot.pause()
-        body = app.query_one("#inspectbody", Static).render().plain
-        # §1.7: the dead-end names its next step, not just the block reason.
-        assert "Docker" in body and "toggle" in body.lower()
-
-
-# --- sorter activation + cycle -------------------------------------------- #
-async def test_enter_on_sorter_sets_active(make_app):
-    # Enter on a runnable sorter activates it AND moves focus to the ACTIONS pane.
-    app = make_app(present=True)
-    c = app.c
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        sorters = app.query_one("#sorters", OptionList)
-        sorters.highlighted = _sorter_row(app, "spykingcircus2")
-        app.set_focus(sorters)
-        await pilot.press("enter")
-        await pilot.pause()
-        assert c.active_sorter == "spykingcircus2"
-        # focus moved to the (always-visible) actions list; SORT banner names it
-        assert app.focused is app.query_one("#actions", OptionList)
-        assert "spykingcircus2" in app.query_one("#sortbar").render().plain
-
-
-async def test_space_selects_sorter(make_app):
-    app = make_app(present=True)
-    c = app.c
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        sorters = app.query_one("#sorters", OptionList)
-        sorters.highlighted = _sorter_row(app, "spykingcircus2")
-        app.set_focus(sorters)
-        await pilot.press("space")
-        await pilot.pause()
-        assert c.active_sorter == "spykingcircus2"
-
-
-async def test_t_cycles_sorter(make_app):
-    app = make_app(present=True)
-    c = app.c
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        assert c.active_sorter == "tridesclous2"
-        await pilot.press("t")
-        await pilot.pause()
-        assert c.active_sorter == "spykingcircus2"
-        await pilot.press("t")
-        await pilot.pause()
-        assert c.active_sorter == "tridesclous2"
-
-
-async def test_active_marker_in_sorter_row(make_app):
-    app = make_app(present=True)
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        sorters = app.query_one("#sorters", OptionList)
-        row = _sorter_row(app, "tridesclous2")
-        prompt = sorters.get_option_at_index(row).prompt.plain
-        # D1 signal budget: the active sorter is marked by the left-bar SHAPE only —
-        # no ACTIVE chip, no ★ (the SORT banner is that fact's home).
-        assert prompt.startswith("▌")
-        assert "ACTIVE" not in prompt and "★" not in prompt
-
-
-# --- responsive ladder ---------------------------------------------------- #
-async def test_narrow_stacks_and_keeps_both_lists(make_app):
-    app = make_app()
-    async with app.run_test(size=(60, 24)) as pilot:
-        await pilot.pause()
-        assert app.query_one("#body").has_class("stacked")
-        for wid in ("#sorters", "#actions"):
-            r = app.query_one(wid).region
-            assert r.intersection(app.screen.region).height > 0
-
-
-async def test_tiny_never_clips_lists(make_app):
-    for size in [(40, 12), (30, 8), (24, 6), (20, 5)]:
-        app = make_app()
-        async with app.run_test(size=size) as pilot:
-            await pilot.pause()
-            for wid in ("#sorters", "#actions"):
-                vis = app.query_one(wid).region.intersection(app.screen.region)
-                assert vis.height > 0, f"{wid} clipped at {size}"
-            assert app.is_running
-
-
-async def test_tiny_never_clips_lists_when_data_broken(make_app):
-    # The loud DATA line is a fixed one row now, so the lists still never clip even
-    # with broken data at the shortest sizes.
-    for size in [(40, 12), (30, 8), (24, 6), (20, 5)]:
-        app = make_app(present=False)
-        async with app.run_test(size=size) as pilot:
-            await pilot.pause()
-            for wid in ("#sorters", "#actions"):
-                vis = app.query_one(wid).region.intersection(app.screen.region)
-                assert vis.height > 0, f"{wid} clipped at {size}"
-            assert app.is_running
 
 
 async def test_crest_drops_before_lists(make_app):
@@ -272,31 +99,6 @@ async def test_crest_drops_before_lists(make_app):
     async with app.run_test(size=(100, 14)) as pilot:
         await pilot.pause()
         assert app.query_one("#crest").display is False
-
-
-async def test_inspect_hidden_on_extreme_short(make_app):
-    # On an extreme-short window the INSPECTING panel is hidden so the lists keep
-    # their rows; the lists themselves stay on screen.
-    app = make_app()
-    async with app.run_test(size=(100, 14)) as pilot:
-        await pilot.pause()
-        assert app.query_one("#inspect").has_class("hidden")
-        for wid in ("#sorters", "#actions"):
-            vis = app.query_one(wid).region.intersection(app.screen.region)
-            assert vis.height > 0
-
-
-async def test_resize_wide_to_narrow_to_wide(make_app):
-    app = make_app()
-    async with app.run_test(size=(120, 44)) as pilot:
-        await pilot.pause()
-        assert not app.query_one("#body").has_class("stacked")
-        await pilot.resize_terminal(50, 30)
-        await pilot.pause()
-        assert app.query_one("#body").has_class("stacked")
-        await pilot.resize_terminal(120, 44)
-        await pilot.pause()
-        assert not app.query_one("#body").has_class("stacked")
 
 
 async def test_actions_stay_on_screen_at_every_size(make_app):
@@ -317,12 +119,14 @@ async def test_missing_data_dims_actions(make_app):
         await pilot.pause()
         # loud DATA line
         assert "✗" in app.query_one("#databar").render().plain
-        # data-dependent actions disabled; help/verify/theme/quit are not
+        # All six workflow rows need data -> all disabled; the MANAGE letters
+        # (help/verify/theme/quit) still work from the dim line (D5).
         actions = app.query_one("#actions", OptionList)
         by_id = {o.id: o for o in actions._options}
-        assert by_id["explore"].disabled is True
-        assert by_id["verify"].disabled is False
-        assert by_id["help"].disabled is False
+        assert all(o.disabled for o in by_id.values())
+        await pilot.press("question_mark")
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.HelpScreen)
 
 
 async def test_help_screen_opens_via_d_at_data_topic(make_app):
@@ -350,16 +154,11 @@ async def test_help_screen_opens_via_question_mark(make_app):
 
 
 async def test_help_action_runs(make_app):
+    # D5: help lives on the MANAGE line -> `?` runs it directly.
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        await pilot.press("right")        # focus actions
-        await pilot.pause()
-        actions = app.query_one("#actions", OptionList)
-        idx = next(i for i in range(actions.option_count)
-                   if actions.get_option_at_index(i).id == "help")
-        actions.highlighted = idx
-        await pilot.press("enter")
+        await pilot.press("question_mark")
         await pilot.pause()
         assert isinstance(app.screen, menu_app.HelpScreen)
 
@@ -407,20 +206,12 @@ async def test_number_key_opens_param_editor(make_app):
 async def test_action_run_path_is_guarded(make_app):
     # A non-data action (verify) runs via the suspend() path; under the headless test
     # driver suspend() is unsupported, so the guard must fall back to an in-place run
-    # instead of crashing. Navigate by option id, never by number-key position.
+    # instead of crashing. D5: verify runs from its MANAGE letter.
     app = make_app(present=True)
     c = app.c
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        # Focus the ACTIONS pane and highlight the verify option by id.
-        actions = app.query_one("#actions", OptionList)
-        verify_idx = next(
-            i for i in range(actions.option_count)
-            if actions.get_option_at_index(i).id == "verify"
-        )
-        actions.highlighted = verify_idx
-        actions.focus()
-        await pilot.press("enter")      # verify (navigated to by id, not number key)
+        await pilot.press("v")          # verify, from the MANAGE letter line
         await pilot.pause()
         assert ("verify", None) in c.ran
         assert app.is_running           # did not crash out
@@ -605,159 +396,6 @@ async def test_sort_blocked_when_active_needs_docker_thats_down(make_app):
 
 
 # --- docker toggle -------------------------------------------------------- #
-async def test_docker_toggle_row_is_first_and_toggles(make_app):
-    app = make_app(present=True)
-    c = app.c
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        sorters = app.query_one("#sorters", OptionList)
-        assert sorters.get_option_at_index(0).id == "__docker__"
-        assert next(i for i in c.infos if i["name"] == "mountainsort5")["runnable"] is False
-        sorters.highlighted = 0           # the Docker toggle row
-        app.set_focus(sorters)
-        await pilot.press("enter")        # opens the confirm dialog (state defaults to running)
-        await pilot.pause()
-        app.screen.action_enable()
-        await pilot.pause()
-        assert c.use_docker is True
-        assert next(i for i in c.infos if i["name"] == "mountainsort5")["runnable"] is True
-
-
-async def test_toggle_does_not_change_active_sorter(make_app):
-    app = make_app(present=True)
-    c = app.c
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        sorters = app.query_one("#sorters", OptionList)
-        sorters.highlighted = 0
-        app.set_focus(sorters)
-        await pilot.press("enter")        # toggle docker
-        await pilot.pause()
-        assert c.active_sorter == "tridesclous2"   # active sorter unchanged
-
-
-async def test_docker_enable_opens_confirm_when_running(make_app):
-    app = make_app(present=True)
-    c = app.c
-    c.docker_state = "running"
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        sorters = app.query_one("#sorters", OptionList)
-        sorters.highlighted = 0
-        app.set_focus(sorters)
-        await pilot.press("enter")        # turning ON -> confirm dialog
-        await pilot.pause()
-        assert isinstance(app.screen, menu_app.DockerConfirmScreen)
-        assert "running" in app.screen.query_one("#dstatus", Static).render().plain.lower()
-        assert c.use_docker is False      # not enabled until confirmed
-
-
-async def test_docker_confirm_enable_turns_on(make_app):
-    app = make_app(present=True)
-    c = app.c
-    c.docker_state = "running"
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        sorters = app.query_one("#sorters", OptionList)
-        sorters.highlighted = 0
-        app.set_focus(sorters)
-        await pilot.press("enter")
-        await pilot.pause()
-        app.screen.action_enable()        # the [Enable] button/action
-        await pilot.pause()
-        assert c.use_docker is True
-
-
-async def test_docker_confirm_not_installed_shows_download(make_app):
-    app = make_app(present=True)
-    c = app.c
-    c.docker_state = "not_installed"
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        sorters = app.query_one("#sorters", OptionList)
-        sorters.highlighted = 0
-        app.set_focus(sorters)
-        await pilot.press("enter")
-        await pilot.pause()
-        body = app.screen.query_one("#dstatus", Static).render().plain.lower()
-        assert "don't have docker" in body or "download" in body
-
-
-async def test_docker_confirm_start_calls_controller(make_app):
-    app = make_app(present=True)
-    c = app.c
-    c.docker_state = "installed_not_running"
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        sorters = app.query_one("#sorters", OptionList)
-        sorters.highlighted = 0
-        app.set_focus(sorters)
-        await pilot.press("enter")
-        await pilot.pause()
-        app.screen.action_start_docker()  # [Start Docker for me]
-        await pilot.pause()
-        assert c.started_docker is True
-
-
-# --- docker image download (Stage 4) -------------------------------------- #
-async def test_docker_row_shows_download_badge(make_app):
-    # A Docker sorter whose image isn't cached shows the "get it" badge; a cached
-    # one shows "ready" — both states drawn straight on the catalog row.
-    app = make_app()
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        sorters = app.query_one("#sorters", OptionList)
-        labels = {sorters.get_option_at_index(i).id:
-                  sorters.get_option_at_index(i).prompt.plain
-                  for i in range(sorters.option_count)}
-        # D1 availability glyphs: with Docker OFF both docker rows are obtainable
-        # (◌); the cached-vs-not detail lives in INSPECTING now. The legend is the
-        # pane's border subtitle.
-        assert labels["mountainsort5"].rstrip().endswith("◌")
-        assert labels["herdingspikes"].rstrip().endswith("◌")
-        assert "●" in labels["tridesclous2"]         # runnable now
-        assert app.query_one("#sorterpane").border_subtitle
-
-
-async def test_docker_on_glyph_honest_about_pull(make_app):
-    # Docker ON: a cached image really runs on Enter (●); an uncached one would
-    # start a multi-GB pull first, so it stays ◌ — a ● over a download is a lie
-    # (D1 review #2).
-    app = make_app(use_docker=True)
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        sorters = app.query_one("#sorters", OptionList)
-        labels = {sorters.get_option_at_index(i).id:
-                  sorters.get_option_at_index(i).prompt.plain
-                  for i in range(sorters.option_count)}
-        assert labels["herdingspikes"].rstrip().endswith("●")    # cached + toggle on
-        assert labels["mountainsort5"].rstrip().endswith("◌")    # needs the pull
-
-
-async def test_inspecting_carries_cached_vs_not(make_app):
-    # The distinction the row glyph elides lives in INSPECTING (spec §2/critique #6).
-    app = make_app(use_docker=True)
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        app._highlight_sorter_by_name("mountainsort5")
-        await pilot.pause()
-        assert "not downloaded" in app.query_one("#inspectbody", Static).render().plain
-        app._highlight_sorter_by_name("herdingspikes")
-        await pilot.pause()
-        assert "cached" in app.query_one("#inspectbody", Static).render().plain
-
-
-async def test_enter_on_undownloaded_docker_opens_download(make_app):
-    # With Docker on and the daemon running, Enter on an un-cached Docker sorter
-    # opens the in-UI download (separate from running a sort).
-    app = make_app(use_docker=True)
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        app._highlight_sorter_by_name("mountainsort5")
-        await pilot.pause()
-        await pilot.press("enter")
-        await pilot.pause()
-        assert isinstance(app.screen, menu_app.DownloadProgressScreen)
 
 
 async def test_download_shows_telemetry_then_collapses_and_expands(make_app):
@@ -834,36 +472,6 @@ async def test_download_indicator_hidden_when_idle(make_app):
         assert app.query_one("#dlbar", Static).has_class("hidden") is True
 
 
-async def test_enter_on_undownloaded_docker_offers_docker_when_daemon_down(make_app):
-    # Same row, but the Docker daemon isn't running: Enter must guide the user to
-    # start Docker first (the confirm dialog), not open a download that can't run.
-    app = make_app(use_docker=True)
-    app.c.docker_state = "installed_not_running"
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        app._highlight_sorter_by_name("mountainsort5")
-        await pilot.pause()
-        await pilot.press("enter")
-        await pilot.pause()
-        assert isinstance(app.screen, menu_app.DockerConfirmScreen)
-
-
-async def test_docker_off_is_immediate(make_app):
-    app = make_app(present=True, use_docker=True)   # already on
-    c = app.c
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        assert c.use_docker is True
-        sorters = app.query_one("#sorters", OptionList)
-        sorters.highlighted = 0
-        app.set_focus(sorters)
-        await pilot.press("enter")        # turning OFF -> immediate, no dialog
-        await pilot.pause()
-        assert c.use_docker is False
-        assert not isinstance(app.screen, menu_app.DockerConfirmScreen)
-
-
-# --- param editor --------------------------------------------------------- #
 async def test_param_editor_saves_only_changed_keys(make_app):
     from textual.widgets import Input
     app = make_app(present=True)
@@ -984,67 +592,6 @@ async def test_f_opens_data_folder_picker_and_sets_dir(make_app):
 
 
 # --- x manage (per-sorter) + Manage hub ----------------------------------- #
-async def test_x_opens_manage_for_saved_sorter(make_app):
-    # Highlight a sorter that has a saved sort, press x -> the per-sorter manage
-    # confirm opens and offers to clear the saved sort.
-    app = make_app(present=True)
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        app._highlight_sorter_by_name("tridesclous2")   # has saved units in the fake
-        await pilot.pause()
-        await pilot.press("x")
-        await pilot.pause()
-        assert isinstance(app.screen, menu_app.ManageSorterScreen)
-        body = app.screen.query_one("#mgbody").render().plain
-        assert "saved" in body.lower()
-
-
-async def test_x_clears_saved_sort_via_manage(make_app):
-    # Choosing "clear saved sort" in the per-sorter manage dialog calls the
-    # controller and reloads so the row's saved state flips.
-    app = make_app(present=True)
-    c = app.c
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        app._highlight_sorter_by_name("tridesclous2")
-        await pilot.pause()
-        await pilot.press("x")
-        await pilot.pause()
-        assert isinstance(app.screen, menu_app.ManageSorterScreen)
-        await pilot.press("enter")        # the clear-saved-sort option is the cursor
-        await pilot.pause()
-        assert "tridesclous2" in c.cleared_sorts
-        td = next(i for i in c.infos if i["name"] == "tridesclous2")
-        assert td["present"] is False
-
-
-async def test_x_on_nothing_to_delete_hints(make_app):
-    # A READY sorter with no saved sort + no Docker image: x has nothing to do, so
-    # it must NOT open the modal — it just sets a footer hint.
-    app = make_app(present=True)
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        app._highlight_sorter_by_name("mountainsort5")    # docker, no image, no sort
-        await pilot.pause()
-        await pilot.press("x")
-        await pilot.pause()
-        assert not isinstance(app.screen, menu_app.ManageSorterScreen)
-        foot = app.query_one("#footer", Static).render().plain
-        assert "nothing to delete" in foot.lower()
-
-
-async def test_x_offers_image_delete_for_cached_docker(make_app):
-    # A Docker sorter whose image is cached offers "Delete downloaded image".
-    app = make_app(use_docker=True)
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        app._highlight_sorter_by_name("herdingspikes")    # cached image in the fake
-        await pilot.pause()
-        await pilot.press("x")
-        await pilot.pause()
-        assert isinstance(app.screen, menu_app.ManageSorterScreen)
-        body = app.screen.query_one("#mgbody").render().plain
-        assert "image" in body.lower() and "gb" in body.lower()
 
 
 async def test_manage_action_opens_hub(make_app):
@@ -1187,40 +734,8 @@ async def test_probe_banner_shows_active_probe(make_app):
 
 
 # --- Sorter fit badge + INSPECTING fit line ------------------------------ #
-async def test_inspecting_shows_fit_line(make_app):
-    app = make_app(present=True)
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        body = app.query_one("#inspectbody", Static)
-        text = body.render().plain if hasattr(body.render(), "plain") else str(body.render())
-        assert "Fit" in text
 
 
-async def test_sorter_row_fit_badges(make_app):
-    # D1 signal budget: rows carry NO fit badges at rest — fit detail lives in
-    # INSPECTING for the row under the cursor. The availability glyph is the one
-    # allowed mark beyond name + unit count.
-    app = make_app(present=True)
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        def plain(info):
-            t = app._sorter_text(info)
-            return t.plain if hasattr(t, "plain") else str(t)
-        base = {"name": "x", "group": "ready", "runnable": True, "recommended": False,
-                "present": False, "units": 0, "duration": 0.0, "active": False,
-                "img_present": None}
-        for fit in ({"rank": "good", "reason": "g"}, {"rank": "poor", "reason": "p"},
-                    {"rank": "ok", "reason": "o"}):
-            row = plain({**base, "fit": fit})
-            assert "fits" not in row and "weak" not in row
-        assert plain(base).rstrip().endswith("●")                       # runnable
-        assert plain({**base, "runnable": False,
-                      "group": "gpu"}).rstrip().endswith("–")           # not here
-        assert plain({**base, "runnable": False,
-                      "group": "docker"}).rstrip().endswith("◌")        # obtainable
-
-
-# --- D1: the LAST RESULT line + r reopen ----------------------------------- #
 async def test_last_result_bar_appears_and_reopens(make_app):
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
@@ -1253,20 +768,7 @@ async def test_footer_no_longer_echoes_active_sorter(make_app):
         assert "tridesclous2" in sortbar
 
 
-
 # --- D1 review #1: the yield budget actually feeds the lists ---------------- #
-async def test_lists_get_real_rows_at_common_sizes(make_app):
-    # Region-intersection > 0 can stay true for a starved pane; pin PAINTED room:
-    # both panes keep enough rows for content at the sizes people actually use,
-    # including 80x24 (the default macOS/Windows terminal).
-    for size in [(110, 40), (100, 24), (80, 24), (60, 24)]:
-        app = make_app(present=True)
-        async with app.run_test(size=size) as pilot:
-            await pilot.pause()
-            for wid in ("#sorterpane", "#actionpane"):
-                r = app.query_one(wid).region
-                assert r.height >= 4, f"{wid} squeezed to {r.height} rows at {size}"
-
 
 async def test_resultbar_visible_at_default_terminal(make_app):
     # The flagship "results don't evaporate" line must be PAINTED at 80x24, not
@@ -1423,7 +925,6 @@ async def test_sort_full_bar_yields_to_heartbeat(make_app):
         await pilot.pause()
         body = screen.query_one("#sortbody").render().plain
         assert "100%" not in body and "still working" in body
-
 
 
 async def test_sort_bar_hides_before_rounding_lies(make_app):
@@ -1712,22 +1213,6 @@ async def test_reopen_with_no_result_yet_hints(make_app):
         assert "Nothing to reopen yet" in app._last.plain
 
 
-async def test_gpu_group_folds_to_lab_box_line(make_app):
-    # Never-runnable-here sorters fold to one dim line that names where they DO
-    # run — a disabled line, not five dead rows and not silence.
-    app = make_app(present=True)
-    async with app.run_test(size=(110, 40)) as pilot:
-        await pilot.pause()
-        sorters = app.query_one("#sorters", OptionList)
-        fold = next((sorters.get_option_at_index(i) for i in range(sorters.option_count)
-                     if sorters.get_option_at_index(i).id == "__grpfold_gpu__"), None)
-        assert fold is not None, "GPU group fold line missing"
-        assert fold.disabled is True
-        assert "lab box" in fold.prompt.plain
-        assert "kilosort4" not in {sorters.get_option_at_index(i).id
-                                   for i in range(sorters.option_count)}
-
-
 async def test_imported_probe_edit_refused_names_next_step(make_app):
     # P1 handoff: imported probes are view/duplicate/delete-only — Edit must
     # refuse with the next step named, never open the geometry-stripping form.
@@ -1872,3 +1357,340 @@ async def test_compare_runs_behind_busy_screen(make_app):
         assert c.last_result["key"] == "compare"
         bar = app.query_one("#resultbar")
         assert not bar.has_class("hidden") and "compare" in bar.render().plain
+
+
+# =========================================================================== #
+# D5 — the actions-first main screen + the sorter picker (Ben, 2026-08-18)
+# =========================================================================== #
+async def _open_picker(pilot, app):
+    await pilot.press("t")
+    await pilot.pause()
+    picker = app.screen
+    assert isinstance(picker, menu_app.SorterPickerScreen)
+    return picker
+
+
+def _picker_rows(picker):
+    ol = picker.query_one("#picklist", OptionList)
+    return ol, {ol.get_option_at_index(i).id: (i, ol.get_option_at_index(i))
+                for i in range(ol.option_count)}
+
+
+async def _pick(pilot, app, row_id):
+    picker = await _open_picker(pilot, app)
+    ol, rows = _picker_rows(picker)
+    assert row_id in rows, f"{row_id} not in picker rows {list(rows)}"
+    ol.highlighted = rows[row_id][0]
+    await pilot.press("enter")
+    await pilot.pause()
+
+
+# --- boot + layout --------------------------------------------------------- #
+async def test_boots_actions_first(make_app):
+    # D5: the actions ARE the screen — full-width panel focused on launch, the
+    # MANAGE keys as one dim line, no sorters pane, no INSPECTING.
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        actions = app.query_one("#actions", OptionList)
+        assert app.focused is actions
+        assert actions.option_count == 6     # the six WORKFLOW actions only (D5)
+        assert not app.query("#sorters") and not app.query("#inspect")
+        manage = app.query_one("#managebar").render().plain
+        for key in ("e params", "m sorters", "p probe", "v verify"):
+            assert key in manage
+
+
+async def test_sortbar_names_active_with_change_hint(make_app):
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        bar = app.query_one("#sortbar").render().plain
+        assert "tridesclous2" in bar and "t change" in bar
+
+
+async def test_results_section_only_with_saved_sort(make_app):
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        res = app.query_one("#results")
+        assert not res.has_class("hidden")
+        text = res.render().plain
+        assert "tridesclous2" in text and "12 units" in text
+        assert "V_pp" in text and "noise" in text and "yield" in text
+        # Clearing the saved sort hides the section (no empty frame).
+        app.c.clear_saved_sort("tridesclous2")
+        app.c.reload()
+        app._render_results()
+        await pilot.pause()
+        assert app.query_one("#results").has_class("hidden")
+
+
+async def test_actions_keep_rows_at_common_sizes(make_app):
+    # The primary panel never starves: real painted rows at the sizes people use.
+    for size in [(110, 40), (100, 24), (80, 24), (60, 24)]:
+        app = make_app(present=True)
+        async with app.run_test(size=size) as pilot:
+            await pilot.pause()
+            r = app.query_one("#actionpane").region
+            assert r.height >= 6, f"actions squeezed to {r.height} rows at {size}"
+
+
+async def test_tiny_never_clips_actions(make_app):
+    for size in [(40, 12), (30, 8), (24, 6), (20, 5)]:
+        app = make_app(present=True)
+        async with app.run_test(size=size) as pilot:
+            await pilot.pause()
+            r = app.query_one("#actions").region
+            assert r.intersection(app.screen.region).height > 0
+
+
+async def test_resize_wide_to_tiny_to_wide(make_app):
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        for size in [(30, 8), (110, 40)]:
+            await pilot.resize_terminal(*size)
+            await pilot.pause()
+        assert not app.query_one("#results").has_class("collapsed")
+        assert app.query_one("#actionpane").region.height >= 6
+
+
+# --- the sorter picker ----------------------------------------------------- #
+async def test_picker_opens_with_filter_focused(make_app):
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        picker = await _open_picker(pilot, app)
+        assert app.focused is picker.query_one("#pickfilter")
+        ol, rows = _picker_rows(picker)
+        assert ol.get_option_at_index(0).id == "__docker__"   # toggle row first
+        assert "tridesclous2" in rows
+        await pilot.press("escape")
+        await pilot.pause()
+        assert not isinstance(app.screen, menu_app.SorterPickerScreen)
+
+
+async def test_picker_filter_narrows_live(make_app):
+    app = make_app(use_docker=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        picker = await _open_picker(pilot, app)
+        await pilot.press(*"mount")
+        await pilot.pause()
+        _ol, rows = _picker_rows(picker)
+        sorter_rows = [k for k in rows if not str(k).startswith("__")]
+        assert sorter_rows == ["mountainsort5"]
+
+
+async def test_picker_select_activates_and_closes(make_app):
+    app = make_app(present=True)
+    c = app.c
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await _pick(pilot, app, "spykingcircus2")
+        assert c.active_sorter == "spykingcircus2"
+        assert not isinstance(app.screen, menu_app.SorterPickerScreen)
+        assert "spykingcircus2" in app.query_one("#sortbar").render().plain
+        # RESULTS follows the new active sorter.
+        assert "spykingcircus2" in app.query_one("#results").render().plain
+
+
+async def test_picker_marks_active_and_shows_desc(make_app):
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        picker = await _open_picker(pilot, app)
+        ol, rows = _picker_rows(picker)
+        i, opt = rows["tridesclous2"]
+        assert opt.prompt.plain.startswith("▌")          # active marked as a shape
+        ol.highlighted = i
+        picker._render_desc()
+        await pilot.pause()
+        desc = picker.query_one("#pickdesc").render().plain
+        assert "tridesclous2 description" in desc
+        assert "fits this probe" in desc                  # fit lives in the footer
+
+
+async def test_picker_groups_start_collapsed_and_expand(make_app):
+    app = make_app(present=True)   # gpu group exists in the fake universe
+    async with app.run_test(size=(110, 40)) as pilot:
+        picker = await _open_picker(pilot, app)
+        ol, rows = _picker_rows(picker)
+        assert "kilosort4" not in rows                    # collapsed by default
+        gi, gopt = rows["__grp_gpu__"]
+        assert "Enter to expand" in gopt.prompt.plain
+        ol.highlighted = gi
+        await pilot.press("enter")                        # expands, stays open
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.SorterPickerScreen)
+        _ol, rows = _picker_rows(picker)
+        assert "kilosort4" in rows
+
+
+async def test_picker_glyphs_honest_about_pull(make_app):
+    app = make_app(use_docker=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        picker = await _open_picker(pilot, app)
+        _ol, rows = _picker_rows(picker)
+        assert rows["herdingspikes"][1].prompt.plain.rstrip().endswith("●")   # cached
+        assert rows["mountainsort5"][1].prompt.plain.rstrip().endswith("◌")   # needs pull
+
+
+# --- docker flows, routed through the picker ------------------------------- #
+async def test_picker_docker_row_toggles_via_confirm(make_app):
+    app = make_app(present=True)
+    c = app.c
+    c.docker_state = "running"
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await _pick(pilot, app, "__docker__")     # turning ON -> confirm dialog
+        assert isinstance(app.screen, menu_app.DockerConfirmScreen)
+        assert "running" in app.screen.query_one("#dstatus", Static).render().plain.lower()
+        assert c.use_docker is False              # not enabled until confirmed
+        app.screen.action_enable()
+        await pilot.pause()
+        assert c.use_docker is True
+        assert c.active_sorter == "tridesclous2"  # toggle never changes the active
+
+
+async def test_picker_docker_off_is_immediate(make_app):
+    app = make_app(present=True, use_docker=True)
+    c = app.c
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await _pick(pilot, app, "__docker__")     # turning OFF -> immediate
+        assert c.use_docker is False
+        assert not isinstance(app.screen, menu_app.DockerConfirmScreen)
+
+
+async def test_docker_confirm_start_calls_controller(make_app):
+    app = make_app(present=True)
+    c = app.c
+    c.docker_state = "installed_not_running"
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await _pick(pilot, app, "__docker__")
+        assert isinstance(app.screen, menu_app.DockerConfirmScreen)
+        app.screen.action_start_docker()
+        await pilot.pause()
+        assert c.started_docker is True
+
+
+async def test_picker_undownloaded_docker_opens_download(make_app):
+    app = make_app(use_docker=True)
+    app.c.docker_state = "running"
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await _pick(pilot, app, "mountainsort5")
+        assert isinstance(app.screen, menu_app.DownloadProgressScreen)
+
+
+async def test_picker_undownloaded_docker_offers_docker_when_daemon_down(make_app):
+    app = make_app(use_docker=True)
+    app.c.docker_state = "installed_not_running"
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await _pick(pilot, app, "mountainsort5")
+        assert isinstance(app.screen, menu_app.DockerConfirmScreen)
+
+
+# --- x manages the ACTIVE sorter ------------------------------------------- #
+async def test_x_opens_manage_for_active_saved_sorter(make_app):
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("x")
+        await pilot.pause()
+        screen = app.screen
+        assert isinstance(screen, menu_app.ManageSorterScreen)
+        assert screen._name == "tridesclous2"
+
+
+async def test_x_clears_saved_sort_via_manage(make_app):
+    app = make_app(present=True)
+    c = app.c
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("x")
+        await pilot.pause()
+        await pilot.press("enter")                # cursor on "Clear saved sort"
+        await pilot.pause()
+        assert "tridesclous2" in c.cleared_sorts
+
+
+async def test_x_on_nothing_to_delete_hints(make_app):
+    app = make_app(present=True)
+    c = app.c
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        info = c.infos[c.active_idx]
+        info["present"] = False
+        info["img_present"] = None
+        await pilot.press("x")
+        await pilot.pause()
+        assert not isinstance(app.screen, menu_app.ManageSorterScreen)
+        assert "nothing to delete" in app.query_one("#footer").render().plain
+
+
+# --- D5 review regressions -------------------------------------------------- #
+async def test_picker_desc_footer_actually_paints(make_app):
+    # F1: height:1 + padding-top:1 left ZERO content rows — the desc rendered in
+    # memory but never painted. Pin the painted region, not render().plain.
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        picker = await _open_picker(pilot, app)
+        picker._render_desc()
+        await pilot.pause()
+        desc = picker.query_one("#pickdesc")
+        assert desc.content_region.height > 0
+        assert "description" in desc.render().plain
+
+
+async def test_picker_filter_retargets_enter_at_a_sorter(make_app):
+    # F2: a stale highlight index made Enter hit the Docker toggle after filtering.
+    app = make_app(present=True)
+    c = app.c
+    async with app.run_test(size=(110, 40)) as pilot:
+        picker = await _open_picker(pilot, app)
+        ol, _rows = _picker_rows(picker)
+        picker.action_move(1)             # wander off the default row
+        await pilot.press(*"spyk")
+        await pilot.pause()
+        oid = ol.get_option_at_index(ol.highlighted).id
+        assert oid == "spykingcircus2"    # first matching SORTER, never __docker__
+        await pilot.press("enter")
+        await pilot.pause()
+        assert c.active_sorter == "spykingcircus2"
+        assert c.use_docker is False      # the toggle was never touched
+
+
+async def test_picker_zero_match_filter_is_inert_and_says_so(make_app):
+    # F3: "zzz" left Enter armed on the Docker row with no feedback.
+    app = make_app(present=True)
+    c = app.c
+    async with app.run_test(size=(110, 40)) as pilot:
+        picker = await _open_picker(pilot, app)
+        await pilot.press(*"zzz")
+        await pilot.pause()
+        assert "no sorters match" in picker.query_one("#pickdesc").render().plain
+        await pilot.press("enter")        # must NOT toggle Docker
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.SorterPickerScreen)
+        assert c.use_docker is False
+
+
+async def test_picker_gpu_pick_gives_honest_hint(make_app):
+    # F9a: choosing a never-runnable sorter names the reason, not a silent no-op.
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        picker = await _open_picker(pilot, app)
+        ol, rows = _picker_rows(picker)
+        gi, _ = rows["__grp_gpu__"]
+        ol.highlighted = gi
+        await pilot.press("enter")        # expand — lands on the first member (F6)
+        await pilot.pause()
+        ol, rows = _picker_rows(picker)
+        assert ol.get_option_at_index(ol.highlighted).id == "kilosort4"
+        await pilot.press("enter")        # choose it
+        await pilot.pause()
+        assert not isinstance(app.screen, menu_app.SorterPickerScreen)
+        foot = app.query_one("#footer").render().plain
+        assert "GPU" in foot
