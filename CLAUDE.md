@@ -198,3 +198,9 @@ placeholder (no two channels neighbours) remains available.
   `probes.json` (the user probe library).
 - Tests live in `tests/`; the menu is covered by Textual `Pilot` tests. Run the whole suite
   before claiming a menu change works — the view is easy to break in ways only Pilot catches.
+  A green suite still isn't the whole story for sort-adjacent changes: the real feedback loop
+  is `run_sorting.py --duration 30` (plus one containerized sort when touching Docker paths).
+- **The user edits this repo concurrently from other sessions.** The tree can change
+  mid-session and unrelated WIP can appear even in files you're editing. Re-check
+  `git status`/`git diff` immediately before committing, stage explicit paths (never
+  `git add -A`), and put their unrelated changes in their own commit before yours.
