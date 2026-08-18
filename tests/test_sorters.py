@@ -141,11 +141,26 @@ def test_merge_params_unknown_key_raises(fake_params):
 def test_run_passes_docker_and_params(fake_params, monkeypatch):
     calls = {}
 
+    class FakeSorting:
+        """Container-path result: SI registers the recording_for_docker binary copy
+        on it; sorters.run must swap the native recording back in (Windows keeps
+        that copy's .raw open otherwise, blocking the cache cleanup)."""
+        registered = None
+
+        def has_recording(self):
+            return True
+
+        def register_recording(self, recording, check_spike_frames=True):
+            self.registered = recording
+            calls["check_spike_frames"] = check_spike_frames
+
+    fake_sorting = FakeSorting()
+
     class FakeSS:
         def run_sorter(self, name, recording, **kw):
             calls["name"] = name
             calls["kw"] = kw
-            return "SORTING"
+            return fake_sorting
 
     import types
     fake_ss = FakeSS()
@@ -158,17 +173,21 @@ def test_run_passes_docker_and_params(fake_params, monkeypatch):
     monkeypatch.setattr(sorters, "installed", lambda: [])
     # the Docker path dumps the recording to binary first; that needs a real
     # recording, so bypass it here to focus on parameter passing.
-    monkeypatch.setattr(sorters, "_as_container_recording", lambda rec, folder: rec)
+    monkeypatch.setattr(sorters, "_as_container_recording", lambda rec, folder: "BINARY")
 
     out = sorters.run("mountainsort5", "REC", "/tmp/out",
                       params={"detect_threshold": 6.0}, use_docker=True, verbose=False)
-    assert out == "SORTING"
+    assert out is fake_sorting
     assert calls["name"] == "mountainsort5"
     assert calls["kw"]["docker_image"] is True
     # SpikeInterface takes sorter params as **kwargs, NOT a sorter_params= keyword.
     assert calls["kw"]["detect_threshold"] == 6.0
     assert "sorter_params" not in calls["kw"]
     assert calls["kw"]["remove_existing_folder"] is True
+    # The NATIVE recording is re-registered on the returned sorting (not the
+    # container binary copy), releasing the copy's file handle for cache cleanup.
+    assert fake_sorting.registered == "REC"
+    assert calls["check_spike_frames"] is False
 
 
 def test_run_installed_sorter_runs_native_even_with_docker_on(fake_params, monkeypatch):

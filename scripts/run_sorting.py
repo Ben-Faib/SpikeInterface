@@ -1111,8 +1111,18 @@ def main() -> int:
         effective_seconds=effective_seconds, freq_min=args.freq_min, freq_max=freq_max,
     )
 
-    # The container-only binary copy of the recording is no longer needed.
-    _robust_rmtree(out / "recording_for_docker")
+    # The container-only binary copy of the recording is no longer needed. Cache
+    # cleanup must never fail a run whose results are already saved: if a Windows
+    # lock outlives the retries (e.g. an Explorer/antivirus handle), leave the
+    # folder — the next Docker sort rebuilds it — and say so instead of raising.
+    try:
+        _robust_rmtree(out / "recording_for_docker")
+    except PermissionError:
+        note = (f"couldn't remove the Docker recording cache "
+                f"({out / 'recording_for_docker'}) — a file in it is still open. "
+                "Your sort is saved; delete the folder manually if it lingers.")
+        ui.warn(note)
+        rep.detail("⚠ " + note)
     if n_units == 0:
         # Don't leave a previous run's analyzer/metrics behind — they'd report a
         # stale unit count while the saved sorting says 0 (sidebar/report read them).

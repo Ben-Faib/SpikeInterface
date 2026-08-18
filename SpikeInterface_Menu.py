@@ -299,7 +299,7 @@ def _last_message(action: str, sorter: str, ok: bool) -> str:
             bits.append(f"{hq} high-quality")
         return f"✓ Sorted {sorter}" + (f" ({', '.join(bits)})" if bits else "")
     verb = {
-        "explore": "Saved exploratory figures → outputs/",
+        "explore": "Saved + opened exploratory figures → outputs/explore.html",
         "report": f"Built report ({sorter}) → outputs/report.html",
         "gui": "Closed the GUI inspector",
         "traces": "Closed the trace viewer",
@@ -339,7 +339,17 @@ def _self(action: str, args) -> bool:
 # --------------------------------------------------------------------------- #
 def action_explore(args) -> bool:
     flags = ["--data-dir", args.data_dir] if args.data_dir else []
-    return _shell("explore_data.py", *flags)
+    if not _shell("explore_data.py", *flags):
+        return False
+    # Actually SHOW the figures (like action_report): without this the child's
+    # output flashes past under the TUI and the PNGs sit unseen in outputs/.
+    page = (bio.REPO_ROOT / "outputs" / "explore.html").resolve()
+    if page.exists():
+        uri = page.as_uri()
+        ui.link("Open it:", uri)
+        ui.note("Opening it in your browser…")
+        _open_in_browser(uri)
+    return True
 
 
 def action_sort(args) -> bool:
@@ -681,7 +691,8 @@ _DATA_ACTIONS = {k for k, _t, _h, needs in _ACTIONS if needs}
 _ACTION_DETAIL = {
     "explore": {"what": "Make quick static figures (LFP traces, spike raster, "
                         "firing rates) from your raw data. No sorting required.",
-                "needs": ["data"], "output": "outputs/*.png"},
+                "needs": ["data"],
+                "output": "outputs/explore.html (opens in your browser) + .png figures"},
     "sort":    {"what": "Detect neurons in the broadband (.ns5) signal with the "
                         "active sorter.",
                 "choose": "full recording, or a quick 30 s test",

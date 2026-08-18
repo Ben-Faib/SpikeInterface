@@ -604,6 +604,7 @@ def run(name, recording, folder, *, params=None, use_docker=False, verbose=False
             "Docker was requested but the Docker daemon isn't reachable. "
             "Start Docker Desktop, or run without Docker."
         )
+    native_recording = recording
     if use_container:
         recording = _as_container_recording(recording, folder)
     # SpikeInterface's run_sorter takes sorter parameters as **kwargs — there is no
@@ -618,7 +619,16 @@ def run(name, recording, folder, *, params=None, use_docker=False, verbose=False
     call_kwargs["folder"] = str(folder)
     call_kwargs["remove_existing_folder"] = True
     call_kwargs["docker_image"] = use_container
-    return ss.run_sorter(name, recording, **call_kwargs)
+    sorting = ss.run_sorter(name, recording, **call_kwargs)
+    if use_container and sorting is not None and sorting.has_recording():
+        # The container path registers a fresh BinaryFolderRecording over
+        # recording_for_docker/ on the returned sorting, and that extractor holds
+        # its .raw file OPEN for the object's lifetime. The registration survives
+        # sorting.save(), so on Windows the open handle later blocks deleting the
+        # recording_for_docker cache (WinError 32). Swap the native recording back
+        # in — same samples (the cache was written from it), no handle on the cache.
+        sorting.register_recording(native_recording, check_spike_frames=False)
+    return sorting
 
 
 def _n_params(name: str) -> int:

@@ -7,6 +7,8 @@ Figures are written to ./outputs/ (git-ignored):
     * lfp_traces.png   — a short window of several LFP channels
     * spike_raster.png — spike raster across all .nev units
     * firing_rates.png — mean firing rate per unit
+    * explore.html     — all of the above on one self-contained page (images
+                         embedded, so it can be moved/shared on its own)
 
 This is read-only with respect to your data; it only writes images.
 """
@@ -77,8 +79,9 @@ def plot_firing_rates(sorting, out_path: Path):
     unit_ids = list(sorting.get_unit_ids())
     fs = sorting.get_sampling_frequency()
     duration = max(
-        (sorting.get_unit_spike_train(u)[-1] / fs if len(sorting.get_unit_spike_train(u)) else 0.0)
-        for u in unit_ids
+        ((sorting.get_unit_spike_train(u)[-1] / fs if len(sorting.get_unit_spike_train(u)) else 0.0)
+         for u in unit_ids),
+        default=0.0,  # a .nev with no online units must not crash explore
     )
     duration = duration or 1.0
     rates = [len(sorting.get_unit_spike_train(u)) / duration for u in unit_ids]
@@ -92,6 +95,33 @@ def plot_firing_rates(sorting, out_path: Path):
     fig.tight_layout()
     fig.savefig(out_path, dpi=120)
     plt.close(fig)
+
+
+def write_gallery(figures: list[tuple[str, Path]], out_path: Path) -> None:
+    """One self-contained HTML page showing every saved figure (base64-embedded,
+    like report.html — no sibling files needed, safe to move or share alone)."""
+    import base64
+
+    sections = []
+    for caption, png in figures:
+        data = base64.b64encode(png.read_bytes()).decode("ascii")
+        sections.append(
+            f"<figure><img src='data:image/png;base64,{data}' alt='{caption}'>"
+            f"<figcaption>{caption} &middot; <code>{png.name}</code></figcaption></figure>"
+        )
+    out_path.write_text(
+        "<!doctype html><html><head><meta charset='utf-8'>"
+        "<title>Raw-data exploration</title><style>"
+        "body{font-family:system-ui,sans-serif;max-width:1100px;margin:2rem auto;"
+        "padding:0 1rem;background:#fff;color:#222}"
+        "img{max-width:100%;border:1px solid #ddd;border-radius:4px}"
+        "figure{margin:2rem 0}figcaption{color:#666;font-size:.9rem;margin-top:.4rem}"
+        "</style></head><body><h1>Raw-data exploration</h1>"
+        "<p>Static figures from the raw recording (no spike sorting involved). "
+        "The PNGs sit next to this file in <code>outputs/</code>.</p>"
+        + "".join(sections) + "</body></html>",
+        encoding="utf-8",
+    )
 
 
 def main() -> int:
@@ -126,9 +156,16 @@ def main() -> int:
     print(f"  {len(sorting.get_unit_ids())} units")
 
     print(f"Saving figures to {OUTPUT_DIR} ...")
-    plot_lfp(recording, OUTPUT_DIR / "lfp_traces.png")
-    plot_raster(sorting, OUTPUT_DIR / "spike_raster.png")
-    plot_firing_rates(sorting, OUTPUT_DIR / "firing_rates.png")
+    figures = [
+        ("LFP traces (.ns2)", OUTPUT_DIR / "lfp_traces.png"),
+        ("Spike raster — online-detected units (.nev)", OUTPUT_DIR / "spike_raster.png"),
+        ("Mean firing rate per unit (.nev)", OUTPUT_DIR / "firing_rates.png"),
+    ]
+    plot_lfp(recording, figures[0][1])
+    plot_raster(sorting, figures[1][1])
+    plot_firing_rates(sorting, figures[2][1])
+    write_gallery(figures, OUTPUT_DIR / "explore.html")
+    print(f"Viewable page: {OUTPUT_DIR / 'explore.html'}")
     print("Done. ✓")
     return 0
 
