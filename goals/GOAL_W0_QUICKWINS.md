@@ -1,4 +1,9 @@
-# GOAL W0 — Quick wins: retire the audit's dead-ends before any path work
+# GOAL W0 — Quick wins  **[DISSOLVED 2026-08-18 — kept for provenance]**
+
+*Ben's UI/UX overhaul (GOAL_D_UIUX.md) subsumed this brief the day it was written: the
+false-green 0-unit fix → D2, the INSPECTING clip + active-sorter persistence + keyboard
+help → D1, the metric widening → M1 (a standalone item in ROADMAP.md). The verified
+file:line state below stays useful to those slices; do not run this brief as its own goal.*
 
 ## Intent
 

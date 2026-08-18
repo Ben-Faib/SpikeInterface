@@ -20,12 +20,21 @@ A need left only in a chat summary is a need Ben never sees.*
   user-accepted identity mapping — true depth order still waits on the lab's adapter map.
 - **Deployment target is the UPitt lab's Windows+GPU box**; Windows Docker-sort cleanup
   crash fixed 2026-08-18 (`7940f96`); GPU-sorter enablement (kilosort4) not yet started (WD).
-- **Current focus (2026-08-18): W0 quick wins** — ROADMAP prompt 1 is ready to paste.
+- **Current focus (2026-08-18, updated same day): THE OVERHAUL.** Ben's directive — all
+  surfaces redesigned for accessibility/focus/hierarchy + a timely-updates UX + real
+  testing procedures + probe flexibility for a lab whose setups differ. `DESIGN_UX.md`
+  (D0) is drafted and **waits on Ben's veto**; T1 (testing harness) runs in the peer
+  session; prompts M1 (metrics) and P1 (probe import) are ready to paste in parallel.
+  Product facts on record: built by Benjamin Faibussowitsch with Aleece Al-Olimat for
+  UPitt researchers on industry-standard SpikeInterface.
 
 ## OPEN — needs Ben
 
-- **Ratify (or amend) the NORTHSTAR arc** — W0→W1→W2→face→breadth was adopted from
-  WORKBENCH_DIRECTIONS.md's low-regret sequence pending your word. *(opened 2026-08-18)*
+- **The D0 veto: approve or amend `DESIGN_UX.md`** — every D slice (dashboard, run
+  experience, report, flow modals) is gated on it; the peer session's feasibility critique
+  folds in first. *(opened 2026-08-18)*
+- **Ratify (or amend) the NORTHSTAR arc** — now including the 2026-08-18 restructure into
+  the D/T/M/P dependency graph. *(opened 2026-08-18)*
 - **Lab requirements pass** — what Tracy's lab needs first (users, fluency, recordings,
   curation-vs-batch pain); shapes the W3 face pick and could reorder W1/W4.
   *(opened 2026-08-18)*
@@ -37,6 +46,21 @@ A need left only in a chat summary is a need Ben never sees.*
 ---
 
 ## The ledger (newest first)
+
+**2026-08-18 — overhaul kickoff (D0 + graph)**
+- Did: took Ben's overhaul directive on record (NORTHSTAR: UPitt researchers, varied probes,
+  Faibussowitsch × Al-Olimat), drafted the `DESIGN_UX.md` D0 spec from screenshots of every
+  surface, wrote the GOAL_D/GOAL_T/GOAL_P briefs, dissolved W0 into the new dependency-graph
+  queue, and dispatched T1 (testing harness) to the peer session.
+- Means: the overhaul now has a design authority with a veto gate, a testing track that
+  makes redesigns reviewable, and two engine prompts (M1 metrics, P1 probe import) that can
+  run in parallel while the veto is pending.
+- Moved: ROADMAP is a dependency graph; the false-green 0-unit fix, INSPECTING clip,
+  active-sorter persistence, and help fixes now live inside D1/D2 with the spec behind them.
+- Needs Ben: the D0 veto on DESIGN_UX.md (the big one), plus the standing arc/requirements/
+  lab-box items.
+- Next: Ben vetoes/amends the spec; meanwhile paste M1 and P1 from ROADMAP; T1 seals from
+  the peer session.
 
 **2026-08-18 — orchestrator install**
 - Did: installed the decantv2-pattern build system — NORTHSTAR, LOOPS, six goal briefs,

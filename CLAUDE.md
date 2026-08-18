@@ -35,7 +35,9 @@ The workbench is being built into a lab tool for Tracy's UPitt lab via loop engi
 Read order for a build session: `NORTHSTAR.md` (product + decisions of record, wins
 conflicts below it) → `LOOPS.md` (method + gates) → the active brief in `goals/` →
 `ROADMAP.md` (the live queue Ben pastes prompts from — keep its NOW box and constants true;
-a stale marker is a defect). Conversational/small-fix sessions don't need any of it.
+a stale marker is a defect). Sessions touching any UI surface additionally read
+`DESIGN_UX.md` — the design authority; its §1 language binds all surface work.
+Conversational/small-fix sessions don't need any of it.
 
 **The between-run contract.** Every phase/slice run ends **sealed**: work committed with a
 descriptive message (explicit paths — see concurrent-edit rule below), ROADMAP.md updated,

@@ -7,11 +7,19 @@ update this file. Method lives in `LOOPS.md`; per-phase detail in `goals/`; the 
 
 ## The product
 
-**A spike-sorting workbench a lab member can trust and operate alone** — built for Tracy's lab
-at the University of Pittsburgh (UPitt), whose recordings this repo's `PFCM7_d0ephys_Block2`
-block comes from. It takes a raw Blackrock/Ripple recording to **curated, reproducible,
-shareable single units**: load → sort → inspect → curate → report, on the lab's own machine,
-without the operator needing to know SpikeInterface, Docker, or quality-metric lore.
+**A spike-sorting workbench a researcher can trust and operate alone** — built for the UPitt
+(University of Pittsburgh) researchers in Tracy's lab, whose recordings this repo's
+`PFCM7_d0ephys_Block2` block comes from, by **Benjamin Faibussowitsch in collaboration with
+Aleece Al-Olimat**. The lab wants the industry-standard **SpikeInterface** underneath; the
+workbench is the trustworthy, operable face on it. It takes a raw Blackrock/Ripple recording
+to **curated, reproducible, shareable single units**: load → sort → inspect → curate →
+report, on the lab's own machine, without the operator needing to know SpikeInterface,
+Docker, or quality-metric lore.
+
+**Their probes have different setups** — probe flexibility is a core product requirement,
+not a nice-to-have: the workbench must let a researcher describe, import, verify, and switch
+electrode geometries (the P track), because a tool locked to one array serves one experiment,
+not the lab.
 
 What exists today is the strong half of that: a genuinely good terminal workbench (responsive
 dashboard, in-UI sorting with honest progress, real probe geometry, six array/yield metrics on
@@ -21,24 +29,30 @@ units, not yet trustworthy (3 of ~20 quality metrics, a hardcoded SNR≥5 headli
 curated (no curation loop, no Phy export), and not yet reproducible (runs clobber each other,
 provenance omits the effective params and seed).
 
-## The arc (ratified from WORKBENCH_DIRECTIONS.md's low-regret sequence)
+## The arc (restructured 2026-08-18 — Ben's UI/UX overhaul directive)
 
-Deepen and harden one recording first, then choose a face, then broaden:
+The queue is now a **dependency graph**, not a line — `ROADMAP.md` carries the live graph.
+The tracks:
 
-1. **W0 — quick wins**: the audit's cross-cutting dead-ends, path-neutral.
-2. **W1 — Curation Workbench** (audit Path 1): full metric suite, a real curation loop,
-   Phy export, defensible auto-curation thresholds. The keystone — every other path's
-   signature feature flatters thin evidence until this exists.
-3. **W2 — Reproducibility Engine** (audit Path 4): versioned runs, complete provenance,
-   regenerate-from-record. Paired tightly with W1 (both re-touch the run store).
-4. **W3 — one audience/medium bet**, Ben's pick: Guided Sort wizard (Path 3), Spike Live
-   web (Path 5), or the terminal Power IDE (Path 6). Exactly one.
-5. **W4 — Multi-Recording Lab Notebook** (Path 2): breadth last — it scales whatever W1/W2
-   made trustworthy, and its cross-session unit tracking waits on verified probe wiring.
+- **D — the UI/UX overhaul** (Ben, 2026-08-18): every surface redesigned for accessibility,
+  less clutter, focus on what matters, clean hierarchy with ample room — and a UX that
+  provides **timely updates and results** while it works. D0 is the design spec
+  (`DESIGN_UX.md`, **Ben veto gate**); D1–D4 implement it (dashboard, timeliness system,
+  report, flow modals). Subsumes the old W0 UI quick wins.
+- **T — testing procedures** (Ben, 2026-08-18): snapshot/visual regression for the TUI,
+  structural golden checks for the report, contract tests for the progress protocol —
+  built *before* the redesigns land so they land reviewably.
+- **M — the science base**: full quality-metric suite first (old W0 item 5), then
+  **W1 Curation** (audit Path 1: curation loop, Phy export, defensible thresholds) and
+  **W2 Reproducibility** (audit Path 4: versioned runs, complete provenance).
+- **P — probe flexibility** (elevated 2026-08-18): general probe import (probeinterface
+  formats), multi-shank, wiring verification — because the lab's probes differ.
+- **W3 — one audience/medium bet**, Ben's pick (wizard / web / terminal IDE), after the
+  D track gives whichever face a clean base. **W4 — multi-recording** stays last.
 
-**WD — lab deployment** runs alongside: the target machine is the lab's **Windows box with an
-NVIDIA GPU**, which changes the sorter story (kilosort4 becomes runnable there; this Mac never
-offers it). Every phase's work must hold on Windows, not just macOS.
+**WD — lab deployment** runs alongside everything: the target machine is the lab's **Windows
+box with an NVIDIA GPU**, which changes the sorter story (kilosort4 becomes runnable there;
+this Mac never offers it). Every phase's work must hold on Windows, not just macOS.
 
 ## Product laws
 
@@ -66,8 +80,16 @@ offers it). Every phase's work must hold on Windows, not just macOS.
 - **2026-06-27** — WORKBENCH_DIRECTIONS.md written: six paths, and the low-regret sequence
   this NORTHSTAR adopts as the arc.
 - **2026-08-18** — orchestrator installed (this file, LOOPS, goals/, ROADMAP, SEALS,
-  LESSONS, agents, skills), patterned on decantv2's loop-engineering setup. The arc above
-  is **adopted as the working plan pending Ben's ratification** (OPEN in SEALS.md).
+  LESSONS, agents, skills), patterned on decantv2's loop-engineering setup.
+- **2026-08-18 (Ben, same day)** — **the UI/UX overhaul mandate**: drastically improve all
+  surfaces — more accessible, less clutter, focused on what matters, clean with good
+  spacing/hierarchy and ample room; the UX must feel like the program provides timely
+  updates and results; complete overhauls are on the table; testing procedures get built
+  out properly; the queue becomes a dependency graph. Product facts of record: the users
+  are UPitt researchers wanting industry-standard SpikeInterface; **their probes have
+  different setups** (probe flexibility elevated to the P track); built by Benjamin
+  Faibussowitsch in collaboration with Aleece Al-Olimat. This supersedes the original
+  W0-first line ordering — the arc section above carries the new structure.
 
 ## Open questions (kept open on purpose — answers land here as dated decisions)
 

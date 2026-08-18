@@ -1,101 +1,130 @@
 # ROADMAP.md — the live build queue
 
 *The one place to look for what runs next. Layout: **the NOW box first** — read it and you
-know today's move without scrolling; then the queue at a glance, then the full paste prompts
-in run order, then the sealed record (provenance) at the bottom. Prompts are paste-ready
+know today's move without scrolling; then the dependency graph, the queue at a glance, the
+full paste prompts, and the sealed record (provenance) at the bottom. Prompts are paste-ready
 **plain Fable prompts**, each run in a fresh session started from this repo's root. Method
-lives in `LOOPS.md`; per-phase intent in `goals/`; product decisions in `NORTHSTAR.md`.
-Update this file whenever work seals — a stale status marker, a stale constant inside a
-prompt, or a stale NOW box is a defect; fix it on sight. Author new prompts with the
-`fable-prompt-builder` skill.*
+lives in `LOOPS.md`; per-track intent in `goals/`; product decisions in `NORTHSTAR.md`; the
+design authority for all D work is `DESIGN_UX.md`. Update this file whenever work seals — a
+stale status marker, a stale constant inside a prompt, or a stale NOW box is a defect; fix
+it on sight. Author new prompts with the `fable-prompt-builder` skill.*
 
-**The arc:** deepen and harden one recording (W0 quick wins → W1 curation → W2
-reproducibility), then one face (W3, Ben's pick), then breadth (W4 multi-recording) — with
-WD (the UPitt lab's Windows+GPU box) as a standing track alongside. Full rationale:
-NORTHSTAR.md; source analysis: WORKBENCH_DIRECTIONS.md.
+**The arc:** overhaul the surfaces against the D0 spec (accessible, uncluttered, timely)
+with the T track making the change reviewable — while the M track deepens the science
+(metrics → curation → reproducibility) and the P track generalizes probes for a lab whose
+setups differ. Then the face (W3, Ben's pick), then breadth (W4). WD (the lab's Windows+GPU
+box) runs alongside everything.
 
 ---
 
-## ▶ NOW — updated 2026-08-18 (sealing sessions: update this box FIRST)
+## ▶ NOW — updated 2026-08-18, the overhaul kickoff (sealing sessions: update this box FIRST)
 
-- **Next build move: run the W0 prompt below.** Five audit quick wins remain (verified
-  against source 2026-08-18); everything later builds on them.
-- **Needs Ben (OPEN in SEALS.md):** ratify the NORTHSTAR arc (or amend it); the lab
-  requirements pass (what Tracy's lab needs first — shapes W3 and could reorder W1/W4);
-  lab-box access for WD.
-- **Orchestrator installed 2026-08-18** — NORTHSTAR / LOOPS / goals / SEALS / LESSONS /
-  agents (scout·builder·reviewer·finalizer) / skills (verify-spike, status), patterned on
-  decantv2. Sessions seal per the between-run contract in CLAUDE.md.
+- **D0 design spec drafted (`DESIGN_UX.md`) — waiting on Ben's veto pass.** The peer
+  session's feasibility critique (`docs/design/DESIGN_CRITIQUE_2026-08-18.md`) folds in
+  first. **Every D slice is gated on the veto.**
+- **T1 (testing harness) is RUNNING in the peer session** (dispatched 2026-08-18):
+  snapshot baselines of today's UI, report golden checks, progress-protocol contract tests.
+- **Ready to paste now, in parallel with the veto:** prompt M1 (widen the quality metrics)
+  and prompt P1 (probeinterface import) — both engine-side, neither collides with the
+  D-track UI work or with T1's tests/-only scope.
+- **Needs Ben (OPEN in SEALS.md):** the D0 veto; NORTHSTAR arc ratification (now including
+  the 2026-08-18 restructure); the lab requirements pass; lab-box access for WD.
+
+## The dependency graph
+
+```
+  D0 spec (drafted) ──veto──► D1 dashboard ────► D4 flow modals
+        │                     D2 run experience
+        │                     D3 report ◄─────── M1 metrics (ready now)
+        │                                            │
+  T1 harness (peer, running) ─baselines/contracts──► D1 D2 D3        M1 ──► W1 curation ──► W2 repro
+        └────────────────► T2 journey refactor + T3 honesty states         (W1 slice 4 TUI triage
+                              (after D1/D2)                                  inherits DESIGN_UX §1)
+
+  P1 probe import (ready now) ──► P2 multi-shank ──► P3 wiring verify (needs adapter map)
+                                                          (P menu-UI portions after D1)
+
+  W3 face (Ben's pick, after D track) ──► W4 multi-recording (last; needs W1+W2+lab data)
+  WD lab deployment: standing track, any time lab-box access exists
+```
 
 ## The queue at a glance
 
 | # | Item | Brief | State |
 |---|---|---|---|
-| 1 | W0 quick wins (5 remaining) | `goals/GOAL_W0_QUICKWINS.md` | **READY — paste prompt 1** |
-| 2 | W1 slice 1: defensible auto-curation | `goals/GOAL_W1_CURATION.md` | ready after W0 |
-| 3 | W1 slices 2–4: curation loop, Phy, TUI triage | `goals/GOAL_W1_CURATION.md` | after slice 1 |
-| 4 | W2: versioned runs + provenance + regenerate | `goals/GOAL_W2_REPRO.md` | after/with late W1 |
-| 5 | W3: the face | `goals/GOAL_W3_FACE.md` | **GATED — Ben's pick** |
-| 6 | W4: multi-recording | `goals/GOAL_W4_MULTI.md` | GATED — W1+W2 + lab data |
-| — | WD: lab-box deployment items 1–4 | `goals/GOAL_WD_DEPLOY.md` | GATED — lab-box access; runs alongside any phase |
+| — | T1 testing harness | `goals/GOAL_T_TESTING.md` | **RUNNING** (peer session) |
+| 1 | M1 widen quality metrics | prompt below (was W0 item 5) | **READY — paste now** |
+| 2 | P1 probeinterface import | `goals/GOAL_P_PROBES.md` | **READY — paste now** |
+| 3 | D0 veto | `DESIGN_UX.md` | **WAITING ON BEN** |
+| 4 | D1 dashboard | `goals/GOAL_D_UIUX.md` | gated: D0 veto + T1 |
+| 5 | D2 run experience | `goals/GOAL_D_UIUX.md` | gated: D0 veto + T1 |
+| 6 | D3 report | `goals/GOAL_D_UIUX.md` | gated: D0 veto (+ M1 for quality tiles) |
+| 7 | D4 flow modals | `goals/GOAL_D_UIUX.md` | gated: after D1 |
+| 8 | T2/T3 journey + honesty tests | `goals/GOAL_T_TESTING.md` | gated: after D1/D2 |
+| 9 | P2 multi-shank · P3 wiring | `goals/GOAL_P_PROBES.md` | after P1; P3 needs adapter map |
+| 10 | W1 curation (4 slices) | `goals/GOAL_W1_CURATION.md` | after M1; slice 4 after D1 |
+| 11 | W2 reproducibility | `goals/GOAL_W2_REPRO.md` | after/with late W1 |
+| 12 | W3 face | `goals/GOAL_W3_FACE.md` | gated: Ben's pick, after D track |
+| 13 | W4 multi-recording | `goals/GOAL_W4_MULTI.md` | gated: W1+W2+lab data |
+| — | WD lab deployment items 1–4 | `goals/GOAL_WD_DEPLOY.md` | gated: lab-box access |
 
 ## Paste prompts, in run order
 
-### 1 — W0 quick wins  [READY]
+### M1 — widen the quality metrics  [READY]
 
 ```
-This workbench is becoming the tool Tracy's UPitt lab uses to turn raw Blackrock recordings
-into publishable single units, and five small audit-identified dead-ends still undercut the
-trust it needs first: a 0-unit sort shows green success, the INSPECTING panel clips its own
-text, the active sorter forgets itself every launch, the keyboard help lies, and quality
-metrics are 3 of ~20 while the PCA they need is computed and thrown away.
+The workbench's unit-quality evidence is 3 of SpikeInterface's ~20 metrics while the PCA the
+isolation metrics need is already computed and thrown away — every downstream surface (the
+report's quality section, the coming D3 verdict tiles, W1's curation thresholds) flatters
+thin evidence until this widens.
 
-Execute goals/GOAL_W0_QUICKWINS.md — all five remaining wins, at their stated scope.
+Widen the computed quality metrics in scripts/run_sorting.py (the metric_names list, line
+~1054): add presence_ratio, amplitude_cutoff, amplitude_median, and the PCA-based isolation
+metrics (isolation_distance, l_ratio, d_prime, nn_hit_rate). Confirm the report's quality
+table renders the new columns and degrades gracefully for old saved analyzers that lack
+them.
 
 Done when: the suite is green; the 30 s sort smoke passes with the noise-floor canary at
-~4 µV; a deliberate 0-unit sort shows the amber detect_threshold hint in the UI; the
-INSPECTING panel shows its full content; a relaunch restores the previously active sorter;
-the help names only real bindings; the new metric columns appear in a fresh analyzer and the
-report renders them; and a fresh-context Fable review of the full diff has run with its
-findings addressed or recorded.
+~4 µV; a fresh analyzer carries the new columns; the report renders them; and a
+fresh-context Fable review of the diff has run with findings addressed or recorded.
 
-Boundaries: no adjacent refactors; the SNR≥5 headline rule stays (W1's job); CLAUDE.md's
-invariants — aux-drop ordering, the µV gate, --progress json stdout purity, non-fatal
-metrics — are untouchable; update CLAUDE.md's .si_menu.json key list when you persist the
-active sorter. Seal per the between-run contract.
+Boundaries: metrics stay non-fatal (the Sorting saves first; a metrics crash degrades to
+success-with-note and cleans up half-built derived files); no threshold/curation logic (W1
+slice 1's job); no UI changes beyond the report's existing table rendering what the
+analyzer has. Seal per the between-run contract.
 ```
 
-### 2 — W1 slice 1: defensible auto-curation  [after W0 seals]
+### P1 — probeinterface import  [READY]
 
 ```
-The workbench's headline "N of M look high-quality" rests on a hardcoded SNR≥5 &
-ISI≤0.5 rule that can mislead the lab members who trust it most; with W0's widened metric
-base landed, the count can finally mean something defensible.
+The UPitt researchers' probes have different setups, and today the workbench only knows its
+built-in profiles plus hand-entered ones — a probe the lab already has a probeinterface
+description for should drop straight in.
 
-Execute goals/GOAL_W1_CURATION.md slice 1: replace the hardcoded rule with a configurable,
-literature-grounded threshold rule owned in one place, its thresholds stated wherever the
-count appears.
+Execute goals/GOAL_P_PROBES.md slice P1: import probeinterface .json (and .prb where
+probeinterface reads it) into the user probe library via CLI and menu, validated against
+the recording's neural channel count with honest errors naming any mismatch.
 
-Done when: the suite and the 30 s sort smoke are green (canary ~4 µV); every surface that
-shows the count states its rule; the rule is configurable and its config persists; and a
-fresh-context Fable review has run with findings addressed or recorded.
+Done when: the suite and loader smoke are green; a 30 s sort runs end-to-end with an
+imported probe applied and the report's probe section renders it faithfully; the canary
+holds at ~4 µV; explicit-probe-fails-hard / default-falls-back-soft asymmetry is preserved;
+and a fresh-context Fable review has run with findings addressed or recorded.
 
-Boundaries: the brief's — one owner for the rule, no curation-lifecycle work yet (that is
-slice 2), no changes to how metrics are computed. Seal per the between-run contract.
+Boundaries: probes.py stays the single owner of geometry; geometry still only soft-re-ranks
+sorters; test probes are built in-test, never committed fixtures; keep menu-side UI touches
+minimal (the real probe-UI pass follows D1). Seal per the between-run contract.
 ```
 
-### 3+ — W1 slices 2–4, W2 slices  [author when their turn comes]
+### D1–D4 — the overhaul slices  [gated on the D0 veto]
 
-Written fresh from `GOAL_W1_CURATION.md` / `GOAL_W2_REPRO.md` with `fable-prompt-builder`
-when the preceding slice seals — constants and file:line anchors go stale too fast to
-pre-write them. Keep each prompt: intent → slice → done-criteria naming the gates → brief's
-boundaries → seal.
+Authored with `fable-prompt-builder` **when Ben's veto lands**, against the spec as amended
+— pre-writing them risks quoting a spec line the veto changes. Each will cite
+`goals/GOAL_D_UIUX.md` + the spec sections from DESIGN_UX §7, name the T1 gates
+(deliberate snapshot re-baselining with reviewed diffs), and seal per the contract.
 
-### WD items  [when lab-box access exists]
+### T2/T3, P2/P3, W1+ — authored when their gates clear
 
-Authored per `goals/GOAL_WD_DEPLOY.md` items 1–4 when Ben has a session on (or remote access
-to) the lab box. Item 1 (fresh-clone install) and item 2 (full journey on Windows) can run
-the same day.
+Same rule: fresh prompts from the briefs at gate-time, constants verified against source.
 
 ## Rules for this file
 
@@ -110,8 +139,13 @@ the same day.
 
 ## Sealed record
 
-- **2026-08-18 — Orchestrator installed** (this session). NORTHSTAR/LOOPS/goals/ROADMAP/
-  SEALS/LESSONS + 4 agents + verify-spike & status skills, patterned on decantv2; W0 brief
+- **2026-08-18 — overhaul kickoff** (this session). Ben's directive taken on record
+  (NORTHSTAR updated: UPitt researchers, varied probe setups, Faibussowitsch × Al-Olimat,
+  UI/UX mandate); `DESIGN_UX.md` D0 spec drafted from screenshots of every surface; GOAL_D /
+  GOAL_T / GOAL_P briefs written; W0 dissolved into the graph; T1 dispatched to the peer
+  session; queue restructured as a dependency graph.
+- **2026-08-18 — orchestrator installed** (`4e60ec2`). NORTHSTAR/LOOPS/goals/ROADMAP/SEALS/
+  LESSONS + 4 agents + verify-spike & status skills, patterned on decantv2; W0 brief
   verified against source (two of seven audit quick wins already landed: Explore opens its
   figures, sort stderr goes to a per-run log).
 - **Pre-orchestrator landings** (provenance, from git): probe geometry real + menu probe
