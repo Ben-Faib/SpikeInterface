@@ -12,10 +12,11 @@ off-TTY). Run with an action -> dispatches it directly (handy for scripting).
 Heavy SpikeInterface imports are lazy, so the menu stays responsive.
 
 The dashboard has a left Sorter sidebar (←/→ to focus it, ↑/↓ to choose; the
-active sorter — what report/GUI/compare act on — is marked and echoed in the
-footer) over a Pipeline status panel, and a right Actions list (Enter or 1-9 to
-run). It stays usable at any window size and guides you when the recording files
-are missing. Styling mirrors scripts/run_sorting.py (see scripts/ui.py).
+active sorter — what report/GUI/compare act on — is marked by the left accent
+bar and named in the SORT banner, its one home) and a right ACTIONS list: six
+numbered WORKFLOW actions (Enter or 1-6) over a dim MANAGE tier on letter keys.
+It stays usable at any window size and guides you when the recording files are
+missing. Styling mirrors scripts/run_sorting.py (see scripts/ui.py).
 
 Actions:
     explore   quick static figures (LFP + .nev) via scripts/explore_data.py
@@ -663,26 +664,37 @@ _MENU = [
     ("13", "help",   "Help",                    "what each step does · sorters · Docker · data"),
 ]
 
-# v2 (Textual) action table — (key, title, hint, needs_data). ``needs_data`` dims
-# the action and blocks it when no recording is present; help/theme/verify/
-# quit always work. ``help`` and ``quit`` are handled in-app, not by DISPATCH.
+# v2 (Textual) action table — (key, title, hint, needs_data, section). The first six
+# rows are THE WORKFLOW (numbered 1-6 in the dashboard, DESIGN_UX §2 order: the GUI
+# inspector is "Inspect", Compare precedes Traces); the rest are MANAGE — housekeeping
+# rendered dim below a gap, reached by letter keys. ``needs_data`` dims the action and
+# blocks it when no recording is present; MANAGE rows always work. ``help`` and
+# ``quit`` are handled in-app, not by DISPATCH.
 _ACTIONS = [
-    ("explore",    "Explore raw data",        "static figures (LFP + .nev), no sort needed", True),
-    ("sort",       "Run / re-run sorting",    "sort the active sorter; full or quick",       True),
-    ("report",     "Build & open report",     "interactive HTML → browser",                  True),
-    ("gui",        "Open GUI inspector",      "spikeinterface-gui on the active sort",       True),
-    ("traces",     "Scroll raw traces",       "ephyviewer trace browser",                    True),
-    ("compare",    "Compare sorters",         "pick two saved sorts → comparison.html",      True),
-    ("params",     "Edit sorter parameters",  "tune the active sorter (saved)",              False),
-    ("manage",     "Manage sorters",          "download images · delete · clear saved sorts", False),
-    ("probe",      "Set probe geometry",     "pick / edit the electrode geometry",          False),
-    ("verify",     "Verify install",          "environment smoke test",                      False),
-    ("theme",      "Change colour theme",     "pick an accent colour (saved)",               False),
-    ("help",       "Help",                    "what each step does · sorters · Docker · data files", False),
-    ("quit",       "Quit",                    "exit the menu (or press q)",                  False),
+    ("explore", "Explore",          "figures: LFP + events, no sort needed",   True,  "workflow"),
+    ("sort",    "Sort",             "run the active sorter — full or quick",   True,  "workflow"),
+    ("report",  "Report",           "build + open the HTML report",            True,  "workflow"),
+    ("gui",     "Inspect",          "GUI on the saved sort (desktop window)",  True,  "workflow"),
+    ("compare", "Compare",          "two saved sorts → comparison.html",       True,  "workflow"),
+    ("traces",  "Traces",           "scroll raw signal (desktop window)",      True,  "workflow"),
+    ("params",  "Edit parameters",  "tune the active sorter (saved)",          False, "manage"),
+    ("manage",  "Manage sorters",   "download images · delete · clear sorts",  False, "manage"),
+    ("probe",   "Probe geometry",   "pick / edit the electrode geometry",      False, "manage"),
+    ("verify",  "Verify install",   "environment smoke test",                  False, "manage"),
+    ("theme",   "Colour theme",     "pick an accent colour (saved)",           False, "manage"),
+    ("help",    "Help",             "steps · sorters · Docker · data files",   False, "manage"),
+    ("quit",    "Quit",             "exit the menu (or press q)",              False, "manage"),
 ]
 # Keys that need a recording present (so the fallback menu can refuse them cleanly).
-_DATA_ACTIONS = {k for k, _t, _h, needs in _ACTIONS if needs}
+_DATA_ACTIONS = {k for k, _t, _h, needs, _s in _ACTIONS if needs}
+
+# Artifact each action leaves behind, for the dashboard's LAST RESULT line and its
+# ``r`` reopen key. Only browser-openable artifacts get a reopen path.
+_RESULT_PATHS = {
+    "explore": "outputs/explore.html",
+    "report": "outputs/report.html",
+    "compare": "outputs/comparison.html",
+}
 
 # Rich per-action explanation for the dashboard's explanation pane. ``needs`` keys
 # are requirement names resolved against live state in
@@ -751,7 +763,8 @@ class MenuController:
         self.cfg = cfg
         self.header = HEADER
         self.themes = dict(ui.THEMES)
-        self.actions = [dict(key=k, title=t, hint=h, needs_data=nd) for k, t, h, nd in _ACTIONS]
+        self.actions = [dict(key=k, title=t, hint=h, needs_data=nd, section=s)
+                        for k, t, h, nd, s in _ACTIONS]
         self.theme_name = cfg.get("theme", ui.DEFAULT_THEME)
         if self.theme_name not in ui.THEMES:
             self.theme_name = ui.DEFAULT_THEME
@@ -759,9 +772,14 @@ class MenuController:
         self.use_docker = bool(cfg.get("use_docker", False))
         self.sorter_params = dict(cfg.get("sorter_params", {}))
         self.sorters = sorter_registry.runnable(self.use_docker) or [sorter_registry.default_sorter()]
-        want = args.sorter if args.sorter else sorter_registry.default_sorter()
+        # Explicit --sorter wins; otherwise the last session's persisted choice
+        # (DESIGN_UX §2 — the active sorter survives relaunch); then the default.
+        want = (args.sorter or cfg.get("active_sorter")
+                or sorter_registry.default_sorter())
         self.active_sorter = want if want in self.sorters else self.sorters[0]
         self.args.sorter = self.active_sorter
+        self.last_result = cfg.get("last_result") if isinstance(
+            cfg.get("last_result"), dict) else None
         self.want_welcome = not bool(cfg.get("seen_welcome", False))
         self.active_probe = cfg.get("active_probe", probes.DEFAULT_PROBE)
         if probes.get(self.active_probe) is None:
@@ -771,13 +789,47 @@ class MenuController:
         self.reload()
 
     def set_active_by_name(self, name: str) -> bool:
-        """Activate a runnable sorter by id. False (no change) if not runnable."""
+        """Activate a runnable sorter by id. False (no change) if not runnable.
+        Persisted, so the choice survives relaunch (DESIGN_UX §2)."""
         if name not in self.sorters:
             return False
         self.active_sorter = name
         self.args.sorter = name
         self._mark_active()
+        self.cfg["active_sorter"] = name
+        _save_config(self.cfg)
         return True
+
+    def record_result(self, key: str, ok: bool) -> None:
+        """Remember the newest action outcome for the dashboard's LAST RESULT line
+        (persisted — results must not evaporate on the next keystroke, DESIGN_UX §1)."""
+        import datetime
+
+        path = _RESULT_PATHS.get(key)
+        if key == "sort":
+            path = f"outputs/{self.active_sorter}/"
+        # ISO, not clock-time: the record persists across launches, and "14:18"
+        # from last Tuesday must not read as today (D1 review #7). The view
+        # formats it relative to the current date.
+        self.last_result = {"key": key, "ok": bool(ok),
+                            "when": datetime.datetime.now().isoformat(timespec="minutes"),
+                            "path": path}
+        self.cfg["last_result"] = self.last_result
+        _save_config(self.cfg)
+
+    def reopen_last(self) -> tuple[bool, str]:
+        """``r``: reopen the last result's artifact in the browser, when it has one."""
+        lr = self.last_result
+        if not lr:
+            return False, "Nothing to reopen yet"
+        path = lr.get("path") or ""
+        if not path.endswith(".html"):
+            return False, f"{lr.get('key', 'last action')} has no page to reopen"
+        target = bio.REPO_ROOT / path
+        if not target.exists():
+            return False, f"{path} is gone — rebuild it"
+        _open_in_browser(target.resolve().as_uri())
+        return True, f"Reopened {path}"
 
     def cycle_active(self) -> None:
         """`t` key: advance to the next *runnable* sorter (skips non-runnable rows)."""
@@ -1142,6 +1194,7 @@ class MenuController:
         except Exception as e:  # noqa: BLE001
             ui.warn(f"compare failed: {e!r}")
             ok = False
+        self.record_result("compare", ok)
         return ok, _last_message("compare", self.args.sorter, ok), True
 
     def run(self, key: str, span: str | None) -> tuple[bool, str, bool]:
@@ -1164,6 +1217,7 @@ class MenuController:
 
                 _P(params_path).unlink(missing_ok=True)
                 self.args.params_file = None
+        self.record_result(key, ok)
         return ok, _last_message(key, self.args.sorter, ok), key in ("sort", "compare")
 
 

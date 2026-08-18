@@ -16,22 +16,23 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-# Action table mirroring SpikeInterface_Menu._ACTIONS (keys + needs_data), so
-# number-key indices and the data-dimming behaviour match the real app.
+# Action table mirroring SpikeInterface_Menu._ACTIONS (keys + needs_data + section),
+# so number-key indices, the WORKFLOW/MANAGE split, and the data-dimming behaviour
+# match the real app. D1 order of record: gui ("Inspect") 4th, compare 5th, traces 6th.
 ACTIONS = [
-    ("explore", "Explore raw data", "static figures", True),
-    ("sort", "Run / re-run sorting", "full or quick", True),
-    ("report", "Build & open report", "interactive HTML", True),
-    ("gui", "Open GUI inspector", "sigui", True),
-    ("traces", "Scroll raw traces", "ephyviewer", True),
-    ("compare", "Compare sorters", "agreement matrix", True),
-    ("params", "Edit sorter parameters", "tune the active sorter", False),
-    ("manage", "Manage sorters", "download · delete", False),
-    ("probe", "Set probe geometry", "pick / edit geometry", False),
-    ("verify", "Verify install", "smoke test", False),
-    ("theme", "Change colour theme", "accent", False),
-    ("help", "Help", "what each step does · sorters · Docker · data files", False),
-    ("quit", "Quit", "exit", False),
+    ("explore", "Explore", "figures: LFP + events", True, "workflow"),
+    ("sort", "Sort", "full or quick", True, "workflow"),
+    ("report", "Report", "build + open HTML", True, "workflow"),
+    ("gui", "Inspect", "GUI on the saved sort", True, "workflow"),
+    ("compare", "Compare", "two saved sorts", True, "workflow"),
+    ("traces", "Traces", "scroll raw signal", True, "workflow"),
+    ("params", "Edit parameters", "tune the active sorter", False, "manage"),
+    ("manage", "Manage sorters", "download · delete", False, "manage"),
+    ("probe", "Probe geometry", "pick / edit geometry", False, "manage"),
+    ("verify", "Verify install", "smoke test", False, "manage"),
+    ("theme", "Colour theme", "accent", False, "manage"),
+    ("help", "Help", "steps · sorters · Docker · data files", False, "manage"),
+    ("quit", "Quit", "exit", False, "manage"),
 ]
 
 
@@ -52,7 +53,10 @@ class FakeController:
         self.active_sorter = "tridesclous2"
         self.active_idx = 0
         self.sorter_params: dict[str, dict] = {}
-        self.actions = [dict(key=k, title=t, hint=h, needs_data=nd) for k, t, h, nd in ACTIONS]
+        self.actions = [dict(key=k, title=t, hint=h, needs_data=nd, section=s)
+                        for k, t, h, nd, s in ACTIONS]
+        self.last_result = None
+        self.reopened = 0
         self.ran: list[tuple[str, str | None]] = []
         self.ran_compare = None
         self.downloaded: list[str] = []
@@ -300,11 +304,29 @@ class FakeController:
 
     def run_compare(self, pair) -> tuple[bool, str, bool]:
         self.ran_compare = tuple(pair)
+        self.record_result("compare", True)
         return True, f"✓ compared {pair}", True
 
     def run(self, key: str, span: str | None) -> tuple[bool, str, bool]:
         self.ran.append((key, span))
+        self.record_result(key, True)
         return True, f"✓ ran {key}", key in ("sort", "compare")
+
+    def record_result(self, key: str, ok: bool) -> None:
+        path = {"explore": "outputs/explore.html", "report": "outputs/report.html",
+                "compare": "outputs/comparison.html"}.get(key)
+        if key == "sort":
+            path = f"outputs/{self.active_sorter}/"
+        self.last_result = {"key": key, "ok": bool(ok), "when": "12:00", "path": path}
+
+    def reopen_last(self) -> tuple[bool, str]:
+        if not self.last_result:
+            return False, "Nothing to reopen yet"
+        path = self.last_result.get("path") or ""
+        if not path.endswith(".html"):
+            return False, f"{self.last_result.get('key')} has no page to reopen"
+        self.reopened += 1
+        return True, f"Reopened {path}"
 
     def sort_command(self, span: str | None) -> list[str]:
         # A harmless argv so SortProgressScreen's worker can spawn + exit cleanly in

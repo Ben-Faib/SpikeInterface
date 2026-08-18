@@ -7,38 +7,46 @@ in ``SpikeInterface_Menu.py``) that this app calls back into. That keeps the app
 import-light (no SpikeInterface at import time) and unit-testable with Textual's
 ``run_test`` / ``Pilot`` harness.
 
-The dashboard is a **simultaneous three-panel layout**. SORTERS (#sorterpane) and
-ACTIONS (#actionpane) sit side-by-side and are *both always visible*; a bottom
-**INSPECTING** panel (#inspect) describes whichever pane currently has focus (the
-highlighted sorter's blurb, or the highlighted action's explanation). An always-on
-two-line banner sits above the panes: a DATA line (#databar) naming the loaded
-streams (or a loud ✗ problem line) and a SORT line (#sortbar) naming the active
-sorter and its readiness.
+The dashboard is a **simultaneous three-panel layout** (redesigned to DESIGN_UX §2,
+the D1 slice). SORTERS (#sorterpane) and ACTIONS (#actionpane) sit side-by-side and
+are *both always visible*; a bottom **INSPECTING** panel (#inspect) describes
+whichever pane currently has focus. An always-on two-line banner sits above the
+panes: an INPUTS line (#databar — DATA + PROBE together, or a loud ✗ problem line)
+and a SORT line (#sortbar) naming the active sorter and its readiness — the ONE
+place that fact is stated (§1 one-fact-one-place). Below INSPECTING, a persistent
+LAST RESULT line (#resultbar) keeps the newest action outcome + artifact path.
 
 Layout (responsive):
 
-    ┌ wordmark crest (collapses full→compact→hidden as height shrinks)   ┐
-    │ ── University of Pittsburgh · SpikeInterface ── (#titlebar)         │
-    │ DATA  ✓ LFP  ✓ Broadband  ✓ .nev   all 3 streams loaded (#databar)  │
-    │ SORT  ★ tridesclous2 · 13 units saved · Ready to run     (#sortbar)  │
-    │ ┌ SORTERS (#sorterpane) ───────────┬ ACTIONS — on tridesclous2 ───┐ │
-    │ │ ▌ ★ tridesclous2  13u ACTIVE      │ 1  Explore raw data           │ │
-    │ │   spykingcircus2  8u              │ 2  Run / re-run sorting        │ │
-    │ │ …                                 │ …                              │ │
-    │ └───────────────────────────────────┴────────────────────────────────┘ │
-    │ ┌ INSPECTING ▸ tridesclous2 ─ <highlighted row's blurb> ───────────┐ │
+    ┌ wordmark crest (collapses full→compact→hidden as height shrinks)     ┐
+    │ ── University of Pittsburgh · SpikeInterface ── (#titlebar)           │
+    │ DATA  ✓ all 3 streams    PROBE  nnx-a1x16 · 16 ch @ 100 µm ✓ (#databar)│
+    │ SORT  ★ tridesclous2 · 13 units · 30 s saved · Ready to run (#sortbar) │
+    │ ┌ SORTERS ──────────────────┬ ACTIONS — on tridesclous2 ────────────┐ │
+    │ │ ▌ tridesclous2  13u  ●     │ 1  Explore   figures: LFP + events    │ │
+    │ │   spykingcircus2  8u  ●    │ …                                     │ │
+    │ │ NEEDS A GPU — the lab box  │ MANAGE (dim)                          │ │
+    │ └─ ● ready · ◌ get · – n/a ──┴ e  Edit parameters …──────────────────┘ │
+    │ ┌ INSPECTING ▸ tridesclous2 ─ <highlighted row's compact blurb> ────┐ │
     │ └───────────────────────────────────────────────────────────────────┘ │
-    │ ↑/↓ choose · Enter activate · →/1-9 Actions · t · d · ? · q quit    │
-    └─────────────────────────────────────────────────────────────────────┘
+    │ LAST  ✓ report · 14:18 → outputs/report.html   r reopen  (#resultbar) │
+    │ ↑/↓ choose · Enter activate · →/1-6 Actions · t · x · ? · q (footer)  │
+    └───────────────────────────────────────────────────────────────────────┘
+
+Sorter rows honour the §1 signal budget: name + saved-unit count + ONE
+availability glyph (● runs now · ◌ obtainable · – not on this machine; the legend
+is the pane's border subtitle); the active sorter is marked by the left accent
+bar + bold — a shape, never a chip. Never-runnable groups (GPU here) fold to one
+summary line.
 
 Navigation: ←/→ (or Tab/Shift-Tab) move *focus* between the two always-visible
-panes (the focused pane gets the heavy accent border; the bottom INSPECTING panel
-re-renders for the now-focused pane). ↑/↓ (or j/k) move within the focused list.
-Enter on a runnable sorter activates it (the SORT banner + ACTIONS title follow);
-Enter on an action runs it (the app drops out via ``suspend()`` so the action's own
-output scrolls normally, then resumes). 1-9 jump-run an action (focus moves to the
-actions list first). ``t`` cycles the active sorter, ``x`` manages the highlighted
-sorter (Stage 5), ``d`` opens the data-files help, ``q`` quits.
+panes (the focused pane gets the heavy accent border; INSPECTING re-renders for
+it). ↑/↓ (or j/k) move within the focused list. Enter on a runnable sorter
+activates it (the SORT banner + ACTIONS title follow); Enter on an action runs
+it. 1-6 jump-run the WORKFLOW actions; MANAGE actions ride letters (e params ·
+m manage · p probe · v verify · c theme). ``t`` cycles the active sorter, ``x``
+manages the highlighted sorter, ``r`` reopens the last result's page, ``d``
+opens the data-files help, ``q`` quits.
 
 The accent colour is themeable (driven into the ``$accentcolor`` CSS variable);
 the Pitt blue+gold shield is fixed. Both lists scroll, so the active sorter and
@@ -104,7 +112,8 @@ class Controller(Protocol):
     header: str
     sorters: list[str]                  # sorter names, in tab order
     themes: dict[str, str]              # name -> accent hex
-    actions: list[dict]                 # {key,title,hint,needs_data}
+    actions: list[dict]                 # {key,title,hint,needs_data,section}
+    last_result: "dict | None"          # {key,ok,when,path} — newest action outcome
     active_idx: int
     accent: str                         # current accent hex
     theme_name: str
@@ -143,6 +152,8 @@ class Controller(Protocol):
     def run(self, key: str, span: str | None) -> tuple[bool, str, bool]: ...
     def sort_command(self, span: str | None) -> list: ...
     def sort_log_path(self, span: str | None = None): ...
+    def record_result(self, key: str, ok: bool) -> None: ...
+    def reopen_last(self) -> tuple[bool, str]: ...
 
 
 # --------------------------------------------------------------------------- #
@@ -1323,6 +1334,15 @@ class ProbeManagerScreen(ModalScreen):
         row = self._highlighted()
         if row is None:
             return
+        # Imported probes are view/duplicate/delete-only (P1 handoff, 2026-08-18):
+        # the generic field form knows no params for kind 'imported' and a rename
+        # would orphan the materialised geometry — refuse with the next step named
+        # rather than offering a flow that ends in an error.
+        if row.get("kind") == "imported":
+            self._last = Text("imported probes can't be edited — duplicate or "
+                              "re-import instead", style="#f0883e")
+            self._rebuild()
+            return
         seed = {"name": row["name"], "label": row["label"], "kind": row["kind"],
                 "params": dict(row.get("params", {})), "builtin": row.get("builtin"),
                 "note": ""}
@@ -1675,16 +1695,15 @@ class SpikeMenuApp(App):
     #crest { height: auto; content-align: center top; padding: 1 0 0 0; }
     #titlebar { height: 1; content-align: left middle; }
 
-    /* Always-on two-line banner (replaces statusline + activebar): a DATA row
-       naming the loaded streams (or a loud ✗ problem line) and a SORT row naming
-       the active sorter + its readiness. Fixed at one row each so the crest reserve
-       never shifts when the banner switches between its quiet/loud text. */
+    /* Always-on two-line banner (DESIGN_UX §2): one row for the INPUTS (DATA +
+       PROBE — both "verified inputs", sharing a line; a loud ✗ problem takes the
+       whole row) and one row for the workbench STATE (the active sorter). Fixed at
+       one row each so the crest reserve never shifts between quiet/loud text. */
     #databar { height: 1; margin: 1 2 0 2; }
-    #sortbar { height: 1; margin: 0 2 0 2; }
-    #probebar { height: 1; margin: 0 2 1 2; }
+    #sortbar { height: 1; margin: 0 2 1 2; }
     /* On an extreme-short window the banner + title yield their rows to the lists
-       (the DATA/SORT info still lives in the d Help topic + the footer). */
-    #databar.collapsed, #sortbar.collapsed, #titlebar.collapsed, #probebar.collapsed { display: none; }
+       (the DATA/SORT info still lives in the d Help topic). */
+    #databar.collapsed, #sortbar.collapsed, #titlebar.collapsed { display: none; }
 
     /* In-UI download indicator: a one-row banner-area line shown only while a
        download is live (or just finished, briefly). Hidden otherwise. */
@@ -1724,14 +1743,21 @@ class SpikeMenuApp(App):
         background: transparent; text-style: underline;
     }
 
-    /* Bottom INSPECTING panel — full width, capped height, scrolls. Follows the
-       focused pane's highlighted row. */
-    #inspect { height: auto; max-height: 7; border: round #3a3f47;
+    /* Bottom INSPECTING panel — full width, auto-sized to its (compact) content up
+       to a height budget set by _relayout, scrollable past it (mouse, or PgDn/PgUp
+       since the panel stays out of the Tab order). Follows the focused pane's
+       cursor. */
+    #inspect { height: auto; max-height: 12; border: round #3a3f47;
         padding: 0 1; margin: 1 1 0 1; }
     #inspect.hidden { display: none; }
 
-    /* Pinned to the bottom at a fixed 2 rows so a long key-hint can never wrap and
-       steal body rows from the lists. */
+    /* LAST RESULT — the newest action outcome, persistent until the next one
+       (results must not evaporate on a keystroke, DESIGN_UX §1). */
+    #resultbar { height: 1; margin: 0 2; }
+    #resultbar.hidden, #resultbar.collapsed { display: none; }
+
+    /* Pinned to the bottom at a fixed 2 rows (transient status + key hints) so a
+       long line can never wrap and steal body rows from the lists. */
     #footer { dock: bottom; height: 2; padding: 0 2; }
     """
 
@@ -1745,10 +1771,22 @@ class SpikeMenuApp(App):
         Binding("shift+tab", "focus_sorters", "Sorters", show=False, priority=True),
         Binding("t", "cycle_sorter", "Switch sorter", show=False),
         Binding("w", "watch_download", "Download", show=False),
-        # x manages the highlighted sorter (delete image / clear saved sort) — wired
-        # to a no-op-safe action now; Stage 5 fills it in.
+        # x manages the highlighted sorter (delete image / clear saved sort).
         Binding("x", "manage_highlighted", "Manage", show=False),
+        # MANAGE letter keys (DESIGN_UX §2): housekeeping actions run by letter, not
+        # number — numbers belong to the six WORKFLOW actions. `t` keeps its long-
+        # standing switch-sorter meaning (§8: keyboard model unchanged), so the
+        # colour theme rides `c` — a recorded deviation from the §2 mock's `t theme`.
         Binding("p", "probe", "Probe", show=False),
+        Binding("e", "run_key('params')", "Edit parameters", show=False),
+        Binding("m", "run_key('manage')", "Manage sorters", show=False),
+        Binding("c", "run_key('theme')", "Colour theme", show=False),
+        Binding("v", "run_key('verify')", "Verify install", show=False),
+        Binding("r", "reopen_last", "Reopen last result", show=False),
+        # INSPECTING stays out of the Tab order (a pure display surface), so its
+        # overflow is reachable by keyboard via PgDn/PgUp instead (D1 review #4).
+        Binding("pagedown", "scroll_inspect(1)", "Scroll INSPECTING", show=False),
+        Binding("pageup", "scroll_inspect(-1)", "Scroll INSPECTING", show=False),
         Binding("d", "data_help", "Data files", show=False),
         Binding("f", "choose_folder", "Data folder", show=False),
         Binding("question_mark", "help", "Help", show=False),
@@ -1757,8 +1795,8 @@ class SpikeMenuApp(App):
         # should never hard-exit the dashboard and lose the user's place. Modals
         # keep their own Esc=cancel; q / Ctrl-C still quit the app.
         Binding("ctrl+c", "quit", "Quit", show=False),
-        # number-key jump: 1..9 -> action index 0..8
-        *[Binding(str(n), f"run_index({n - 1})", show=False) for n in range(1, 10)],
+        # number-key jump: 1..6 -> the WORKFLOW actions (the first six table rows).
+        *[Binding(str(n), f"run_index({n - 1})", show=False) for n in range(1, 7)],
     ]
 
     def __init__(self, controller: Controller):
@@ -1782,7 +1820,6 @@ class SpikeMenuApp(App):
         yield Static(id="titlebar")
         yield Static(id="databar")
         yield Static(id="sortbar")
-        yield Static(id="probebar")
         yield Static(id="dlbar")
         with Horizontal(id="body"):
             with Vertical(id="sorterpane"):
@@ -1791,13 +1828,18 @@ class SpikeMenuApp(App):
                 yield NavList(id="actions")
         with VerticalScroll(id="inspect"):
             yield Static(id="inspectbody")
+        yield Static(id="resultbar")
         yield Static(id="footer")
 
     def on_mount(self) -> None:
         # The INSPECTING panel is a pure display surface — keep it OUT of the Tab
         # focus order so Tab/Shift-Tab only ever move between the two lists.
         self.query_one("#inspect", VerticalScroll).can_focus = False
-        self.query_one("#sorterpane").border_title = "SORTERS"
+        pane = self.query_one("#sorterpane")
+        pane.border_title = "SORTERS"
+        # The availability glyph's text neighbour (DESIGN_UX §8 via critique #6): a
+        # legend on the pane border, so ●/◌/– always have words in view.
+        pane.border_subtitle = "● ready · ◌ get · – n/a"
         self._rebuild_sorters()
         self._rebuild_actions()
         self._refresh_action_title()
@@ -1820,7 +1862,7 @@ class SpikeMenuApp(App):
         self.c.mark_probe_setup_seen()
         if result == "manage":
             self._open_probes()
-        self._render_probebar(self.size.width)
+        self._render_databar(self.size.width)
         self._rebuild_sorters()
 
     def on_resize(self, event) -> None:
@@ -1834,52 +1876,54 @@ class SpikeMenuApp(App):
         self.query_one("#body").set_class(stacked, "stacked")
         self._render_databar(w)
         self._render_sortbar(w)
-        self._render_probebar(w)
         self._render_dlbar(w)
         self._refresh_action_title()
-        # Hide the INSPECTING panel on shortness so the lists keep their rows (its
-        # blurb is non-essential; the lists themselves must never clip). Stacked panes
-        # share the body height, so they need the room sooner — drop it earlier there.
-        hide_inspect = h < (self.STACK_SHORT_ROWS if stacked else 16)
-        self.query_one("#inspect").set_class(hide_inspect, "hidden")
         # On an extreme-short window (no room for two stacked panes once chrome is
-        # subtracted), collapse the title + banner so the lists keep their rows. The
-        # footer + the d Help topic still carry the DATA/SORT info.
+        # subtracted), collapse the title + banner + LAST RESULT so the lists keep
+        # their rows. The d Help topic still carries the DATA/SORT info.
         tiny = h < self.TINY_ROWS
-        for wid in ("#titlebar", "#databar", "#sortbar", "#probebar"):
+        for wid in ("#titlebar", "#databar", "#sortbar", "#resultbar"):
             self.query_one(wid).set_class(tiny, "collapsed")
         # Tiny: drop the pane borders too so two stacked panes fit the few body rows.
         self.query_one("#body").set_class(tiny, "tiny")
-        # Crest reserve = chrome (title + banner + its top margin + footer + the
-        # crest's own padding row, ~7 rows; ~3 when tiny-collapsed) + a usable min
-        # body. Side by side, one pane is ~8 rows; stacked, the two panes need ~6 rows
-        # between them PLUS the inspect panel when shown, so reserve more so the crest
-        # drops a tier rather than the lists losing rows.
-        chrome = 3 if tiny else 8
+        # ---- the yield budget (D1 review #1: arithmetic, not hand-tuned) --------
+        # Every fixed chrome row is counted; INSPECTING gets only what is left AFTER
+        # the lists' guaranteed minimum, and the crest reserve is derived from what
+        # is actually shown — so the lists and the LAST RESULT line can never be
+        # starved by an ancestor at any window size. Yield order (DESIGN_UX §1):
+        # crest first, then INSPECTING shrinks/hides, then (tiny) banner+resultbar.
+        dl_rows = 1 if getattr(self, "_download", None) is not None else 0
+        result_rows = 0 if tiny else (1 if getattr(self.c, "last_result", None) else 0)
+        fixed = 2 + dl_rows + result_rows + (0 if tiny else 5)  # footer + bars + title/banner+margins
         if tiny:
             body_min = 2 if stacked else 1     # borderless panes: 1 content row each
         elif stacked:
-            body_min = 6 + (0 if hide_inspect else 6)
+            body_min = 12                      # 2 panes × (2 border + 4 content)
         else:
-            body_min = 8
-        reserve = chrome + body_min
+            body_min = 8                       # side-by-side: 2 border + 6 content
+        # INSPECTING = content (≤ its 12-row cap) + 3 chrome rows (border + margin).
+        inspect_h = min(12, h - fixed - body_min - 3)
+        hide_inspect = tiny or inspect_h < (4 if stacked else 3)
+        self.query_one("#inspect").set_class(hide_inspect, "hidden")
+        if not hide_inspect:
+            self.query_one("#inspect").styles.max_height = inspect_h
+        reserve = fixed + body_min + (0 if hide_inspect else inspect_h + 3)
         self.query_one("#crest", CrestWidget).fit(w, h, reserve)
         self.query_one("#titlebar", Static).update(self._render_titlerule(w))
         self._refresh_footer(w)
 
     STACK_COLS = STACK_COLS
     BANNER_ROWS = BANNER_ROWS
-    # Stacked windows shorter than this hide the INSPECTING panel so both stacked
-    # panes keep a visible row (each pane is a 2-row border + ≥1 content row).
-    STACK_SHORT_ROWS = 24
     # Below this the title + banner collapse so two stacked panes still fit.
     TINY_ROWS = 14
 
     # -- the always-on DATA / SORT banner ------------------------------------- #
     def _render_databar(self, width: int) -> None:
-        """The DATA row: a quiet ✓ line naming the loaded streams (Events listed only
-        when the .nev loaded — an empty Events set is NOT a failure), or a loud ✗ line
-        naming the exact problem (missing / incomplete / unreadable broadband)."""
+        """The INPUTS row — DATA and PROBE share one line (DESIGN_UX §2: both are
+        verified inputs; the workbench state gets its own row). The quiet path is
+        'DATA ✓ all 3 streams · PROBE <label> · <summary> ✓'; a loud data problem
+        (missing / incomplete / unreadable broadband) takes the whole row — the
+        probe half yields to the thing that needs attention."""
         dr = self.c.data_report
         files = dr.get("files", [])
         complete = bool(files) and all(f.get("present") for f in files)
@@ -1888,14 +1932,28 @@ class SpikeMenuApp(App):
         t = Text()
         t.append("DATA  ", style=ui.SECONDARY)
         if dr.get("present") and complete and not unreadable:
-            labels = {".ns2": "LFP", ".ns5": "Broadband", ".nev": ".nev"}
             loaded = [f for f in files if f.get("present")]
-            for f in loaded:
-                if f["ext"] == ".nev" and not f.get("present"):
-                    continue
-                t.append("✓ ", style="#3fb950")
-                t.append(f"{labels.get(f['ext'], f['ext'])}   ", style=ui.PRIMARY)
-            t.append(f"  all {len(loaded)} streams loaded", style="dim")
+            t.append("✓ ", style="#3fb950")
+            t.append(f"all {len(loaded)} streams", style=ui.PRIMARY)
+            # The probe half — one glance answers "which geometry am I sorting with?"
+            # A MISMATCH is correctness-relevant (wrong geometry feeds the sort), so
+            # it goes loud and LEADS the probe half — label/summary are dropped so
+            # the warning can never be the part the ellipsis eats (D1 review #3).
+            pinfo = self.c.probe_info
+            match = pinfo.get("match", "")
+            if match == "mismatch":
+                t.append("      PROBE  ", style=ui.SECONDARY)
+                t.append("✗ channel count mismatch", style="bold #f0883e")
+                t.append(" — p to fix", style="#f0883e")
+            else:
+                t.append("      PROBE  ", style=ui.SECONDARY)
+                t.append(pinfo.get("label", pinfo.get("name", "unknown probe")),
+                         style=f"bold {self._accent}")
+                summary = pinfo.get("summary", "")
+                if summary:
+                    t.append(f" · {summary}", style=ui.PRIMARY)
+                if match in ("fits", "auto"):
+                    t.append(" ✓", style="#3fb950")
         elif not dr.get("present"):
             t.append("✗ no recording in ", style="bold #f0883e")
             t.append(f"{dr.get('data_dir', '.')} ", style="#f0883e")
@@ -1943,24 +2001,6 @@ class SpikeMenuApp(App):
         t.truncate(max(1, width - 2), overflow="ellipsis")
         self.query_one("#sortbar", Static).update(t)
 
-    def _render_probebar(self, width: int) -> None:
-        """The PROBE row: active probe label, summary, and channel-match status."""
-        info = self.c.probe_info
-        t = Text()
-        t.append("PROBE  ", style=ui.SECONDARY)
-        label = info.get("label", info.get("name", "unknown probe"))
-        t.append(label, style=f"bold {self._accent}")
-        summary = info.get("summary", "")
-        if summary:
-            t.append(f" · {summary}", style=ui.PRIMARY)
-        match = info.get("match", "")
-        if match in ("fits", "auto"):
-            t.append(" · ✓", style="#3fb950")
-        elif match == "mismatch":
-            t.append(" · ✗ channel count mismatch", style="bold #f0883e")
-        t.truncate(max(1, width - 2), overflow="ellipsis")
-        self.query_one("#probebar", Static).update(t)
-
     def _render_dlbar(self, width: int) -> None:
         """The collapsed download indicator. Hidden when no session; while live shows
         '⬇ <name>  NN%  <speed>  ETA m:ss   [w expand]'; on finish a transient
@@ -2001,7 +2041,9 @@ class SpikeMenuApp(App):
         bar.update(t)
 
     def _refresh_action_title(self) -> None:
-        self.query_one("#actionpane").border_title = f"ACTIONS — on {self.c.active_sorter}"
+        # Plain "ACTIONS" — the active sorter's one at-rest home is the SORT banner
+        # (§1.1; the old "— on <sorter>" suffix was a second home, D1 review #5).
+        self.query_one("#actionpane").border_title = "ACTIONS"
 
     # -- rendering helpers ---------------------------------------------------- #
     def _render_titlerule(self, width: int) -> Text:
@@ -2030,6 +2072,20 @@ class SpikeMenuApp(App):
         for group in self._GROUP_ORDER:
             members = by_group.get(group)
             if not members:                      # omit empty groups
+                continue
+            # Never-runnable-here groups FOLD to one summary line (DESIGN_UX §2):
+            # listing five kilosorts this machine can never run is clutter, not
+            # information. On the lab's GPU box those sorters are runnable, land in
+            # a runnable group, and list normally. (Nothing active/downloading can
+            # be in a folded group — members are all non-runnable by definition.)
+            if group in ("gpu", "unavailable") and not any(
+                    m.get("runnable") for m in members):
+                label = ("NEEDS A GPU — the lab box" if group == "gpu"
+                         else "NOT AVAILABLE here")
+                ol.add_option(Option(
+                    Text(f"{label} ({len(members)})",
+                         style=f"dim {self._GROUP_COLOR[group]}"),
+                    id=f"__grpfold_{group}__", disabled=True))
                 continue
             # Header brighter than its rows (was "dim bold", which read as just
             # another disabled item) so the grouping reads as structure.
@@ -2094,23 +2150,19 @@ class SpikeMenuApp(App):
         "gpu": "#f0883e",           # orange — needs hardware you don't have
         "unavailable": "#6e7681",   # grey   — not an option here
     }
-    # Compact inline tag on a NON-runnable row so the block reason is scannable
-    # without moving the cursor to read the detail card.
-    _GROUP_ROW_TAG = {"docker": "docker", "gpu": "GPU", "unavailable": "n/a"}
 
     def _sorter_text(self, info: dict) -> Text:
-        # A persistent left accent BAR + bold name + reverse ACTIVE chip mark the
-        # active sorter as a SHAPE: it reads at a glance regardless of focus or where
-        # the cursor sits, and is structurally different from the cursor highlight
-        # (so active ≠ cursor). Survives NO_COLOR (▌ is a filled block, `reverse`
-        # swaps fg/bg). ★ = recommended; the section header already says the group, so
-        # the old per-row ◇/· glyph is gone. The SELECTED card carries the full info.
+        # Signal budget (DESIGN_UX §1): at most two marks per row at rest — the name
+        # plus a unit count and ONE availability glyph. The active sorter is marked
+        # structurally (persistent left accent BAR + bold — a SHAPE that survives
+        # NO_COLOR and reads differently from the cursor highlight), never with a
+        # chip: the SORT banner is the fact's home. Fit/ready/download detail lives
+        # in INSPECTING for the row under the cursor; a live pull keeps its % (real
+        # progress is never hidden). The glyph legend is the pane's border subtitle.
         active = info.get("active", False)
         runnable = info.get("runnable", False)
         t = Text()
         t.append("▌ " if active else "  ", style=self._accent if active else "")
-        t.append("★ " if info.get("recommended") else "  ",
-                 style=f"bold {self._accent}" if info.get("recommended") else "")
         # No accent fg on the name: when the cursor lands on the active row, the
         # cursor's own foreground keeps it legible (accent-on-cursor was low-contrast).
         name_style = "bold" if active else ("" if runnable else ui.SECONDARY)
@@ -2118,30 +2170,20 @@ class SpikeMenuApp(App):
         # Saved-unit count: readable secondary grey (real info), em-dash when none.
         t.append(f"  {info['units']}u" if info.get("present") else "  —",
                  style=ui.SECONDARY if info.get("present") else "dim")
-        if active:
-            t.append("  ")
-            t.append(" ACTIVE ", style=f"reverse bold {self._accent}")
-        elif not runnable:
-            # Why this row can't be picked, inline (docker off / GPU / not installed).
-            tag = self._GROUP_ROW_TAG.get(info.get("group"))
-            if tag:
-                t.append(f"  ·{tag}", style="dim")
-        fit = info.get("fit") or {}
-        if fit.get("rank") == "good" and not active:
-            t.append("  ✓ fits", style="#3fb950")
-        elif fit.get("rank") == "poor":
-            t.append("  △ weak", style="#d29922")
-        # Docker rows carry a download badge so the cached/get-it state is scannable
-        # without opening INSPECTING: ✓ ready (cached), ⬇ NN% (pulling), or ⬇ get.
-        if info.get("group") == "docker":
-            if info.get("img_present"):
-                label, style = ui.DL_READY
-                t.append(label, style=style)
-            elif info.get("downloading") is not None:
-                t.append(f"  ⬇ {info['downloading']}%", style=self._accent)
-            else:
-                label, style = ui.DL_GET
-                t.append(label, style=style)
+        # The availability glyph: ● Enter runs a sort NOW (no pull, no toggle) ·
+        # ◌ obtainable here (needs the image download or the Docker toggle) ·
+        # – not on this machine. A docker sorter whose image is not cached shows ◌
+        # even when the toggle is on — Enter would start a multi-GB pull, and a ●
+        # over that is a lie (D1 review #2). A pull-in-flight shows its live %.
+        needs_pull = info.get("group") == "docker" and not info.get("img_present")
+        if info.get("downloading") is not None:
+            t.append(f"  ⬇ {info['downloading']}%", style=self._accent)
+        elif runnable and not needs_pull:
+            t.append("  ●", style="#3fb950")
+        elif info.get("group") == "docker":
+            t.append("  ◌", style=ui.DL_GET_COLOUR)
+        else:
+            t.append("  –", style="dim")
         return t
 
     def _highlighted_info(self) -> dict:
@@ -2159,45 +2201,56 @@ class SpikeMenuApp(App):
         return self.c.infos[self.c.active_idx]
 
     def _render_sorter_explain(self, info: dict | None) -> None:
-        """Paint the explanation pane for a sorter: a header line (name + ★/ACTIVE
-        chip / 'press Enter to make active' / block reason), the full (un-truncated)
-        description, a generic tuning hint, the saved-sort + custom-params lines, and
-        a 'Press → or Tab for actions.' call-to-action.
+        """Paint the compact explanation pane for a sorter (DESIGN_UX §2): an
+        identity line (name + active/activate/block phrase), an enable hint and the
+        Docker cached/uncached detail where relevant, the full description, the
+        probe-fit line, one facts line (saved sort · headline numbers · overrides),
+        and a contextual actions line.
 
         ``info`` is the highlighted catalog row; for a header/docker/None row it
-        falls back to the active sorter (matching the State-A spec)."""
+        falls back to the active sorter."""
         if info is None:
             info = self.c.infos[self.c.active_idx]
         active = info.get("active", False)
         runnable = info.get("runnable", False)
         group = info.get("group")
         t = Text()
-        # Header: text-first so it survives NO_COLOR (the ACTIVE chip is a reverse
-        # block; the active name keeps default fg so the chip stays legible under the
-        # focused cursor wash).
+        # Compact by design (DESIGN_UX §2): identity line, description, fit, one
+        # facts line, one actions line — it fits the pane instead of scrolling by
+        # default. The ACTIVE fact is stated in words, never as a second chip (the
+        # SORT banner is the chip's home; §1 one-fact-one-place).
         t.append(info["name"], style="bold")
         if active:
-            t.append("   ", style="")
+            t.append("  — the active sorter", style=f"bold {self._accent}")
             if info.get("recommended"):
-                t.append("★ · ", style=f"bold {self._accent}")
-            t.append(" ACTIVE ", style=f"reverse bold {self._accent}")
+                t.append("  · recommended", style="dim")
         elif runnable:
-            t.append("  ·  press Enter to make active", style="dim")
+            t.append("  ·  ↵ make active", style="dim")
         else:
             reason = self._GROUP_REASON.get(group, "Not available")
             t.append(f"  ·  {reason}", style="#f0883e")
         t.append("\n\n")
-        # Non-runnable rows lead with how to enable, before the description.
+        # Non-runnable rows lead with how to enable, before the description (§1.7:
+        # every dead-end names its next step).
         if not runnable:
             if group == "docker":
                 t.append("Turn on the Docker sorters toggle at the top of the list "
                          "to run this.\n\n", style="#f0883e")
             elif group == "gpu":
-                t.append("Needs an NVIDIA GPU build installed — see Help.\n\n",
+                t.append("Needs an NVIDIA GPU — runnable on the lab box.\n\n",
                          style="#f0883e")
             else:
                 t.append("Not installed on this computer.\n\n", style="#f0883e")
-        # Full description (no truncation — the pane is full-width and scrolls).
+        # The cached-vs-not download detail the row's ◌ glyph elides (spec §2 via
+        # critique #6 — it lives HERE, not on the row).
+        if group == "docker":
+            if info.get("img_present"):
+                t.append("Docker image cached — nothing to download.\n\n",
+                         style=ui.SECONDARY)
+            else:
+                t.append("Docker image not downloaded (~1 GB) — Enter starts the "
+                         "download.\n\n", style=ui.SECONDARY)
+        # Full description (no truncation — the pane auto-sizes and scrolls).
         desc = info.get("description") or ""
         if desc:
             t.append(desc + "\n\n", style=ui.PRIMARY)
@@ -2206,33 +2259,31 @@ class SpikeMenuApp(App):
             t.append("Fit for this probe  ", style=ui.SECONDARY)
             colour = {"good": "#3fb950", "poor": "#d29922"}.get(fit.get("rank"), ui.PRIMARY)
             t.append(fit["reason"] + "\n\n", style=colour)
-        # Generic tuning hint (kept generic — no brittle action-index references).
-        t.append("Too few / too many units? Edit the sorter parameters "
-                 "(Edit sorter parameters).\n\n", style=ui.SECONDARY)
-        # Saved-sort + custom-params summary.
-        t.append("Saved sort  ", style=ui.SECONDARY)
+        # One facts line: saved sort · headline numbers · overrides.
+        t.append("Saved  ", style=ui.SECONDARY)
         if info.get("present"):
-            t.append(f"{info['units']} units · {info['duration']:.0f} s\n", style=ui.PRIMARY)
+            t.append(f"{info['units']} units · {info['duration']:.0f} s", style=ui.PRIMARY)
         else:
-            t.append("none yet\n", style="dim")
-        # Array / yield headline (the six lab metrics) for the saved sort, if any.
+            t.append("none yet", style="dim")
         summary = info.get("summary")
         if summary:
-            t.append("\nArray / yield  ", style=ui.SECONDARY)
             row = _ss.headline_row(summary)
-            t.append("V_pp " + row["V_pp"] + " · SNR " + row["SNR"]
-                     + " · noise " + row["noise floor"] + "\n", style=ui.PRIMARY)
-            t.append("  yield " + row["yield (% active electrodes)"]
-                     + " · " + row["units / ch"] + " units/ch · "
-                     + row["units / active ch"] + " /active ch\n", style=ui.PRIMARY)
-        n_over = info.get("overrides", 0)
-        t.append("Custom params  ", style=ui.SECONDARY)
-        if n_over:
-            t.append(f"{n_over} override" + ("s" if n_over != 1 else "") + "\n",
+            t.append("   V_pp " + row["V_pp"] + " · SNR " + row["SNR"]
+                     + " · noise " + row["noise floor"]
+                     + " · yield " + row["yield (% active electrodes)"],
                      style=ui.PRIMARY)
-        else:
-            t.append("none\n", style="dim")
-        t.append("\nPress → or Tab for actions.", style=f"bold {self._accent}")
+        n_over = info.get("overrides", 0)
+        if n_over:
+            t.append(f"   · {n_over} custom param" + ("s" if n_over != 1 else ""),
+                     style=ui.SECONDARY)
+        t.append("\n")
+        # The actions valid for THIS row, closing the read (§2).
+        if active:
+            t.append("2 sort · 3 report · e params", style=f"bold {self._accent}")
+        elif runnable:
+            t.append("↵ activate · then 2 sort · e params", style=f"bold {self._accent}")
+        elif group == "docker":
+            t.append("↵ get the image / enable Docker", style=f"bold {self._accent}")
         self.query_one("#inspectbody", Static).update(t)
 
     def _render_action_explain(self, meta: dict) -> None:
@@ -2293,50 +2344,104 @@ class SpikeMenuApp(App):
             pass
         return None
 
+    # MANAGE rows run by letter (DESIGN_UX §2); this map is the row-prefix AND the
+    # binding contract (`?`/`q` are app-level keys shown for completeness).
+    _MANAGE_KEYS = {"params": "e", "manage": "m", "probe": "p", "verify": "v",
+                    "theme": "c", "help": "?", "quit": "q"}
+
+    def _workflow_actions(self) -> list[dict]:
+        return [a for a in self.c.actions if a.get("section", "workflow") == "workflow"]
+
     def _rebuild_actions(self) -> None:
+        """Two visual tiers in one list (DESIGN_UX §2): the numbered WORKFLOW actions
+        lead; the MANAGE housekeeping sits dim below a gap + header, reached by
+        letter keys or the cursor. Number keys 1-6 map to the workflow rows, which
+        are the list's first rows — the gap/header rows sit between the tiers."""
         ol = self.query_one("#actions", OptionList)
         keep = ol.highlighted
         ol.clear_options()
         present = self.c.data_report.get("present")
         first_enabled = None
-        for n, a in enumerate(self.c.actions):
+        n_workflow = 0
+        manage_started = False
+        for a in self.c.actions:
+            if a.get("section", "workflow") == "manage" and not manage_started:
+                manage_started = True
+                ol.add_option(Option(Text(""), id="__gap__", disabled=True))
+                ol.add_option(Option(Text("MANAGE", style="dim bold"),
+                                     id="__manage__", disabled=True))
             disabled = bool(a.get("needs_data")) and not present
+            if not manage_started:
+                row = self._action_text(a, disabled, n_workflow)
+                n_workflow += 1
+            else:
+                row = self._manage_text(a, disabled)
             if not disabled and first_enabled is None:
-                first_enabled = n
-            ol.add_option(Option(self._action_text(a, disabled, n), id=a["key"], disabled=disabled))
+                first_enabled = ol.option_count
+            ol.add_option(Option(row, id=a["key"], disabled=disabled))
         ol.highlighted = keep if (keep is not None and keep < ol.option_count) else first_enabled
 
     def _action_text(self, a: dict, disabled: bool, index: int) -> Text:
         t = Text()
-        # Prefix the first nine rows with their jump-key so 1-9 is self-documenting
-        # at every width (the footer hint is dropped on narrow terminals).
-        t.append(f"{index + 1}  " if index < 9 else "   ", style="dim")
-        t.append(a["title"], style="dim" if disabled else "")
+        # Prefix each workflow row with its jump-key so 1-6 is self-documenting at
+        # every width (the footer hint is dropped on narrow terminals).
+        t.append(f"{index + 1}  ", style="dim")
+        t.append(a["title"], style="dim" if disabled else "bold")
         if a.get("hint"):
             t.append(f"   {a['hint']}", style="dim")
         if disabled:
             t.append("   (needs data)", style="italic #f0883e")
         return t
 
+    def _manage_text(self, a: dict, disabled: bool) -> Text:
+        # Housekeeping rows are visually silent: dim throughout, letter-key prefix.
+        t = Text()
+        key = self._MANAGE_KEYS.get(a["key"], " ")
+        t.append(f"{key}  ", style="dim")
+        t.append(a["title"], style="dim")
+        if a.get("hint"):
+            t.append(f"   {a['hint']}", style="dim")
+        return t
+
     def _refresh_footer(self, width: int | None = None, focus: str | None = None) -> None:
+        """Footer: a transient-status line + the key hints. The active sorter is NOT
+        echoed here (DESIGN_UX §1 one-fact-one-place — the SORT banner is its home);
+        durable results live on the LAST RESULT line, repainted alongside."""
         width = width if width is not None else self.size.width
-        info = self.c.infos[self.c.active_idx]
-        summary = (f"{info['units']}u · {info['duration']:.0f}s" if info.get("present")
-                   else "no saved sort")
         line1 = Text()
-        line1.append("Active sorter: ", style=ui.SECONDARY)
-        line1.append(info["name"], style=f"bold {self._accent}")
-        line1.append(f"  ({summary})", style=ui.SECONDARY)
-        # The footer just confirms the ACTIVE sorter and echoes the last action's
-        # result; the per-sorter description lives in the INSPECTING panel.
         if self._last:
-            line1.append("    ")
             line1.append(self._last if isinstance(self._last, Text) else Text(str(self._last)))
         line2 = Text(self._footer_hint(width, focus), style="dim")
         cap = max(1, width - 2)
         line1.truncate(cap, overflow="ellipsis")
         line2.truncate(cap, overflow="ellipsis")
         self.query_one("#footer", Static).update(line1 + Text("\n") + line2)
+        self._render_resultbar(width)
+
+    def _render_resultbar(self, width: int | None = None) -> None:
+        """The LAST RESULT line: newest action outcome + artifact + reopen key."""
+        width = width if width is not None else self.size.width
+        bar = self.query_one("#resultbar", Static)
+        lr = getattr(self.c, "last_result", None)
+        if not lr:
+            bar.add_class("hidden")
+            bar.update("")
+            return
+        bar.remove_class("hidden")
+        ok = lr.get("ok")
+        t = Text()
+        t.append("LAST  ", style=ui.SECONDARY)
+        t.append("✓ " if ok else "✗ ", style="bold " + ("#3fb950" if ok else "#f85149"))
+        t.append(str(lr.get("key", "")), style=ui.PRIMARY)
+        if lr.get("when"):
+            t.append(f" · {_fmt_when(lr['when'])}", style="dim")
+        path = lr.get("path")
+        if path:
+            t.append(f" → {path}", style=ui.SECONDARY)
+            if str(path).endswith(".html"):
+                t.append("   r reopen", style="dim")
+        t.truncate(max(1, width - 2), overflow="ellipsis")
+        bar.update(t)
 
     def _footer_hint(self, width: int, focus: str | None = None) -> str:
         """Per-focus, width-adaptive key hint. With ACTIONS focused it leads with the
@@ -2345,18 +2450,18 @@ class SpikeMenuApp(App):
         actions_focused = (focus == "actions") if focus is not None else self._actions_focused()
         if actions_focused:
             if width >= 92:
-                return ("↑/↓ choose · Enter run · 1-9 jump · ← Sorters · "
-                        "t switch · d data · ? help · q quit")
+                return ("↑/↓ choose · Enter run · 1-6 workflow · ← Sorters · "
+                        "t switch · r reopen · ? help · q quit")
             if width >= 60:
-                return "↑/↓ choose · Enter run · 1-9 jump · ← Sorters · t · d · ? · q quit"
+                return "↑/↓ choose · Enter run · 1-6 · ← Sorters · t · r · ? · q quit"
             return "↑↓ run · ← Sorters · ? · q quit"
-        # sorters focused — never drop the "→/1-9 Actions" bridge first.
+        # sorters focused — never drop the "→/1-6 Actions" bridge first.
         if width >= 92:
-            return ("↑/↓ choose · Enter activate · →/1-9 Actions · "
-                    "t switch · d data · ? help · q quit")
+            return ("↑/↓ choose · Enter activate · →/1-6 Actions · "
+                    "t switch · x manage · d data · ? help · q quit")
         if width >= 60:
-            return "↑/↓ choose · Enter activate · →/1-9 Actions · t · d · ? · q quit"
-        return "↑↓ choose · →/1-9 Actions · ? · q quit"
+            return "↑/↓ choose · Enter activate · →/1-6 Actions · t · x · ? · q quit"
+        return "↑↓ choose · →/1-6 Actions · ? · q quit"
 
     def _actions_focused(self) -> bool:
         try:
@@ -2473,7 +2578,7 @@ class SpikeMenuApp(App):
         except Exception as e:  # noqa: BLE001
             self._last = Text(f"reload after probe change failed: {e!r}", style="#f85149")
         self._render_sortbar(self.size.width)
-        self._render_probebar(self.size.width)
+        self._render_databar(self.size.width)
         self._refresh_footer()
         self._render_inspect()
 
@@ -2509,17 +2614,47 @@ class SpikeMenuApp(App):
         self.push_screen(HelpScreen(self.c, self._accent, topic="overview"))
 
     def action_run_index(self, i: int) -> None:
-        """1-9 jump-run action ``i``. Both lists are always visible, so just move
-        focus to the actions list, highlight action ``i`` (rendering its blurb), and
-        run it."""
-        if not (0 <= i < len(self.c.actions)):
+        """1-6 jump-run WORKFLOW action ``i``. Both lists are always visible, so just
+        move focus to the actions list, highlight row ``i`` (the workflow rows are the
+        list's first rows), and run it. MANAGE actions have letter keys instead."""
+        workflow = self._workflow_actions()
+        if not (0 <= i < len(workflow)):
             return
         ol = self.query_one("#actions", OptionList)
         ol.focus()
         if i < ol.option_count:
             ol.highlighted = i                 # fires the highlight -> renders INSPECTING
         self._render_inspect(focus="actions")
-        self._activate_action(self.c.actions[i]["key"])
+        self._activate_action(workflow[i]["key"])
+
+    def action_run_key(self, key: str) -> None:
+        """A MANAGE letter key: move the cursor onto that row (so INSPECTING shows
+        what is about to happen) and run it."""
+        ol = self.query_one("#actions", OptionList)
+        ol.focus()
+        for n in range(ol.option_count):
+            if ol.get_option_at_index(n).id == key:
+                ol.highlighted = n
+                break
+        self._render_inspect(focus="actions")
+        self._activate_action(key)
+
+    def action_reopen_last(self) -> None:
+        """``r``: reopen the LAST RESULT's artifact (report/comparison/explore page)."""
+        ok, msg = self.c.reopen_last()
+        self._last = Text(msg, style=(f"bold {self._accent}" if ok else "dim"))
+        self._refresh_footer()
+
+    def action_scroll_inspect(self, direction: int) -> None:
+        """PgDn/PgUp: page the INSPECTING panel's overflow without focusing it."""
+        try:
+            panel = self.query_one("#inspect", VerticalScroll)
+        except Exception:  # noqa: BLE001 - during mount/teardown
+            return
+        if direction > 0:
+            panel.scroll_page_down(animate=False)
+        else:
+            panel.scroll_page_up(animate=False)
 
     def _set_active_by_name(self, name: str) -> bool:
         if self.c.set_active_by_name(name):
@@ -2803,6 +2938,10 @@ class SpikeMenuApp(App):
 
     def _after_sort(self, result) -> None:
         ok, message, changed = result or (False, "Sort cancelled", False)
+        # Record real outcomes on the LAST RESULT line; a cancel is benign noise,
+        # not a result (the modal ran nothing to completion).
+        if result is not None and not _is_cancel_msg(message):
+            self.c.record_result("sort", ok)
         self._last = Text(message, style=_result_style(ok, message))
         if changed:
             try:
@@ -2955,6 +3094,23 @@ class SpikeMenuApp(App):
         self._relayout()
         self._render_inspect()
         self.refresh()
+
+
+def _fmt_when(when: str) -> str:
+    """Format a LAST RESULT timestamp for display: today's read as a clock time,
+    older ones carry their date — persisted results must not masquerade as fresh.
+    A value that isn't ISO (or a pre-ISO record in an existing .si_menu.json) is
+    shown as-is rather than dropped."""
+    from datetime import datetime
+
+    try:
+        dt = datetime.fromisoformat(when)
+    except ValueError:
+        return when
+    now = datetime.now()
+    if dt.date() == now.date():
+        return dt.strftime("%H:%M")
+    return dt.strftime("%b %d %H:%M")
 
 
 def _is_cancel_msg(message) -> bool:

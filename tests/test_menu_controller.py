@@ -359,3 +359,77 @@ def test_probe_match_uses_neural_count(monkeypatch, tmp_path):
         "default nnx-a1x16 (16 contacts) should 'fit' 16 neural channels, not 'mismatch'")
     assert c._probe_match(M.probes.get("linear-32-25um"))[0] == "mismatch", (
         "linear-32-25um (32 contacts) must not fit 16 neural channels")
+
+
+# --- D1: active-sorter persistence + the LAST RESULT record ---------------- #
+def _mock_registry(monkeypatch):
+    import sorters as reg
+    monkeypatch.setattr(reg, "installed", lambda: ["tridesclous2", "spykingcircus2"])
+    monkeypatch.setattr(reg, "available", lambda: sorted(
+        ["tridesclous2", "spykingcircus2", "kilosort4"]))
+    monkeypatch.setattr(reg, "docker_available", lambda *a, **k: False)
+
+
+def test_active_sorter_restored_from_cfg(monkeypatch, tmp_path):
+    _mock_registry(monkeypatch)
+    c = _controller(monkeypatch, tmp_path, cfg={"active_sorter": "spykingcircus2"})
+    assert c.active_sorter == "spykingcircus2"
+    # A persisted sorter that is no longer runnable falls back safely.
+    c2 = _controller(monkeypatch, tmp_path, cfg={"active_sorter": "kilosort4"})
+    assert c2.active_sorter in ("tridesclous2", "spykingcircus2")
+
+
+def test_explicit_sorter_flag_beats_persisted(monkeypatch, tmp_path):
+    _mock_registry(monkeypatch)
+    import argparse
+    import SpikeInterface_Menu as M
+    import report
+    monkeypatch.setattr(report, "_gather", lambda *a, **k: ({}, []))
+    monkeypatch.setattr(M, "_save_config", lambda cfg: None)
+    args = argparse.Namespace(data_dir=str(tmp_path), sorter="tridesclous2",
+                              duration=None, docker=False, params_file=None,
+                              gui_mode="auto")
+    c = M.MenuController(args, {"active_sorter": "spykingcircus2"})
+    assert c.active_sorter == "tridesclous2"
+
+
+def test_set_active_persists_to_cfg(monkeypatch, tmp_path):
+    _mock_registry(monkeypatch)
+    saved = []
+    import SpikeInterface_Menu as M
+    c = _controller(monkeypatch, tmp_path)
+    monkeypatch.setattr(M, "_save_config", lambda cfg: saved.append(dict(cfg)))
+    assert c.set_active_by_name("spykingcircus2") is True
+    assert saved and saved[-1]["active_sorter"] == "spykingcircus2"
+
+
+def test_record_result_and_reopen_paths(monkeypatch, tmp_path):
+    _mock_registry(monkeypatch)
+    c = _controller(monkeypatch, tmp_path)
+    # Resolve artifacts against a sandbox, not the real repo's outputs/.
+    import blackrock_io as bio
+    monkeypatch.setattr(bio, "REPO_ROOT", tmp_path)
+    opened = []
+    import SpikeInterface_Menu as M
+    monkeypatch.setattr(M, "_open_in_browser", lambda uri: opened.append(uri))
+    # A verify run leaves no page: nothing to reopen, said honestly.
+    c.record_result("verify", True)
+    assert c.last_result["key"] == "verify" and c.last_result["path"] is None
+    ok, msg = c.reopen_last()
+    assert ok is False and "no page" in msg
+    # A report records its artifact path; a missing file is an honest miss…
+    c.record_result("report", True)
+    assert c.last_result["path"] == "outputs/report.html"
+    assert c.last_result["when"]
+    ok, msg = c.reopen_last()
+    assert ok is False and "gone" in msg and not opened
+    # …and an existing one reopens in the browser.
+    (tmp_path / "outputs").mkdir()
+    (tmp_path / "outputs" / "report.html").write_text("<title>x</title>")
+    ok, msg = c.reopen_last()
+    assert ok is True and len(opened) == 1
+    # A sort records its output dir (no reopenable page).
+    c.record_result("sort", True)
+    assert c.last_result["path"].startswith("outputs/")
+    ok, _msg = c.reopen_last()
+    assert ok is False

@@ -75,7 +75,7 @@ async def drive(data_dir: "str | None") -> bool:
 
         panels = [
             ("TITLEBAR", "#titlebar"), ("DATABAR", "#databar"), ("SORTBAR", "#sortbar"),
-            ("PROBEBAR", "#probebar"), ("FOOTER", "#footer"),
+            ("RESULTBAR", "#resultbar"), ("FOOTER", "#footer"),
         ]
         for name, sel in panels:
             buf.append(f"=== {name} ===")

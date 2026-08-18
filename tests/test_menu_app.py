@@ -34,7 +34,7 @@ async def test_boots_with_both_lists_and_sorter_focus(make_app):
         sorters = app.query_one("#sorters", OptionList)
         actions = app.query_one("#actions", OptionList)
         assert sorters.get_option_at_index(0).id == "__docker__"
-        assert actions.option_count == 13   # 11 base actions + 'manage' + 'probe'
+        assert actions.option_count == 15   # 13 actions + the gap + MANAGE header
         assert sorters.display is True and actions.display is True
         assert sorters.highlighted == _sorter_row(app, "tridesclous2")
         assert app.focused is sorters
@@ -134,12 +134,15 @@ async def test_sortbar_follows_active_sorter(make_app):
         assert "spykingcircus2" in c_app.query_one("#sortbar").render().plain
 
 
-async def test_action_title_names_active_sorter(make_app):
+async def test_action_title_is_static_actions(make_app):
+    # One fact, one place (§1.1, D1 review #5): the SORT banner is the active
+    # sorter's only at-rest home — the pane title no longer restates it.
     app = make_app()
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
         title = str(app.query_one("#actionpane").border_title)
-        assert "tridesclous2" in title
+        assert title == "ACTIONS"
+        assert "tridesclous2" in app.query_one("#sortbar").render().plain
 
 
 # --- merged INSPECTING ---------------------------------------------------- #
@@ -220,7 +223,10 @@ async def test_active_marker_in_sorter_row(make_app):
         sorters = app.query_one("#sorters", OptionList)
         row = _sorter_row(app, "tridesclous2")
         prompt = sorters.get_option_at_index(row).prompt.plain
-        assert "ACTIVE" in prompt and "★" in prompt   # active + recommended badge
+        # D1 signal budget: the active sorter is marked by the left-bar SHAPE only —
+        # no ACTIVE chip, no ★ (the SORT banner is that fact's home).
+        assert prompt.startswith("▌")
+        assert "ACTIVE" not in prompt and "★" not in prompt
 
 
 # --- responsive ladder ---------------------------------------------------- #
@@ -382,11 +388,15 @@ async def test_theme_modal_changes_accent(make_app):
 
 
 async def test_number_key_opens_param_editor(make_app):
-    # action index 6 (1-based "7") is "Edit sorter parameters" in the mirrored table
+    # D1: params is a MANAGE action on the letter `e`; numbers are workflow-only,
+    # so "7" must be a no-op (there are six workflow actions).
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
         await pilot.press("7")
+        await pilot.pause()
+        assert not isinstance(app.screen, menu_app.ParamEditorScreen)
+        await pilot.press("e")
         await pilot.pause()
         assert isinstance(app.screen, menu_app.ParamEditorScreen)
 
@@ -694,10 +704,41 @@ async def test_docker_row_shows_download_badge(make_app):
         labels = {sorters.get_option_at_index(i).id:
                   sorters.get_option_at_index(i).prompt.plain
                   for i in range(sorters.option_count)}
-        ms = labels["mountainsort5"]                 # img_present False in the fake
-        assert "get" in ms.lower() or "⬇" in ms      # not-downloaded badge
-        hs = labels["herdingspikes"]                 # img_present True in the fake
-        assert "ready" in hs.lower() or "✓" in hs    # cached badge
+        # D1 availability glyphs: with Docker OFF both docker rows are obtainable
+        # (◌); the cached-vs-not detail lives in INSPECTING now. The legend is the
+        # pane's border subtitle.
+        assert labels["mountainsort5"].rstrip().endswith("◌")
+        assert labels["herdingspikes"].rstrip().endswith("◌")
+        assert "●" in labels["tridesclous2"]         # runnable now
+        assert app.query_one("#sorterpane").border_subtitle
+
+
+async def test_docker_on_glyph_honest_about_pull(make_app):
+    # Docker ON: a cached image really runs on Enter (●); an uncached one would
+    # start a multi-GB pull first, so it stays ◌ — a ● over a download is a lie
+    # (D1 review #2).
+    app = make_app(use_docker=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        sorters = app.query_one("#sorters", OptionList)
+        labels = {sorters.get_option_at_index(i).id:
+                  sorters.get_option_at_index(i).prompt.plain
+                  for i in range(sorters.option_count)}
+        assert labels["herdingspikes"].rstrip().endswith("●")    # cached + toggle on
+        assert labels["mountainsort5"].rstrip().endswith("◌")    # needs the pull
+
+
+async def test_inspecting_carries_cached_vs_not(make_app):
+    # The distinction the row glyph elides lives in INSPECTING (spec §2/critique #6).
+    app = make_app(use_docker=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        app._highlight_sorter_by_name("mountainsort5")
+        await pilot.pause()
+        assert "not downloaded" in app.query_one("#inspectbody", Static).render().plain
+        app._highlight_sorter_by_name("herdingspikes")
+        await pilot.pause()
+        assert "cached" in app.query_one("#inspectbody", Static).render().plain
 
 
 async def test_enter_on_undownloaded_docker_opens_download(make_app):
@@ -871,7 +912,7 @@ async def test_compare_opens_picker_when_two_saved(make_app):
     app = make_app(present=True)   # both sorters present in the fake
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        await pilot.press("6")          # compare
+        await pilot.press("5")          # compare (workflow slot 5 in D1 order)
         await pilot.pause()
         assert isinstance(app.screen, menu_app.ChoiceModal)
 
@@ -881,7 +922,7 @@ async def test_compare_picks_pair_and_runs(make_app):
     c = app.c
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        await pilot.press("6")          # compare -> first picker
+        await pilot.press("5")          # compare -> first picker
         await pilot.pause()
         await pilot.press("enter")      # choose highlighted (tridesclous2)
         await pilot.pause()
@@ -1004,12 +1045,11 @@ async def test_x_offers_image_delete_for_cached_docker(make_app):
 
 
 async def test_manage_action_opens_hub(make_app):
-    # 'manage' is action index 7 -> key "8". Pressing it opens the hub.
+    # D1: 'manage' is a MANAGE action on the letter `m`. Pressing it opens the hub.
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        await pilot.press("right")
-        await pilot.press("8")
+        await pilot.press("m")
         await pilot.pause()
         assert isinstance(app.screen, menu_app.ManageSortersScreen)
 
@@ -1020,8 +1060,7 @@ async def test_manage_hub_clears_saved_sort(make_app):
     c = app.c
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        await pilot.press("right")
-        await pilot.press("8")
+        await pilot.press("m")
         await pilot.pause()
         screen = app.screen
         assert isinstance(screen, menu_app.ManageSortersScreen)
@@ -1041,8 +1080,7 @@ async def test_manage_hub_deletes_image(make_app):
     c = app.c
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        await pilot.press("right")
-        await pilot.press("8")
+        await pilot.press("m")
         await pilot.pause()
         screen = app.screen
         assert isinstance(screen, menu_app.ManageSortersScreen)
@@ -1151,13 +1189,13 @@ async def test_help_about_topic_shows_pitt_shield(make_app):
 
 # --- PROBE banner -------------------------------------------------------- #
 async def test_probe_banner_shows_active_probe(make_app):
-    # The PROBE banner row shows the active probe label (contains 'A1x16' for the
-    # default NeuroNexus A1x16 probe configured in FakeController).
+    # D1: DATA and PROBE share the inputs row — the merged banner shows the active
+    # probe label (contains 'A1x16' for the FakeController default).
     app = make_app()
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        probe = app.query_one("#probebar").render().plain
-        assert "PROBE" in probe and "A1x16" in probe
+        bar = app.query_one("#databar").render().plain
+        assert "PROBE" in bar and "A1x16" in bar
 
 
 # --- Sorter fit badge + INSPECTING fit line ------------------------------ #
@@ -1171,6 +1209,9 @@ async def test_inspecting_shows_fit_line(make_app):
 
 
 async def test_sorter_row_fit_badges(make_app):
+    # D1 signal budget: rows carry NO fit badges at rest — fit detail lives in
+    # INSPECTING for the row under the cursor. The availability glyph is the one
+    # allowed mark beyond name + unit count.
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
@@ -1180,12 +1221,84 @@ async def test_sorter_row_fit_badges(make_app):
         base = {"name": "x", "group": "ready", "runnable": True, "recommended": False,
                 "present": False, "units": 0, "duration": 0.0, "active": False,
                 "img_present": None}
-        # good fit on a non-active row -> "✓ fits"
-        assert "✓ fits" in plain({**base, "fit": {"rank": "good", "reason": "g"}})
-        # poor fit -> "△ weak"
-        assert "△ weak" in plain({**base, "fit": {"rank": "poor", "reason": "p"}})
-        # good fit on the ACTIVE row -> NO badge (ACTIVE chip is its signal)
-        assert "✓ fits" not in plain({**base, "active": True, "fit": {"rank": "good", "reason": "g"}})
-        # ok fit -> no badge
-        assert "✓ fits" not in plain({**base, "fit": {"rank": "ok", "reason": "o"}})
-        assert "△ weak" not in plain({**base, "fit": {"rank": "ok", "reason": "o"}})
+        for fit in ({"rank": "good", "reason": "g"}, {"rank": "poor", "reason": "p"},
+                    {"rank": "ok", "reason": "o"}):
+            row = plain({**base, "fit": fit})
+            assert "fits" not in row and "weak" not in row
+        assert plain(base).rstrip().endswith("●")                       # runnable
+        assert plain({**base, "runnable": False,
+                      "group": "gpu"}).rstrip().endswith("–")           # not here
+        assert plain({**base, "runnable": False,
+                      "group": "docker"}).rstrip().endswith("◌")        # obtainable
+
+
+# --- D1: the LAST RESULT line + r reopen ----------------------------------- #
+async def test_last_result_bar_appears_and_reopens(make_app):
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        # No result yet: the bar is hidden.
+        assert app.query_one("#resultbar").has_class("hidden")
+        # Run a workflow action that records a result (explore, via its number key).
+        await pilot.press("1")
+        await pilot.pause()
+        bar = app.query_one("#resultbar")
+        assert not bar.has_class("hidden")
+        text = bar.render().plain
+        assert "LAST" in text and "explore" in text and "r reopen" in text
+        # r reopens the artifact through the controller.
+        before = app.c.reopened
+        await pilot.press("r")
+        await pilot.pause()
+        assert app.c.reopened == before + 1
+
+
+async def test_footer_no_longer_echoes_active_sorter(make_app):
+    # One fact, one place (DESIGN_UX §1): the SORT banner owns the active sorter;
+    # the footer carries transient status + keys only.
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        footer = app.query_one("#footer").render().plain
+        assert "Active sorter:" not in footer
+        sortbar = app.query_one("#sortbar").render().plain
+        assert "tridesclous2" in sortbar
+
+
+
+# --- D1 review #1: the yield budget actually feeds the lists ---------------- #
+async def test_lists_get_real_rows_at_common_sizes(make_app):
+    # Region-intersection > 0 can stay true for a starved pane; pin PAINTED room:
+    # both panes keep enough rows for content at the sizes people actually use,
+    # including 80x24 (the default macOS/Windows terminal).
+    for size in [(110, 40), (100, 24), (80, 24), (60, 24)]:
+        app = make_app(present=True)
+        async with app.run_test(size=size) as pilot:
+            await pilot.pause()
+            for wid in ("#sorterpane", "#actionpane"):
+                r = app.query_one(wid).region
+                assert r.height >= 4, f"{wid} squeezed to {r.height} rows at {size}"
+
+
+async def test_resultbar_visible_at_default_terminal(make_app):
+    # The flagship "results don't evaporate" line must be PAINTED at 80x24, not
+    # merely display=True while an ancestor clips it (D1 review #1).
+    app = make_app(present=True)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        await pilot.press("1")          # explore -> records a result
+        await pilot.pause()
+        bar = app.query_one("#resultbar")
+        assert not bar.has_class("hidden") and not bar.has_class("collapsed")
+        assert bar.region.height >= 1
+        assert bar.region.y < app.size.height - 2   # above the docked footer
+
+
+def test_fmt_when_relative_dates():
+    from datetime import datetime, timedelta
+    today = datetime.now().replace(hour=14, minute=18).isoformat(timespec="minutes")
+    assert menu_app._fmt_when(today) == "14:18"
+    old = (datetime.now() - timedelta(days=6)).replace(hour=9, minute=5)
+    out = menu_app._fmt_when(old.isoformat(timespec="minutes"))
+    assert out.endswith("09:05") and len(out) > len("09:05")   # carries its date
+    assert menu_app._fmt_when("12:00") == "12:00"              # pre-ISO fallback
