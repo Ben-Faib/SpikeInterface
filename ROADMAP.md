@@ -60,7 +60,7 @@ box) runs alongside everything.
 | 5 | D2 run experience | `goals/GOAL_D_UIUX.md` | **SEALED 2026-08-18** both halves (`fc19579` + view); D2b manifest follow-up filed |
 | 6 | D3 report | `goals/GOAL_D_UIUX.md` | **SEALED 2026-08-18** (`d12ff5c`; visual pass = Ben opening it) |
 | 7 | D4 flow modals | `goals/GOAL_D_UIUX.md` | **SEALED 2026-08-18** (`f115015`) |
-| 8 | T2/T3 journey + honesty tests | `goals/GOAL_T_TESTING.md` | gated: after D1/D2 |
+| 8 | T2/T3 journey + honesty tests | `goals/GOAL_T_TESTING.md` | **SEALED 2026-08-18** (peer, `7e6938d`) |
 | 9 | P2 multi-shank · P3 wiring | `goals/GOAL_P_PROBES.md` | after P1; P3 needs adapter map |
 | 10 | W1 curation (4 slices) | `goals/GOAL_W1_CURATION.md` | after M1; slice 4 after D1 |
 | 11 | W2 reproducibility | `goals/GOAL_W2_REPRO.md` | after/with late W1 |

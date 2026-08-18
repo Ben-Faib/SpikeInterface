@@ -49,6 +49,22 @@ A need left only in a chat summary is a need Ben never sees.*
 
 ## The ledger (newest first)
 
+**2026-08-18 — T2/T3: journeys + honesty states (peer session, `fc4652b` + `7e6938d`)**
+- Did: retired six layout-detail assertions the redesign obsoleted (each enumerated in the
+  commit message), added four journeys that cross the real screens and the real subprocess
+  event pipe (explore→sort→report with chain and reopen, cancel-mid-sort with the child
+  provably dead cross-platform, the failure card with its log→ next step, 0-unit amber
+  reaching the dashboard), and pinned every §1.7 dead-end to NAME its next step.
+- Means: the suite now defends what must stay true — flows and honesty — while visual
+  change stays a deliberate snapshot re-baseline, so future redesign slices can't be
+  fought by chrome assertions or pass while a dead-end goes nameless.
+- Moved: the review surfaced the Windows Esc-mid-sort orphan (fixed in D4 `f115015`, now
+  asserted universally); the five D4 flow-modal tests ride in `7e6938d` by agreed commit
+  order, with D4-review F8a/F8b folded in; suite 382 green.
+- Needs Ben: nothing new — the standing report-eyeball ask above covers it.
+- Next: the T track is complete; future surfaces inherit the journey/state doctrine now
+  written into tests/README.md.
+
 **2026-08-18 — D3 + D4: the report and the flow modals (`d12ff5c`, `f115015`)**
 - Did: sealed the overhaul's last two built slices — the verdict-first report (four honest
   stat tiles, truthful TOC glyphs, reader-order sections, one chart language; built by a
