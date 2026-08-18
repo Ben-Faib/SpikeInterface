@@ -57,6 +57,11 @@ import sorters  # noqa: E402  (sorter registry: discovery / status / params / ru
 
 VERBOSITY_LEVELS = ["quiet", "normal", "verbose"]
 
+# Wall clock for run_info's wall_seconds — import time ≈ run start for this CLI
+# (it is always invoked as a fresh process), so the sort-span modal can say
+# "~M:SS last time" from provenance alone.
+_RUN_T0 = time.monotonic()
+
 # The pipeline's phase checklist, in order — an emitter constant (the progress
 # protocol pins neither the count nor the titles). "Analyze + metrics" is skipped
 # by --no-metrics, so the phase total is derived from this list, not hardcoded.
@@ -499,7 +504,6 @@ def _write_run_info(out: Path, args, **fields) -> None:
         "command": "run_sorting.py",
         "duration_arg": args.duration,
         "keep_analog": args.keep_analog,
-        "probe": args.probe,
         "n_jobs": args.n_jobs,
         "probe": getattr(args, "probe", None),
         **fields,
@@ -1200,6 +1204,7 @@ def main() -> int:
         channel_ids=list(rec.get_channel_ids()),
         n_dropped_analog=n_dropped, total_seconds=total_seconds,
         effective_seconds=effective_seconds, freq_min=args.freq_min, freq_max=freq_max,
+        wall_seconds=round(time.monotonic() - _RUN_T0, 1),
     )
 
     # The container-only binary copy of the recording is no longer needed. Cache

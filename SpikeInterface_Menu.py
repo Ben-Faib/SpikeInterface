@@ -354,6 +354,10 @@ def action_explore(args) -> bool:
 
 
 def action_sort(args) -> bool:
+    if not args.sorter:
+        # Bare `sort` used to crash joining None into the argv (B1's sibling).
+        args.sorter = (_load_config().get("active_sorter")
+                       or sorter_registry.default_sorter())
     flags = ["--sorter", args.sorter]
     if args.duration is not None:
         flags += ["--duration", str(args.duration)]
@@ -539,6 +543,13 @@ def _harden_sigui_scatterview() -> None:
 
 
 def action_gui(args) -> bool:
+    # Bare `gui` used to crash joining a None sorter (B1's recorded sibling);
+    # a saved-analyzer action shares report's resolution semantics exactly.
+    args.sorter = _resolve_report_sorter(args)
+    if args.sorter is None:
+        ui.warn("No saved sort to inspect — run a sort first: "
+                "uv run python scripts/run_sorting.py")
+        return False
     analyzer_dir = _analyzer_dir(args.sorter)
     if not analyzer_dir.exists():
         ui.warn(f"No saved sort for {args.sorter} — run 'sort' first.")
@@ -1123,7 +1134,25 @@ class MenuController:
                              f"({info['units']}u).")
         if key == "gui" and not info.get("present"):
             out["caveat"] = "No saved sort yet — run Sort first."
+        if key in ("gui", "traces") and self.active_probe in (None, probes.PLACEHOLDER_PROBE):
+            geo = ("Placeholder probe geometry — probe-map / unit-location / depth "
+                   "views are NOT physical; per-unit metrics are valid.")
+            out["caveat"] = f"{out['caveat']} {geo}" if out.get("caveat") else geo
         return out
+
+    def sort_expectations(self) -> dict:
+        """What the last saved run of the ACTIVE sorter cost, for the sort-span
+        modal: {"span": "full"|"quick"|None, "wall_seconds": float|None}. Reads
+        provenance only; older run_info files without wall_seconds yield None."""
+        ri = _read_run_info(self.active_sorter)
+        eff, tot = ri.get("effective_seconds"), ri.get("total_seconds")
+        span = None
+        if isinstance(eff, (int, float)) and isinstance(tot, (int, float)):
+            span = "quick" if eff < tot - 1.0 else "full"
+        ws = ri.get("wall_seconds")
+        return {"span": span,
+                "eff_seconds": float(eff) if isinstance(eff, (int, float)) else None,
+                "wall_seconds": float(ws) if isinstance(ws, (int, float)) else None}
 
     def image_state(self, name: str) -> dict:
         """{image, present, size} for a sorter's Docker image (best-effort)."""

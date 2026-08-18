@@ -34,7 +34,12 @@ dated, then the slices run against it.
   sections, one chart theme + shared unit colormap, styled tables with folds.
 - **D4 — flow modals** (spec §3 §1): sort-how-much expected durations, param-editor pass
   (recommended-first, overridden-vs-default marks, live validation), Manage-hub NavList
-  consistency.
+  consistency. **§5 finding of record (2026-08-18):** spikeinterface-gui DOES support
+  layout control upstream (`run_mainwindow(layout_preset=…, layout=…)` in the installed
+  version) — the caveat-into-INSPECTING half shipped in D4; the curated default layout
+  is deferred to W1 slice 4, which works deeply with sigui anyway. D4 also absorbed
+  B1's recorded siblings (bare `gui`/`sort` None-sorter crashes) and compare's honest
+  BusyScreen (moved here from D2).
 
 ## Definition of done (per slice)
 

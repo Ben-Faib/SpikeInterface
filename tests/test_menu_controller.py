@@ -433,3 +433,59 @@ def test_record_result_and_reopen_paths(monkeypatch, tmp_path):
     assert c.last_result["path"].startswith("outputs/")
     ok, _msg = c.reopen_last()
     assert ok is False
+
+
+# --- D4: bare-action resolution, geometry caveat, sort expectations --------- #
+def test_action_sort_bare_resolves_sorter(monkeypatch, tmp_path):
+    import SpikeInterface_Menu as M
+    import argparse
+    calls = []
+    monkeypatch.setattr(M, "_shell", lambda script, *flags: calls.append(flags) or True)
+    monkeypatch.setattr(M, "_load_config", lambda: {"active_sorter": "spykingcircus2"})
+    args = argparse.Namespace(sorter=None, duration=None, docker=False,
+                              params_file=None, data_dir=None, probe=None)
+    assert M.action_sort(args) is True
+    assert calls and calls[0][:2] == ("--sorter", "spykingcircus2")
+
+
+def test_action_gui_bare_errors_honestly_when_nothing_saved(monkeypatch, tmp_path):
+    import SpikeInterface_Menu as M
+    import argparse
+    monkeypatch.setattr(M, "_load_config", lambda: {})
+    import report
+    monkeypatch.setattr(report, "_pick_default_analyzer",
+                        lambda: tmp_path / "nothing" / "analyzer")
+    args = argparse.Namespace(sorter=None, data_dir=None, gui_mode="auto")
+    assert M.action_gui(args) is False        # honest refusal, no TypeError
+
+
+def test_gui_explain_carries_geometry_caveat_on_placeholder(monkeypatch, tmp_path):
+    _mock_registry(monkeypatch)
+    c = _controller(monkeypatch, tmp_path)
+    c.active_probe = "independent"
+    meta = c.action_explain("gui")
+    assert "NOT physical" in (meta.get("caveat") or "")
+    meta_t = c.action_explain("traces")
+    assert "NOT physical" in (meta_t.get("caveat") or "")
+    # A real probe carries no geometry caveat.
+    c.active_probe = "nnx-a1x16-3mm-100"
+    assert "NOT physical" not in (c.action_explain("traces").get("caveat") or "")
+
+
+def test_sort_expectations_reads_provenance(monkeypatch, tmp_path):
+    _mock_registry(monkeypatch)
+    c = _controller(monkeypatch, tmp_path)
+    import blackrock_io as bio
+    import json as _json
+    monkeypatch.setattr(bio, "REPO_ROOT", tmp_path)
+    run_dir = tmp_path / "outputs" / c.active_sorter
+    run_dir.mkdir(parents=True)
+    (run_dir / "run_info.json").write_text(_json.dumps(
+        {"effective_seconds": 30.0, "total_seconds": 132.0, "wall_seconds": 61.5}))
+    exp = c.sort_expectations()
+    assert exp == {"span": "quick", "eff_seconds": 30.0, "wall_seconds": 61.5}
+    # An old run_info without wall_seconds degrades honestly.
+    (run_dir / "run_info.json").write_text(_json.dumps(
+        {"effective_seconds": 132.0, "total_seconds": 132.0}))
+    exp = c.sort_expectations()
+    assert exp["span"] == "full" and exp["wall_seconds"] is None

@@ -154,6 +154,7 @@ class Controller(Protocol):
     def sort_log_path(self, span: str | None = None): ...
     def record_result(self, key: str, ok: bool) -> None: ...
     def reopen_last(self) -> tuple[bool, str]: ...
+    def sort_expectations(self) -> dict: ...   # {"span","wall_seconds"} of the last run
 
 
 # --------------------------------------------------------------------------- #
@@ -303,6 +304,63 @@ class DataFolderScreen(ModalScreen):
         self.dismiss(None)
 
 
+class BusyScreen(ModalScreen):
+    """An honest in-UI wait for a blocking action running in a thread worker: the
+    named step, a spinner + ticking elapsed, and a stated no-cancel. The app
+    dismisses it via ``finish(result)`` from the worker; Esc/Enter are deliberate
+    no-ops — pretending to offer cancel for an uncancellable step is the lie this
+    screen exists to avoid (DESIGN_UX §1.6/§6)."""
+
+    DEFAULT_CSS = """
+    BusyScreen { align: center middle; }
+    BusyScreen > #busydialog {
+        width: 62; max-width: 92%; height: auto;
+        border: round $accentcolor; background: $surface; padding: 1 2;
+    }
+    BusyScreen #busytitle { text-style: bold; color: $accentcolor; padding: 0 0 1 0; }
+    BusyScreen #busynote { color: $text-muted; }
+    """
+
+    _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+
+    def __init__(self, title: str, accent: str, note: str = ""):
+        super().__init__()
+        self._title = title
+        self._accent = accent
+        self._note = note
+        self._t0 = monotonic()
+        self._spin = 0
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="busydialog"):
+            yield Static("", id="busytitle")
+            yield Static(self._note, id="busynote")
+
+    def on_mount(self) -> None:
+        self._repaint()
+        self._timer = self.set_interval(0.2, self._repaint)
+
+    def on_unmount(self) -> None:
+        timer = getattr(self, "_timer", None)
+        if timer is not None:
+            timer.stop()
+
+    def _repaint(self) -> None:
+        self._spin = (self._spin + 1) % len(self._SPINNER)
+        secs = int(monotonic() - self._t0)
+        t = Text()
+        t.append(f"{self._SPINNER[self._spin]} ", style=f"bold {self._accent}")
+        t.append(self._title, style="bold")
+        t.append(f" · {secs // 60}:{secs % 60:02d}", style="dim")
+        self.query_one("#busytitle", Static).update(t)
+
+    def finish(self, result) -> None:
+        try:
+            self.dismiss(result)
+        except Exception:  # noqa: BLE001 - screen already popped: the flow was
+            pass           # abandoned; swallowing beats WorkerFailed killing the app
+
+
 class ParamEditorScreen(ModalScreen):
     """Edit one sorter's parameters. Scalars get an inline field/checkbox; complex
     values (dict/list/None) are edited as JSON. Save stores only changed keys."""
@@ -319,6 +377,7 @@ class ParamEditorScreen(ModalScreen):
     ParamEditorScreen .pname { color: $accentcolor; text-style: bold; }
     ParamEditorScreen .pdesc { color: $text-muted; }
     ParamEditorScreen Input { width: 100%; }
+    ParamEditorScreen Input.invalid { border: tall #f85149; }
     ParamEditorScreen #perror { color: #f85149; height: auto; }
     ParamEditorScreen #pfoot { color: $text-muted; height: 1; padding: 1 0 0 0; }
     """
@@ -329,6 +388,12 @@ class ParamEditorScreen(ModalScreen):
         Binding("ctrl+r", "reset", "Reset"),
     ]
 
+    # The knobs a newcomer actually reaches for float to the top (right under any
+    # already-overridden keys — the user's own knobs lead). Everything else keeps
+    # SpikeInterface's order.
+    _PRIORITY_KEYS = ("detect_threshold", "detection_threshold", "freq_min",
+                      "freq_max", "detect_sign")
+
     def __init__(self, sorter, defaults, descs, overrides, accent):
         super().__init__()
         self._sorter = sorter
@@ -337,15 +402,32 @@ class ParamEditorScreen(ModalScreen):
         self._overrides = overrides or {}
         self._accent = accent
         self._widgets: dict = {}  # key -> (kind, widget)
+        self._names: dict = {}    # key -> the name Label (for the ● overridden mark)
+
+    def _ordered_keys(self) -> list:
+        over = [k for k in self._defaults if k in self._overrides]
+        prio = [k for k in self._PRIORITY_KEYS if k in self._defaults and k not in over]
+        rest = [k for k in self._defaults if k not in over and k not in prio]
+        return over + prio + rest
+
+    def _name_text(self, key) -> Text:
+        t = Text()
+        if key in self._overrides:
+            t.append("● ", style=f"bold {self._accent}")
+        t.append(key)
+        return t
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
             yield Static(f"Parameters · {self._sorter}", id="ptitle")
             with VerticalScroll(id="pscroll"):
-                for key, default in self._defaults.items():
+                for key in self._ordered_keys():
+                    default = self._defaults[key]
                     cur = self._overrides.get(key, default)
                     with Vertical(classes="prow"):
-                        yield Label(key, classes="pname")
+                        name = Label(self._name_text(key), classes="pname")
+                        self._names[key] = name
+                        yield name
                         desc = self._descs.get(key)
                         if desc:
                             yield Label(str(desc), classes="pdesc")
@@ -367,6 +449,51 @@ class ParamEditorScreen(ModalScreen):
 
     def on_mount(self) -> None:
         self.query_one("#pscroll").focus()
+
+    def _key_of(self, widget) -> "str | None":
+        wid = getattr(widget, "id", "") or ""
+        return wid[2:] if wid.startswith("w_") else None
+
+    def on_input_changed(self, event) -> None:
+        """Live validation: coerce as the user types — invalid goes red with the
+        error named in #perror; valid clears it and refreshes the ● mark."""
+        key = self._key_of(event.input)
+        if key is None or key not in self._defaults:
+            return
+        import sorters as _sorters
+
+        default = self._defaults[key]
+        kind, w = self._widgets[key]
+        err = self.query_one("#perror", Static)
+        try:
+            val = _sorters.coerce_param(default, event.value)
+        except ValueError as e:
+            w.add_class("invalid")
+            err.update(f"{key}: {e}")
+            return
+        w.remove_class("invalid")
+        err.update("")
+        # The ● mark follows the LIVE value (an edit back to the default un-marks).
+        label = self._names.get(key)
+        if label is not None:
+            t = Text()
+            if val != default:
+                t.append("● ", style=f"bold {self._accent}")
+            t.append(key)
+            label.update(t)
+
+    def on_checkbox_changed(self, event) -> None:
+        """Bool params: the ● overridden mark tracks toggles live (D4 review F5)."""
+        key = self._key_of(event.checkbox)
+        if key is None or key not in self._defaults:
+            return
+        label = self._names.get(key)
+        if label is not None:
+            t = Text()
+            if bool(event.value) != bool(self._defaults[key]):
+                t.append("● ", style=f"bold {self._accent}")
+            t.append(key)
+            label.update(t)
 
     def action_cancel(self) -> None:
         self.dismiss(None)
@@ -851,14 +978,36 @@ class SortProgressScreen(ModalScreen):
         return not (isinstance(units, int) and units == 0)
 
     def action_cancel(self) -> None:
-        # Kill the whole process group so SpikeInterface's worker children die too.
+        # Kill the whole worker tree, cross-platform (T2/T3 review found the lab-box
+        # gap: os.killpg is POSIX-only and the old blanket except swallowed the
+        # AttributeError — Windows showed "Sort cancelled" while the sort kept
+        # burning CPU). POSIX: SIGTERM the process group (start_new_session gave us
+        # one). Windows: taskkill /T /F takes the tree, since terminate() alone
+        # would orphan SpikeInterface's spawn workers. Last resort: terminate().
         if self._proc is not None and self._proc.returncode is None:
             import os
             import signal
-            try:
-                os.killpg(os.getpgid(self._proc.pid), signal.SIGTERM)
-            except Exception:  # noqa: BLE001 - already gone / no group -> ignore
-                pass
+            import subprocess
+            import sys as _sys
+            killed = False
+            if hasattr(os, "killpg"):
+                try:
+                    os.killpg(os.getpgid(self._proc.pid), signal.SIGTERM)
+                    killed = True
+                except Exception:  # noqa: BLE001 - group already gone -> fall through
+                    killed = False
+            elif _sys.platform == "win32":
+                try:
+                    res = subprocess.run(["taskkill", "/PID", str(self._proc.pid),
+                                          "/T", "/F"], capture_output=True, timeout=3)
+                    killed = res.returncode in (0, 128)   # 128 = already gone
+                except Exception:  # noqa: BLE001 - fall through to terminate()
+                    killed = False
+            if not killed:
+                try:
+                    self._proc.terminate()
+                except Exception:  # noqa: BLE001 - already gone
+                    pass
         self.dismiss((False, "Sort cancelled", False, None))
 
     def _dismiss_message(self) -> tuple:
@@ -1129,7 +1278,7 @@ class ManageSortersScreen(ModalScreen):
     def compose(self) -> ComposeResult:
         with Vertical(id="hubdialog"):
             yield Static("Manage sorters", id="hubtitle")
-            yield OptionList(id="hublist")
+            yield NavList(id="hublist")
             yield Static("", id="hubfoot")
 
     def on_mount(self) -> None:
@@ -3054,10 +3203,27 @@ class SpikeMenuApp(App):
             if info.get("present"):     # warn before silently replacing a saved sort
                 note = (f"⚠ {info['name']} already has a saved sort "
                         f"({info['units']}u · {info['duration']:.0f}s) — running again replaces it.")
+            exp = {}
+            try:
+                exp = self.c.sort_expectations() or {}
+            except Exception:  # noqa: BLE001 - provenance is optional
+                exp = {}
+            hint = ""
+            if exp.get("wall_seconds"):
+                mm, ss = divmod(int(exp["wall_seconds"]), 60)
+                hint = f"~{mm}:{ss:02d} last time"
+            full_hint = hint if exp.get("span") == "full" else ""
+            # A CLI --duration 100 run is neither of these choices — its wall time
+            # must not decorate the 30 s row (D4 review F7): the quick hint only
+            # attaches when the last cut actually WAS the quick span.
+            eff = exp.get("eff_seconds")
+            quick_ok = (exp.get("span") == "quick" and isinstance(eff, (int, float))
+                        and abs(eff - self.c.quick_seconds) <= 2)
+            quick_hint = hint if quick_ok else ""
             self.push_screen(
                 ChoiceModal("Sort how much?", [
-                    ("full", "Full recording", ""),
-                    ("quick", f"Quick test — first {self.c.quick_seconds}s", ""),
+                    ("full", "Full recording", full_hint),
+                    ("quick", f"Quick test — first {self.c.quick_seconds}s", quick_hint),
                 ], note=note),
                 self._after_sort_span,
             )
@@ -3204,13 +3370,44 @@ class SpikeMenuApp(App):
         self._run_compare((self._compare_first, second))
 
     def _run_compare(self, pair) -> None:
+        """Run the (blocking, in-process) compare in a thread worker behind an
+        honest BusyScreen — named step, ticking elapsed, a stated no-cancel —
+        instead of a silent suspend() (DESIGN_UX §6; the audit's quiet-terminal
+        friction). Stdout is buffered so the controller's prints can't garble
+        the live TUI; a failure surfaces the buffer's tail."""
+        a, b = pair
+        busy = BusyScreen(f"Comparing {a} vs {b}", self._accent,
+                          "builds the agreement matrix — runs to completion "
+                          "(no cancel)")
+        self.push_screen(busy, self._after_compare_done)
+        self.run_worker(lambda: self._compare_worker(pair, busy), thread=True)
+
+    def _compare_worker(self, pair, busy) -> None:
+        # NOTE: the redirect swaps the GLOBAL sys.stdout/stderr for the compare's
+        # whole (minutes-long) window — Textual paints via its own driver handle so
+        # the TUI is unaffected, but any other thread's prints land in this buffer
+        # for the duration (D4 review F6, accepted with this note).
+        import contextlib
+        import io
+
+        buf = io.StringIO()
         try:
-            with self.suspend():
-                ok, message, changed = self.c.run_compare(pair)
-        except SuspendNotSupported:
-            ok, message, changed = self.c.run_compare(pair)
+            with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf):
+                res = self.c.run_compare(pair)
         except Exception as e:  # noqa: BLE001
-            ok, message, changed = False, f"compare failed: {e!r}", False
+            res = (False, f"compare failed: {e!r}", False)
+        # The real controller CATCHES compare failures internally and warns into
+        # the (redirected) buffer, returning a bare False — so the tail must be
+        # surfaced on ANY failure, not only on an exception here (D4 review F1:
+        # otherwise the cause exists nowhere, not even scrollback).
+        if res and not res[0]:
+            tail = [ln for ln in buf.getvalue().strip().splitlines() if ln.strip()][-2:]
+            if tail:
+                res = (res[0], f"{res[1]} · " + " / ".join(t[:120] for t in tail), res[2])
+        self.call_from_thread(busy.finish, res)
+
+    def _after_compare_done(self, res) -> None:
+        ok, message, changed = res or (False, "compare failed", False)
         self._last = Text(message, style=_result_style(ok, message))
         if changed:
             try:
