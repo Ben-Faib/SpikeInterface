@@ -24,10 +24,11 @@ A need left only in a chat summary is a need Ben never sees.*
 - **Current focus (2026-08-18, updated same day): THE OVERHAUL.** Ben's directive — all
   surfaces redesigned for accessibility/focus/hierarchy + a timely-updates UX + real
   testing procedures + probe flexibility for a lab whose setups differ. `DESIGN_UX.md`
-  (D0) is drafted and **waits on Ben's veto**; T1 (testing harness) is sealed — snapshot,
-  report-golden, and protocol-contract gates now guard the redesigns (`6171816`); M1
-  (metrics, 12 columns) and P1 (probeinterface import, `384884e`) are sealed too;
-  prompt B1 (bare-report crash) is ready to paste.
+  (D0) was **approved by Ben the same evening** and the autonomous run is executing the
+  graph: **D1 (dashboard, `18a5279`) and D2's engine half (protocol timing/results,
+  `fc19579`) are sealed**, alongside T1 (testing harness, `6171816`), M1 (metrics, 12
+  columns), and P1 (probeinterface import, `384884e`). Next in dependency order: the D2
+  view half (result cards), D3 report, D4 flow modals, B1.
   Product facts on record: built by Benjamin Faibussowitsch with Aleece Al-Olimat for
   UPitt researchers on industry-standard SpikeInterface.
 
@@ -47,6 +48,22 @@ A need left only in a chat summary is a need Ben never sees.*
 ---
 
 ## The ledger (newest first)
+
+**2026-08-18 — D1: the dashboard overhaul (`18a5279`)**
+- Did: rebuilt the dashboard to the approved spec — two-line banner, one home for the
+  active sorter, six numbered workflow actions over a dim MANAGE tier, signal-budget
+  sorter rows with honest availability glyphs, folded GPU group, compact scrollable
+  INSPECTING, a persistent LAST RESULT line with r-reopen, persisted active sorter, and
+  truthful help — with the layout driven by real budget arithmetic instead of hand-tuned
+  thresholds.
+- Means: the first surface of Ben's overhaul is live, and it stays usable at 80×24 — the
+  Fable review caught the redesign starving the lists at exactly that size (fix-first, 7
+  findings) and every finding is fixed with painted-rows tests pinning it.
+- Moved: D4 and B1 unblocked (D1 released the menu files); the D2 view half can start
+  (its engine half sealed the same evening as `fc19579` — the protocol now carries
+  elapsed, per-phase durations, and a result payload, Fable-reviewed ship).
+- Needs Ben: nothing — the run continues autonomously per the standing authorization.
+- Next: D2 view half (progress modal + result cards), then D3 report, D4, B1.
 
 **2026-08-18 — P1 probeinterface import (peer session)**
 - Did: probes.py now imports probeinterface .json/.prb via CLI, materialising geometry

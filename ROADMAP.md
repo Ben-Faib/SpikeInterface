@@ -19,14 +19,16 @@ box) runs alongside everything.
 
 ## ▶ NOW — updated 2026-08-18 evening: **THE AUTONOMOUS RUN IS ON** (sealing sessions: update this box FIRST)
 
-- **D0 VETO APPROVED (Ben, 2026-08-18): dashboard first, run autonomously.** Live
-  assignments this run: **D1 dashboard** — orchestrating session (Fable, in-tree);
-  **D2 engine half** (protocol extension, disjoint files) — builder agent; **P1 probe
-  import** — peer session. Then D2 view half, D3, D4, B1 in dependency order as lanes
-  free. File-lane rule while parallel: D1 owns menu_app.py/ui.py/SpikeInterface_Menu.py
-  + Pilot/snapshot tests; D2-engine owns run_sorting.py/sort_progress.py + contract
-  tests (smoke via `--sorter simple` to avoid outputs/ clashes); P1 owns probes.py + its
-  new tests.
+- **The autonomous run's first wave is SEALED (evening of 2026-08-18):** D1 dashboard
+  (`18a5279`, Fable review fix-first → all 7 findings fixed incl. the 80×24 layout
+  starvation), D2 engine half (`fc19579`, protocol elapsed/phase_done/result, review
+  ship), P1 probe import (`384884e`, peer session, review ship) — on top of the
+  morning's T1 + M1. Suite: 344 green.
+- **Next in dependency order:** D2 view half (progress modal renders the new timing +
+  result cards; the modal-contract change is pre-agreed in DESIGN_UX §3), then D3
+  report (+ its progress plumbing), D4 flow modals, B1 (now unblocked — D1 released
+  SpikeInterface_Menu.py). P1 handoffs are already routed (editor guard shipped in D1;
+  P3 items recorded in the brief).
 
 ### Kickoff-era NOW (superseded same day, kept until the run's first seals land)
 
@@ -75,11 +77,11 @@ box) runs alongside everything.
 | — | T1 testing harness | `goals/GOAL_T_TESTING.md` | **SEALED 2026-08-18** (peer, `6171816`) |
 | 1 | M1 widen quality metrics | prompt below (was W0 item 5) | **SEALED 2026-08-18** |
 | 2 | P1 probeinterface import | `goals/GOAL_P_PROBES.md` | **SEALED 2026-08-18** (peer, `384884e`) |
-| 3 | D0 veto | `DESIGN_UX.md` | **WAITING ON BEN** |
-| 4 | D1 dashboard | `goals/GOAL_D_UIUX.md` | gated: D0 veto + T1 |
-| 5 | D2 run experience | `goals/GOAL_D_UIUX.md` | gated: D0 veto + T1 |
+| 3 | D0 veto | `DESIGN_UX.md` | **APPROVED 2026-08-18** |
+| 4 | D1 dashboard | `goals/GOAL_D_UIUX.md` | **SEALED 2026-08-18** (`18a5279`) |
+| 5 | D2 run experience | `goals/GOAL_D_UIUX.md` | engine half **SEALED** (`fc19579`); view half **READY** |
 | 6 | D3 report | `goals/GOAL_D_UIUX.md` | gated: D0 veto (M1 ✓ — quality tiles unblocked) |
-| 7 | D4 flow modals | `goals/GOAL_D_UIUX.md` | gated: after D1 |
+| 7 | D4 flow modals | `goals/GOAL_D_UIUX.md` | **READY** (D1 ✓) |
 | 8 | T2/T3 journey + honesty tests | `goals/GOAL_T_TESTING.md` | gated: after D1/D2 |
 | 9 | P2 multi-shank · P3 wiring | `goals/GOAL_P_PROBES.md` | after P1; P3 needs adapter map |
 | 10 | W1 curation (4 slices) | `goals/GOAL_W1_CURATION.md` | after M1; slice 4 after D1 |
