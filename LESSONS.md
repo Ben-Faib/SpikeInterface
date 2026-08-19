@@ -8,6 +8,17 @@ process lessons.*
 
 ---
 
+**S7 (2026-08-19) — a concurrent session can hard-reset the tree mid-turn.** During the
+conductor close, a peer session (or terminal) ran hard resets at 01:35 and ~01:40 that
+first wiped uncommitted board edits and then dropped a just-made commit — content
+survived only because it existed in this session's context and in the reflog. The
+existing rule (re-check status before committing) does not protect the window between
+writing a file and committing it. Lesson: on shared-tree docs (SEALS/ROADMAP/CLAUDE/
+LESSONS), write and commit in the same breath — never leave board edits sitting dirty;
+after committing contested files, re-verify the commit is still on HEAD before relying
+on it. Encoded: this entry; the repo CLAUDE.md concurrent-edit rule already covers the
+rest.
+
 **S6 (2026-08-18) — a layout re-plumb can turn tests into silent skips, and the suite gets
 *greener*.** W2's run-store re-plumb moved `outputs/<sorter>/analyzer`; `test_report_golden`'s
 fixture and `test_report_resolution`'s guard globbed the old path and, finding nothing,
