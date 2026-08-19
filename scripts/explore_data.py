@@ -4,9 +4,14 @@
     uv run python scripts/explore_data.py --data-dir /path/to/another/recording
 
 Figures are written to ./outputs/ (git-ignored):
-    * lfp_traces.png   — a short window of several LFP channels
-    * spike_raster.png — spike raster across all .nev units
-    * firing_rates.png — mean firing rate per unit
+    * simultaneity.png — LFP (all neural channels) + online detections on ONE
+                         shared time axis — the "what happened at the same
+                         moment" view
+    * lfp_traces.png   — a short window of every neural LFP channel (aux inputs
+                         excluded when the neural/aux split is known)
+    * spike_raster.png — the .nev online DETECTIONS per channel group (ch#class
+                         labels; class 0 = unsorted threshold crossings)
+    * firing_rates.png — mean online-detection rate per channel group
     * explore.html     — all of the above on one self-contained page (images
                          embedded, so it can be moved/shared on its own)
 
@@ -32,24 +37,94 @@ import blackrock_io as bio  # noqa: E402
 OUTPUT_DIR = bio.REPO_ROOT / "outputs"
 
 
-def plot_lfp(recording, out_path: Path, window_s: float = 5.0, max_channels: int = 6):
+def _neural_ids(recording):
+    """(channel_ids, split_known): NEURAL channels with aux 'analog N' inputs
+    excluded when the split is determinable — the figure claims "neural" ONLY
+    then; otherwise everything is shown and titled plainly as channels."""
+    try:
+        ids = bio.neural_channel_ids(recording)
+        n_total = recording.get_num_channels()
+        if len(ids) and len(ids) < n_total:
+            return list(ids), True
+        return list(recording.get_channel_ids()), len(ids) == n_total
+    except Exception:  # noqa: BLE001 - unusual recordings: show all, claim nothing
+        return list(recording.get_channel_ids()), False
+
+
+def plot_lfp(recording, out_path: Path, window_s: float = 5.0):
     fs = recording.get_sampling_frequency()
     n_frames = int(min(window_s, recording.get_total_duration()) * fs)
-    channel_ids = recording.get_channel_ids()[:max_channels]
+    channel_ids, split_known = _neural_ids(recording)
+    n_aux = recording.get_num_channels() - len(channel_ids)
     traces = recording.get_traces(start_frame=0, end_frame=n_frames, channel_ids=channel_ids)
     t = np.arange(n_frames) / fs
 
     # Stack channels vertically with an offset so they don't overlap.
     spacing = 1.2 * np.nanmax(np.abs(traces)) if traces.size else 1.0
-    fig, ax = plt.subplots(figsize=(11, 6))
+    fig, ax = plt.subplots(figsize=(11, max(6, 0.45 * len(channel_ids) + 1)))
     for i, ch in enumerate(channel_ids):
         ax.plot(t, traces[:, i] + i * spacing, lw=0.6)
     ax.set_yticks([i * spacing for i in range(len(channel_ids))])
     ax.set_yticklabels([str(ch) for ch in channel_ids])
     ax.set_xlabel("Time (s)")
     ax.set_ylabel("Channel")
-    ax.set_title(f"LFP traces — first {window_s:g}s, {len(channel_ids)} channels @ {fs:g} Hz")
+    if split_known:
+        aux = f" · {n_aux} aux channels excluded" if n_aux else ""
+        kind = f"all {len(channel_ids)} neural channels"
+    else:
+        aux = ""
+        kind = f"{len(channel_ids)} channels (neural/aux split unknown)"
+    ax.set_title(f"LFP — first {window_s:g}s, {kind} @ {fs:g} Hz{aux}")
     fig.tight_layout()
+    fig.savefig(out_path, dpi=120)
+    plt.close(fig)
+
+
+def _detection_labels(sorting):
+    """Honest per-row labels for the .nev rows: 'ch5#1'-style channel#class names
+    when the neo header carries them (SpikeInterface renumbers positionally),
+    else the bare renumbered ids."""
+    try:
+        import compare as _cmp
+        labels = _cmp.online_unit_labels(sorting)
+        if labels and len(labels) == len(sorting.get_unit_ids()):
+            return labels
+    except Exception:  # noqa: BLE001 - labels are best-effort
+        pass
+    return [str(u) for u in sorting.get_unit_ids()]
+
+
+def plot_simultaneity(recording, sorting, out_path: Path, window_s: float = 5.0):
+    """The shared-clock view: LFP (all neural channels) and the .nev detections on
+    ONE time axis, so what happened at the same moment across the array is
+    visible — the question the separate figures cannot answer."""
+    fs = recording.get_sampling_frequency()
+    n_frames = int(min(window_s, recording.get_total_duration()) * fs)
+    channel_ids, _split_known = _neural_ids(recording)
+    traces = recording.get_traces(start_frame=0, end_frame=n_frames, channel_ids=channel_ids)
+    t = np.arange(n_frames) / fs
+    labels = _detection_labels(sorting)
+    unit_ids = list(sorting.get_unit_ids())
+
+    fig, (ax1, ax2) = plt.subplots(
+        2, 1, sharex=True, figsize=(11, max(7, 0.4 * len(channel_ids) + 3)),
+        height_ratios=[3, 1], constrained_layout=True)
+    spacing = 1.2 * np.nanmax(np.abs(traces)) if traces.size else 1.0
+    for i, ch in enumerate(channel_ids):
+        ax1.plot(t, traces[:, i] + i * spacing, lw=0.5)
+    ax1.set_yticks([i * spacing for i in range(len(channel_ids))])
+    ax1.set_yticklabels([str(ch) for ch in channel_ids], fontsize=7)
+    ax1.set_ylabel("Channel")
+    ax1.set_title(f"Same clock — LFP and online detections, first {window_s:g}s")
+    t_end = n_frames / fs
+    for row, unit in enumerate(unit_ids):
+        times = _unit_spike_times(sorting, unit)
+        times = times[times <= t_end]
+        ax2.scatter(times, np.full_like(times, row), s=4, marker="|")
+    ax2.set_yticks(range(len(unit_ids)))
+    ax2.set_yticklabels(labels, fontsize=7)
+    ax2.set_xlabel("Time (s)")
+    ax2.set_ylabel("Detections")
     fig.savefig(out_path, dpi=120)
     plt.close(fig)
 
@@ -61,15 +136,18 @@ def _unit_spike_times(sorting, unit_id):
 
 def plot_raster(sorting, out_path: Path):
     unit_ids = list(sorting.get_unit_ids())
+    labels = _detection_labels(sorting)
     fig, ax = plt.subplots(figsize=(11, max(3, 0.3 * len(unit_ids) + 1)))
     for row, unit in enumerate(unit_ids):
         times = _unit_spike_times(sorting, unit)
         ax.scatter(times, np.full_like(times, row), s=2, marker="|")
     ax.set_yticks(range(len(unit_ids)))
-    ax.set_yticklabels([str(u) for u in unit_ids])
+    ax.set_yticklabels(labels)
     ax.set_xlabel("Time (s)")
-    ax.set_ylabel("Unit id")
-    ax.set_title(f"Spike raster — {len(unit_ids)} units from .nev")
+    ax.set_ylabel("Detection group (ch#class)")
+    # Honest naming (C1 finding): these are the rig's ONLINE DETECTIONS —
+    # class 0 rows are unsorted threshold crossings, not sorted units.
+    ax.set_title(f"Online detections (.nev) — {len(unit_ids)} channel groups, full recording")
     fig.tight_layout()
     fig.savefig(out_path, dpi=120)
     plt.close(fig)
@@ -86,12 +164,13 @@ def plot_firing_rates(sorting, out_path: Path):
     duration = duration or 1.0
     rates = [len(sorting.get_unit_spike_train(u)) / duration for u in unit_ids]
 
+    labels = _detection_labels(sorting)
     fig, ax = plt.subplots(figsize=(11, 5))
-    ax.bar([str(u) for u in unit_ids], rates)
-    ax.set_xlabel("Unit id")
-    ax.set_ylabel("Mean firing rate (Hz)")
-    ax.set_title("Mean firing rate per unit")
-    plt.setp(ax.get_xticklabels(), rotation=90, fontsize=7)
+    ax.bar(labels, rates)
+    ax.set_xlabel("Detection group (ch#class)")
+    ax.set_ylabel("Mean event rate (Hz)")
+    ax.set_title("Mean online-detection rate per channel group")
+    plt.setp(ax.get_xticklabels(), rotation=0, fontsize=9)
     fig.tight_layout()
     fig.savefig(out_path, dpi=120)
     plt.close(fig)
@@ -153,17 +232,23 @@ def main() -> int:
 
     print("Reading spike events (.nev) ...")
     sorting = bio.read_spikes(args.data_dir)
-    print(f"  {len(sorting.get_unit_ids())} units")
+    print(f"  {len(sorting.get_unit_ids())} detection groups")
 
     print(f"Saving figures to {OUTPUT_DIR} ...")
     figures = [
-        ("LFP traces (.ns2)", OUTPUT_DIR / "lfp_traces.png"),
-        ("Spike raster — online-detected units (.nev)", OUTPUT_DIR / "spike_raster.png"),
-        ("Mean firing rate per unit (.nev)", OUTPUT_DIR / "firing_rates.png"),
+        ("Same clock — LFP + online detections (the simultaneity view)",
+         OUTPUT_DIR / "simultaneity.png"),
+        ("LFP traces (.ns2) — every channel the figure title claims",
+         OUTPUT_DIR / "lfp_traces.png"),
+        ("Online detections (.nev) — full recording, per channel group",
+         OUTPUT_DIR / "spike_raster.png"),
+        ("Mean detection rate per channel group (.nev)",
+         OUTPUT_DIR / "firing_rates.png"),
     ]
-    plot_lfp(recording, figures[0][1])
-    plot_raster(sorting, figures[1][1])
-    plot_firing_rates(sorting, figures[2][1])
+    plot_simultaneity(recording, sorting, figures[0][1])
+    plot_lfp(recording, figures[1][1])
+    plot_raster(sorting, figures[2][1])
+    plot_firing_rates(sorting, figures[3][1])
     write_gallery(figures, OUTPUT_DIR / "explore.html")
     print(f"Viewable page: {OUTPUT_DIR / 'explore.html'}")
     print("Done. ✓")

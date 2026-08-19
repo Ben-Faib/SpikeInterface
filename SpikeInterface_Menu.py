@@ -741,8 +741,9 @@ _RESULT_PATHS = {
 # ``MenuController.action_explain`` (see the resolver table there); needs-nothing
 # actions omit the Needs/Output footer entirely.
 _ACTION_DETAIL = {
-    "explore": {"what": "Make quick static figures (LFP traces, spike raster, "
-                        "firing rates) from your raw data. No sorting required.",
+    "explore": {"what": "Quick static figures from the raw data: the same-clock "
+                        "LFP + online-detections view, LFP traces, detection "
+                        "raster and rates. No sorting required.",
                 "needs": ["data"],
                 "output": "outputs/explore.html (opens in your browser) + .png figures"},
     "sort":    {"what": "Detect neurons in the broadband (.ns5) signal with the "
