@@ -180,8 +180,11 @@ def _heatmap(cmp) -> go.Figure:
     ag = cmp.get_ordered_agreement_scores()
     fig = go.Figure(go.Heatmap(
         z=ag.to_numpy(), x=[str(c) for c in ag.columns], y=[str(r) for r in ag.index],
-        colorscale="Blues", zmin=0, zmax=1, colorbar=dict(title="agreement")))
-    fig.update_layout(title="Agreement scores (Hungarian-ordered)",
+        # Magnitude wears the one periwinkle ramp (viz_palette, via report's chart
+        # theme), so these pages read as the same system as report.html.
+        colorscale=report.RAMP_SCALE, zmin=0, zmax=1, colorbar=dict(title="agreement")))
+    fig.update_layout(template=report._TEMPLATE,
+                      title="Agreement scores (Hungarian-ordered)",
                       xaxis_title=f"{cmp.sorting2_name} unit",
                       yaxis_title=f"{cmp.sorting1_name} unit",
                       height=480, margin=dict(t=40, b=40))

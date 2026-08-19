@@ -215,3 +215,52 @@ def test_a_sort_with_nothing_to_split_says_nothing_about_phy():
                             spike_counts={"1": 5000})
     html = report._render_strong_units(rollup, "", None)
     assert "Do I need Phy?" not in html and 'class="advice"' not in html
+
+
+def test_the_advisory_points_at_its_own_evidence():
+    # The audit's coherence tie: the block that makes the claim links to the
+    # section that draws it (and only when there is a claim to back up).
+    assert 'href="#evidence"' in report._render_strong_units(_merge_rollup(), "", None)
+
+
+# --------------------------------------------------------------------------- #
+# Split evidence (GOAL_PRESENT item 6): the advisory's own proof.
+# --------------------------------------------------------------------------- #
+def test_evidence_degrades_honestly_without_a_sort():
+    assert "No saved sort" in report._render_evidence(None, None)
+
+
+def test_evidence_says_so_when_the_rollup_could_not_be_built():
+    out = report._render_evidence(object(), {"rollup": None, "error": "RuntimeError('x')"})
+    assert 'class="skip"' in out and "RuntimeError" in out
+
+
+def test_isi_intervals_are_milliseconds_and_never_crash_on_a_lone_spike():
+    import numpy as np
+    isi = report._isi_ms([0.0, 0.001, 0.010])
+    assert np.allclose(isi, [1.0, 9.0])
+    assert report._isi_ms([0.5]).size == 0        # one spike -> no interval at all
+    assert report._isi_ms([]).size == 0
+
+
+def test_evidence_panels_lead_with_the_advised_units_and_stay_inside_the_budget():
+    rollup = _merge_rollup()
+    picked = report._panel_units(rollup)
+    assert [u["unit"] for u in picked] == [4]     # the merged unit, not the thin junk
+    # The budget is a cap, not a suggestion: a 40-unit merge storm must not turn
+    # into 80 charts.
+    many = {"units": [{"unit": i, "contact": "1", "strong": False,
+                       "split_advice": "x"} for i in range(40)],
+            "n_split_candidates": 40, "n_strong": 0}
+    assert len(report._panel_units(many)) == report.EVIDENCE_MAX_PANELS
+
+
+def test_report_chart_colour_comes_from_the_one_home():
+    # Palette application (item 7): no chart hex may be reborn in report.py.
+    import viz_palette as vp
+    assert report.UNIT_PALETTE is vp.CATEGORICAL_LIGHT
+    assert report.MARK == vp.CATEGORICAL_LIGHT[0]
+    assert report.ACCENT == vp.RAMP[600]
+    assert report.DIM_MARK == vp.CHROME_LIGHT["ink_muted"]
+    assert report.RAMP_SCALE[0][1] == vp.RAMP[vp.RAMP_STEPS[0]]
+    assert report._rgba("#656dd7", 0.5) == "rgba(101,109,215,0.5)"

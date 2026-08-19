@@ -13,12 +13,14 @@ never opens a browser - callers decide.
 Writes outputs/report.html - one offline file (Plotly JS inlined), laid out
 verdict-first per DESIGN_UX §4: a stat-tile header answering "how many units,
 are they any good", a sticky table of contents with per-section status glyphs,
-then the evidence in reader order - 1 Verdict · 2 Sorted units · 3 Quality
-metrics · 4 Array & yield · 5 Probe & channels · 6 Recording context (the raw
-streams, demoted to input context) · 7 Provenance (status table + versions).
-One chart theme and one unit colormap run through every figure, so a unit keeps
-its colour across raster, templates and scatter. Read-only with respect to the
-data; it only writes the HTML.
+then the evidence in reader order - 1 Verdict · 2 Split evidence (the ISI and
+amplitude histograms the merge advisory's own words cite) · 3 Sorted units ·
+4 Quality metrics · 5 Array & yield · 6 Probe & channels · 7 Recording context
+(the raw streams, demoted to input context) · 8 Provenance (status table +
+versions). One chart theme and one unit colormap run through every figure, so a
+unit keeps its colour across raster, templates and scatter; every colour in both
+comes from ``viz_palette`` (light mode, deliberately - see the theme block).
+Read-only with respect to the data; it only writes the HTML.
 
 Single source of truth for the sort = the saved SortingAnalyzer (sorting +
 templates + quality_metrics all come from it, so they can never disagree). The
@@ -42,12 +44,14 @@ from pathlib import Path
 import numpy as np
 import plotly.graph_objects as go
 from plotly.offline import get_plotlyjs
+from plotly.subplots import make_subplots
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import blackrock_io as bio  # noqa: E402
 import curation  # noqa: E402  (curation record + curated-vs-raw state; no SI)
 import runs  # noqa: E402  (the run store: which saved run is current)
 import sort_summary  # noqa: E402  (array/yield headline metrics: load/compute/format)
+import viz_palette as vp  # noqa: E402  (the one home for chart colour)
 
 OUTPUT_DIR = bio.REPO_ROOT / "outputs"
 DEFAULT_ANALYZER_DIR = OUTPUT_DIR / "tridesclous2" / "analyzer"
@@ -350,25 +354,62 @@ def _gather(data_dir, analyzer_dir):
 # The one visual system (DESIGN_UX §4.4): chart theme + shared unit colormap
 # --------------------------------------------------------------------------- #
 _FONT = "-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif"
-ACCENT = "#2b6cb0"
-DIM_MARK = "#98a2ad"
 
-# One restrained categorical palette. Unit colours are assigned by position in
-# the analyzer's unit_ids, so unit 7 is the same colour in the raster, the
-# templates and the QC scatter.
-UNIT_PALETTE = ("#2b6cb0", "#c2570c", "#2f855a", "#9b2c6f", "#0b7285",
-                "#8a6d1f", "#5f4b8b", "#a02c2c", "#6b7280", "#7d4f16")
+# LIGHT MODE, deliberately (2026-08-19): this page is opened in a browser and
+# projected at a lab meeting, and screenshotted into the deck. A single committed
+# mode keeps the printed/projected result predictable, so the surfaces below read
+# viz_palette's LIGHT tokens only - the exact surface its categorical hues were
+# validated against - and no dark-mode branch exists to drift out of validation.
+INK = vp.CHROME_LIGHT
+ACCENT = vp.RAMP[600]                 # UI accent: links, focus rings, chrome
+MARK = vp.CATEGORICAL_LIGHT[0]        # the periwinkle anchor for single-series marks
+DIM_MARK = INK["ink_muted"]           # the palette's "Other" fold, for de-emphasis
 
-_AXIS = dict(gridcolor="#eef1f4", zerolinecolor="#dfe4ea", linecolor="#cfd6dd",
-             ticks="outside", ticklen=4, tickcolor="#cfd6dd",
-             title=dict(font=dict(size=12.5)))
+# One restrained categorical palette, straight from the one home. Unit colours are
+# assigned by position in the analyzer's unit_ids, so unit 7 is the same colour in
+# the raster, the templates and the QC scatter (DESIGN_UX §4.4).
+#
+# DELIBERATE DEVIATION, stated so nobody "fixes" it silently: the palette forbids
+# cycling its eight slots, and this recording sorts to 16 units. Folding the
+# overflow to one grey (the palette's own remedy) would erase half the units'
+# identity on the very figures the lab reads, and §4.4 requires ONE shared
+# colormap. So the slots repeat in fixed order and the repeat is carried on a
+# second channel instead: lap 2 draws dashed, lap 3 dotted (_LAP_DASH), and every
+# figure names its units directly anyway - raster y-ticks, rate x-ticks, scatter
+# text labels, template legend - so colour is never the only identity carrier.
+UNIT_PALETTE = vp.CATEGORICAL_LIGHT
+_LAP_DASH = ("solid", "dash", "dot")
+
+# Sequential = the one periwinkle ramp, never a rainbow (the palette's rule). Full
+# ramp: this feeds continuous fills (the probe map's noise colorbar), which carry a
+# labelled scale rather than needing each step legible on its own.
+RAMP_SCALE = [[i / (len(vp.RAMP_STEPS) - 1), vp.RAMP[s]]
+              for i, s in enumerate(vp.RAMP_STEPS)]
+
+
+def _rgba(hex_color: str, alpha: float) -> str:
+    """One palette hex as an rgba() string - for tints and translucent fills.
+
+    Keeps derived fills tied to the palette instead of becoming new hardcoded hex.
+    """
+    h = hex_color.lstrip("#")
+    r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+    return f"rgba({r},{g},{b},{alpha:g})"
+
+
+_AXIS = dict(gridcolor=INK["gridline"], zerolinecolor=INK["baseline"],
+             linecolor=INK["baseline"], ticks="outside", ticklen=4,
+             tickcolor=INK["baseline"],
+             # Axis text wears ink tokens, never a series colour (the palette's rule).
+             tickfont=dict(color=INK["ink_secondary"]),
+             title=dict(font=dict(size=12.5, color=INK["ink_secondary"])))
 _TEMPLATE = go.layout.Template(layout=dict(
-    font=dict(family=_FONT, size=13, color="#1b1f24"),
-    paper_bgcolor="#ffffff", plot_bgcolor="#ffffff",
+    font=dict(family=_FONT, size=13, color=INK["ink"]),
+    paper_bgcolor=INK["surface"], plot_bgcolor=INK["surface"],
     colorway=list(UNIT_PALETTE),
-    title=dict(font=dict(size=15.5, color="#1b1f24"), x=0, xanchor="left", y=0.97),
+    title=dict(font=dict(size=15.5, color=INK["ink"]), x=0, xanchor="left", y=0.97),
     xaxis=_AXIS, yaxis=_AXIS,
-    legend=dict(font=dict(size=12), bgcolor="rgba(255,255,255,0.75)"),
+    legend=dict(font=dict(size=12), bgcolor=_rgba(INK["surface"], 0.75)),
     hoverlabel=dict(font=dict(family=_FONT, size=12)),
     margin=dict(t=46, b=46, l=58, r=24),
 ))
@@ -387,6 +428,17 @@ def _style(fig, title=None, height=None, **layout):
 def _unit_colors(unit_ids) -> dict:
     """{str(unit id): colour} - the shared unit colormap, keyed by id."""
     return {str(u): UNIT_PALETTE[i % len(UNIT_PALETTE)] for i, u in enumerate(unit_ids)}
+
+
+def _unit_dashes(unit_ids) -> dict:
+    """{str(unit id): line dash} - the second identity channel for line charts.
+
+    Slot 9 reuses slot 1's hue (see UNIT_PALETTE); on a line chart, where colour
+    is what a reader traces, the repeat is carried by the dash instead so two
+    units never draw identically.
+    """
+    return {str(u): _LAP_DASH[min(i // len(UNIT_PALETTE), len(_LAP_DASH) - 1)]
+            for i, u in enumerate(unit_ids)}
 
 
 # --------------------------------------------------------------------------- #
@@ -488,10 +540,27 @@ def _safe_section(sec_id, title, render, *args, state="ok") -> dict:
     return {"id": sec_id, "title": title, "html": body, "state": state}
 
 
-_CSS = """
-:root { --fg:#1b1f24; --muted:#5b6470; --line:#e3e7eb; --bg:#fff; --panel:#f7f9fb;
-        --accent:#2b6cb0; --amber:#8a5a00; --amber-bg:#fff8e6; --amber-line:#f0dca8;
-        --red:#8c2d24; --red-bg:#fdeceb; --red-line:#f3c9c5; --green:#1f6f3d; --radius:10px; }
+# Page tokens, from the same one home as the charts, so a figure sits on exactly
+# the surface its hues were validated against. Three families of hex stay literal
+# here on purpose, and vp.STATUS cannot replace them:
+#   --amber / --red / --green are TEXT inks (the advisory callout, error boxes, a
+#     passing verdict); the status hues are validated as marks and fills paired
+#     with a label, and as light-surface body text they fall under the contrast
+#     line - swapping them in would regress the amber merge advisory.
+#   .PASS/.FAIL/.SKIP badges carry WHITE text on the fill, which needs a darker
+#     fill than a status mark drawn beside dark ink.
+#   The tint backgrounds/borders beside those inks are drawn FROM vp.STATUS below.
+_CSS_TOKENS = {
+    "fg": INK["ink"], "muted": INK["ink_secondary"], "line": INK["gridline"],
+    "bg": INK["surface"], "panel": INK["page"], "accent": ACCENT,
+    "hover": _rgba(vp.RAMP[100], 0.35),
+    "amber": "#8a5a00", "amber-bg": _rgba(vp.STATUS["warning"], 0.10),
+    "amber-line": _rgba(vp.STATUS["warning"], 0.42),
+    "red": "#8c2d24", "red-bg": _rgba(vp.STATUS["critical"], 0.09),
+    "red-line": _rgba(vp.STATUS["critical"], 0.32), "green": "#1f6f3d",
+    "radius": "10px",
+}
+_CSS = ":root { " + " ".join(f"--{k}:{v};" for k, v in _CSS_TOKENS.items()) + " }\n" + """
 * { box-sizing: border-box; }
 body { font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
        color: var(--fg); margin: 0; background: var(--bg); line-height: 1.6; }
@@ -585,7 +654,7 @@ th .arrow { font-size: 9px; color: var(--muted); }
 th[aria-sort="ascending"] .arrow::after { content: "▲"; }
 th[aria-sort="descending"] .arrow::after { content: "▼"; }
 tbody tr:last-child td { border-bottom: none; }
-tbody tr:hover { background: #fafbfc; }
+tbody tr:hover { background: var(--hover); }
 details { margin: 14px 0 22px; }
 summary { cursor: pointer; color: var(--fg); font-size: 13.5px; padding: 8px 12px;
           background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); }
@@ -875,8 +944,10 @@ def _render_strong_units(rollup, stamp_html, matches_meta) -> str:
     if rollup.get("split_line"):
         split_html = ('<div class="caveat"><strong>Do I need Phy?</strong> '
                       + html.escape(rollup["split_line"])
-                      + '. Each is flagged in the verdict column, and press '
-                      '<code>y</code> in the menu to export this sort for Phy.</div>')
+                      + '. Each is flagged in the verdict column, the intervals '
+                      'behind the call are drawn in <a href="#evidence">split '
+                      'evidence</a> below, and pressing <code>y</code> in the menu '
+                      'exports this sort for Phy.</div>')
     if accepted:
         body += ('<p class="rollup"><strong>' + html.escape(rollup["headline"])
                  + '</strong><br>' + html.escape(rollup["contact_line"]) + '</p>')
@@ -903,8 +974,338 @@ def _render_strong_units(rollup, stamp_html, matches_meta) -> str:
     return f'<div class="takeaway">{body}{rule_note}</div>'
 
 
+# --------------------------------------------------------------------------- #
+# Split evidence: the advisory's own proof (content audit, 2026-08-19)
+#
+# The merge advisory names two signals - a unit "fires at impossible intervals",
+# and where the sort saved amplitudes, they "look bimodal" - and the report
+# stated both while showing neither. These panels render exactly those two
+# signals, for exactly the units the advisory names, out of the saved analyzer:
+# the ISI histogram against the refractory line the violation count was counted
+# against, and the amplitude histogram behind the bimodality score.
+#
+# What was weighed and left out: waveform overlays. The advisory does not cite
+# waveform shape, section 2 already draws every unit's template on its peak
+# channel, and a third panel per unit would push a 16-unit recording past the
+# point where any of it is readable.
+# --------------------------------------------------------------------------- #
+EVIDENCE_MAX_PANELS = 12       # legibility budget; the rest stay in the tables above
+EVIDENCE_COLS = 3
+ISI_WINDOW_MS = 25.0           # the range that carries the story; the tail is flat
+ISI_BIN_MS = 0.25              # puts a 1.5 ms refractory line exactly on a bin edge
+AMP_BINS = 60
+DEFAULT_REFRACTORY_MS = 1.5    # SpikeInterface's own isi_violation default
+
+
+def _plural(n, word) -> str:
+    """"6 units" / "1 unit" - chart titles read as sentences, not as "unit(s)"."""
+    return f"{n} {word}" + ("" if n == 1 else "s")
+
+
+def _refractory_ms(analyzer) -> float:
+    """The refractory window the SAVED quality metrics were computed with.
+
+    Read from the analyzer's own quality-metrics params, so the line drawn across
+    a histogram is the very line the ``isi_violations_count`` printed beside it
+    was counted against - never a second opinion that could disagree with the
+    number. Falls back to SpikeInterface's default for a sort that saved no
+    metrics (there is then no count to contradict either).
+    """
+    try:
+        params = analyzer.get_extension("quality_metrics").params
+        return float(params["metric_params"]["isi_violation"]["isi_threshold_ms"])
+    except Exception:  # noqa: BLE001 - no metrics, or an older params shape
+        return DEFAULT_REFRACTORY_MS
+
+
+def _isi_ms(train_seconds) -> np.ndarray:
+    """Inter-spike intervals in ms from one unit's spike times in seconds."""
+    t = np.asarray(train_seconds, dtype=float)
+    return np.diff(t) * 1000.0 if t.size > 1 else np.zeros(0, dtype=float)
+
+
+def _panel_units(rollup, limit=EVIDENCE_MAX_PANELS) -> list:
+    """Which units earn an evidence panel: the advised ones, then the strong ones.
+
+    The advised units are the point - the panel IS the advisory's evidence. The
+    strong units follow so a reader sees what a clean unit looks like on the same
+    axes. Everything else stays in the tables above rather than becoming another
+    two dozen charts.
+    """
+    picked = [u for u in rollup["units"] if u.get("split_advice")]
+    seen = {str(u["unit"]) for u in picked}
+    picked += [u for u in rollup["units"] if u["strong"] and str(u["unit"]) not in seen]
+    return picked[:limit]
+
+
+def _panel_note(rollup) -> str:
+    """What the panels below are, said truthfully for a sort with no advisory too."""
+    if rollup["n_split_candidates"]:
+        return ("One panel per advised unit, with the strong units after them for "
+                "contrast when a sort has any.")
+    return ("Nothing is advised here, so these panels are the strong units: what a "
+            "clean unit's intervals look like on these axes.")
+
+
+def _panel_grid(titles):
+    """An (n <= EVIDENCE_MAX_PANELS) small-multiples grid. Returns (fig, rows, cols)."""
+    n = len(titles)
+    cols = min(n, EVIDENCE_COLS)
+    rows = -(-n // cols)
+    fig = make_subplots(rows=rows, cols=cols, subplot_titles=titles,
+                        horizontal_spacing=0.075, vertical_spacing=0.22 / rows)
+    for note in fig.layout.annotations:          # the subplot titles
+        note.font.size = 12.5
+        note.font.color = INK["ink"]
+    return fig, rows, cols
+
+
+def _isi_panels(analyzer, units, qrows, refractory_ms):
+    """One ISI histogram per advised unit, the refractory window shaded."""
+    by_id = {str(u): u for u in analyzer.unit_ids}
+    fs = analyzer.sampling_frequency
+    titles = []
+    for u in units:
+        n_viol = (qrows.get(str(u["unit"])) or {}).get("isi_violations_count")
+        try:
+            shown = f" · {int(n_viol):,} violations" if n_viol == n_viol else ""
+        except (TypeError, ValueError):
+            shown = ""
+        titles.append(f'unit {u["unit"]} · ch {u["contact"]}{shown}')
+    fig, rows, cols = _panel_grid(titles)
+    edges = np.arange(0.0, ISI_WINDOW_MS + ISI_BIN_MS, ISI_BIN_MS)
+    centers = edges[:-1] + ISI_BIN_MS / 2.0
+    for i, u in enumerate(units):
+        row, col = i // cols + 1, i % cols + 1
+        uid = by_id.get(str(u["unit"]))
+        isi = (_isi_ms(analyzer.sorting.get_unit_spike_train(uid) / fs)
+               if uid is not None else np.zeros(0))
+        counts, _ = np.histogram(isi, bins=edges)
+        fig.add_trace(go.Bar(x=centers, y=counts, marker_color=MARK, width=ISI_BIN_MS,
+                             marker_line_width=0, name=f'unit {u["unit"]}',
+                             hovertemplate="%{x:.2f} ms<br>%{y} intervals<extra></extra>"),
+                      row=row, col=col)
+        # Status colour, on a region that IS a state and carries its label below.
+        fig.add_vrect(x0=0.0, x1=refractory_ms, layer="below", line_width=0,
+                      fillcolor=_rgba(vp.STATUS["warning"], 0.22), row=row, col=col)
+        fig.add_vline(x=refractory_ms, line=dict(color=vp.STATUS["warning"],
+                                                 width=1.2, dash="dash"),
+                      row=row, col=col)
+    fig.update_xaxes(range=[0.0, ISI_WINDOW_MS], showgrid=False)
+    for col in range(1, cols + 1):
+        fig.update_xaxes(title_text="interval (ms)", row=rows, col=col)
+    for row in range(1, rows + 1):
+        fig.update_yaxes(title_text="spike pairs", row=row, col=1)
+    return _style(fig, title=(f"Inter-spike intervals · {_plural(len(units), 'unit')} · "
+                              f"shaded = the {refractory_ms:g} ms refractory window"),
+                  height=150 + 210 * rows, showlegend=False)
+
+
+def _amplitude_panels(analyzer, units, amps_by_unit, bimodality, amp_unit):
+    """One spike-amplitude histogram per advised unit, its bimodality score named."""
+    titles = []
+    for u in units:
+        score = bimodality.get(str(u["unit"]))
+        titles.append(f'unit {u["unit"]} · ch {u["contact"]}'
+                      + (f" · bimodality {float(score):.2f}" if score is not None else ""))
+    fig, rows, cols = _panel_grid(titles)
+    for i, u in enumerate(units):
+        row, col = i // cols + 1, i % cols + 1
+        amps = amps_by_unit.get(str(u["unit"]))
+        if amps is None:
+            continue
+        # Already in the recording's amplitude unit: the analyzer returns µV, and
+        # re-applying the gain here is the double-scaling trap (CLAUDE.md).
+        fig.add_trace(go.Histogram(x=np.asarray(amps, dtype=float), nbinsx=AMP_BINS,
+                                   marker_color=MARK, marker_line_width=0,
+                                   name=f'unit {u["unit"]}',
+                                   hovertemplate="%{x:.1f}<br>%{y} spikes<extra></extra>"),
+                      row=row, col=col)
+    for col in range(1, cols + 1):
+        fig.update_xaxes(title_text=f"amplitude ({amp_unit})", row=rows, col=col)
+    for row in range(1, rows + 1):
+        fig.update_yaxes(title_text="spikes", row=row, col=1)
+    return _style(fig, title=f"Spike-amplitude distribution · {_plural(len(units), 'unit')}",
+                  height=150 + 210 * rows, showlegend=False)
+
+
+def _advisory_map(rollup, qrows):
+    """Every unit against the two gates the advisory applies. Returns (fig, dropped).
+
+    ``dropped`` names the units a log axis cannot place (a unit with no ISI
+    violations at all has a ratio of zero), so the chart's omissions are stated
+    rather than silent.
+    """
+    isi_line = sort_summary.split_isi_threshold(rollup["rule"])
+    floor = sort_summary.SPLIT_MIN_SPIKES
+    series, dropped = {True: [], False: []}, []
+    for u in rollup["units"]:
+        ratio = (qrows.get(str(u["unit"])) or {}).get("isi_violations_ratio")
+        try:
+            ratio, spikes = float(ratio), float(u["n_spikes"])
+        except (TypeError, ValueError):
+            dropped.append(str(u["unit"]))
+            continue
+        if not (ratio > 0 and spikes > 0):
+            dropped.append(str(u["unit"]))
+            continue
+        series[bool(u.get("split_advice"))].append((spikes, ratio, str(u["unit"])))
+    fig = go.Figure()
+    for advised, label, colour in ((False, "not advised", DIM_MARK),
+                                   (True, "advised: likely two cells", MARK)):
+        pts = series[advised]
+        if not pts:
+            continue
+        fig.add_trace(go.Scatter(
+            x=[p[0] for p in pts], y=[p[1] for p in pts], mode="markers+text",
+            text=[p[2] for p in pts], textposition="top center",
+            textfont=dict(size=11, color=INK["ink_secondary"]),
+            marker=dict(size=11, color=colour, line=dict(width=0)), name=label,
+            hovertemplate="unit %{text}<br>%{x:,.0f} spikes<br>"
+                          "ISI ratio %{y:.2f}<extra></extra>"))
+    line = dict(color=INK["baseline"], width=1, dash="dot")
+    note = dict(size=11, color=INK["ink_secondary"])
+    fig.add_hline(y=isi_line, line=line, annotation_text=f"ISI ratio {isi_line:g}",
+                  annotation_position="top left", annotation_font=note)
+    fig.add_vline(x=floor, line=line)
+    # The label is added separately, in LOG space: on a log axis plotly.js converts
+    # a shape's data coordinate but not an annotation's, so a vline's own
+    # annotation_text silently lands at 10**floor and never renders (verified on
+    # the pinned plotly<6). The horizontal line's label needs no such care - it
+    # rides "x domain".
+    fig.add_annotation(x=float(np.log10(floor)), y=0.02, xref="x", yref="y domain",
+                       text=f"{floor:,} spikes", showarrow=False, font=note,
+                       xanchor="left", yanchor="bottom")
+    _style(fig, title="Why these units: both gates, every unit", height=430,
+           xaxis_title="spikes in this unit", yaxis_title="ISI violations ratio",
+           # Decades only: log minor labels turn the axis into a wall of digits.
+           xaxis=dict(type="log", dtick=1), yaxis=dict(type="log", dtick=1),
+           # Legend right of the title, which the theme pins to the left (§4.4).
+           legend=dict(orientation="h", y=1.02, yanchor="bottom", x=1, xanchor="right"))
+    return fig, dropped
+
+
+def _render_evidence(analyzer, roll) -> str:
+    """The evidence behind the verdict's merge advisory (DESIGN_UX §1.5: a claim
+    the reader can check). Everything here reads the saved SortingAnalyzer, and
+    the advised units are the SAME objects the verdict block listed - both
+    sections read one rollup, so they can never name different units."""
+    if analyzer is None:
+        return ('<p class="skip">No saved sort - there is no ISI or amplitude '
+                'evidence to show.</p>')
+    rollup = (roll or {}).get("rollup")
+    if rollup is None:
+        return ('<p class="skip">The unit rollup is unavailable, so the advisory '
+                'and its evidence cannot be matched up'
+                + (f': {html.escape((roll or {}).get("error", ""))}' if (roll or {}).get("error")
+                   else "") + '.</p>')
+    qrows = _quality_metric_rows(analyzer)
+    refractory = _refractory_ms(analyzer)
+    # The lead must not assert an advisory that did not fire: on a clean sort this
+    # section is the same evidence showing nothing is wrong, and saying otherwise
+    # would invent a warning.
+    lead = ('The advisory in the verdict says some units fire at impossible '
+            'intervals. This is what it is looking at.'
+            if rollup["n_split_candidates"] else
+            'No unit is advised for splitting on this sort. This is the evidence '
+            'that call rests on.')
+    body = (f'<p class="note">{lead} A neuron cannot '
+            f'fire twice inside its refractory period (here {refractory:g} ms, the '
+            'window the saved metrics were counted against), so intervals shorter '
+            'than that are spikes a single cell could not have produced. The '
+            'criteria: '
+            + html.escape(rollup.get("split_rule_text", "")) + '.</p>')
+
+    if not qrows:
+        return body + ('<p class="skip">This sort saved no quality metrics, so no '
+                       'unit can be judged against the refractory line at all.</p>')
+
+    fig, dropped = _advisory_map(rollup, qrows)
+    caption = ('Both gates at once: a unit is advised only above the ISI line AND '
+               'right of the spike floor. The floor is not decoration - the ratio '
+               'divides by the spike count squared, so a 30-spike unit with three '
+               'violations outscores a real merge many times over.')
+    if dropped:
+        caption += (f' {len(dropped)} unit(s) are not on this chart ('
+                    + html.escape(", ".join(dropped))
+                    + '): a log axis has no place for a unit with zero ISI '
+                    'violations, and none of them clears the spike floor either.')
+    body += _figure(fig, "Scatter of ISI violations ratio against spike count for every "
+                         "unit, on log axes, with the advisory's ISI line and spike floor "
+                         "drawn; advised units are highlighted.")
+    body += f'<p class="note">{caption}</p>'
+
+    units = _panel_units(rollup)
+    if not units:
+        return body + ('<p class="note">No unit meets the advisory criteria on this '
+                       'sort and none passed the quality rule on enough spikes to be '
+                       'called strong, so there is no per-unit panel to draw. The '
+                       'chart above still places every unit against both gates.</p>')
+
+    n_more = rollup["n_split_candidates"] + rollup["n_strong"] - len(units)
+    more = (f' The remaining {n_more} stay in the tables above rather than doubling '
+            'the chart count.' if n_more > 0 else "")
+    body += ('<h3>Impossible intervals, unit by unit</h3>'
+             + _figure(_isi_panels(analyzer, units, qrows, refractory),
+                       f"Small-multiples grid of inter-spike-interval histograms for "
+                       f"{len(units)} units, each with the refractory window shaded.")
+             + f'<p class="note">{_panel_note(rollup)} The shaded band is the '
+               'refractory window: bars '
+               'standing in it are the violations, and the count in each panel title '
+               'is SpikeInterface\'s own <code>isi_violations_count</code> from the '
+               'saved metrics, not a recount. A single clean cell leaves that band '
+               f'nearly empty.{more}</p>')
+
+    amps = sort_summary.spike_amplitudes_by_unit(analyzer)
+    if not amps:
+        body += ('<p class="note">This sort saved no spike amplitudes, so the '
+                 'advisory\'s second signal could not be scored or drawn. Its '
+                 'absence is not evidence against the intervals above.</p>')
+        return body
+    amp_unit = ("µV" if bool(getattr(analyzer, "return_in_uV",
+                                     getattr(analyzer, "return_scaled", True))) else "a.u.")
+    body += ('<h3>The second signal: amplitude shape</h3>'
+             + _figure(_amplitude_panels(analyzer, units, amps,
+                                         (roll or {}).get("bimodality") or {}, amp_unit),
+                       f"Small-multiples grid of spike-amplitude histograms for "
+                       f"{len(units)} units, amplitude in {amp_unit}.")
+             + '<p class="note">Two cells under one label often leave two humps here. '
+               f'The score is the bimodality coefficient; {sort_summary.SPLIT_BIMODALITY_MIN:.2f} '
+               'is what a flat distribution scores, so above it a sample is more '
+               'two-humped than flat and the advisory says so. Below it means '
+               'nothing either way: two similar cells merge into one hump, which is '
+               'why this signal only ever corroborates the intervals and never '
+               'fires an advisory alone.</p>')
+    return body
+
+
+def _rollup_for(analyzer, analyzer_dir, matches=None) -> dict:
+    """The unit rollup, built ONCE: ``{"rollup", "bimodality", "error"}``.
+
+    The verdict states which units look like two cells; the evidence section
+    draws the proof. They must name the same units, so they read one object
+    rather than each building its own. Never raises - a failure degrades to an
+    honest note in both places rather than taking a section down.
+    """
+    if analyzer is None:
+        return {"rollup": None, "bimodality": {}, "error": ""}
+    try:
+        summary = (sort_summary.load_summary(Path(analyzer_dir).parent)
+                   if analyzer_dir else None)
+        bimodality = sort_summary.amplitude_bimodality(analyzer)
+        rollup = sort_summary.unit_rollup(
+            summary or {}, _quality_metric_rows(analyzer),
+            rule=sort_summary.load_quality_rule(bio.REPO_ROOT / ".si_menu.json"),
+            spike_counts=_spike_counts(analyzer),
+            matches=(matches or {}).get("by_unit") if matches else None,
+            bimodality=bimodality)
+        return {"rollup": rollup, "bimodality": bimodality, "error": ""}
+    except Exception as e:  # noqa: BLE001 - both readers degrade to a note
+        return {"rollup": None, "bimodality": {}, "error": repr(e)}
+
+
 def _render_verdict(analyzer, analyzer_dir, info, sorter_label, status, data_dir=None,
-                    cur=None, matches=None) -> str:
+                    cur=None, matches=None, roll=None) -> str:
     """The answer first: four stat tiles (DESIGN_UX §4.1).
 
     When no raw data loaded at all (fresh clone / wrong folder) this is also the
@@ -929,22 +1330,18 @@ def _render_verdict(analyzer, analyzer_dir, info, sorter_label, status, data_dir
 
     # The takeaway leads (Ben, 2026-08-19: "at contact 5 we want to know how many
     # neurons we think we found"). It is built from what the sort saved, judged by
-    # the rule's one owner, and rendered above the stat tiles - a failure here
-    # degrades to a note rather than taking the whole verdict section with it.
-    try:
-        rollup = sort_summary.unit_rollup(
-            summary or {}, _quality_metric_rows(analyzer),
-            rule=sort_summary.load_quality_rule(bio.REPO_ROOT / ".si_menu.json"),
-            spike_counts=_spike_counts(analyzer),
-            matches=(matches or {}).get("by_unit") if matches else None,
-            bimodality=sort_summary.amplitude_bimodality(analyzer))
+    # the rule's one owner, and rendered above the stat tiles - a failure there
+    # degrades to a note rather than taking the whole verdict section with it. The
+    # rollup itself is built once, upstream, and shared with the evidence section.
+    roll = roll if roll is not None else _rollup_for(analyzer, analyzer_dir, matches)
+    if roll.get("rollup") is not None:
         shown = (f"{sorter_label} · curated" if (cur or {}).get("curated")
                  else sorter_label)
         lead += _render_strong_units(
-            rollup, _run_stamp(info, analyzer_dir, shown), matches)
-    except Exception as e:  # noqa: BLE001 - the tiles below still answer the basics
+            roll["rollup"], _run_stamp(info, analyzer_dir, shown), matches)
+    else:
         lead += ('<p class="skip">Strong-units rollup unavailable: '
-                 f'{html.escape(repr(e))}</p>')
+                 f'{html.escape(roll.get("error", "") or "no per-unit summary saved")}</p>')
 
     tiles = []
 
@@ -1066,10 +1463,12 @@ def _render_sorted(analyzer, sorter_label, info=None, probe=None) -> str:
     amp_unit = ("µV" if bool(getattr(analyzer, "return_in_uV",
                                      getattr(analyzer, "return_scaled", True))) else "a.u.")
     wf = go.Figure()
+    dashes = _unit_dashes(unit_ids)
     for i, u in enumerate(unit_ids):
         best = int(np.argmax(np.ptp(templates[i], axis=0)))   # numpy 2.x: ndarray.ptp() removed
         wf.add_trace(go.Scatter(x=tms, y=templates[i][:, best], mode="lines",
-                                line=dict(color=colors[str(u)]),
+                                line=dict(color=colors[str(u)], width=1.6,
+                                          dash=dashes[str(u)]),
                                 name=f"unit {int(u)} (ch {chan_ids[best]})"))
     _style(wf, title=f"Waveform template per unit, best channel ({len(unit_ids)} units)",
            height=440, xaxis_title="time relative to spike (ms)",
@@ -1155,9 +1554,9 @@ def _render_qc(analyzer) -> str:
         fig = go.Figure(go.Scatter(
             x=qm["firing_rate"], y=qm["snr"], mode="markers+text",
             text=[str(int(u)) for u in qm.index], textposition="top center",
-            textfont=dict(size=11, color="#5b6470"),
+            textfont=dict(size=11, color=INK["ink_secondary"]),
             marker=dict(size=size if size is not None else 12,
-                        color=[colors.get(str(u), ACCENT) for u in qm.index],
+                        color=[colors.get(str(u), MARK) for u in qm.index],
                         line=dict(width=0)),
             hovertemplate="unit %{text}<br>rate %{x:.2f} Hz<br>SNR %{y:.2f}<extra></extra>"))
         _style(fig, title=f"SNR vs firing rate ({len(qm)} units · marker size = ISI-violation ratio)",
@@ -1207,7 +1606,7 @@ def _render_summary(analyzer, analyzer_dir) -> str:
     chan_ids = [str(c) for c in (analyzer.channel_ids if analyzer is not None else range(len(noise)))]
     noise_html = ""
     if noise and len(noise) == len(chan_ids):
-        colours = [ACCENT if c in active else DIM_MARK for c in chan_ids]
+        colours = [MARK if c in active else DIM_MARK for c in chan_ids]
         fig = go.Figure(go.Bar(x=chan_ids, y=[0 if v is None else v for v in noise],
                                marker_color=colours))
         _style(fig, title=(f"Noise floor per channel ({amp}) - "
@@ -1250,14 +1649,15 @@ def _render_probe(analyzer, analyzer_dir) -> str:
     x, y = loc[:, 0].astype(float), loc[:, 1].astype(float)
 
     fig = go.Figure()
-    marker = dict(size=18, line=dict(color="#1b1f24", width=1))
+    marker = dict(size=18, line=dict(color=INK["ink"], width=1))
     if noise and len(noise) == len(chan_ids) and any(v is not None for v in noise):
-        marker.update(color=[np.nan if v is None else v for v in noise], colorscale="Viridis",
+        # Magnitude wears the one periwinkle ramp, never a rainbow (the palette).
+        marker.update(color=[np.nan if v is None else v for v in noise], colorscale=RAMP_SCALE,
                       colorbar=dict(title="noise (µV)"), showscale=True)
         hover = [f"ch {c}<br>({xi:.0f}, {yi:.0f}) µm<br>noise {('' if v is None else f'{v:.2f} µV')}"
                  for c, xi, yi, v in zip(chan_ids, x, y, noise)]
     else:
-        marker.update(color=[ACCENT if c in active else DIM_MARK for c in chan_ids])
+        marker.update(color=[MARK if c in active else DIM_MARK for c in chan_ids])
         hover = [f"ch {c}<br>({xi:.0f}, {yi:.0f}) µm" for c, xi, yi in zip(chan_ids, x, y)]
     fig.add_trace(go.Scatter(x=x, y=y, mode="markers+text", marker=marker,
                              text=chan_ids, textposition="middle right",
@@ -1267,9 +1667,12 @@ def _render_probe(analyzer, analyzer_dir) -> str:
         ay = [yi for c, yi in zip(chan_ids, y) if c in active]
         fig.add_trace(go.Scatter(x=ax, y=ay, mode="markers", name="active electrode",
                                  marker=dict(size=30, color="rgba(0,0,0,0)",
-                                             line=dict(color=ACCENT, width=3))))
+                                             line=dict(color=MARK, width=3))))
     _style(fig, title=f"Collection sites - {len(chan_ids)} contacts, electrode geometry",
            height=560, xaxis_title="x (µm)", yaxis_title="depth y (µm)",
+           # The legend goes UNDER the plot: at the top right it sat on top of the
+           # noise colorbar's own title.
+           legend=dict(orientation="h", yanchor="top", y=-0.1, x=0),
            yaxis=dict(autorange="reversed"),
            xaxis=dict(range=[x.min() - max((x.max() - x.min()) * 0.6, 60),
                              x.max() + max((x.max() - x.min()) * 0.6, 120)]))
@@ -1545,9 +1948,14 @@ def build_report(data_dir=None, analyzer_dir=None, out_path=None, sorter_label=N
             matches = None
 
     _p("Render figures")
+    # One rollup for the verdict's words and the evidence section's charts, so the
+    # two can never name different units (they are the claim and its proof).
+    roll = _rollup_for(analyzer, analyzer_dir, matches)
     sections = [
         _safe_section("verdict", "Verdict", _render_verdict, analyzer, analyzer_dir, info,
-                      sorter_label, status, data_dir, cur, matches, state=sorted_state),
+                      sorter_label, status, data_dir, cur, matches, roll, state=sorted_state),
+        _safe_section("evidence", "Split evidence", _render_evidence, analyzer, roll,
+                      state=sorted_state),
         _safe_section("sorted", f"Sorted units ({display_label})", _render_sorted, analyzer,
                       display_label, info, probe, state=sorted_state),
         _safe_section("qc", "Quality metrics", _render_qc, analyzer, state=sorted_state),

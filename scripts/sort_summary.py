@@ -958,20 +958,21 @@ def _bimodality_coefficient(values):
     return round(float((g1 ** 2 + 1.0) / denom), 4)
 
 
-def amplitude_bimodality(analyzer) -> dict:
-    """{unit id (str): bimodality coefficient} from the ``spike_amplitudes`` extension.
+def spike_amplitudes_by_unit(analyzer) -> dict:
+    """{unit id (str): 1-D array of that unit's spike amplitudes}, or ``{}``.
 
-    The merge advisory's corroborating signal (see the block above
-    ``split_advice``): two cells under one label often leave two humps in the
-    amplitude histogram. ``{}`` when the extension is absent, and a unit whose
-    sample cannot carry the statistic is simply omitted. A gap costs the advisory
-    a clause, never a verdict, so nothing here is fatal.
+    ONE home for getting amplitudes out of the ``spike_amplitudes`` extension:
+    the segment shape SpikeInterface returns is an implementation detail that was
+    only decoded here, and the report's amplitude histograms must read exactly the
+    sample ``amplitude_bimodality`` scores or a panel could contradict the clause
+    it illustrates. Already in the recording's amplitude unit (µV where the
+    analyzer carries gains) - never rescale these.
     """
     import numpy as np
 
     try:
         by_unit = analyzer.get_extension("spike_amplitudes").get_data(outputs="by_unit")
-    except Exception:  # noqa: BLE001 - optional extension -> no corroborating signal
+    except Exception:  # noqa: BLE001 - optional extension -> no amplitudes at all
         return {}
     # SpikeInterface returns {segment index: {unit: amplitudes}}. Segments are
     # concatenated: they are the same unit either way.
@@ -981,10 +982,22 @@ def amplitude_bimodality(analyzer) -> dict:
             continue
         for u, amps in seg.items():
             chunks.setdefault(str(u), []).append(np.asarray(amps, dtype=float))
+    return {u: (np.concatenate(parts) if len(parts) > 1 else parts[0])
+            for u, parts in chunks.items()}
+
+
+def amplitude_bimodality(analyzer) -> dict:
+    """{unit id (str): bimodality coefficient} from the ``spike_amplitudes`` extension.
+
+    The merge advisory's corroborating signal (see the block above
+    ``split_advice``): two cells under one label often leave two humps in the
+    amplitude histogram. ``{}`` when the extension is absent, and a unit whose
+    sample cannot carry the statistic is simply omitted. A gap costs the advisory
+    a clause, never a verdict, so nothing here is fatal.
+    """
     out = {}
-    for u, parts in chunks.items():
-        score = _bimodality_coefficient(np.concatenate(parts) if len(parts) > 1
-                                        else parts[0])
+    for u, amps in spike_amplitudes_by_unit(analyzer).items():
+        score = _bimodality_coefficient(amps)
         if score is not None:
             out[u] = score
     return out

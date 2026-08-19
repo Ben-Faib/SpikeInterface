@@ -33,8 +33,12 @@ OUTPUTS = ROOT / "outputs"
 # Re-baselined for the D3 report redesign (DESIGN_UX §4.3): verdict first,
 # evidence in reader order, the raw streams demoted into one "recording context"
 # section, provenance merged into one home at the end.
+# Re-baselined again 2026-08-19 (GOAL_PRESENT item 6, the content audit): "evidence"
+# is a new section holding the ISI and amplitude histograms the verdict's merge
+# advisory cites in words. It sits directly after the verdict because it is that
+# claim's proof, and the advisory's callout links down into it.
 REQUIRED_SECTION_ORDER = [
-    "verdict", "sorted", "qc", "summary", "probe", "context", "provenance",
+    "verdict", "evidence", "sorted", "qc", "summary", "probe", "context", "provenance",
 ]
 
 # Attributes after the id are redesign-legal; the id staying first is not
@@ -190,6 +194,84 @@ def test_summary_metrics_when_saved(built_report):
     summary_html = _sections(html)["summary"]
     assert "yield (% active electrodes)" in summary_html
     assert "<table" in summary_html
+
+
+def _advised_units(verdict_html: str) -> list[str]:
+    """Unit ids the verdict block carries a merge advisory against."""
+    out = []
+    for row in re.findall(r"<tr>(.*?)</tr>", verdict_html, re.S):
+        if 'class="advice"' not in row:
+            continue
+        cell = re.search(r"<code>([^<]+)</code>", row)
+        if cell:
+            out.append(cell.group(1))
+    return out
+
+
+def test_evidence_section_shows_what_the_advisory_cites(built_report):
+    # The audit's whole point (GOAL_PRESENT item 6): the report told the reader a
+    # unit "fires at impossible intervals" without ever drawing the intervals. If
+    # the advisory fires, its evidence must be on the page, per advised unit.
+    html, _, _ = built_report
+    secs = _sections(html)
+    advised = _advised_units(secs["verdict"])
+    if not advised:
+        pytest.skip("no unit meets the advisory criteria on the picked sort")
+    ev = secs["evidence"]
+    assert "plotly-graph-div" in ev, "the advisory fired but drew no evidence"
+    assert "refractory" in ev.lower()
+    for unit in advised:
+        assert f"unit {unit} ·" in ev, f"advised unit {unit} has no evidence panel"
+
+
+@pytest.fixture(scope="module")
+def advised_evidence():
+    """(evidence html, advised unit ids) for a saved sort whose advisory fires.
+
+    ``built_report`` reports whichever sort is most complete, and that one need
+    not have a merge in it - which would leave the check above skipping quietly on
+    the machine that has the merges. This finds a sort the advisory actually fires
+    on and renders the evidence for THAT one.
+    """
+    import report
+    import runs
+
+    import spikeinterface.full as si
+
+    for sorter in runs.saved_sorters(outputs=OUTPUTS):
+        raw = report.analyzer_dir_for(sorter)
+        if not raw.is_dir():
+            continue
+        shown = report._curation_facts(raw)["dir"]
+        try:
+            analyzer = si.load_sorting_analyzer(shown)
+        except Exception:                                  # noqa: BLE001
+            continue
+        roll = report._rollup_for(analyzer, shown)
+        rollup = roll.get("rollup")
+        if not rollup or not rollup["n_split_candidates"]:
+            continue
+        return (report._render_evidence(analyzer, roll),
+                [str(u["unit"]) for u in rollup["units"] if u["split_advice"]])
+    pytest.skip("no saved sort has a unit the merge advisory fires on")
+
+
+def test_every_advised_unit_gets_its_isi_and_amplitude_panel(advised_evidence):
+    ev, advised = advised_evidence
+    assert ev.count("plotly-graph-div") == 3        # both gates + ISI + amplitude
+    assert "refractory" in ev.lower()
+    assert "isi_violations_count" in ev             # SI's own count, not a recount
+    for unit in advised:
+        # Once in the ISI grid, once in the amplitude grid.
+        assert ev.count(f"unit {unit} \\u00b7") >= 2, f"unit {unit} is missing a panel"
+
+
+def test_the_advisory_links_to_its_evidence(built_report):
+    html, _, _ = built_report
+    verdict = _sections(html)["verdict"]
+    if 'class="advice"' not in verdict:
+        pytest.skip("no unit meets the advisory criteria on the picked sort")
+    assert 'href="#evidence"' in verdict
 
 
 def test_qc_table_when_metrics_computed(built_report):
