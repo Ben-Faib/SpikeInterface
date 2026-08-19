@@ -208,6 +208,11 @@ def _metrics_section(curated: bool = False) -> dict:
     body_rows = _row("units", lambda c: c.get("n_units", 0))
     body_rows += _row("window (s)", lambda c: "—" if c.get("duration_s") is None
                       else f"{c['duration_s']:.0f}")
+    # Which saved run each column is. A sorter can have many runs now, so a
+    # column without its run id is a number nobody can trace back.
+    body_rows += ("<tr><td>run</td>" + "".join(
+        f'<td>{html.escape(str(runs.sort_paths(n, outputs=OUTPUT_DIR)["id"] or "—"))}</td>'
+        for n, _ in cards) + "</tr>")
     for label in metric_labels:
         body_rows += _row(label, lambda c, _l=label: sort_summary.headline_row(c)[_l])
 

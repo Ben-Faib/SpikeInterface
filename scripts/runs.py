@@ -98,8 +98,8 @@ never a verdict. What is compared, each with its tolerance stated:
     environment          exact package versions + git sha (a caveat, not a fail)
     noise floor          +/- NOISE_TOL_UV (a property of the recording, so it is
                          the strongest single check — and the ~4 uV canary)
-    spike containment    fraction of the recorded sort's spikes with a spike in
-                         the regenerated sort within CONTAINMENT_DELTA_MS
+    spike containment    BOTH directions: the fraction of each sort's spikes the
+                         other also found within CONTAINMENT_DELTA_MS
     metric ranges        V_pp / SNR / yield within stated relative tolerance
 
 Bit-identity is never claimed unless observed: the report says
@@ -124,7 +124,10 @@ Provenance collectors (called by run_sorting at write time):
 Regeneration:
     config_from_record(info)        -> the committable config (slice 4)
     config_argv(config, output_dir) -> argv for run_sorting.py
-    regenerate(...)                 -> {"config", "argv", "out", "rc"}
+    regenerate(...)                 -> {"report", "config", "argv", "out", "rc"};
+                                    "report" is None when the re-run had nothing
+                                    to be compared against (a config from git
+                                    naming a run this machine never had)
     compare_runs(recorded, regenerated, ...) -> the match report (pure)
     format_match_report(report)     -> str
     containment(a, b, delta_s)      -> float       pure numpy, both directions
@@ -174,22 +177,39 @@ DETERMINISM_UNVERIFIED = ("unverified",
 # Parameter names a sorter uses for its RNG seed, in preference order.
 SEED_KEYS = ("seed", "random_seed", "rng_seed")
 
-# --- regeneration tolerances (stated in the report next to every verdict) --- #
+# --- regeneration tolerances --- #
+# CALIBRATED, not guessed: every number below is set against the spread measured
+# across four independent full-pipeline tridesclous2 sorts of the same 132 s
+# window of PFCM7_d0ephys_Block2 (six same-window pairs, 2026-08-18). The sorter
+# is measured non-deterministic here, so that spread IS the noise a legitimate
+# regeneration makes; each tolerance sits above it with the stated margin, and
+# far below the move that the failure it guards against would produce.
+#
 # Noise floor is a property of the recording (post-bandpass + CMR), so two runs
-# of the same window must agree closely; 0.25 uV is wide enough for chunk-random
-# estimation and far narrower than the ~3 uV that a double-scaling bug moves it.
+# of the same window agree closely: max |delta| measured 0.112 uV. 0.25 uV is
+# ~2x that, and ~12x narrower than the ~3 uV a double-scaling bug moves it.
 NOISE_TOL_UV = 0.25
 # Coincidence window for "the same spike". 0.4 ms is compare.py's offline-vs-
 # offline window — both sides here are peak-aligned offline sorts.
 CONTAINMENT_DELTA_MS = 0.4
-# Fraction of the recorded sort's spikes that must reappear. A stochastic sorter
-# splits and merges units between runs, but the SPIKES it finds are stable; this
-# is the criterion that survives that.
-CONTAINMENT_MIN = 0.80
-# Relative tolerance on the headline metrics (V_pp, SNR): unit membership shifts
-# between runs, so the medians move more than the noise floor does.
-METRIC_REL_TOL = 0.25
+# Fraction of one sort's spikes that reappear in the other. A stochastic sorter
+# splits and merges units between runs, but the SPIKES it finds are stable, so
+# this is the criterion that survives that. Measured over fourteen directed
+# comparisons (seven same-window pairs): mean 0.954, sd 0.025, worst 0.903. The
+# worst case is a 30 s smoke window — a short window sees fewer spikes per unit,
+# so its runs diverge more than full-recording runs do (those sit 0.925–0.991).
+# A first-run floor of 0.90 was measured at 0.903 on that smoke pair, i.e. it
+# would have failed honest regenerations, so the floor is 0.85: ~4 sd below the
+# mean, ~5 pp below the worst observed, and far above the sub-0.5 containment a
+# genuinely different pipeline (wrong band, window or channel set) produces.
+CONTAINMENT_MIN = 0.85
+# Relative tolerance on the headline metrics (V_pp, SNR medians): unit membership
+# shifts between runs, so the medians move more than the noise floor does. Max
+# measured |delta| 9.7% (V_pp) and 4.4% (SNR); 20% is 2x the worst observed and
+# still ~4x narrower than the 75% a re-applied channel gain would produce.
+METRIC_REL_TOL = 0.20
 # Yield is a percentage, so it gets an absolute tolerance in percentage points.
+# Max measured 6.3 pp — exactly one electrode of sixteen. 15 pp is ~2.4x that.
 YIELD_TOL_PP = 15.0
 
 # Verdict vocabulary. One of these is printed for every criterion.
@@ -360,6 +380,24 @@ def list_runs(sorter: str, root=None, outputs=None, include_legacy: bool = True)
     if include_legacy and _has_sort(sd):
         out.append(_entry(sorter, LEGACY_RUN_ID, sd, legacy=True))
     return out
+
+
+def unfinished_runs(sorter: str, root=None, outputs=None) -> list:
+    """Run directories with no ``run_info.json``: a sort that died before it could
+    write its record. ``list_runs`` cannot include them — there is no record to
+    read — so without this they exist on disk and are named by nothing.
+
+    Nothing deletes them automatically: their ``sorter_output/`` is the only
+    evidence of what went wrong. ``runs.py list`` names them so the disk is not
+    quietly filling with runs no surface mentions; clearing a sorter's saved sort
+    from the menu removes the whole store, corpses included.
+    """
+    rd = runs_dir(sorter, root, outputs)
+    if not rd.is_dir():
+        return []
+    return sorted((d for d in rd.iterdir()
+                   if d.is_dir() and not (d / RUN_INFO_NAME).is_file()),
+                  key=lambda d: d.name)
 
 
 def read_pointer(sorter: str, root=None, outputs=None) -> dict:
@@ -746,16 +784,21 @@ def compare_runs(recorded: dict, regenerated: dict, *,
     delta_s = delta_ms / 1000.0
     if recorded_spikes is None or regenerated_spikes is None:
         crit.append(_criterion("spike containment", f"recorded spikes found again (±{delta_ms:g} ms)",
-                               f"≥{CONTAINMENT_MIN:.0%}", "—", "—", V_SKIPPED,
+                               f"≥{CONTAINMENT_MIN:.0%} both ways", "—", "—", V_SKIPPED,
                                "a sorting could not be read"))
         fwd = back = None
     else:
         fwd = containment(recorded_spikes, regenerated_spikes, delta_s)
         back = containment(regenerated_spikes, recorded_spikes, delta_s)
-        ok = fwd == fwd and fwd >= CONTAINMENT_MIN
+        # BOTH directions gate. Forward alone passes a regeneration that found
+        # every recorded spike AND a pile of new ones — the reverse direction is
+        # the only thing that sees that. Measured, the two directions sit in the
+        # same band (0.925–0.991 over six same-window pairs), so requiring the
+        # smaller of them costs nothing a legitimate re-run needs.
+        ok = fwd == fwd and back == back and min(fwd, back) >= CONTAINMENT_MIN
         crit.append(_criterion(
             "spike containment", f"recorded spikes found again (±{delta_ms:g} ms)",
-            f"≥{CONTAINMENT_MIN:.0%}", f"{len(recorded_spikes)} spikes",
+            f"≥{CONTAINMENT_MIN:.0%} both ways", f"{len(recorded_spikes)} spikes",
             f"{fwd:.1%} of them" if fwd == fwd else "—",
             V_WITHIN if ok else V_OUTSIDE,
             f"reverse containment {back:.1%} ({len(regenerated_spikes)} spikes)"
@@ -859,8 +902,13 @@ def regenerate(sorter=None, run=None, config=None, root=None, outputs=None,
         config = config_from_record(recorded)
     else:
         sorter = config.get("sorter")
-        paths = sort_paths(sorter, root, outputs, run=run)
-        recorded = read_json(paths["run_info"])
+        # A config file names the run it came from, and THAT is what a re-run has
+        # to be scored against — never whatever happens to be current, which is a
+        # different sort entirely. A config with no source run, or one whose run
+        # lives on another machine (it travelled through git), gets no comparison.
+        want = run or config.get("from_run")
+        paths = sort_paths(sorter, root, outputs, run=want)
+        recorded = read_json(paths["run_info"]) if want else {}
     if not config.get("sorter"):
         raise SystemExit("config names no sorter")
 
@@ -879,6 +927,13 @@ def regenerate(sorter=None, run=None, config=None, root=None, outputs=None,
         raise SystemExit(f"regeneration sort failed (rc {rc}) — see the output above")
 
     regenerated = read_json(dest / RUN_INFO_NAME)
+    if not recorded:
+        note = (f"this machine has no record for run {config.get('from_run')}"
+                if config.get("from_run") else "the config names no source run")
+        print(f"the sort ran ({dest}), but there is nothing to compare it against: "
+              f"{note}.", file=stream, flush=True)
+        return {"report": None, "config": config, "argv": argv, "out": dest,
+                "recorded_dir": None, "rc": rc}
     report = compare_runs(
         recorded, regenerated,
         recorded_summary=_summary.load_summary(paths["out"]),
@@ -886,6 +941,9 @@ def regenerate(sorter=None, run=None, config=None, root=None, outputs=None,
         recorded_spikes=pooled_spike_times(paths["analyzer"]),
         regenerated_spikes=pooled_spike_times(dest / "analyzer"),
     )
+    # The regenerated sort is written with --output-dir, so it is outside the
+    # store and carries no run id — name it by its directory instead of "?".
+    report["regenerated_run"] = regenerated.get("run_id") or dest.name
     return {"report": report, "config": config, "argv": argv, "out": dest,
             "recorded_dir": paths["out"], "rc": rc}
 
@@ -895,10 +953,14 @@ def regenerate(sorter=None, run=None, config=None, root=None, outputs=None,
 # --------------------------------------------------------------------------- #
 def _print_runs(sorter: str, root=None, outputs=None) -> None:
     runs = list_runs(sorter, root, outputs)
-    if not runs:
+    dead = unfinished_runs(sorter, root, outputs)
+    if not runs and not dead:
         return
     cur = resolve(sorter, root, outputs)
-    print(f"{sorter}  ({len(runs)} run(s); current: {cur['id']} via {cur['how']})")
+    if cur is None:
+        print(f"{sorter}  (no finished run)")
+    else:
+        print(f"{sorter}  ({len(runs)} run(s); current: {cur['id']} via {cur['how']})")
     for r in runs:
         info = r["info"]
         eff = info.get("effective_seconds")
@@ -907,6 +969,11 @@ def _print_runs(sorter: str, root=None, outputs=None) -> None:
         kind = "smoke" if r["smoke"] else ("legacy" if r["legacy"] else "full")
         print(f"  {mark} {r['id']:<26} {kind:<6} {str(info.get('n_units', '?')):>3} units  "
               f"{span:>6}  {info.get('created', '?')}")
+    # Corpses: directories from sorts that died before writing a record. Nothing
+    # else names them, so without this line they accumulate unseen.
+    for d in dead:
+        print(f"  ! {d.name:<26} unfinished — the sort died before writing its record; "
+              f"kept for {d.name}/sorter_output")
 
 
 def main() -> int:
@@ -942,7 +1009,15 @@ def main() -> int:
 
     args = parser.parse_args()
     if args.cmd in (None, "list"):
-        names = [args.sorter] if getattr(args, "sorter", None) else saved_sorters()
+        if getattr(args, "sorter", None):
+            names = [args.sorter]
+        else:
+            # Sorters with a resolvable run PLUS any whose only runs are corpses —
+            # a sorter that has never finished a sort must still be listable.
+            base = outputs_dir()
+            names = sorted(set(saved_sorters()) | {
+                p.name for p in (sorted(base.iterdir()) if base.is_dir() else [])
+                if p.is_dir() and unfinished_runs(p.name)})
         if not names:
             print("no saved sorts yet — run: uv run python scripts/run_sorting.py")
             return 0
@@ -984,6 +1059,8 @@ def main() -> int:
             print("regenerate needs --sorter or --config")
             return 2
         result = regenerate(sorter=sorter, run=args.run, config=config, out=args.out)
+        if result["report"] is None:      # ran, but had nothing to compare against
+            return 0
         print()
         print(format_match_report(result["report"], recorded_dir=result["recorded_dir"],
                                   regenerated_dir=result["out"]))
