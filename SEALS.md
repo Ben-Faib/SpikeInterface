@@ -36,8 +36,13 @@ A need left only in a chat summary is a need Ben never sees.*
   report leads with the run-stamped strong-units block and the manual-.nev RECOVERY
   column (both match directions, after a review caught the containment inversion hiding
   100% recoveries as "no match"), and docs/WORKFLOW.md is the plain-language guide.
-- **Current focus: THE CONDUCTOR v3 (running)** — face2 (dashboard redesign, Ben's
-  binned-rows decisions), then the clean pass on main, unify + push, close.
+- **The dashboard is the workflow** (face2, `dd90687`, 2026-08-19): a state block over
+  ONE list of all fourteen functions in GET DATA · SORT & CURATE · LOOK & SHARE, every
+  row a visible labeled key saying what it produces, rows never yielding (smaller
+  terminals scroll, never clip); help teaches the real workflow in WORKFLOW.md's words;
+  DESIGN_UX §2 is the redesign's spec of record.
+- **Current focus: THE CONDUCTOR v3 (running)** — the clean pass on main, then unify +
+  push, close.
   Facts of record binding design: E1's premise FALSE in-band (PRE1), tdc2 non-deterministic
   (14–19 units across identical runs), .nev unit ids are PER-ELECTRODE SLOTS (7 sorted
   electrode×slot units on 4 electrodes; CSV reconciled row-for-row), and the recording's
@@ -67,6 +72,26 @@ A need left only in a chat summary is a need Ben never sees.*
 ---
 
 ## The ledger (newest first)
+
+**2026-08-19 — face2: every function a visible row in three workflow stages (`dd90687`)**
+- Did: rebuilt the dashboard to Ben's three decisions — a state block (DATA/PROBE ·
+  SORT · RESULTS) over one grouped list of all fourteen functions (GET DATA · SORT &
+  CURATE · LOOK & SHARE), each row an inverse-video key chip + verb-noun title + a dim
+  what-it-produces phrase; a new yield ladder whose rows never yield; HELP_TOPICS
+  rewritten around which-question → which-surface → which-key in WORKFLOW.md's
+  vocabulary; DESIGN_UX §2 rewritten as the spec of record — with the Fable review's
+  ship verdict and findings 1–4 folded (PageUp/PageDown landing on a disabled heading
+  deadened Enter; the f folder chip's mouse route; two doc truths), F5 recorded.
+- Means: a researcher reads the screen cold and sees the whole workflow — triage, Phy
+  export, params, probe and verify included, none hidden behind bare letter keys — and
+  the help finally teaches the app that exists instead of June's three-step version.
+- Moved: suite 659 green on main (all 16 no-data skips run here), 4 dashboard
+  snapshots deliberately re-baselined and reviewed, real-controller launch check OK;
+  1–6 keep their historical meanings (WORKFLOW.md and muscle memory beat monotonic
+  chip order — reviewer concurred).
+- Needs Ben: nothing new — open the dashboard; it's his three decisions live, and he
+  amends the landed result.
+- Next: the clean pass on main (the product demo), then unify + push + close.
 
 **2026-08-19 — face1: the takeaway surface, two reviews folded, landed (`8f651f2`)**
 - Did: landed the takeaway slice — sort_summary.unit_rollup as the one home for

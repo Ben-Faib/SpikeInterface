@@ -32,13 +32,17 @@ box) runs alongside everything.
   units that recover his manual neurons at 96–100% (ch 5·7·9·11) all fail the
   default ISI ≤ 0.5 at 0.652–0.699, and nothing passes on solid evidence — the
   default quality_rule looks wrong for this preparation.
-- **Building next (this session): face2** — the researcher dashboard redesign,
-  per Ben's three decisions of record (~03:00): all functions as visible labeled
-  rows in workflow bins; fully autonomous redesign that MAY override DESIGN_UX
-  (Ben: the document "led to this design not being sufficient" — spacing and
-  grouping over text; DESIGN_UX §2 rewritten to match the landed design); help
-  rebuilt as which-question → which-surface → which-key; clean-pass labels are
-  Ben's real curation record. Then: the clean pass on main, unify + push, close.
+- **face2 (the binned-rows dashboard) is on main** (`dd90687`): a state block
+  (DATA/PROBE · SORT · RESULTS) over ONE list of all fourteen functions in
+  GET DATA · SORT & CURATE · LOOK & SHARE, each row printing its key and what it
+  produces; a new yield ladder where the rows never yield (80×24 shows the whole
+  workflow, smaller sizes scroll — never clip); help rebuilt on WORKFLOW.md's
+  vocabulary; DESIGN_UX §2 rewritten as the spec of record. Fable review verdict
+  ship, findings 1–4 folded (page-key cursor drop; folder-route discoverability),
+  F5 recorded in the fold commit. Suite 659 green on main, launch check OK.
+- **Remaining (this session): the clean pass on main** (fresh full sort →
+  u-triage labels as Ben's real record → apply → report + compare vs the manual
+  .nev, one run id everywhere), then push, final gates, close.
 - **Gated OPEN (the whole remaining board):** P3 (adapter map) · WD (lab-box
   access) · W3 (fuller face pick — first slice landed) · W4 (lab recordings).
 
@@ -79,7 +83,7 @@ box) runs alongside everything.
 | PRE1 | bad channels out of the reference (E1's finding; conductor prompt item 1) | prompt below | **SEALED 2026-08-18** (`c823f55`) — **premise re-scoped with evidence**: zero channels flagged; ch1's pathology is sub-300 Hz (bandpass removes it pre-CMR; in-band it's the QUIETEST channel and carries a unit); feature kept as insurance + measured tdc2 non-determinism (14/16/18 units) now drives W1 anchoring + W2 tolerances |
 | D6 | the airy dashboard (Ben's two mocks, approved in-session) | NORTHSTAR decision 2026-08-18 night | **SEALED 2026-08-18** (peer, `98f2645`) — hairline sections, crest ≥34 rows, pressable t-chip, key chips, air-yields-first; review fix-first (hairline never painted; resize-under-modal), all folded; suite 441, deliberate double re-baseline |
 | DEBT | recorded-debt bundle: report headers · D2b manifest · label home · dead code · extra-.nev | conductor prompt item 6 | **SEALED 2026-08-18** (`0127dac`) — all five closed; extra-.nev was a REAL latent bug (discovery by sort-order luck → now prefers-data + honest ambiguity refusal, one sealed test deliberately flipped); review ship, findings 1-4 folded; recorded: th-padding dead-click cosmetic |
-| 12 | W3 face | `goals/GOAL_W3_FACE.md` | **first slice (takeaway surface) LANDED 2026-08-19** (`8f651f2`, two Fable reviews folded); face2 (dashboard redesign, Ben's binned-rows directive) in build; the fuller direction stays Ben's pick |
+| 12 | W3 face | `goals/GOAL_W3_FACE.md` | **face1 (takeaway) LANDED** (`8f651f2`, two reviews folded) + **face2 (binned-rows dashboard) LANDED 2026-08-19** (`dd90687`, review ship, findings folded); the fuller direction stays Ben's pick |
 | 13 | W4 multi-recording | `goals/GOAL_W4_MULTI.md` | gated: W1+W2+lab data |
 | — | WD lab deployment items 1–4 | `goals/GOAL_WD_DEPLOY.md` | gated: lab-box access |
 | B1 | BUG: bare `report` action crashes | prompt below | **SEALED 2026-08-18** (peer, `b43869e`) |
