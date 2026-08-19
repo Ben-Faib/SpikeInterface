@@ -88,6 +88,25 @@ class NavList(OptionList):
         Binding("space", "select", show=False),
     ]
 
+    # PageUp/PageDown can clamp onto a disabled row (a stage/group heading at a
+    # list edge), which drops the highlight to None and deadens Enter until an
+    # arrow press. Land on the nearest enabled option instead.
+    def _highlight_first_enabled(self, indices) -> None:
+        for i in indices:
+            if not self.get_option_at_index(i).disabled:
+                self.highlighted = i
+                return
+
+    def action_page_up(self) -> None:
+        super().action_page_up()
+        if self.highlighted is None and self.option_count:
+            self._highlight_first_enabled(range(self.option_count))
+
+    def action_page_down(self) -> None:
+        super().action_page_down()
+        if self.highlighted is None and self.option_count:
+            self._highlight_first_enabled(range(self.option_count - 1, -1, -1))
+
 # Width below which the SORTERS + ACTIONS panes stack vertically instead of
 # side-by-side. Tuned so a split/VS Code pane collapses to a single column while a
 # default 80-col terminal stays two-pane.
@@ -2495,9 +2514,11 @@ def _setup_body(report: dict, accent: str, pipeline=None) -> Text:
     t.append("\nWhere to put them\n", style=f"bold {accent}")
     t.append(f"  Drop the file set into:  ")
     t.append(f"{data_dir}\n", style="bold")
-    t.append("  (or launch with ", style="dim")
+    t.append("  (or press ", style="dim")
+    t.append("f", style="bold")
+    t.append(" to choose a different folder, or launch with ", style="dim")
     t.append("--data-dir /path/to/recording", style="bold")
-    t.append(" to point elsewhere).\n", style="dim")
+    t.append(").\n", style="dim")
     t.append(
         "\nThe raw .nev / .ns1–.ns6 files are git-ignored (the .ns5 exceeds GitHub's\n"
         "100 MB limit), so a fresh clone has none — copy your own set in.\n",

@@ -145,7 +145,7 @@ HELP_TOPICS = [
       "    hand elsewhere. Labels you already recorded",
       "    are seeded in. Verdicts come back with:",
       "      curation.py import-phy --sorter <name>"]),
-    ("looksare", "3 · Look & share",
+    ("lookshare", "3 · Look & share",
      ["3 — Build the report. One self-contained HTML",
       "    page: the strong units and the contacts they",
       "    sit on, quality metrics, the array, the",

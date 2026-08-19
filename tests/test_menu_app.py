@@ -78,6 +78,23 @@ async def test_arrows_step_over_the_stage_headings(make_app):
         assert _highlighted_id(app) == "picker"      # first row of SORT & CURATE
 
 
+async def test_page_keys_never_drop_the_cursor_on_a_heading(make_app):
+    # PageUp clamps the OptionList to option 0 — the GET DATA heading, disabled —
+    # which left the highlight None and Enter dead (face2 review, finding 1).
+    # NavList lands on the nearest enabled row instead, in both directions.
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        for _ in range(6):
+            await pilot.press("down")
+        await pilot.press("pageup")
+        await pilot.pause()
+        assert _highlighted_id(app) == "data"        # first enabled row, never None
+        await pilot.press("pagedown")
+        await pilot.pause()
+        assert _highlighted_id(app) is not None
+
+
 # --- DATA / SORT banner --------------------------------------------------- #
 async def test_databar_healthy_lists_streams(make_app):
     app = make_app()                       # FakeController(present=True)
@@ -211,7 +228,7 @@ def test_help_teaches_the_real_workflow():
     # → Report, no curation, no Phy, no runs) is the defect this replaces.
     topics = {k: (t, b) for k, t, b in ui.HELP_TOPICS}
     assert "steps" not in topics                       # the old three-step topic
-    for key in ("questions", "getdata", "sortcurate", "looksare", "words", "wrong"):
+    for key in ("questions", "getdata", "sortcurate", "lookshare", "words", "wrong"):
         assert key in topics, key
     everything = "\n".join(l for _t, b in topics.values() for l in b).lower()
     # the surfaces that exist today, each named where a researcher would ask for it
