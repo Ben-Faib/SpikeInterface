@@ -84,6 +84,23 @@ def test_falls_to_the_only_saved_sort(universe):
     assert sim._resolve_report_sorter(_args()) == "lupin"
 
 
+def test_the_pick_names_the_sorter_not_the_run_id(universe, tmp_path):
+    # Every other test here saves the pre-store layout, where the analyzer's
+    # parent IS the sorter — so reading that path segment passed them all while
+    # being wrong under the run store, which puts a RUN ID there. A bare report
+    # on a store-only tree then built for a "sorter" named 20260819-... and every
+    # section degraded to "No saved analyzer".
+    import json
+
+    run_id = sim.runs.new_run_id()
+    run = tmp_path / "outputs" / "lupin" / "runs" / run_id
+    (run / "analyzer").mkdir(parents=True)
+    (run / "run_info.json").write_text(
+        json.dumps({"sorter": "lupin", "run_id": run_id, "smoke": False,
+                    "effective_seconds": 132.1}), encoding="utf-8")
+    assert sim._resolve_report_sorter(_args()) == "lupin"
+
+
 def test_nothing_saved_resolves_none(universe):
     assert sim._resolve_report_sorter(_args()) is None
 

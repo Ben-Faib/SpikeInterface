@@ -462,7 +462,9 @@ def _resolve_report_sorter(args) -> "str | None":
         return persisted
     picked = Path(report._pick_default_analyzer())
     if picked.is_dir():
-        return picked.parent.name
+        # Under the run store that path is outputs/<sorter>/runs/<id>/analyzer, so
+        # its parent is a RUN ID, not a sorter. Ask the store which sorter owns it.
+        return runs.sorter_for_dir(picked)
     return None
 
 
