@@ -21,14 +21,14 @@ A need left only in a chat summary is a need Ben never sees.*
   user-accepted identity mapping — true depth order still waits on the lab's adapter map.
 - **Deployment target is the UPitt lab's Windows+GPU box**; Windows Docker-sort cleanup
   crash fixed 2026-08-18 (`7940f96`); GPU-sorter enablement (kilosort4) not yet started (WD).
-- **Current focus (2026-08-18 night): THE CONDUCTOR RUN — the queue to completion.**
-  Ben chose the curation path (the sorter finds 97-100% of manual units' spikes but
-  merges what a human splits) and pasted the conductor prompt; this session drives every
-  unblocked item with parallel builder/reviewer lanes. Sealed so far this run: P2
-  multi-shank (peer, `8af8111`), PRE1 bad-channel exclusion (`c823f55` — premise
-  measured false in-band; tdc2 measured non-deterministic, 14/16/18 units). In flight:
-  W1 s2 curation loop (reviewed), s3 Phy export, debt bundle (review: ship), D6 airy
-  dashboard (peer; Ben's two mocks, NORTHSTAR decision), W2 next.
+- **Current focus: CONDUCTOR RUN, closed mid-flight 2026-08-18 night (Ben: limit) —
+  re-enter with ROADMAP's THE CONDUCTOR v2 prompt.** Sealed in the run: P2 (peer
+  `8af8111`), PRE1 (`c823f55` — premise measured FALSE in-band; tdc2 non-deterministic
+  14/16/18), D6 (peer `98f2645`), DEBT (`0127dac` — extra-.nev discovery was a real
+  latent bug). Parked on branches: W1 s2 (`c1af408`, review fully folded, needs rebase +
+  fresh validation), W1 s3 (`lane-w1s3`, handoff unconfirmed), W2 (`467ed7e`, store +
+  provenance done, regenerate unrun, tests missing, unreviewed). Peer holds W1 s4,
+  gated on s2 reaching main.
   Product facts on record: built by Benjamin Faibussowitsch with Aleece Al-Olimat for
   UPitt researchers on industry-standard SpikeInterface.
 
@@ -48,6 +48,24 @@ A need left only in a chat summary is a need Ben never sees.*
 ---
 
 ## The ledger (newest first)
+
+**2026-08-18 — CONDUCTOR RUN closed mid-flight at Ben's request: 4 sealed, 3 parked**
+- Did: sealed P2, PRE1, D6 and DEBT with per-slice Fable reviews folded, and parked
+  W1 s2 (`c1af408`, all 9 review findings folded), W1 s3 (`lane-w1s3`) and W2
+  (`467ed7e`, honest handoff) on branches with the re-entry queue filed as ROADMAP's
+  THE CONDUCTOR v2 prompt.
+- Means: main (`c580286`) is 459-green and four slices stronger, and the two facts
+  that reshape the science are measured and sealed — no bad channel exists in the
+  referenced band (E1's premise false; detection kept as insurance) and tridesclous2
+  is non-deterministic here (14/16/18 units), which now binds curation anchoring and
+  W2's regeneration criteria.
+- Moved: the s2 review's adversarial pass CONFIRMED the merged ch5/ch9 pairs are
+  unreachable as defensible units by any modest splitter (3.6-5.4× residue
+  contamination; leverage is upstream) — the Phy/human path for hard cases is now
+  evidence, not preference; W1 s4 pre-assigned to the peer, gated on s2.
+- Needs Ben: nothing new — paste THE CONDUCTOR v2 from ROADMAP into a fresh session.
+- Next: v2's queue — land s2 (rebase + fresh validation), s3, open the s4 gate, W2
+  (review + first-run regenerate + tests), then final suite + real launch + close.
 
 **2026-08-18 — DEBT: the five recorded debts, closed in one lane (`0127dac`)**
 - Did: keyboard-sortable report headers (real buttons, aria-sort state), the D2b

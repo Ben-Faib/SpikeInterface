@@ -8,6 +8,13 @@ process lessons.*
 
 ---
 
+**S5 (2026-08-18) — agent worktrees can be created on a stale base.** Two conductor-run
+builder worktrees started 62 files behind main (`84d3bc0`); both builders caught it and
+reset onto main before working, but one that didn't would have built on sealed history and
+produced an unmergeable diff. Lesson: a worktree lane's first act is verifying its base is
+the intended commit (and the brief states that commit); the conductor's re-entry prompt now
+carries exact base/branch refs per lane. Encoded: ROADMAP's CONDUCTOR v2 prompt; this entry.
+
 **S4 (2026-08-18) — `subprocess.run(text=True)` without `encoding=` is a Windows landmine.**
 Review of the T1 stdout-purity tests caught that text-mode capture decodes with the locale
 code page (cp1252 on the lab box) while our children force UTF-8 output full of multibyte

@@ -17,18 +17,23 @@ box) runs alongside everything.
 
 ---
 
-## ▶ NOW — updated 2026-08-18 late: **THE CONDUCTOR RUN IS LIVE** (sealing sessions: update this box FIRST)
+## ▶ NOW — updated 2026-08-18 night: **CONDUCTOR RUN CLOSED MID-FLIGHT (Ben: limit) — re-enter with THE CONDUCTOR v2 prompt below**
 
 - **Sealed this run:** P2 (peer `8af8111`) · PRE1 (`c823f55`, premise re-scoped:
   zero bad channels in-band; tdc2 non-determinism 14/16/18 measured) · D6 (peer
-  `98f2645`) · DEBT (`0127dac`, extra-.nev latent bug fixed).
-- **Lanes in flight:** W1 s2 curation loop (review fix-first: folding 2 blockers +
-  7 more on its branch), W1 s3 Phy export (stacked on s2's branch, export half
-  first), W2 reproducibility (worktree; run store + provenance + regenerate).
-- **Next:** s2 folded → conductor integrates (re-run validation vs manual .nev on
-  main) → s3 rebases in → W1 s4 TUI triage launches (peer lane, D6 language + s2
-  record) → W2 integrates last → final full suite + real launch check + closing
-  seal. Gated OPEN: P3 (adapter map), WD (lab box), W3 (face pick), W4 (lab data).
+  `98f2645`) · DEBT (`0127dac`, extra-.nev latent bug fixed). Main `c580286`,
+  suite 459 green at close.
+- **Parked on branches (verify tips before building):** W1 s2
+  `worktree-agent-ace3305ebf35c6b78` — review fold COMPLETE at `c1af408`, worktree
+  suite 425 green, needs rebase + fresh end-to-end validation only; W1 s3
+  `lane-w1s3` (stacked on s2's `314dc85`; worktree was in session scratchpad —
+  the BRANCH is the persistent artifact; handoff commit requested, unconfirmed);
+  W2 `worktree-agent-a660e788ee8453c5b` — handoff commit `467ed7e`: store +
+  provenance done and exercised, regenerate written-never-run, tests missing;
+  no review yet.
+- **Peer session** (if still open) holds W1 s4, gated: starts only when a conductor
+  confirms s2 is on main. Gated OPEN: P3 (adapter map), WD (lab box), W3 (face
+  pick), W4 (lab data).
 
 ## The dependency graph
 
@@ -131,7 +136,97 @@ Authored with `fable-prompt-builder` **when Ben's veto lands**, against the spec
 `goals/GOAL_D_UIUX.md` + the spec sections from DESIGN_UX §7, name the T1 gates
 (deliberate snapshot re-baselining with reviewed diffs), and seal per the contract.
 
-### THE CONDUCTOR — drives the ungated queue to completion  [READY — paste into a fresh session]
+### THE CONDUCTOR v2 — re-entry: land the parked lanes, finish the queue  [READY — paste into a fresh session]
+
+```
+The UPitt researchers in Tracy's lab need this workbench to take raw Blackrock
+files to curated, defensible single units. The first conductor run sealed P2,
+PRE1, D6 and DEBT (main c580286, suite 459 green) and closed mid-flight at Ben's
+request with three lanes parked on branches. You are the conductor continuing it:
+land the parked lanes, finish the queue, close the run.
+
+Re-enter from the board, never from memory: CLAUDE.md's Orchestration read order,
+SEALS.md for where things stand. Keep ROADMAP true as you go. Facts of record
+that bind design (measured, sealed): E1's "ch1 poisons the reference" premise is
+FALSE in the sort band (PRE1 measured it; detection kept as insurance, zero
+excluded here), and tridesclous2 is NON-DETERMINISTIC on this recording
+(14/16/18 units across identical runs) — curation records hard-anchor to their
+sort and no reproduction criterion may use unit counts/ids.
+
+The queue, dependency-ordered — verify each branch tip before building on it
+(LESSONS S5: state and check the expected base; close-time handoff commits were
+requested but not confirmed):
+
+1. LAND W1 s2 (curation lifecycle) from branch worktree-agent-ace3305ebf35c6b78
+   (worktree .claude/worktrees/agent-ace3305ebf35c6b78, data symlinked). Its
+   fix-first Fable review is FULLY FOLDED at tip `c1af408` (stacked on `314dc85`;
+   both blockers + anchor rider + unit_id_map/add_label-source schema adds +
+   stale marker + pair-mode error + summary-try split + preferred_analyzer
+   one-home + repo-relative paths + the restated unreachability claim: residue
+   3.6-5.4×, any within-unit split returns residue-swamped children, leverage
+   upstream). Worktree suite 425 green post-fold, but NO end-to-end re-validation
+   ran after the fold — the apply path changed, so yours is the authority.
+   Remaining: rebase onto main, suite + 30 s smoke + canary, run the full
+   validation chain fresh (main-tree sort → record → apply → curated re-score
+   canary → compare --nev PFCM7_d0ephys_Block2_manuallySorted.nev; records
+   anchor to THAT sort), add CLAUDE.md's curation.py ownership row + commands
+   line, seal. Record as follow-ups: run_sorting seam promotion (public
+   analyzer-build+metrics fn), curation.py import-gui (sigui ingestion — an
+   explicit scope shift off slice 2), seeded 3-way GMM as an optional split
+   method (reviewer-measured incremental, not implemented).
+2. LAND W1 s3 (Phy export) from branch lane-w1s3 (stacked on s2's pre-fold
+   314dc85; its worktree lived in session scratchpad — the branch is what
+   persists; recreate a worktree if the dir is gone). Read its HANDOFF; rebase
+   onto s2's folded tip, finish per its brief (export half: structural
+   verification, curated-supersedes-raw with force-raw flag; round-trip half:
+   Phy labels back through curation.py's API keyed via the id map, source="phy",
+   anchor honored, collision rule stated), Fable review (none run yet), fold,
+   integrate behind s2, seal.
+3. OPEN THE s4 GATE: the peer session (spikeinterface-28, if open) holds W1 s4
+   in-TUI triage, fully scoped in its message log — ping it the moment s2 is on
+   main; if no peer, run it as a builder lane: unit list + per-unit metrics card,
+   g/m/n/u labels writing the SAME record through curation.py's pure-Python API
+   via the controller Protocol (view imports no SI), reviewed n/N + stale
+   legible, D6's DESIGN_UX §2 language + §1 binding, deliberate snapshot
+   baselines, Pilot journeys for label→persist→relaunch. Fable review, seal.
+4. LAND W2 (reproducibility) from branch worktree-agent-a660e788ee8453c5b, tip
+   `467ed7e` — its commit-message HANDOFF is the authority. Honest state: store
+   (slice 1) + provenance (slice 2) DONE and exercised live (four coexisting tdc2
+   runs, a real refused smoke-clobber with the incumbent pinned, canaries
+   3.938-4.142); regenerate/compare_runs/match-report (slice 3) CODE WRITTEN
+   NEVER RUN; config export (slice 4) drafted, unrun; TESTS NOT WRITTEN — the
+   largest gap. Its own next-steps list is correct: re-run the suite (an edit
+   postdates the last run), first-run the regenerate command and calibrate
+   CONTAINMENT_MIN/METRIC_REL_TOL against measured numbers, render report +
+   compare through the store, write the missing tests (pointer/no-clobber/
+   legacy/provenance/containment; store functions are injectable), decide
+   keep-or-drop on slice 4. Known risk it names: a sorter-crash run leaves a
+   run dir with no run_info.json — list_runs skips them, nothing prunes.
+   Then Fable review (regenerate criteria must respect the non-determinism
+   evidence), fold, integrate LAST of the code lanes — at this integration
+   re-plumb curation.py's sort_paths() seam (and s3/s4's uses) through the
+   store, wiring records + curated outputs inside run dirs (the store already
+   reserves them there). Seal.
+5. CLOSE THE RUN: final full suite on main; a real launch check
+   (run-spikeinterface skill); a closing board pass — ROADMAP rows, SEALS block,
+   pinned lines, and the OPEN items exactly four, each with its one-line
+   unblock: P3 (adapter map), WD (lab-box access), W3 (face pick), W4 (lab
+   recordings). Never fake progress on those four.
+
+Method unchanged and already law: builders on Opus, reviews on Fable, one
+fresh-context review per substantive slice with findings folded or recorded;
+parallel lanes only with explicitly disjoint file sets, explicit-path commits
+(the tree can carry a peer's uncommitted work — never git add -A); CLAUDE.md's
+Invariants that bite bind every edit (µV double-scaling gate, ~4 µV canary as a
+verdict, aux-AND-bad-channels drop before CMR, stdout purity, view imports no
+SI); raw data never enters git or leaves the machine; a queue item whose premise
+fails gets re-scoped on the board with the evidence; ask Ben only what is
+genuinely his, batched in SEALS OPEN. If this run also stops short, seal partial
+state per the between-run contract — this prompt pattern continues from the
+board.
+```
+
+### THE CONDUCTOR (v1) — original queue-to-completion prompt  [SUPERSEDED by v2 above — kept for provenance]
 
 ```
 The University of Pittsburgh researchers in Tracy's lab need this workbench to take
