@@ -314,3 +314,83 @@ async def test_phy_is_blocked_without_the_recording(make_app):
         await pilot.press("y")
         await pilot.pause()
         assert ("phy", None) not in app.c.ran
+
+
+# --------------------------------------------------------------------------- #
+# The rmtree guard: an export target must never eat anything but an old export
+# --------------------------------------------------------------------------- #
+def test_export_out_dir_refuses_the_sort_itself(tmp_path):
+    paths = _sort_on_disk(tmp_path)
+    for key in ("out", "sorting", "analyzer", "curated", "curated_analyzer"):
+        with pytest.raises(RuntimeError, match="audit trail"):
+            curation._check_phy_out_dir(paths[key], paths, SORTER)
+
+
+def test_export_out_dir_refuses_any_ancestor_of_the_sort(tmp_path):
+    paths = _sort_on_disk(tmp_path)
+    # Clearing outputs/ (or the root above it) would delete every sort.
+    with pytest.raises(RuntimeError, match="audit trail"):
+        curation._check_phy_out_dir(paths["out"].parent, paths, SORTER)
+    with pytest.raises(RuntimeError, match="audit trail"):
+        curation._check_phy_out_dir(tmp_path, paths, SORTER)
+
+
+def test_export_out_dir_refuses_a_nonempty_stranger(tmp_path):
+    paths = _sort_on_disk(tmp_path)
+    stranger = tmp_path / "thesis_chapter"
+    stranger.mkdir()
+    (stranger / "draft.txt").write_text("irreplaceable", encoding="utf-8")
+    with pytest.raises(RuntimeError, match="does not look"):
+        curation._check_phy_out_dir(stranger, paths, SORTER)
+    # ...but a previous export, an empty dir, or a fresh path are all fine.
+    old_export = tmp_path / "old_export"
+    old_export.mkdir()
+    (old_export / "params.py").write_text("", encoding="utf-8")
+    curation._check_phy_out_dir(old_export, paths, SORTER)
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    curation._check_phy_out_dir(empty, paths, SORTER)
+    curation._check_phy_out_dir(tmp_path / "not_yet", paths, SORTER)
+
+
+# --------------------------------------------------------------------------- #
+# Blank anchors refuse on BOTH sides of the trip (a blank compares as
+# "matches everything" — the exact failure the anchor exists to prevent)
+# --------------------------------------------------------------------------- #
+def test_import_refuses_a_blank_anchored_manifest(tmp_path):
+    _sort_on_disk(tmp_path)
+    _phy_folder(tmp_path, groups={0: "good"}, manifest={"run": {}})
+    with pytest.raises(RuntimeError, match="no usable run anchor"):
+        curation.import_phy_labels(SORTER, root=tmp_path)
+
+
+def test_export_refuses_a_sort_with_no_run_anchor(tmp_path):
+    paths = _sort_on_disk(tmp_path)
+    paths["analyzer"].mkdir(parents=True)
+    paths["run_info"].unlink()  # the export would carry a blank anchor
+    with pytest.raises(RuntimeError, match="cannot identify the saved"):
+        curation.export_phy(SORTER, tmp_path, verbose=False)
+
+
+# --------------------------------------------------------------------------- #
+# A stale curated result must not travel with a fresh sort's anchor
+# --------------------------------------------------------------------------- #
+def test_export_refuses_a_stale_curated_result(tmp_path):
+    paths = _sort_on_disk(tmp_path, labels={0: "good"})
+    paths["curated_analyzer"].mkdir(parents=True)
+    record = curation.load_record(SORTER, tmp_path)
+    curated_run = {
+        "curation_updated": record["updated"],
+        # anchored to a DIFFERENT raw run than the one now on disk
+        "curated_from_run": curation._run_identity(
+            {**RUN_INFO, "created": "2026-08-17T09:00:00", "n_units": 9}),
+    }
+    paths["curated_run_info"].write_text(json.dumps(curated_run),
+                                         encoding="utf-8")
+    with pytest.raises(RuntimeError, match="no longer describes"):
+        curation.export_phy(SORTER, tmp_path, verbose=False)
+    # --raw is the stated escape: it must not hit the staleness wall (it fails
+    # later, honestly, on the fake analyzer being unloadable).
+    with pytest.raises(Exception) as err:
+        curation.export_phy(SORTER, tmp_path, raw=True, verbose=False)
+    assert "no longer describes" not in str(err.value)

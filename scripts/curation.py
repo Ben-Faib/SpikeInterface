@@ -844,7 +844,22 @@ def import_phy_labels(sorter: str, folder=None, root=None, *,
             f"{folder} was exported from the {manifest.get('sorter')!r} sort, not "
             f"{sorter!r}. Next step: import it against that sorter, or re-export.")
 
-    mismatch = _identity_mismatch(manifest.get("run") or {},
+    # An anchor only binds when the manifest actually carries one. A blank or
+    # missing run block would compare as "matches everything" — the exact
+    # failure the anchor exists to prevent (unit ids are not stable across
+    # re-sorts) — so it is a refusal, not a pass.
+    want = manifest.get("run") or {}
+    blank = [k for k in ("sorter", "created", "n_units") if want.get(k) is None]
+    if blank:
+        raise RuntimeError(
+            f"{folder} carries no usable run anchor (no {', '.join(blank)} in "
+            f"{PHY_MANIFEST_NAME}'s 'run'), so there is no way to tell which "
+            "sort its cluster ids belong to — these verdicts could land on the "
+            "wrong units. It was most likely exported while run_info.json was "
+            "missing. Next step: re-export the sort now on disk (python "
+            f"scripts/curation.py export-phy --sorter {sorter} --raw), curate "
+            "that folder in Phy, and import it.")
+    mismatch = _identity_mismatch(want,
                                   _run_identity(read_run_info(sorter, root)),
                                   want_label="export")
     if mismatch:
@@ -1111,6 +1126,37 @@ def _check_out_dir(out, paths: dict, sorter: str) -> None:
                 f"{paths['out']}.")
 
 
+def _check_phy_out_dir(out, paths: dict, sorter: str) -> None:
+    """Refuse an export target the wholesale rmtree below must never eat.
+
+    ``export_phy`` clears its target before SI writes the folder, so ``--out``
+    pointed at anything that is not a previous Phy export would delete it —
+    ``outputs/<sorter>`` itself (the raw sort, the audit trail), ``outputs/``,
+    or an unrelated directory. Resolved, so ``.``/``..``/symlinks cannot sneak
+    past. A non-empty existing target is only cleared when it carries a previous
+    export's manifest or ``params.py``.
+    """
+    target = Path(out).resolve()
+    for key in ("out", "sorting", "analyzer", "curated", "curated_sorting",
+                "curated_analyzer"):
+        p = paths[key].resolve()
+        if target == p or p.is_relative_to(target):
+            raise RuntimeError(
+                f"refusing to export to {target} — clearing it would delete the "
+                f"{sorter} sort's {key.replace('_', ' ')} ({p}). The raw sort and "
+                "its curated result are the audit trail: they are never written "
+                "to. Leave --out unset, or pass a directory outside "
+                f"{paths['out']}.")
+    if target.is_dir() and any(target.iterdir()) \
+            and not (target / PHY_MANIFEST_NAME).exists() \
+            and not (target / "params.py").exists():
+        raise RuntimeError(
+            f"refusing to clear {target} — it is not empty and does not look "
+            f"like a previous Phy export (no {PHY_MANIFEST_NAME}, no params.py). "
+            "Pass an empty directory, a previous export, or a path that does "
+            "not exist yet.")
+
+
 def _unit_id_map(raw_sorting, curated_sorting) -> dict:
     """Which raw unit(s) each curated unit's spikes came from, with counts.
 
@@ -1352,8 +1398,41 @@ def export_phy(sorter: str, root=None, *, raw: bool = False, out_dir=None,
             f"no saved {sorter} analyzer at {analyzer_dir} — run a sort first: "
             f"uv run python scripts/run_sorting.py --sorter {sorter}")
 
+    # An export that cannot be anchored could never be safely imported back —
+    # a blank anchor would let verdicts land on the wrong units of a later sort.
+    run_anchor = _run_identity(read_run_info(sorter, root))
+    blank = [k for k in ("sorter", "created", "n_units")
+             if run_anchor.get(k) is None]
+    if blank:
+        raise RuntimeError(
+            f"cannot identify the saved {sorter} sort: {paths['run_info']} is "
+            f"missing or unreadable (no {', '.join(blank)}), so this export "
+            "would carry no run anchor and its verdicts could never be safely "
+            "imported back. Next step: re-sort (uv run python "
+            f"scripts/run_sorting.py --sorter {sorter}) and export that.")
+
+    record = load_record(sorter, root)
+    if curated:
+        # A curated result the record or sort has moved past must not travel:
+        # the manifest would stamp the CURRENT sort's anchor onto an analyzer
+        # built from a different one — provenance that is actively wrong.
+        try:
+            curated_run = json.loads(
+                paths["curated_run_info"].read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001 - provenance is best-effort
+            curated_run = {}
+        stale = stale_reason(curated_run, record, read_run_info(sorter, root))
+        if stale:
+            raise RuntimeError(
+                f"the curated {sorter} result no longer describes what is on "
+                f"disk — {stale}. Next step: re-apply the record (uv run python "
+                f"scripts/curation.py apply --sorter {sorter}) and export that, "
+                f"or export the raw sort (uv run python scripts/curation.py "
+                f"export-phy --sorter {sorter} --raw).")
+
     out = Path(out_dir) if out_dir else (paths["curated_phy"] if curated
                                          else paths["phy"])
+    _check_phy_out_dir(out, paths, sorter)
     analyzer = si.load_sorting_analyzer(analyzer_dir)
     if verbose:
         which = "curated result" if curated else "raw sort"
@@ -1367,7 +1446,6 @@ def export_phy(sorter: str, root=None, *, raw: bool = False, out_dir=None,
     export_to_phy(analyzer, out, verbose=verbose, use_relative_path=True,
                   n_jobs=n_jobs, progress_bar=verbose)
 
-    record = load_record(sorter, root)
     if curated:
         # The curated sorting carries the labels apply_curation replayed onto it;
         # the record's labels name RAW units, which these ids are not.
@@ -1391,8 +1469,9 @@ def export_phy(sorter: str, root=None, *, raw: bool = False, out_dir=None,
         "n_units": len(analyzer.unit_ids),
         "labels_seeded": n_seeded,
         # The anchor: which raw sort these cluster ids belong to. An import
-        # against a re-sorted outputs/<sorter>/ is refused on this.
-        "run": _run_identity(read_run_info(sorter, root)),
+        # against a re-sorted outputs/<sorter>/ is refused on this; a blank
+        # anchor was already refused above, so this always binds.
+        "run": run_anchor,
         "record_updated": (record or {}).get("updated"),
         "tools": _tool_versions(),
     }
