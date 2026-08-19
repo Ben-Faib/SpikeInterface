@@ -65,7 +65,7 @@ box) runs alongside everything.
 | 9 | P2 multi-shank · P3 wiring | `goals/GOAL_P_PROBES.md` | **P2 SEALED 2026-08-18** (peer, `8af8111`: ProbeGroup imports as probes-as-shanks, wiring pinned verbatim, physical density classing; suite 388 green, canary 3.993 µV, review ship). P3 needs adapter map; three new recorded items in the brief |
 | 10 | W1 curation | `goals/GOAL_W1_CURATION.md` | **slice 1 SEALED 2026-08-18** (rule owner); **slice 2 IN FLIGHT** (worktree lane); slices 3-4 launch on s2's record schema |
 | 11 | W2 reproducibility | `goals/GOAL_W2_REPRO.md` | next after PRE1 lands (run_sorting freed) |
-| PRE1 | bad channels out of the reference (E1's finding; conductor prompt item 1) | prompt below | **IN FLIGHT 2026-08-18** (main-tree lane; baseline archived to outputs/_archive/) |
+| PRE1 | bad channels out of the reference (E1's finding; conductor prompt item 1) | prompt below | **SEALED 2026-08-18** (`c823f55`) — **premise re-scoped with evidence**: zero channels flagged; ch1's pathology is sub-300 Hz (bandpass removes it pre-CMR; in-band it's the QUIETEST channel and carries a unit); feature kept as insurance + measured tdc2 non-determinism (14/16/18 units) now drives W1 anchoring + W2 tolerances |
 | D6 | the airy dashboard (Ben's two mocks, approved in-session) | NORTHSTAR decision 2026-08-18 night | **IN FLIGHT 2026-08-18** (peer lane; menu_app main screen + ui; lands before W1s4 touches the menu) |
 | DEBT | recorded-debt bundle: report headers · D2b manifest · label home · dead code · extra-.nev | conductor prompt item 6 | **IN FLIGHT 2026-08-18** (worktree lane) |
 | 12 | W3 face | `goals/GOAL_W3_FACE.md` | gated: Ben's pick, after D track |

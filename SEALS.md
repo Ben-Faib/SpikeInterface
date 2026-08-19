@@ -21,14 +21,14 @@ A need left only in a chat summary is a need Ben never sees.*
   user-accepted identity mapping — true depth order still waits on the lab's adapter map.
 - **Deployment target is the UPitt lab's Windows+GPU box**; Windows Docker-sort cleanup
   crash fixed 2026-08-18 (`7940f96`); GPU-sorter enablement (kilosort4) not yet started (WD).
-- **Current focus (2026-08-18, updated same day): THE OVERHAUL.** Ben's directive — all
-  surfaces redesigned for accessibility/focus/hierarchy + a timely-updates UX + real
-  testing procedures + probe flexibility for a lab whose setups differ. `DESIGN_UX.md`
-  (D0) was **approved by Ben the same evening** and the autonomous run delivered the
-  whole D track in one day: D1 dashboard (`18a5279`), D2 both halves (`fc19579` +
-  `29e96f8`), D3 report (`d12ff5c`), D4 flow modals (`f115015`) — plus T1 harness, M1
-  metrics, P1 probe import, B1 (peer). Remaining from the overhaul: D3b progress
-  plumbing (READY); in flight: C1, Ben's NEV online-vs-sorted comparison.
+- **Current focus (2026-08-18 night): THE CONDUCTOR RUN — the queue to completion.**
+  Ben chose the curation path (the sorter finds 97-100% of manual units' spikes but
+  merges what a human splits) and pasted the conductor prompt; this session drives every
+  unblocked item with parallel builder/reviewer lanes. Sealed so far this run: P2
+  multi-shank (peer, `8af8111`), PRE1 bad-channel exclusion (`c823f55` — premise
+  measured false in-band; tdc2 measured non-deterministic, 14/16/18 units). In flight:
+  W1 s2 curation loop (reviewed), s3 Phy export, debt bundle (review: ship), D6 airy
+  dashboard (peer; Ben's two mocks, NORTHSTAR decision), W2 next.
   Product facts on record: built by Benjamin Faibussowitsch with Aleece Al-Olimat for
   UPitt researchers on industry-standard SpikeInterface.
 
@@ -48,6 +48,23 @@ A need left only in a chat summary is a need Ben never sees.*
 ---
 
 ## The ledger (newest first)
+
+**2026-08-18 — PRE1: bad channels out of the reference — premise measured false, feature kept (`c823f55`)**
+- Did: built data-driven bad-channel detection/exclusion into the sort pipeline
+  (mad, pinned seed, 25% wholesale-refusal, manual naming, provenance on every
+  surface), archived the baseline, re-ran the full sort + manual comparison to
+  measure it, and folded all eight findings of a fix-first Fable review.
+- Means: E1's premise is false in the referenced band — ch1's oscillation is
+  sub-300 Hz and the bandpass removes it before the median (in-band ch1 is the
+  quietest channel and carries a real unit; zero channels flagged by any method),
+  so the sort is unchanged and the feature is insurance for the lab's recordings.
+- Moved: tridesclous2 measured NON-DETERMINISTIC here (14/16/18 units across
+  identical runs) — W1's curation records now hard-anchor to their exact sort and
+  W2's regeneration criteria avoid unit counts; baseline + MEASUREMENT.md live in
+  outputs/_archive/tridesclous2_pre_badch/.
+- Needs Ben: nothing.
+- Next: W2 launches off this commit; debt bundle (reviewed: ship) integrates
+  behind it; W1 s2 under review, s3 building.
 
 **2026-08-18 — P2: multi-shank / ProbeGroup support (peer session, `8af8111`)**
 - Did: a multi-probe ProbeGroup (or a probe with native shank ids) now imports as one
