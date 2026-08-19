@@ -128,6 +128,67 @@ Authored with `fable-prompt-builder` **when Ben's veto lands**, against the spec
 `goals/GOAL_D_UIUX.md` + the spec sections from DESIGN_UX §7, name the T1 gates
 (deliberate snapshot re-baselining with reviewed diffs), and seal per the contract.
 
+### THE CONDUCTOR — drives the ungated queue to completion  [READY — paste into a fresh session]
+
+```
+The University of Pittsburgh researchers in Tracy's lab need this workbench to take
+their recordings from raw Blackrock files to curated, defensible single units on
+their own machine. Last night's 19 sealed slices proved the machinery and settled
+the direction: the sorter finds 97-100% of every manually sorted unit's spikes but
+merges what a human splits, so Ben chose the curation path. You are the conductor
+for the remainder — every unblocked item on the board, sealed to the standard those
+19 met.
+
+Re-enter from the board, never from memory: CLAUDE.md's Orchestration section gives
+the read order (NORTHSTAR → LOOPS → the active goals/ brief → ROADMAP's NOW box;
+DESIGN_UX for any UI surface; SEALS.md for where things stand). Keep ROADMAP true
+as you go — a stale marker is a defect.
+
+The queue to completion, dependency-ordered:
+1. PRE1 — bad channels out of the reference. E1's same-clock view showed channel 1
+   is pathological (pure oscillation) and it currently sits inside the common
+   median reference every other channel is subtracted against. Detect bad channels,
+   exclude them from the reference in the sort pipeline, state the exclusion in
+   provenance and the report, then re-run the full tridesclous2 sort and the
+   manual-.nev comparison to MEASURE what it bought.
+2. W1 slice 2 — the curation loop (goals/GOAL_W1_CURATION.md): merge/split/label
+   decisions saved, applied to a curated Sorting, metrics re-scored, surfaces
+   honest about curated-vs-raw. Its validation reference is
+   PFCM7_d0ephys_Block2_manuallySorted.nev: done means splitting tdc2's ch5/ch7/ch9
+   merges can reproduce the manual units.
+3. W1 slices 3 and 4 in parallel lanes — Phy export, and the in-menu unit triage
+   (DESIGN_UX §1 language binds the menu surface).
+4. W2 (goals/GOAL_W2_REPRO.md) — versioned runs, complete provenance,
+   regenerate-from-record; overlap it with W1 s3/s4 only where file sets are
+   disjoint.
+5. P2 multi-shank probes (goals/GOAL_P_PROBES.md) — a parallel lane any time.
+6. The recorded-debt bundle, one lane: keyboard-sortable report headers, the D2b
+   pending-phase manifest, online_unit_labels relocating to blackrock_io,
+   controller dead code (cycle_active and friends), and robustness for extra .nev
+   files beside the recording set.
+
+Done when: every item above is SEALED — gates green per the verify-spike skill
+(the ~4 µV noise-floor canary is a verdict), one fresh-context reviewer-agent pass
+per substantive slice with findings folded or recorded, board and SEALS updated
+per the between-run contract — and a final full-suite run plus a real launch check
+pass. P3, WD, W3 and W4 stay gated on Ben's inputs (the adapter map, lab-box
+access, lab recordings, the face pick): leave each OPEN in SEALS with one line on
+what unblocks it, and never fake progress on them.
+
+Method that is already law here: builders run on Opus, reviews on Fable; parallel
+lanes get explicitly disjoint file sets and commit their own paths (the way
+T1/P1/B1 ran — a peer session, if one is open, takes well-bounded lanes);
+CLAUDE.md's Invariants-that-bite bind every edit; raw data never enters git or
+leaves this machine. Don't redesign sealed surfaces except where a queue item says
+so. A queue item whose premise turns out wrong gets re-scoped on the board with
+the evidence, not silently skipped. Ask Ben only for decisions that are genuinely
+his, batched in SEALS OPEN, and keep building on other lanes meanwhile.
+
+You have ample time and context. If the run stops short anyway, seal partial
+state per the between-run contract — this same prompt re-entered in a fresh
+session continues from the board.
+```
+
 ### B1 — bare report action crashes  [SEALED 2026-08-18 — `b43869e`]
 
 ```
