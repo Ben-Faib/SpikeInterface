@@ -41,8 +41,14 @@ A need left only in a chat summary is a need Ben never sees.*
   row a visible labeled key saying what it produces, rows never yielding (smaller
   terminals scroll, never clip); help teaches the real workflow in WORKFLOW.md's words;
   DESIGN_UX §2 is the redesign's spec of record.
-- **Current focus: THE CONDUCTOR v3 (running)** — the clean pass on main, then unify +
-  push, close.
+- **The product demo exists on main's store** (the clean pass, 2026-08-19): fresh full
+  sort → run `20260819-035117-c7184d` (16 units, canary 4.086 µV) → all 16 units
+  labeled through the REAL TUI triage (4 good = the cells recovering Ben's manual units
+  at 97.5–100%; 8 unsure; 4 noise — three evidence-keyed rules, every decision
+  audit-trailed with source=tui) → applied (curated re-score, canary 4.03 µV) → report,
+  dashboard and compare all reading that one run id, curated-stated.
+- **The repo is unified**: one branch (main), pushed; every side branch deleted after
+  merge verification; conductor v3 closed 2026-08-19.
   Facts of record binding design: E1's premise FALSE in-band (PRE1), tdc2 non-deterministic
   (14–19 units across identical runs), .nev unit ids are PER-ELECTRODE SLOTS (7 sorted
   electrode×slot units on 4 electrodes; CSV reconciled row-for-row), and the recording's
@@ -72,6 +78,31 @@ A need left only in a chat summary is a need Ben never sees.*
 ---
 
 ## The ledger (newest first)
+
+**2026-08-19 — CONDUCTOR v3 CLOSED: the clean pass, one branch, pushed**
+- Did: ran the product demo end-to-end on main through the store — fresh full sort
+  (run `20260819-035117-c7184d`, 16 units, canary 4.086 µV) → all 16 units labeled
+  through the real TUI triage by three evidence-keyed rules (good = recovers a manual
+  cell ≥90%: u4/u8/u10/u16 at 99.7/100/98.3/97.5% of ch5#2/ch9#2/ch11#1/ch7#1;
+  unsure = under the 100-spike floor or 10–20% overlap with a real cell; noise = judged,
+  gross ISI, no recovery) → apply → report + compare --nev — then unified the repo
+  (all seven merged side branches deleted; the W2 lane -D'd after verifying every
+  commit has a landed counterpart on main; worktrees removed and pruned) and pushed.
+- Means: every surface now tells one coherent story against one run id — report:
+  "tridesclous2 · curated · run 20260819-035117-c7184d · 2026-08-19 03:54 · 132 s
+  window — no unit passes the rule on solid evidence · 5 pass it on thin evidence
+  (ch 2·1·8·7·7)"; dashboard RESULTS: "tridesclous2 · 0 strong units of 16 · 132 s
+  sorted · curated (16 decisions) / 5 units pass the rule only on thin evidence
+  (ch 2·1·8·7·7)  u triage / V_pp 34.44 µV · SNR 5.38 · noise 4.03 µV · yield 81.2%
+  (13/16)" — and the labels are Ben's real, editable curation record.
+- Moved: the demo's first curated pass caught the run stamp printing the anchor dict
+  where the run id belongs (fixed + pinned, `2e10ae3`); final gates on main — full
+  suite green, real launch check OK, push set verified free of data/large blobs.
+- Needs Ben: the quality-rule OPEN item (his four real cells fail ISI ≤ 0.5 at
+  1.06–1.36 on this run — merge-inflated; edit labels anytime with u); the inert stray
+  run dir noted in the face1 seal; everything else on the board is the four gated items.
+- Next: the four gated OPEN items are the whole board — P3 (adapter map) · WD (lab
+  box) · W3 (fuller face pick) · W4 (lab recordings).
 
 **2026-08-19 — face2: every function a visible row in three workflow stages (`dd90687`)**
 - Did: rebuilt the dashboard to Ben's three decisions — a state block (DATA/PROBE ·

@@ -17,34 +17,23 @@ box) runs alongside everything.
 
 ---
 
-## ▶ NOW — updated 2026-08-19 ~03:30: **THE CONDUCTOR v3 is running — face1 LANDED, face2 next**
+## ▶ NOW — updated 2026-08-19 ~04:00: **CONDUCTOR v3 CLOSED — one clean branch, pushed; the whole board is the four gated items**
 
-- **face1 (the takeaway surface) is on main** (`8f651f2`, six commits): the
-  unit rollup owned by sort_summary (strong / thin-evidence / sub-threshold /
-  not-judged, isolation phrases in plain words), the report leading with the
-  strong-units block (run-stamped, manual-.nev recovery column — the matcher now
-  reports BOTH directions after its review caught the containment inversion),
-  the dashboard RESULTS takeaway, triage strong-first, docs/WORKFLOW.md linked
-  from README. TWO Fable reviews folded (this session's + the peer
-  conductor's — the sessions coordinated a baton handoff mid-slice, LESSONS S8);
-  suite 646 green on main.
-- **The science finding for Ben** (now in SEALS OPEN): on the full run the four
-  units that recover his manual neurons at 96–100% (ch 5·7·9·11) all fail the
-  default ISI ≤ 0.5 at 0.652–0.699, and nothing passes on solid evidence — the
-  default quality_rule looks wrong for this preparation.
-- **face2 (the binned-rows dashboard) is on main** (`dd90687`): a state block
-  (DATA/PROBE · SORT · RESULTS) over ONE list of all fourteen functions in
-  GET DATA · SORT & CURATE · LOOK & SHARE, each row printing its key and what it
-  produces; a new yield ladder where the rows never yield (80×24 shows the whole
-  workflow, smaller sizes scroll — never clip); help rebuilt on WORKFLOW.md's
-  vocabulary; DESIGN_UX §2 rewritten as the spec of record. Fable review verdict
-  ship, findings 1–4 folded (page-key cursor drop; folder-route discoverability),
-  F5 recorded in the fold commit. Suite 659 green on main, launch check OK.
-- **Remaining (this session): the clean pass on main** (fresh full sort →
-  u-triage labels as Ben's real record → apply → report + compare vs the manual
-  .nev, one run id everywhere), then push, final gates, close.
-- **Gated OPEN (the whole remaining board):** P3 (adapter map) · WD (lab-box
-  access) · W3 (fuller face pick — first slice landed) · W4 (lab recordings).
+- **The run delivered**: face1 (the takeaway surface, `8f651f2`, two Fable
+  reviews folded via a live baton handoff — LESSONS S8) + face2 (the binned-rows
+  dashboard, `dd90687`, review ship) + the clean pass (run
+  `20260819-035117-c7184d`: fresh full sort → 16 TUI-triaged labels as Ben's
+  real record → apply → report/dashboard/compare coherent against that one run
+  id) + unification (every side branch deleted after merge verification, main
+  pushed to origin). Final gates: full suite green, launch check OK,
+  canary 4.03–4.086 µV.
+- **In SEALS OPEN for Ben**: the quality-rule call — his four real cells
+  (recovered at 97.5–100%) fail the default ISI ≤ 0.5 at 1.06–1.36 on the demo
+  run while only thin-evidence units pass; the rule is tunable in
+  `.si_menu.json`, labels editable anytime with `u`.
+- **Gated OPEN (the whole board):** P3 (adapter map) · WD (lab-box access) ·
+  W3 (fuller face pick — takeaway + dashboard slices landed) · W4 (lab
+  recordings).
 
 ## The dependency graph
 
@@ -147,7 +136,7 @@ Authored with `fable-prompt-builder` **when Ben's veto lands**, against the spec
 `goals/GOAL_D_UIUX.md` + the spec sections from DESIGN_UX §7, name the T1 gates
 (deliberate snapshot re-baselining with reviewed diffs), and seal per the contract.
 
-### THE CONDUCTOR v3 — the clean unification: land the face, one branch, pushed  [READY — paste into a fresh session]
+### THE CONDUCTOR v3 — the clean unification: land the face, one branch, pushed  [RUN COMPLETED 2026-08-19 — kept for provenance]
 
 ```
 The UPitt researchers need this workbench to take raw Blackrock files to curated,
