@@ -115,12 +115,20 @@ this Mac never offers it). Every phase's work must hold on Windows, not just mac
   chrome; §1 language unchanged and binding. Standing intent behind it: make the UI
   "less annoying to deal with" — discoverability via visible, pressable affordances.
 
+- **2026-08-19 (Ben, the interview)** - the presentation arc authorized
+  (`goals/GOAL_PRESENT.md` is the spec of record): split path chosen for the merges
+  (quality-rule defaults unchanged; merge-diagnosis advisory + Phy prep now, Ben splits
+  later; a sorter sweep tests whether another algorithm splits without Phy); **no adapter
+  map is coming**: channel→site identity wiring is the accepted standing assumption
+  (supersedes the open question; reopen only if a map ever arrives); no em dashes
+  anywhere in the repo (hard boundary); periwinkle is the palette anchor across all
+  surfaces and the deck.
+
 ## Open questions (kept open on purpose — answers land here as dated decisions)
 
 - **What Tracy's lab actually needs first** — users, their fluency, the recordings beyond
   this block, whether curation or batch is the pain. A short requirements pass with the lab
   should precede W3's face pick and could reorder W1/W4.
 - **The W3 face**: wizard vs web vs terminal IDE — Ben's call, informed by the lab answer.
-- **The adapter map**: the channel→site wiring that would make depth order physical.
 - **GPU sorters on the lab box**: which (kilosort4 first?), and how validated against the
   local sorters on the same recording.

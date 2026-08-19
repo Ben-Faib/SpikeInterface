@@ -13,9 +13,10 @@ before W1/W2 scales un-publishable output.
 - W1 and W2 sealed.
 - Real multi-session data from the lab on hand (more blocks/days of PFCM7 or successors) —
   building batch machinery against one file set is guesswork.
-- **Cross-session unit tracking additionally waits on the verified adapter map** (NORTHSTAR
-  open question): tracking units across days on an assumed channel wiring compounds a maybe
-  into a method.
+- **Cross-session unit tracking rides the standing identity-wiring assumption** (Ben,
+  2026-08-19: no adapter map is coming): tracking across days is allowed on that
+  assumption, but every cross-session surface must state it, since an assumed wiring
+  compounded across days is a method, not a maybe.
 
 ## Shape (to be sliced when the gates clear)
 

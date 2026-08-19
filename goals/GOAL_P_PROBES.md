@@ -17,12 +17,12 @@ correctness — a wrong channel→site map silently corrupts every spatial resul
   recording's neural channel count and honest errors naming the mismatch.
 - **P2 — multi-shank / ProbeGroup support.** Geometry, fit scoring, report probe view, and
   sorter recommendations handle multi-shank layouts; density classing per shank.
-- **P3 — wiring verification.** A first-class channel→site mapping surface: view the
-  current map, apply an adapter map (the identity-mapping acceptance is on record as
-  provisional), and a data-driven sanity view (per-channel noise/amplitude by claimed
-  depth) that helps a researcher spot an implausible wiring. The lab's real adapter map
-  (NORTHSTAR open question) closes this properly; the surface must not pretend to certainty
-  the data doesn't give. **On-record items from P1's and P2's reviews (2026-08-18, also in
+- **P3 — wiring verification. CLOSED AS A WAIT (Ben, 2026-08-19): no adapter map is
+  coming; channel→site identity wiring is the accepted standing assumption, reopened only
+  if a map ever arrives.** The surface sketched here (view the current map, apply an
+  adapter map, a data-driven sanity view of per-channel noise/amplitude by claimed depth)
+  is not queued; it becomes relevant again only with a real map or a probe whose wiring is
+  in doubt. **On-record items from P1's and P2's reviews (2026-08-18, also in
   probes.py's docstring):** `run_sorting.py --probe-file` (kind `file`) still applies
   identity wiring unconditionally — with the import CLI existing it is now the trap door
   for wired probes and P3 must close it; imported tetrode-style geometry

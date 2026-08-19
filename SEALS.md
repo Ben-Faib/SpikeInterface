@@ -26,8 +26,9 @@ A need left only in a chat summary is a need Ben never sees.*
   a smoke run can never take; records/curated/phy ride inside their run; regeneration
   from a record prints an honest match report with measured tolerances (no unit-count
   criteria — tdc2 non-determinism is design law).
-- **Probe geometry is real** (`nnx-a1x16-3mm-100` default) with channel→site wiring a
-  user-accepted identity mapping — true depth order still waits on the lab's adapter map.
+- **Probe geometry is real** (`nnx-a1x16-3mm-100` default); channel→site identity wiring
+  is the accepted STANDING ASSUMPTION (Ben, 2026-08-19: no adapter map is coming; reopen
+  only if one ever arrives).
 - **Deployment target is the UPitt lab's Windows+GPU box**; Windows Docker-sort cleanup
   crash fixed 2026-08-18 (`7940f96`); GPU-sorter enablement (kilosort4) not yet started (WD).
 - **The takeaway surface (face1) is on main** (`8f651f2`, 2026-08-19): every surface —

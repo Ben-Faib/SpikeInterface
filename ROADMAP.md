@@ -61,8 +61,8 @@ box) runs alongside everything.
         └────────────────► T2 journey refactor + T3 honesty states         (W1 slice 4 TUI triage
                               (after D1/D2)                                  inherits DESIGN_UX §1)
 
-  P1 probe import (ready now) ──► P2 multi-shank ──► P3 wiring verify (needs adapter map)
-                                                          (P menu-UI portions after D1)
+  P1 probe import (ready now) ──► P2 multi-shank ──► P3 wiring verify (CLOSED as a wait
+                                    2026-08-19: identity wiring is a standing assumption)
 
   W3 face (Ben's pick, after D track) ──► W4 multi-recording (last; needs W1+W2+lab data)
   WD lab deployment: standing track, any time lab-box access exists
@@ -81,7 +81,7 @@ box) runs alongside everything.
 | 6 | D3 report | `goals/GOAL_D_UIUX.md` | **SEALED 2026-08-18** (`d12ff5c`; visual pass = Ben opening it) |
 | 7 | D4 flow modals | `goals/GOAL_D_UIUX.md` | **SEALED 2026-08-18** (`f115015`) |
 | 8 | T2/T3 journey + honesty tests | `goals/GOAL_T_TESTING.md` | **SEALED 2026-08-18** (peer, `7e6938d`) |
-| 9 | P2 multi-shank · P3 wiring | `goals/GOAL_P_PROBES.md` | **P2 SEALED 2026-08-18** (peer, `8af8111`: ProbeGroup imports as probes-as-shanks, wiring pinned verbatim, physical density classing; suite 388 green, canary 3.993 µV, review ship). P3 needs adapter map; three new recorded items in the brief |
+| 9 | P2 multi-shank · P3 wiring | `goals/GOAL_P_PROBES.md` | **P2 SEALED 2026-08-18** (peer, `8af8111`: ProbeGroup imports as probes-as-shanks, wiring pinned verbatim, physical density classing; suite 388 green, canary 3.993 µV, review ship). P3 closed as a wait 2026-08-19 (identity wiring is a standing assumption; no map coming); its recorded items stay in the brief for whenever probe work resumes |
 | 10 | W1 curation | `goals/GOAL_W1_CURATION.md` | **COMPLETE — all four slices SEALED** (s1 rule owner; s2 lifecycle `cddd677`; s3 Phy round-trip `96a53cb`; s4 in-TUI triage `f594a31` 2026-08-19, review ship, suite 534 — hardening follow-ups recorded in the brief) |
 | 11 | W2 reproducibility | `goals/GOAL_W2_REPRO.md` | **SEALED 2026-08-19** (`482d68d`) — versioned run store + provenance + regenerate (tolerances calibrated on 7 measured pairs, no unit-count criteria) + config export; two Fable passes folded; curation re-pointed through the store; follow-ups in the brief |
 | PRE1 | bad channels out of the reference (E1's finding; conductor prompt item 1) | prompt below | **SEALED 2026-08-18** (`c823f55`) — **premise re-scoped with evidence**: zero channels flagged; ch1's pathology is sub-300 Hz (bandpass removes it pre-CMR; in-band it's the QUIETEST channel and carries a unit); feature kept as insurance + measured tdc2 non-determinism (14/16/18 units) now drives W1 anchoring + W2 tolerances |
