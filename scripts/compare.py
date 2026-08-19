@@ -614,15 +614,25 @@ def build_online_comparison(sorter, data_dir=None, out_path=None, nev_path=None,
                 else "The rig's live sorting as a reference")
     which = _result_note(sorter, curated)
 
-    def _write(sections):
+    def _write(sections, run_id=None):
+        # This page has no array/yield table, so it has no `run` row to carry the
+        # id the way the pair page does — it goes in the subtitle instead. Only
+        # once a sort is actually loaded: before that there is no run to name.
+        where = f" · run {html.escape(str(run_id))}" if run_id else ""
         out_path.write_text(
             report._html_document(f"{sorter} vs sorted .nev units", sections,
-                                  subtitle=f"{ref_note} — "
+                                  subtitle=f"{ref_note}{where} — "
                                            "not ground truth. Self-contained, works offline."),
             encoding="utf-8")
         return out_path
 
     offline, window_s = _load(sorter, curated=curated)
+    # From here on a sort IS loaded, so every exit names which one and repeats the
+    # curated-vs-raw sentence. `which` used to be built here and then reach only
+    # the fully-compared page: on this recording — which has no online-sorted
+    # units — that is the one branch that never runs, so the page said nothing at
+    # all about what it had loaded.
+    run_id = _paths(sorter)["id"] if offline is not None else None
     if offline is None and curated:
         return _write([_caveat_section(sorter, (
             f'<strong>No curated result for {html.escape(str(sorter))}.</strong> Record '
@@ -644,20 +654,22 @@ def build_online_comparison(sorter, data_dir=None, out_path=None, nev_path=None,
         # carry the actionable detail (the candidates by name), so they go on the
         # page verbatim under the general next step.
         return _write([_caveat_section(sorter, (
+            which +
             '<strong>No .nev file found.</strong> The online units live in the recording\'s '
             '.nev — put one Blackrock file set (.nev + .ns5) in the repo root and rebuild. '
             'Without it, compare two offline sorters instead: '
             '<code>uv run python scripts/compare.py</code>.'
-            f'<p class="note">Loader: {html.escape(str(e))}</p>'))])
+            f'<p class="note">Loader: {html.escape(str(e))}</p>'))], run_id=run_id)
 
     labels = bio.online_unit_labels(online)
     if labels is None:
         return _write([_caveat_section(sorter, (
+            which +
             '<strong>Could not read the .nev unit-class labels</strong>, so the unsorted '
             '(id 0) and noise (id 255) classes cannot be told apart from the online-sorted '
             'ones. Comparing everything would misstate what the rig sorted, so nothing is '
             'compared here. Compare two offline sorters instead: '
-            '<code>uv run python scripts/compare.py</code>.'))])
+            '<code>uv run python scripts/compare.py</code>.'))], run_id=run_id)
 
     kept, accounting = split_online_units(online, labels)
     breakdown = electrode_breakdown(online, labels)
@@ -666,12 +678,13 @@ def build_online_comparison(sorter, data_dir=None, out_path=None, nev_path=None,
         channels = sum(c["n_units"] for c in accounting if not c["kept"])
         return _write([_reference_section(accounting, breakdown=breakdown),
                        _caveat_section(sorter, (
+            which +
             '<strong>This recording has no online-sorted units, so there is nothing to '
             f'compare against.</strong> Its .nev holds {dropped} spikes across {channels} '
             'unit-id-0/255 group(s): the rig detected threshold crossings but never assigned '
             'them to online units. Sort the .nev online in the recording software and '
             're-export, or compare two offline sorters instead: '
-            '<code>uv run python scripts/compare.py</code>.'))])
+            '<code>uv run python scripts/compare.py</code>.'))], run_id=run_id)
 
     cropped, crop_info = crop_online(kept, window_s)
 
@@ -685,7 +698,7 @@ def build_online_comparison(sorter, data_dir=None, out_path=None, nev_path=None,
         {"id": "compare", "title": f"{sorter} vs {ONLINE_NAME}",
          "html": which + _online_compare_html(cmp, cropped, offline, sorter,
                                               delta_ms=delta_ms)},
-    ])
+    ], run_id=run_id)
 
 
 def main(argv=None) -> int:
