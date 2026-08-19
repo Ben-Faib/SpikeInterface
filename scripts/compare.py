@@ -75,9 +75,15 @@ DURATION_TOLERANCE_S = 1.0
 ONLINE_NAME = "online (.nev)"
 
 
-def _paths(sorter: str) -> dict:
-    """Every path for ``sorter``'s CURRENT run — the run store is the resolver."""
-    return runs.sort_paths(sorter, outputs=OUTPUT_DIR)
+def _paths(sorter: str, run=None) -> dict:
+    """Every path for ``sorter``'s CURRENT run — the run store is the resolver.
+
+    ``run`` pins a specific run instead: the menu's re-sort-then-compare flow makes
+    two ``--duration`` smoke runs, which by design do NOT become current, so the
+    page it asked for has to name those runs explicitly or it would compare the
+    two sorts the user just replaced.
+    """
+    return runs.sort_paths(sorter, run=run)
 
 
 def _analyzer_dir(sorter: str) -> Path:
@@ -86,25 +92,32 @@ def _analyzer_dir(sorter: str) -> Path:
 
 
 def saved_sorters() -> list[str]:
-    """Sorter names under outputs/ whose current run has a saved analyzer, sorted."""
-    if not OUTPUT_DIR.exists():
+    """Sorter names under outputs/ whose current run has a saved analyzer, sorted.
+
+    The store root is read at call time (``runs.outputs_dir``), not from this
+    module's import-time OUTPUT_DIR, so the directory scanned and the run resolved
+    inside it are always the same tree.
+    """
+    base = runs.outputs_dir()
+    if not base.is_dir():
         return []
     return sorted(
-        p.name for p in OUTPUT_DIR.iterdir()
+        p.name for p in base.iterdir()
         if p.is_dir() and _analyzer_dir(p.name).exists()
     )
 
 
-def _load(sorter: str, curated: bool = False):
+def _load(sorter: str, curated: bool = False, run=None):
     """Return (sorting, duration_s) for the sorter's current run, or (None, None).
 
     ``curated`` reads that run's ``curated/analyzer`` (the applied curation record)
     instead of the raw sort; both paths come from the run store's ``sort_paths``,
-    the one place output paths are resolved.
+    the one place output paths are resolved. ``run`` pins a run other than the
+    current one.
     """
     import spikeinterface.full as si
 
-    paths = _paths(sorter)
+    paths = _paths(sorter, run)
     analyzer_dir = paths["curated_analyzer"] if curated else paths["analyzer"]
     if not analyzer_dir.is_dir():
         return None, None
@@ -112,17 +125,23 @@ def _load(sorter: str, curated: bool = False):
     return a.sorting, float(a.get_total_duration())
 
 
-def result_line(sorter: str, curated: bool) -> str:
+def result_line(sorter: str, curated: bool, run=None) -> str:
     """The one honest sentence naming what a page is comparing (curated or raw)."""
-    st = curation.state(sorter)
-    return curation.provenance_line(curation.load_record(sorter), curated=curated,
+    st = curation.state(sorter, run=run)
+    record = curation.load_record(path=_paths(sorter, run)["record"])
+    return curation.provenance_line(record, curated=curated,
                                     has_curated=st["has_curated"])
 
 
-def _result_note(sorter: str, curated: bool) -> str:
-    """That sentence as a paragraph, prefixed with the sorter it describes."""
-    return (f'<p class="note"><strong>{html.escape(sorter)}:</strong> '
-            f'{html.escape(result_line(sorter, curated))}.</p>')
+def _result_note(sorter: str, curated: bool, run=None) -> str:
+    """That sentence as a paragraph, prefixed with the sorter it describes.
+
+    A pinned run is named: the page is then not showing what the pointer says is
+    current, and a number nobody can trace back to a run is a number nobody can
+    check."""
+    where = f' (run {html.escape(str(_paths(sorter, run)["id"]))})' if run else ""
+    return (f'<p class="note"><strong>{html.escape(sorter)}{where}:</strong> '
+            f'{html.escape(result_line(sorter, curated, run))}.</p>')
 
 
 def _heatmap(cmp) -> go.Figure:
@@ -175,7 +194,7 @@ def _match_table(cmp) -> str:
             + '</tr></thead><tbody>' + rows + '</tbody></table>')
 
 
-def _metrics_section(curated: bool = False) -> dict:
+def _metrics_section(curated: bool = False, pinned=None) -> dict:
     """Cross-sorter array/yield table: the six headline metrics for EVERY saved sort.
 
     Unlike the agreement matrix this is per-sort, so it stays valid even when the
@@ -183,15 +202,19 @@ def _metrics_section(curated: bool = False) -> dict:
     do scale with window length, so each sort's window is shown for honesty. With
     ``curated`` the curated result's metrics are shown where one exists, and the
     column says so — a curated column must never pass as raw sorter output.
+    ``pinned`` maps a sorter to a run other than the current one, so a page built
+    against explicit runs does not show the pointer's metrics beside their matrix.
     """
-    names = saved_sorters()
-    cards = []          # (column label, summary card, sorter name)
+    pinned = pinned or {}
+    names = sorted(set(saved_sorters()) | set(pinned))
+    cards = []          # (column label, summary card, sorter name, pinned run)
     for n in names:
-        paths = _paths(n)
-        _dir, has_curated = curation.preferred_analyzer(n)
+        run = pinned.get(n)
+        paths = _paths(n, run)
+        _dir, has_curated = curation.preferred_analyzer(n, run=run)
         use_curated = curated and has_curated
         card = sort_summary.load_summary(paths["curated"] if use_curated else paths["out"])
-        cards.append((n + " (curated)" if use_curated else n, card, n))
+        cards.append((n + " (curated)" if use_curated else n, card, n, run))
     cards = [c for c in cards if c[1] is not None]
     if not cards:
         body = ('<div class="caveat">No saved array/yield summaries yet — run a sort '
@@ -199,10 +222,11 @@ def _metrics_section(curated: bool = False) -> dict:
         return {"id": "metrics", "title": "Array / yield metrics by sorter", "html": body}
 
     metric_labels = list(sort_summary.headline_row(cards[0][1]).keys())  # the six, in order
-    header = "".join(f'<th>{html.escape(lbl)}</th>' for lbl, _c, _n in cards)
+    header = "".join(f'<th>{html.escape(lbl)}</th>' for lbl, _c, _n, _r in cards)
 
     def _row(label, value_of):
-        cells = "".join(f"<td>{html.escape(str(value_of(c)))}</td>" for _l, c, _n in cards)
+        cells = "".join(f"<td>{html.escape(str(value_of(c)))}</td>"
+                        for _l, c, _n, _r in cards)
         return f"<tr><td>{html.escape(label)}</td>{cells}</tr>"
 
     body_rows = _row("units", lambda c: c.get("n_units", 0))
@@ -211,8 +235,8 @@ def _metrics_section(curated: bool = False) -> dict:
     # Which saved run each column is. A sorter can have many runs now, so a
     # column without its run id is a number nobody can trace back.
     body_rows += ("<tr><td>run</td>" + "".join(
-        f'<td>{html.escape(str(_paths(n)["id"] or "—"))}</td>'
-        for _l, _c, n in cards) + "</tr>")
+        f'<td>{html.escape(str(_paths(n, r)["id"] or "—"))}</td>'
+        for _l, _c, n, r in cards) + "</tr>")
     for label in metric_labels:
         body_rows += _row(label, lambda c, _l=label: sort_summary.headline_row(c)[_l])
 
@@ -231,9 +255,16 @@ def _pair_names() -> tuple:
     return tuple(found[:2]) if len(found) >= 2 else DEFAULT_SORTERS
 
 
-def build_comparison(data_dir=None, sorters=None, out_path=None, curated=False) -> Path:
+def build_comparison(data_dir=None, sorters=None, out_path=None, curated=False,
+                     runs_by_sorter=None) -> Path:
+    """The two-sorter page. ``runs_by_sorter`` pins one side (or both) to a run
+    other than the current one — the menu's re-sort-then-compare flow makes two
+    ``--duration`` smoke runs, and a smoke run deliberately never becomes current,
+    so the only way to compare what the user just asked for is to name those runs.
+    """
     out_path = Path(out_path) if out_path else (OUTPUT_DIR / "comparison.html")
     OUTPUT_DIR.mkdir(exist_ok=True)
+    pinned = dict(runs_by_sorter or {})
     if sorters is None:
         sorters = _pair_names()
     s1_name, s2_name = sorters
@@ -242,13 +273,20 @@ def build_comparison(data_dir=None, sorters=None, out_path=None, curated=False) 
     # per-sort note below says which, so a mixed page is still honest. Whether one
     # exists is the one rule in curation.preferred_analyzer.
     def _side(name):
-        _dir, has_curated = curation.preferred_analyzer(name)
+        run = pinned.get(name)
+        _dir, has_curated = curation.preferred_analyzer(name, run=run)
         use = curated and has_curated
-        return _load(name, curated=use), use
+        return _load(name, curated=use, run=run), use
 
     (s1, d1), c1 = _side(s1_name)
     (s2, d2), c2 = _side(s2_name)
-    which = _result_note(s1_name, c1) + _result_note(s2_name, c2)
+    which = (_result_note(s1_name, c1, pinned.get(s1_name))
+             + _result_note(s2_name, c2, pinned.get(s2_name)))
+    if pinned:
+        which = ('<p class="note">This page compares runs named explicitly, not '
+                 'whichever run each sorter currently points at — a <code>--duration'
+                 '</code> run never displaces a full sort, so the runs just made are '
+                 'not current and are named per sorter above.</p>') + which
 
     if s1 is None or s2 is None:
         missing = [n for n, s in [(s1_name, s1), (s2_name, s2)] if s is None]
@@ -271,7 +309,7 @@ def build_comparison(data_dir=None, sorters=None, out_path=None, curated=False) 
                "html": which + body}
     # The cross-sorter array/yield table sits first: it summarises EVERY saved sort
     # (not just the agreement pair) and the six lab-requested metrics live here.
-    sections = [_metrics_section(curated=curated), section]
+    sections = [_metrics_section(curated=curated, pinned=pinned), section]
     out_path.write_text(report._html_document("Sorter comparison", sections), encoding="utf-8")
     return out_path
 

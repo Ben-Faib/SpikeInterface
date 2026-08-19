@@ -9,6 +9,7 @@ when there is none.
 """
 from __future__ import annotations
 
+import json
 import re
 import sys
 from pathlib import Path
@@ -44,14 +45,64 @@ def _text(path) -> str:
     return html_mod.unescape(re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", body)))
 
 
-def test_saved_sorters_finds_analyzer_dirs(tmp_path, monkeypatch):
-    # Two sorters with an analyzer dir, one without.
-    for name in ("tridesclous2", "mountainsort5"):
-        (tmp_path / name / "analyzer").mkdir(parents=True)
-    (tmp_path / "spykingcircus2").mkdir()
-    monkeypatch.setattr(compare, "OUTPUT_DIR", tmp_path)
+def test_saved_sorters_finds_a_resolvable_run(tmp_path, monkeypatch):
+    """A sorter counts as saved when the run store resolves a run with an analyzer
+    — in the store layout or the pre-store one. A sorter directory with neither is
+    not a saved sort."""
+    out = tmp_path / "outputs"
+    # mountainsort5 in the store; tridesclous2 in the pre-store layout.
+    (out / "mountainsort5" / "runs" / "20260819-090000-abcdef" / "analyzer").mkdir(parents=True)
+    (out / "mountainsort5" / "runs" / "20260819-090000-abcdef" / "run_info.json").write_text(
+        '{"sorter": "mountainsort5", "n_units": 3}', encoding="utf-8")
+    (out / "tridesclous2" / "analyzer").mkdir(parents=True)
+    (out / "spykingcircus2").mkdir()
+    monkeypatch.setattr(compare.bio, "REPO_ROOT", tmp_path)
     found = compare.saved_sorters()
-    assert found == ["mountainsort5", "tridesclous2"]  # sorted, only those with analyzer
+    assert found == ["mountainsort5", "tridesclous2"]  # sorted, only those with a run
+
+
+def _run_dir(out, sorter, run_id, *, smoke=False, units=3, seconds=132.0):
+    d = out / sorter / "runs" / run_id
+    (d / "analyzer").mkdir(parents=True)
+    (d / "run_info.json").write_text(json.dumps(
+        {"sorter": sorter, "run_id": run_id, "smoke": smoke, "n_units": units,
+         "created": "2026-08-19T09:00:00", "effective_seconds": seconds}),
+        encoding="utf-8")
+    return d
+
+
+def test_build_comparison_compares_the_runs_it_is_given(tmp_path, monkeypatch):
+    """The menu's re-sort-then-compare makes two --duration runs, and a smoke run
+    never displaces a full sort — so the page has to be built against those runs
+    BY NAME, or it would silently re-compare the two sorts the user just replaced.
+    """
+    out = tmp_path / "outputs"
+    full_a = _run_dir(out, "sorterA", "20260818-080000-full11")
+    full_b = _run_dir(out, "sorterB", "20260818-080100-full22")
+    quick_a = _run_dir(out, "sorterA", "20260819-090000-quicka", smoke=True, seconds=30.0)
+    quick_b = _run_dir(out, "sorterB", "20260819-090100-quickb", smoke=True, seconds=30.0)
+    monkeypatch.setattr(compare.bio, "REPO_ROOT", tmp_path)
+    # The pointer is untouched, so the current run of each sorter is still the full one.
+    assert compare._paths("sorterA")["out"] == full_a
+    assert compare._paths("sorterB")["out"] == full_b
+
+    seen = {}
+
+    def _fake_load(sorter, curated=False, run=None):
+        seen[sorter] = run
+        return None, None
+
+    monkeypatch.setattr(compare, "_load", _fake_load)
+    page = compare.build_comparison(sorters=("sorterA", "sorterB"),
+                                    out_path=tmp_path / "comparison.html",
+                                    runs_by_sorter={"sorterA": quick_a, "sorterB": quick_b})
+    text = _text(page)
+    assert seen == {"sorterA": quick_a, "sorterB": quick_b}
+    # Both quick runs are named on the page; neither full run is presented as what
+    # is being compared.
+    assert "run 20260819-090000-quicka" in text and "run 20260819-090100-quickb" in text
+    assert "20260818-080000-full11" not in text
+    assert "never displaces a full sort" in text
 
 
 # --------------------------------------------------------------------------- #

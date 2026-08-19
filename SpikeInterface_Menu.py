@@ -693,6 +693,7 @@ def _compare_pair(args, sorters) -> bool:
     """Build the comparison HTML for a chosen pair, offering a re-sort on mismatch."""
     import compare  # lazy: pulls in spikeinterface
 
+    fresh = {}          # sorter -> the run directory this flow just made, if any
     durations = {}
     for s in sorters:
         a_dir = _analyzer_dir(s)
@@ -712,11 +713,28 @@ def _compare_pair(args, sorters) -> bool:
             default=0)
         if choice == "yes":
             for s in sorters:
-                _shell("run_sorting.py", "--sorter", s, "--duration", str(QUICK_SECONDS),
-                       *(["--data-dir", args.data_dir] if args.data_dir else []))
+                before = {r["id"] for r in runs.list_runs(s)}
+                ok = _shell("run_sorting.py", "--sorter", s, "--duration",
+                            str(QUICK_SECONDS),
+                            *(["--data-dir", args.data_dir] if args.data_dir else []))
+                # These are --duration runs, so the store refuses to make them
+                # current — correctly: a smoke run must never displace a full sort.
+                # The comparison the user asked for is of THESE runs, so it is
+                # pointed at them by name; --make-current is not the answer.
+                made = [r for r in runs.list_runs(s) if r["id"] not in before]
+                if ok and made:
+                    fresh[s] = made[0]["dir"]
+                else:
+                    ui.warn(f"{s}: the re-sort produced no new run — the comparison "
+                            "will show its current sort instead.")
+            if fresh:
+                ui.note("Comparing the runs just made: "
+                        + ", ".join(f"{s}={d.name}" for s, d in fresh.items())
+                        + " (a quick run never becomes the current sort).")
 
     ui.note(f"Building the comparison ({sorters[0]} vs {sorters[1]})…")
-    out = compare.build_comparison(data_dir=args.data_dir, sorters=sorters)
+    out = compare.build_comparison(data_dir=args.data_dir, sorters=sorters,
+                                   runs_by_sorter=fresh or None)
     uri = out.resolve().as_uri()
     ui.done(f"Comparison written → {out}")
     ui.link("Open it:", uri)
