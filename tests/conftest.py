@@ -163,6 +163,9 @@ class FakeController:
                              "yield_pct": 75.0, "n_active_channels": 12,
                              "n_channels": 16, "units_per_channel": 0.81,
                              "units_per_active_channel": 1.08} if present else None),
+                # The takeaway (sort_summary.unit_rollup's shape) as plain data —
+                # the RESULTS line says "N strong units", never a raw count.
+                "rollup": self._rollup(units) if present else None,
             }
             if group == "docker":
                 # Cached-image state lives in self._cached_images so a download/delete
@@ -189,6 +192,24 @@ class FakeController:
             "error": None if self._present else "No Blackrock .nev/.nsX files found in '/data/recordings'.",
         }
         self.probe_info = self.active_probe_info()
+
+    # A third of the units pass the rule, on ascending contacts — deterministic,
+    # so both the RESULTS line and the strong-first triage order are assertable.
+    _RULE_TEXT = ("SNR ≥ 4 · ISI ratio ≤ 0.5 · amp cutoff ≤ 0.1 · presence ≥ 0.9 "
+                  "(NaN criteria skipped)")
+
+    def _accepted(self, n_units: int) -> list:
+        return [u for u in range(n_units) if u % 3 == 0]
+
+    def _rollup(self, n_units: int) -> dict:
+        accepted = self._accepted(n_units)
+        contacts = [str(u % 16 + 1) for u in accepted]
+        return {"n_units": n_units, "n_accepted": len(accepted),
+                "n_unjudged": 0, "accepted_contacts": contacts,
+                "rule_text": self._RULE_TEXT,
+                "headline": f"{len(accepted)} strong units (ch {'·'.join(contacts)})",
+                "contact_line": " · ".join(f"contact {c}: 1 accepted" for c in contacts),
+                "has_matches": False, "contacts": [], "units": []}
 
     def _mark_active(self) -> None:
         for n, info in enumerate(self.infos):
@@ -341,16 +362,28 @@ class FakeController:
         # not shown against these units (the real controller does the same).
         labels = {} if self.triage_blocked else self.labels.get(sorter, {})
         st["columns"] = list(self._TRIAGE_COLUMNS)
-        st["units"] = [{
-            "unit": u, "label": labels.get(u),
-            "label_method": "tui" if u in labels else None,
-            "peak_channel": str(u % 16 + 1), "n_spikes": 1000 + u,
-            "v_pp_uV": 30.0 + u,
-            # amplitude_cutoff is None: NaN on disk must render as "–", never 0.
-            "metrics": {"firing_rate": 0.5 + u, "snr": 5.0 + u * 0.1,
-                        "isi_violations_ratio": 0.0, "presence_ratio": 1.0,
-                        "amplitude_cutoff": None},
-        } for u in range(info["units"])]
+        st["rule_text"] = self._RULE_TEXT
+        accepted = self._accepted(info["units"])
+
+        def _unit(u):
+            ok = u in accepted
+            return {
+                "unit": u, "label": labels.get(u),
+                "label_method": "tui" if u in labels else None,
+                "peak_channel": str(u % 16 + 1), "n_spikes": 1000 + u,
+                "v_pp_uV": 30.0 + u,
+                "verdict": ok, "verdict_word": "strong" if ok else "sub-threshold",
+                "why": "" if ok else "ISI ratio ≤ 0.5 — is 1.2",
+                "isolation": "clean" if ok else "mostly separate",
+                # amplitude_cutoff is None: NaN on disk must render as "–", never 0.
+                "metrics": {"firing_rate": 0.5 + u, "snr": 5.0 + u * 0.1,
+                            "isi_violations_ratio": 0.0, "presence_ratio": 1.0,
+                            "amplitude_cutoff": None},
+            }
+
+        # Strong-first, exactly as the real controller's rollup orders them.
+        rest = [u for u in range(info["units"]) if u not in accepted]
+        st["units"] = [_unit(u) for u in accepted] + [_unit(u) for u in rest]
         st["total"] = len(st["units"])
         st["reviewed"] = sum(1 for x in st["units"] if x["label"])
         return st

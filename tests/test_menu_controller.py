@@ -570,14 +570,21 @@ def test_triage_state_reads_the_evidence_off_disk(monkeypatch, tmp_path):
     assert st["sorter"] == TRIAGE_SORTER and st["empty"] == "" and st["blocked"] == ""
     assert st["total"] == 3 and st["reviewed"] == 0
     assert st["columns"] == ["firing_rate", "snr", "amplitude_cutoff"]
-    first = st["units"][0]
-    assert first["unit"] == 0 and first["peak_channel"] == "1"
-    assert first["v_pp_uV"] == 23.868
-    assert first["metrics"]["snr"] == 5.0409
-    assert first["metrics"]["amplitude_cutoff"] is None      # blank on disk
-    assert st["units"][1]["metrics"]["amplitude_cutoff"] == 0.031
+    # STRONG-FIRST is the default order (the rollup's ranking, shared with the
+    # report): all three pass the rule here, so they arrive by SNR descending.
+    assert [u["unit"] for u in st["units"]] == [1, 0, 2]
+    by_unit = {u["unit"]: u for u in st["units"]}
+    assert by_unit[0]["peak_channel"] == "1"
+    assert by_unit[0]["v_pp_uV"] == 23.868
+    assert by_unit[0]["metrics"]["snr"] == 5.0409
+    assert by_unit[0]["metrics"]["amplitude_cutoff"] is None      # blank on disk
+    assert by_unit[1]["metrics"]["amplitude_cutoff"] == 0.031
+    # The rollup's synthesis rides along, so the card states it without deciding.
+    assert by_unit[0]["verdict"] is True and by_unit[0]["verdict_word"] == "strong"
+    assert by_unit[0]["why"] == "" and by_unit[0]["isolation"]
+    assert st["rule_text"]
     # No saved Sorting here -> an honest unknown, never an invented count.
-    assert first["n_spikes"] is None
+    assert by_unit[0]["n_spikes"] is None
     # curation.state() is the one source for what is being shown.
     assert st["line"] == "raw sorter output — no curation applied"
     assert st["stale"] is False and st["stale_reason"] == ""
@@ -613,8 +620,10 @@ def test_label_unit_writes_a_tui_verdict_that_survives_a_relaunch(monkeypatch, t
     fresh, _paths = _triage_controller(monkeypatch, tmp_path)
     st = fresh.triage_state()
     assert st["reviewed"] == 2 and st["total"] == 3
-    assert [u["label"] for u in st["units"]] == [None, "noise", "good"]
-    assert st["units"][1]["label_method"] == "tui"
+    # Units arrive strong-first (by SNR: 1, 0, 2), so read them by id.
+    labels = {u["unit"]: u["label"] for u in st["units"]}
+    assert labels == {0: None, 1: "noise", 2: "good"}
+    assert next(u for u in st["units"] if u["unit"] == 1)["label_method"] == "tui"
 
 
 def test_triage_refuses_a_record_written_against_another_sort(monkeypatch, tmp_path):

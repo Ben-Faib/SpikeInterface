@@ -132,7 +132,11 @@ class Controller(Protocol):
     pipeline: list[dict]                # {stage,status,detail} (sorter-independent)
     infos: list[dict]                   # full catalog: {name,group,status,runnable,
                                         # recommended,description,present,units,
-                                        # duration,active,summary}
+                                        # duration,active,summary,rollup}
+                                        # ``rollup`` is sort_summary.unit_rollup's
+                                        # output as PLAIN DATA (the takeaway: which
+                                        # units pass the quality rule, at which
+                                        # contact) — this view judges nothing itself.
     data_report: dict                   # see SpikeInterface_Menu._data_report
     use_docker: bool
     want_welcome: bool
@@ -166,7 +170,11 @@ class Controller(Protocol):
     def sort_expectations(self) -> dict: ...   # {"span","wall_seconds"} of the last run
     # Unit triage (W1 slice 4). ``triage_state`` is the active sorter's saved units
     # + the curation state that makes them honest ({units, columns, reviewed, total,
-    # line, stale, stale_reason, apply_hint, blocked, empty}); ``label_unit`` writes
+    # line, stale, stale_reason, apply_hint, blocked, empty, rule_text}). Its units
+    # arrive in the rollup's STRONG-FIRST order, each carrying peak_channel,
+    # verdict_word, why and isolation — the same synthesis the report shows, so a
+    # triage pass and the report can never rank or judge differently.
+    # ``label_unit`` writes
     # ONE verdict through curation.py and returns (ok, message) — a refusal (the
     # record is not anchored to the sort on disk) writes nothing and says why.
     def triage_state(self) -> dict: ...
@@ -1791,10 +1799,13 @@ class UnitTriageScreen(ModalScreen):
                               else 0)
 
     def _row_text(self, unit: dict) -> Text:
-        # Two marks at rest (§1.2): the unit id and its verdict. Everything else
-        # is in the card, under the cursor.
-        t = Text()
-        t.append(f"{unit['unit']!s:>4}  ", style=ui.PRIMARY)
+        # The unit id, WHERE it is, and its verdict. The peak contact is the fact
+        # the lab reads the list for ("how many neurons at contact 5?"), so it is
+        # content rather than a third at-rest mark (§1.2) — dim, behind the id.
+        t = Text(no_wrap=True)
+        t.append(f"{unit['unit']!s:>4} ", style=ui.PRIMARY)
+        ch = unit.get("peak_channel")
+        t.append(f"ch{ch!s:<4}" if ch is not None else "ch–   ", style=ui.SECONDARY)
         label = unit.get("label")
         if label:
             t.append(label, style=_TRIAGE_LABEL_STYLE.get(label, ""))
@@ -1897,6 +1908,20 @@ class UnitTriageScreen(ModalScreen):
         else:
             t.append("not reviewed yet", style="dim")
         t.append("\n")
+        # The synthesis before the evidence: the rule's verdict on this unit (with
+        # the criterion it failed, in the rule's words) and how separate it looks.
+        # Both come from the controller's rollup — this screen judges nothing.
+        word = unit.get("verdict_word")
+        if word:
+            t.append(f"{'quality rule':<22}", style=ui.SECONDARY)
+            t.append(word, style=("#3fb950" if unit.get("verdict") else
+                                  "#f0883e" if unit.get("verdict") is None else "dim"))
+            if unit.get("why"):
+                t.append(f"   {unit['why']}", style="dim")
+            t.append("\n")
+        if unit.get("isolation"):
+            t.append(f"{'isolation':<22}", style=ui.SECONDARY)
+            t.append(unit["isolation"] + "\n", style=ui.PRIMARY)
         for name, value in (("peak channel", unit.get("peak_channel")),
                             ("spikes", unit.get("n_spikes")),
                             ("V_pp (µV)", unit.get("v_pp_uV"))):
@@ -2936,7 +2961,9 @@ class SpikeMenuApp(App):
             fixed, body_min = 5 + dl_rows + result_rows, 7
         else:
             fixed, body_min = 10 + dl_rows + result_rows, 7
-        results_rows = (3 if dense else 4) if has_results else 0  # head+2 content(+air)
+        # head + 3 content (+air): the takeaway line, the strong-at-ch site line,
+        # and the metrics line. RESULTS still yields whole, before the action list.
+        results_rows = (4 if dense else 5) if has_results else 0
         # RESULTS yields before the action list: hide it when the budget is tight.
         if has_results and h - fixed - results_rows < body_min:
             has_results = False
@@ -3137,7 +3164,8 @@ class SpikeMenuApp(App):
 
     def _render_results_text(self, width: int | None = None) -> None:
         """RESULTS: shown only when the active sorter has a saved sort — a
-        hairline label + name line + one metrics line. No prose, no recursion."""
+        hairline label + the takeaway line + where the strong units sit + one
+        metrics line. No prose, no recursion."""
         panel = self.query_one("#results", Static)
         info = self.c.infos[self.c.active_idx]
         if not info.get("present"):
@@ -3149,11 +3177,30 @@ class SpikeMenuApp(App):
         # The live width wins over content_region (stale mid-resize): margin 2+2,
         # zero padding -> width-4.
         avail = min(panel.content_region.width or 10_000, max(10, width - 4))
-        t = self._section_rule("RESULTS", avail)
-        t.append("\n")
-        t.append(info["name"], style=f"bold {self._accent}")
-        t.append(f" · {info['units']} units · {info['duration']:.0f} s sorted",
-                 style=ui.PRIMARY)
+        # Every line is built no-wrap and clipped to `avail`: RESULTS occupies the
+        # rows the yield budget reserves for it, never one more because a line grew
+        # (the D6 discipline _hairline already follows).
+        lines = [self._section_rule("RESULTS", avail)]
+
+        def line() -> Text:
+            t = Text(no_wrap=True)
+            lines.append(t)
+            return t
+
+        head = line()
+        head.append(info["name"], style=f"bold {self._accent}")
+        # The TAKEAWAY, not the raw count (Ben, 2026-08-19: "how many neurons we
+        # think we found"). "Strong" is the quality rule's verdict, decided by
+        # sort_summary and carried here as data; the denominator stays visible so
+        # a count can never read as the whole sort.
+        rollup = info.get("rollup")
+        if rollup:
+            n = rollup["n_accepted"]
+            head.append(f" · {n} strong unit{'' if n == 1 else 's'} "
+                        f"of {rollup['n_units']}", style=ui.PRIMARY)
+        else:
+            head.append(f" · {info['units']} units", style=ui.PRIMARY)
+        head.append(f" · {info['duration']:.0f} s sorted", style=ui.PRIMARY)
         # A curated result is what the report shows, so this line must name it as
         # curated rather than let the numbers read as raw sorter output — and say
         # when its record is missing (0 decisions would read as "nothing was done")
@@ -3167,32 +3214,50 @@ class SpikeMenuApp(App):
                 mark = " · curated (record missing)"
             if curated.get("stale"):
                 mark += " · stale"
-            t.append(mark, style=ui.SECONDARY)
+            head.append(mark, style=ui.SECONDARY)
+
+        # WHERE the strong units are — the site view, in one line. A zero names
+        # its next step (§1.7) instead of leaving an empty bracket.
+        site = None
+        if rollup:
+            site = line()
+            if rollup["n_accepted"]:
+                site.append("strong at ch " + "·".join(rollup["accepted_contacts"]),
+                            style=ui.PRIMARY)
+            else:
+                site.append("no unit passes " + rollup["rule_text"].split(" (NaN")[0],
+                            style="#f0883e")
         # The pressable triage control, in D6's `t change` shape: an inverse-video
         # key chip + verb, with a click anywhere on RESULTS as the mouse path. It
         # lives HERE and not on the footer's key line because triage acts on the
         # saved sort — and RESULTS is present exactly when there is one (§1.7: no
-        # affordance for a thing that isn't there).
-        t.append("   ")
-        t.append(" u ", style="reverse dim")
-        t.append(" triage", style="dim")
-        t.append("\n", style=ui.PRIMARY)
+        # affordance for a thing that isn't there). It rides the SITE line when
+        # there is one: that is the line triage acts on, and it keeps the head line
+        # short enough to survive a narrow terminal without clipping the takeaway.
+        chip = site if site is not None else head
+        chip.append("   ")
+        chip.append(" u ", style="reverse dim")
+        chip.append(" triage", style="dim")
+
         # A curated result anchored to a run that is no longer current is still on
         # disk. The numbers above are the raw ones; without this line the curated
         # result would simply stop existing on every surface (§1.7 names the step).
         other = info.get("curated_elsewhere")
         if other:
-            t.append(other["short"] + "\n", style=ui.SECONDARY)
+            line().append(other["short"], style=ui.SECONDARY)
         summary = info.get("summary")
+        metrics = line()
         if summary:
             row = _ss.headline_row(summary)
-            t.append("V_pp " + row["V_pp"] + " · SNR " + row["SNR"]
-                     + " · noise " + row["noise floor"]
-                     + " · yield " + row["yield (% active electrodes)"],
-                     style=ui.SECONDARY)
+            metrics.append("V_pp " + row["V_pp"] + " · SNR " + row["SNR"]
+                           + " · noise " + row["noise floor"]
+                           + " · yield " + row["yield (% active electrodes)"],
+                           style=ui.SECONDARY)
         else:
-            t.append("metrics not computed for this sort", style="dim")
-        panel.update(t)
+            metrics.append("metrics not computed for this sort", style="dim")
+        for t in lines[1:]:
+            t.truncate(avail, overflow="ellipsis")
+        panel.update(Text("\n").join(lines))
 
     def _refresh_action_title(self) -> None:
         # D6: the section head (hairline rule) carries the plain "ACTIONS" label —

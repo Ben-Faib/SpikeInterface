@@ -1467,7 +1467,9 @@ async def test_d6_section_rules_track_resize(make_app):
         await pilot.resize_terminal(80, 40)
         await pilot.pause()
         panel = app.query_one("#results")
-        assert panel.region.height == 3            # head + name + metrics, no wrap
+        # head + takeaway + "strong at ch …" + metrics, and no wrap: the painted
+        # height must equal the rows the yield budget reserves for RESULTS.
+        assert panel.region.height == 4
         assert "─" in panel.render_line(0).text
 
 
@@ -1577,7 +1579,10 @@ async def test_results_section_only_with_saved_sort(make_app):
         res = app.query_one("#results")
         assert not res.has_class("hidden")
         text = res.render().plain
-        assert "tridesclous2" in text and "12 units" in text
+        # The TAKEAWAY, not a raw count: how many units pass the quality rule, of
+        # how many found, and which contacts they sit on.
+        assert "tridesclous2" in text and "4 strong units of 12" in text
+        assert "strong at ch 1·4·7·10" in text
         assert "V_pp" in text and "noise" in text and "yield" in text
         # Clearing the saved sort hides the section (no empty frame).
         app.c.clear_saved_sort("tridesclous2")
@@ -1604,7 +1609,7 @@ async def test_results_names_a_curated_result(make_app):
         await pilot.pause()
         text = app.query_one("#results").render().plain
         assert "curated (4 decisions)" in text
-        assert "12 units" in text          # the rest of the line is unchanged
+        assert "4 strong units of 12" in text   # the rest of the line is unchanged
 
         # A curated result the record has outrun says so rather than looking fine.
         app.c.infos[app.c.active_idx]["curated"]["stale"] = True
@@ -1932,9 +1937,11 @@ async def test_journey_triage_label_persists_and_relaunch_shows_it(make_controll
         # A verdict advances the cursor: triage is one keypress per unit.
         assert units.highlighted == 1
 
-        await pilot.press("n")                       # unit 1 -> noise
+        # The cursor advanced to the SECOND row of the strong-first order, which
+        # is unit 3 — not unit 1. The list is the rollup's ranking, not unit ids.
+        await pilot.press("n")                       # second strong unit -> noise
         await pilot.pause()
-        assert c.labelled[-1] == ("tridesclous2", 1, "noise")
+        assert c.labelled[-1] == ("tridesclous2", 3, "noise")
         assert "reviewed 2/12" in screen.query_one("#triagestate").render().plain
 
         await pilot.press("escape")                  # Esc goes BACK, never exits
@@ -1967,10 +1974,42 @@ async def test_triage_card_shows_the_evidence_and_is_nan_honest(make_app):
             assert col in card
         # ...and a metric the sort could not compute reads "–", never 0.
         assert "amplitude_cutoff      –" in card
-        # The cursor is the detail request: moving it repaints the card.
+        # The synthesis leads the evidence: the rule's verdict on this unit and
+        # how separate it looks, both decided by the controller's rollup.
+        assert "quality rule" in card and "strong" in card
+        assert "isolation" in card and "clean" in card
+        # The cursor is the detail request: moving it repaints the card — onto the
+        # SECOND strong unit (unit 3), because the list is ranked, not id-ordered.
         await pilot.press("down")
         await pilot.pause()
-        assert "UNIT 1" in screen.query_one("#triagecardhead").render().plain
+        assert "UNIT 3" in screen.query_one("#triagecardhead").render().plain
+
+
+async def test_journey_takeaway_ranks_triage_strong_first_and_shows_the_contact(make_app):
+    """The face slice's journey: the dashboard states the takeaway rather than a
+    raw count, and triage opens on the strong units with their contact visible —
+    both from the ONE rollup, so the two surfaces cannot disagree."""
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        results = app.query_one("#results").render().plain
+        rollup = app.c.infos[app.c.active_idx]["rollup"]
+        assert f"{rollup['n_accepted']} strong units of {rollup['n_units']}" in results
+        assert "strong at ch " + "·".join(rollup["accepted_contacts"]) in results
+
+        screen = await _open_triage(pilot, app)
+        rows = screen.query_one("#triagelist", OptionList)
+        order = [rows.get_option_at_index(i).prompt.plain
+                 for i in range(rows.option_count)]
+        # Accepted units lead, in the rollup's order, and every row names the
+        # contact the unit peaks on.
+        state = app.c.triage_state()
+        assert [u["unit"] for u in state["units"][:4]] == [0, 3, 6, 9]
+        assert all(u["verdict"] for u in state["units"][:4])
+        assert not any(u["verdict"] for u in state["units"][4:])
+        for row, unit in zip(order, state["units"]):
+            assert row.split()[0] == str(unit["unit"])
+            assert f"ch{unit['peak_channel']}" in row
 
 
 async def test_triage_states_curated_vs_raw_and_stale_verbatim(make_app):

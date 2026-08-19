@@ -176,6 +176,24 @@ def _saved_summary(sorter: str, curated: bool = False):
         return False, 0, 0.0
 
 
+def _rollup_for(out_dir, spike_counts=None):
+    """The takeaway rollup for one saved sort, or None if it has no summary.
+
+    Pure file reads (summary.json + quality_metrics.csv) judged by the rule's one
+    owner — no SpikeInterface, so this stays cheap enough to run for every saved
+    sorter on every dashboard refresh. ``spike_counts`` is passed only where the
+    caller already has the Sorting open (triage); without it a unit's spike count
+    is honestly unknown rather than estimated.
+    """
+    summary = sort_summary.load_summary(out_dir)
+    if not summary:
+        return None
+    return sort_summary.unit_rollup(
+        summary, sort_summary.load_quality_metrics(out_dir),
+        rule=sort_summary.load_quality_rule(CONFIG_PATH),
+        spike_counts=spike_counts)
+
+
 def _catalog(active: str, use_docker: bool, profile: dict | None = None) -> list[dict]:
     """Full sidebar catalog over EVERY sorter, annotated with geometry fit.
 
@@ -225,6 +243,11 @@ def _catalog(active: str, use_docker: bool, profile: dict | None = None) -> list
             # The array/yield headline summary (six metrics) for the INSPECTING panel;
             # a cheap SI-free JSON read, None until a sort writes summary.json.
             "summary": sort_summary.load_summary(summary_dir) if present else None,
+            # The TAKEAWAY: how many units pass the quality rule and which contacts
+            # they sit on. sort_summary owns the synthesis; this only carries it to
+            # the view as plain data (the view imports no SpikeInterface). Two cheap
+            # file reads, and only for a sorter that actually has a saved sort.
+            "rollup": _rollup_for(summary_dir) if present else None,
             # {has_record, has_curated, counts, line, stale, ...} — what the view
             # needs to name the result honestly (curation.state, SI-free).
             "curated": cur if show_curated else None,
@@ -1224,21 +1247,33 @@ class MenuController:
         blocked = curation.anchor_error(record, sorter)
         metrics = sort_summary.load_quality_metrics(paths["out"])
         counts = self._spike_counts(paths["sorting"])
+        # Strong-first is the DEFAULT order, and it is the same ranking the report's
+        # strong-units block uses because it is the same rollup — a triage pass
+        # should meet the units most likely to be real before the tail.
+        rollup = _rollup_for(paths["out"], spike_counts=counts) or {"units": []}
         units = [{
-            "unit": row.get("unit"),
-            "label": None if blocked else curation.label_of(record, row.get("unit")),
+            "unit": row["unit"],
+            "label": None if blocked else curation.label_of(record, row["unit"]),
             "label_method": (None if blocked
-                             else curation.label_method_of(record, row.get("unit"))),
-            "peak_channel": row.get("best_channel"),
-            "n_spikes": counts.get(str(row.get("unit"))),
-            "v_pp_uV": row.get("v_pp_uV"),
-            "metrics": metrics.get(str(row.get("unit")), {}),
-        } for row in per_unit]
+                             else curation.label_method_of(record, row["unit"])),
+            "peak_channel": row["contact"],
+            "n_spikes": row["n_spikes"],
+            "v_pp_uV": row["v_pp_uV"],
+            # The rollup's verdict and its plain-words isolation phrase ride along
+            # so the card states the synthesis, not just the raw evidence.
+            "verdict": row["verdict"],
+            "verdict_word": row["verdict_word"],
+            "why": row["why"],
+            "isolation": row["isolation"],
+            "metrics": metrics.get(str(row["unit"]), {}),
+        } for row in rollup["units"]]
         out["blocked"] = blocked
         out["units"] = units
         out["columns"] = list(next(iter(metrics.values()), {}))
         out["total"] = len(units)
         out["reviewed"] = sum(1 for u in units if u["label"])
+        out["rule_text"] = rollup.get("rule_text", "")
+        out["headline"] = rollup.get("headline", "")
         return out
 
     def label_unit(self, unit_id, label: str) -> tuple[bool, str]:
