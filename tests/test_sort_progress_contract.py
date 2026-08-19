@@ -3,7 +3,7 @@
 ``scripts/sort_progress.py`` is the wire protocol between ``run_sorting.py``
 (emitter subprocess) and the TUI's ``SortProgressScreen`` (consumer). D2
 EXTENDED it (emitter-side ``elapsed``, ``phase_done``, a terminal ``result``
-riding alongside ``done``) and D2b added the up-front ``plan`` manifest — these
+riding alongside ``done``) and D2b added the up-front ``plan`` manifest - these
 tests pin the whole surface:
 
 - the event vocabulary and each event's required keys (``SHAPES``),
@@ -16,7 +16,7 @@ tests pin the whole surface:
 
 To add a new event type: extend ``EVENT_TYPES`` + the module docstring in
 ``sort_progress.py``, then add the type and its required keys to ``SHAPES``
-here — ``test_shapes_table_covers_event_types`` fails until you do, which is
+here - ``test_shapes_table_covers_event_types`` fails until you do, which is
 the point. Adding optional keys to an existing event needs no changes here.
 
 Behavioural reducer details are covered in ``test_sort_progress.py``; this
@@ -36,8 +36,8 @@ import sort_progress as sp  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 
-# Required keys per event type (beyond "t"). Optional keys — phase.sub,
-# phase.elapsed, bar.n/total/elapsed/remaining, result.elapsed, done.good/note —
+# Required keys per event type (beyond "t"). Optional keys - phase.sub,
+# phase.elapsed, bar.n/total/elapsed/remaining, result.elapsed, done.good/note -
 # are deliberately absent: consumers must not require them.
 SHAPES = {
     "plan":       {"n", "phases"},
@@ -88,7 +88,7 @@ EXAMPLES = {
 
 def test_shapes_table_covers_event_types():
     # Extending the protocol means adding the new type HERE too (with its
-    # required keys) — a conscious act, not an accident.
+    # required keys) - a conscious act, not an accident.
     assert set(SHAPES) == set(sp.EVENT_TYPES)
     assert set(EXAMPLES) == set(sp.EVENT_TYPES)
 
@@ -130,7 +130,7 @@ def test_unknown_extra_keys_flow_through():
     assert ev is not None and ev["eta_s"] == 12.5
     state = sp.new_state()
     sp.reduce(state, ev)               # must not raise
-    # done/error carry their whole payload into state["done"] — the extension
+    # done/error carry their whole payload into state["done"] - the extension
     # point for richer result events.
     state = sp.new_state()
     sp.reduce(state, {"t": "done", "ok": True, "units": 3, "out": "x", "report_path": "r.html"})
@@ -186,7 +186,7 @@ def test_phase_rows_without_a_plan_are_exactly_the_started_phases():
 
 
 def test_pending_rows_disappear_when_the_run_ends():
-    # A phase that never ran is not "pending" after an error — it is never
+    # A phase that never ran is not "pending" after an error - it is never
     # happening (§1.7: no queued-looking rows under a dead run).
     state = sp.new_state()
     sp.reduce(state, EXAMPLES["plan"])
@@ -212,7 +212,7 @@ def test_result_rides_alongside_done_and_never_replaces_it():
     state = sp.new_state()
     sp.reduce(state, {"t": "phase", "i": 1, "n": 5, "title": "Read broadband"})
     sp.reduce(state, EXAMPLES["result"])
-    # a result on its own is NOT terminal — done still has to arrive
+    # a result on its own is NOT terminal - done still has to arrive
     assert state["result"]["units"] == 7 and state["done"] is None
     sp.reduce(state, {"t": "done", "ok": True, "units": 7, "good": 5, "out": "outputs/x"})
     assert state["done"]["ok"] is True
@@ -282,7 +282,7 @@ def test_reporter_emits_exactly_this_protocol():
     closed = [ev for ev in events if ev["t"] == "phase_done"]
     assert [(c["i"], c["title"]) for c in closed] == [(1, "Read broadband"), (2, "Preprocess")]
     assert all(c["secs"] >= 0 for c in closed)
-    # the rich result rides alongside done, before it — never instead of it
+    # the rich result rides alongside done, before it - never instead of it
     types = [ev["t"] for ev in events]
     assert types.index("result") < types.index("done")
     # the manifest is UP FRONT: it precedes every phase it announces
@@ -335,7 +335,7 @@ def test_disabled_reporter_is_silent():
 # --------------------------------------------------------------------------- #
 
 def _run_sorting(*args: str, timeout: int = 300) -> subprocess.CompletedProcess:
-    # Explicit utf-8 (not the locale code page — cp1252 on the lab's Windows
+    # Explicit utf-8 (not the locale code page - cp1252 on the lab's Windows
     # box) because the child forces utf-8 output full of multibyte glyphs.
     return subprocess.run(
         [sys.executable, str(ROOT / "scripts" / "run_sorting.py"), *args],
@@ -347,7 +347,7 @@ def _run_sorting(*args: str, timeout: int = 300) -> subprocess.CompletedProcess:
 def test_missing_data_keeps_stdout_pure_and_errors(tmp_path):
     # No recording in --data-dir: the run must fail (rc != 0) with EVERY stdout
     # line a parseable protocol event, ending in an error event with a
-    # non-empty message — never a bare traceback on the event channel.
+    # non-empty message - never a bare traceback on the event channel.
     # --output-dir keeps the run fully hermetic (no dir created in outputs/).
     data_dir = tmp_path / "data"
     data_dir.mkdir()

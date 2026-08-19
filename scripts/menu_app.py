@@ -1,6 +1,6 @@
 """Textual front-door dashboard for SpikeInterface_Menu.py (terminal UI v2).
 
-A single, resident full-screen app that stays usable at any window size — from a
+A single, resident full-screen app that stays usable at any window size - from a
 wide desktop terminal down to a short VS Code pane. It is a *view*: all heavy
 loading and the actual running of actions live in a small ``Controller`` (built
 in ``SpikeInterface_Menu.py``) that this app calls back into. That keeps the app
@@ -10,16 +10,16 @@ import-light (no SpikeInterface at import time) and unit-testable with Textual's
 The dashboard is the **researcher dashboard** (F2, Ben's 2026-08-19 decision of
 record; DESIGN_UX §2 was rewritten from what landed here). It has three zones:
 
-* **State** — where you are. The INPUTS line (#databar: DATA + PROBE, or a loud ✗
+* **State** - where you are. The INPUTS line (#databar: DATA + PROBE, or a loud ✗
   problem), the SORT line (#sortbar: the active sorter's one home), and RESULTS
-  (#results: the takeaway from the saved sort — how many units pass the quality
+  (#results: the takeaway from the saved sort - how many units pass the quality
   rule and at which contacts, from ``sort_summary``'s rollup as plain data).
-* **The workflow list** — what you can do. EVERY function the workbench has, as a
+* **The workflow list** - what you can do. EVERY function the workbench has, as a
   labelled row carrying its own key and a phrase saying what it produces, grouped
   into the three stages: GET DATA · SORT & CURATE · LOOK & SHARE. Nothing hides
   behind a bare letter on a footer line; ↑/↓ + Enter is the whole model, and each
   row's key is an accelerator for the same thing.
-* **Memory** — the LAST RESULT line (#resultbar) and a two-row footer whose key
+* **Memory** - the LAST RESULT line (#resultbar) and a two-row footer whose key
   line carries only the housekeeping that has no row (m sorters, c colour, ?, q).
 
 Layout (responsive):
@@ -45,7 +45,7 @@ Layout (responsive):
 
 ``t`` (or its row) opens the picker; Enter there routes the choice through the
 normal activate / download / enable-Docker flows. ``x`` manages the ACTIVE
-sorter, ``w`` re-opens a running download — both documented in Help, not on the
+sorter, ``w`` re-opens a running download - both documented in Help, not on the
 key line. ``u`` (its row, the ` u  triage` chip on RESULTS, or a click on that
 section) opens ``UnitTriageScreen``.
 
@@ -114,7 +114,7 @@ STACK_COLS = 64
 # The always-on DATA + SORT banner is a fixed two rows, so the crest reserve never
 # Rows the crest must leave for title + banner + footer + a usable body, so it
 # drops full→compact→mini→hidden well before it would crowd the menu off a short
-# window. (The wordmark tiers are 5 / 3 rows tall — see ui._WORDMARK_FULL/COMPACT.)
+# window. (The wordmark tiers are 5 / 3 rows tall - see ui._WORDMARK_FULL/COMPACT.)
 # Tuned so the big crest is deferential: it only claims the full tier on a tall
 # (≈40+ row) terminal, dropping to the compact crest on the common 34–40 row window
 # so the panes get the vertical room they need to read.
@@ -125,12 +125,12 @@ _BORDER_DIM = "#3a3f47"
 
 def _hairline(label: str, avail: int) -> Text:
     """The D6 section language: a small dim-bold label with a hairline rule filling
-    exactly ``avail`` content columns — whitespace + hairline, never a box, and
+    exactly ``avail`` content columns - whitespace + hairline, never a box, and
     never a wrapped-away rule (D6 review #1). Shared by the dashboard and the unit
     triage screen so both surfaces speak it identically.
 
     ``no_wrap``: a Rich Text renderable wraps by Rich's rules (Textual's text-wrap
-    doesn't reach it) — any residual overlength must CLIP, never wrap the rule out
+    doesn't reach it) - any residual overlength must CLIP, never wrap the rule out
     of a 1-row widget.
     """
     t = Text(no_wrap=True)
@@ -156,9 +156,9 @@ class Controller(Protocol):
                                         # list (data / sort / share); ``chrome`` is
                                         # housekeeping and never becomes a row.
                                         # ``hotkey`` is what the row PRINTS and what
-                                        # the dashboard binds — one source, so a key
+                                        # the dashboard binds - one source, so a key
                                         # and its label can never disagree.
-    last_result: "dict | None"          # {key,ok,when,path} — newest action outcome
+    last_result: "dict | None"          # {key,ok,when,path} - newest action outcome
     active_idx: int
     accent: str                         # current accent hex
     theme_name: str
@@ -170,7 +170,7 @@ class Controller(Protocol):
                                         # ``rollup`` is sort_summary.unit_rollup's
                                         # output as PLAIN DATA (the takeaway: which
                                         # units pass the quality rule, at which
-                                        # contact) — this view judges nothing itself.
+                                        # contact) - this view judges nothing itself.
     data_report: dict                   # see SpikeInterface_Menu._data_report
     use_docker: bool
     want_welcome: bool
@@ -204,14 +204,14 @@ class Controller(Protocol):
     def sort_expectations(self) -> dict: ...   # {"span","wall_seconds"} of the last run
     # Unit triage (W1 slice 4). ``triage_state`` is the active sorter's saved units
     # + the curation state that makes them honest ({units, columns, reviewed, total,
-    # line, stale, stale_reason, apply_hint, blocked, empty, rule_text — the rule
+    # line, stale, stale_reason, apply_hint, blocked, empty, rule_text - the rule
     # verbatim, which the screen prints because it prints that rule's verdicts).
     # Its units arrive in the rollup's STRONG-FIRST order, each carrying
-    # peak_channel, verdict_word, strong, why and isolation — the same synthesis
+    # peak_channel, verdict_word, strong, why and isolation - the same synthesis
     # the report shows, so a triage pass and the report can never rank or judge
     # differently.
     # ``label_unit`` writes
-    # ONE verdict through curation.py and returns (ok, message) — a refusal (the
+    # ONE verdict through curation.py and returns (ok, message) - a refusal (the
     # record is not anchored to the sort on disk) writes nothing and says why.
     def triage_state(self) -> dict: ...
     def label_unit(self, unit_id, label: str) -> tuple[bool, str]: ...
@@ -304,7 +304,7 @@ class DataSetupScreen(ModalScreen):
 
     def compose(self) -> ComposeResult:
         with Vertical(id="dialog"):
-            yield Static("Recording files — setup & status", id="setuptitle")
+            yield Static("Recording files - setup & status", id="setuptitle")
             with VerticalScroll(id="setupscroll"):
                 yield Static(_setup_body(self._report, self._accent), id="setupbody")
             yield Static("Press Esc to close", id="setupfoot")
@@ -314,7 +314,7 @@ class DataSetupScreen(ModalScreen):
 
 
 class DataFolderScreen(ModalScreen):
-    """Point the dashboard at a different recording folder without relaunching —
+    """Point the dashboard at a different recording folder without relaunching -
     so a wrong-folder start is fixable in-app instead of quit-and-relaunch.
     Dismisses with the chosen path, '' for the repo root, or None to cancel."""
 
@@ -414,7 +414,7 @@ class BuildProgressScreen(ModalScreen):
     child), folds its events through ``sort_progress.reduce``, and renders the
     phase checklist with per-phase durations + a ticking elapsed clock. Esc
     cancels (kills the child's tree); Enter closes when done. Dismisses
-    ``(ok, message)`` — the app records the result and reopens the artifact."""
+    ``(ok, message)`` - the app records the result and reopens the artifact."""
 
     DEFAULT_CSS = """
     BuildProgressScreen { align: center middle; }
@@ -466,7 +466,7 @@ class BuildProgressScreen(ModalScreen):
 
     async def _run(self) -> None:
         # Capture the child's stderr so a crash BEFORE any error event (import
-        # failure, SI version skew — the lab's known failure class) stays
+        # failure, SI version skew - the lab's known failure class) stays
         # diagnosable (D3b review F3, mirroring the sort modal).
         log_fh = None
         if self._log_path is not None:
@@ -558,7 +558,7 @@ class BuildProgressScreen(ModalScreen):
 
     def action_cancel(self) -> None:
         # A reflexive Esc AFTER completion must not discard a real result as
-        # "cancelled" — the artifact is already on disk (D3b review F5).
+        # "cancelled" - the artifact is already on disk (D3b review F5).
         if self._state["done"] is not None:
             return self.action_close_if_done()
         _kill_proc_tree(self._proc)
@@ -578,7 +578,7 @@ class BusyScreen(ModalScreen):
     """An honest in-UI wait for a blocking action running in a thread worker: the
     named step, a spinner + ticking elapsed, and a stated no-cancel. The app
     dismisses it via ``finish(result)`` from the worker; Esc/Enter are deliberate
-    no-ops — pretending to offer cancel for an uncancellable step is the lie this
+    no-ops - pretending to offer cancel for an uncancellable step is the lie this
     screen exists to avoid (DESIGN_UX §1.6/§6)."""
 
     DEFAULT_CSS = """
@@ -659,7 +659,7 @@ class ParamEditorScreen(ModalScreen):
     ]
 
     # The knobs a newcomer actually reaches for float to the top (right under any
-    # already-overridden keys — the user's own knobs lead). Everything else keeps
+    # already-overridden keys - the user's own knobs lead). Everything else keeps
     # SpikeInterface's order.
     _PRIORITY_KEYS = ("detect_threshold", "detection_threshold", "freq_min",
                       "freq_max", "detect_sign")
@@ -725,7 +725,7 @@ class ParamEditorScreen(ModalScreen):
         return wid[2:] if wid.startswith("w_") else None
 
     def on_input_changed(self, event) -> None:
-        """Live validation: coerce as the user types — invalid goes red with the
+        """Live validation: coerce as the user types - invalid goes red with the
         error named in #perror; valid clears it and refreshes the ● mark."""
         key = self._key_of(event.input)
         if key is None or key not in self._defaults:
@@ -877,7 +877,7 @@ class DockerConfirmScreen(ModalScreen):
     def action_start_docker(self) -> None:
         self._c.start_docker()
         self.query_one("#dstatus", Static).update(
-            Text("Starting Docker…  (~30–60s — press [r] to re-check)", style="dim"))
+            Text("Starting Docker…  (~30–60s - press [r] to re-check)", style="dim"))
         self._polls = 0
         self._stop_poll()                        # cancel any prior poll loop first
         self._poll_timer = self.set_interval(2.0, self._poll)
@@ -895,13 +895,13 @@ class DockerConfirmScreen(ModalScreen):
         self._polls += 1
         st = self._c.docker_status(refresh=True)
         if st["running"]:
-            self._stop_poll()                    # done — don't keep probing every 2s
+            self._stop_poll()                    # done - don't keep probing every 2s
             self._render_status()                # advances to the 'running' view
             return
         if self._polls >= 45:                    # ~90s timeout -> manual fallback
             self._stop_poll()
             self.query_one("#dstatus", Static).update(
-                Text("Still not ready — open Docker Desktop, then press [r].", style="#f0883e"))
+                Text("Still not ready - open Docker Desktop, then press [r].", style="#f0883e"))
             return
 
 
@@ -921,7 +921,7 @@ class SortProgressScreen(ModalScreen):
     line (a named sub-step within the phase), a dim ``→ {detail}`` line (the latest
     forwarded sorter step print, e.g. "detect_peaks(): 562 peaks found"), an
     optional determinate bar (drawn only when a ``bar`` event carries a ``total``),
-    and — during indeterminate stretches — a spinner + "still working (Ns)" line fed
+    and - during indeterminate stretches - a spinner + "still working (Ns)" line fed
     by ``heartbeat`` events. These coexist: a phase can show a substep, the latest
     detail, AND a bar/heartbeat at once. On done/error the result line shows and the
     footer flips to "Press Enter to close". Esc cancels.
@@ -944,7 +944,7 @@ class SortProgressScreen(ModalScreen):
         Binding("escape", "cancel", "Cancel", show=False),
         Binding("enter", "close_if_done", "Close", show=False),
         # Result-card chaining (DESIGN_UX §3): after an OK sort, 3/4 close the modal
-        # AND queue the next step — dispatched by the app after the pop (the modal
+        # AND queue the next step - dispatched by the app after the pop (the modal
         # contract carries an optional next_action; a running sort ignores them).
         Binding("3", "chain('report')", "Build report", show=False),
         Binding("4", "chain('gui')", "Inspect in GUI", show=False),
@@ -952,7 +952,7 @@ class SortProgressScreen(ModalScreen):
 
     _SPINNER = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
-    # Friendly names for the sorter internals that leak into detail lines — the
+    # Friendly names for the sorter internals that leak into detail lines - the
     # counts stay (they're real information); only the jargon head is translated.
     _DETAIL_FRIENDLY = {
         "detect_peaks": "detecting peaks",
@@ -994,7 +994,7 @@ class SortProgressScreen(ModalScreen):
         self.query_one("#sortdialog").border_title = "SORTING"
         self._repaint()
         # A slow spinner tick keeps the indeterminate-phase glyph alive even while
-        # the subprocess is quiet (between heartbeats). Cheap — no work when done.
+        # the subprocess is quiet (between heartbeats). Cheap - no work when done.
         self._spin_timer = self.set_interval(0.2, self._tick_spinner)
         self.run_worker(self._run(), exclusive=True)
 
@@ -1043,8 +1043,8 @@ class SortProgressScreen(ModalScreen):
                     pass
         if self._state["done"] is None:
             # The process ended without emitting done/error (e.g. argv was a plain
-            # 'true' in tests, or a hard crash — segfault / OOM-kill — that bypasses
-            # even run_sorting's last-resort error event) — synthesise a close state,
+            # 'true' in tests, or a hard crash - segfault / OOM-kill - that bypasses
+            # even run_sorting's last-resort error event) - synthesise a close state,
             # surfacing the captured stderr tail so the user sees the real cause.
             rc = self._proc.returncode
             if rc == 0:
@@ -1083,7 +1083,7 @@ class SortProgressScreen(ModalScreen):
 
     def _tick_spinner(self) -> None:
         # While running, every tick advances the spinner AND the header's elapsed
-        # clock — a quiet subprocess must still look alive (DESIGN_UX §1.6).
+        # clock - a quiet subprocess must still look alive (DESIGN_UX §1.6).
         s = self._state
         if s["done"] is None:
             self._spin = (self._spin + 1) % len(self._SPINNER)
@@ -1095,7 +1095,7 @@ class SortProgressScreen(ModalScreen):
         return f"{secs // 60}:{secs % 60:02d}"
 
     def _friendly_detail(self, detail: str) -> str:
-        # Translate the jargon head, keep EVERYTHING after it verbatim — counts and
+        # Translate the jargon head, keep EVERYTHING after it verbatim - counts and
         # qualifiers are real information (D2v review F3).
         for head, nice in self._DETAIL_FRIENDLY.items():
             if detail.startswith(head):
@@ -1105,12 +1105,12 @@ class SortProgressScreen(ModalScreen):
                 return (nice + rest).strip()
         return detail
 
-    # NB: deliberately NOT named ``_render`` — that collides with Textual's
+    # NB: deliberately NOT named ``_render`` - that collides with Textual's
     # ``Widget._render`` (the layout engine calls it expecting a Visual).
     def _repaint(self) -> None:
         s = self._state
         running = s["done"] is None
-        # Header: what · how much · a ticking clock — the run always looks alive.
+        # Header: what · how much · a ticking clock - the run always looks alive.
         head = Text()
         span = "quick test" if self._quick else "full recording"
         head.append("Sorting… " if running else
@@ -1122,7 +1122,7 @@ class SortProgressScreen(ModalScreen):
         head.append(f"{span} · {self._fmt_mmss(monotonic() - self._t0)}", style="dim")
         self.query_one("#sorttitle", Static).update(head)
         t = Text()
-        # The phase checklist — finished phases carry their real (emitter-side)
+        # The phase checklist - finished phases carry their real (emitter-side)
         # durations; the running one carries the live detail below it; the ones the
         # run announced but has not reached yet sit dim below it (DESIGN_UX §3), so
         # the pipeline's shape is visible from the first frame.
@@ -1139,7 +1139,7 @@ class SortProgressScreen(ModalScreen):
         if running and s.get("phase_n") and s["phases"]:
             i = s.get("phase_i") or len(s["phases"])
             t.append(f"  phase {i} of {s['phase_n']}\n", style="dim")
-        # Live detail for the current phase — substep, latest (translated) sorter
+        # Live detail for the current phase - substep, latest (translated) sorter
         # step line, the determinate bar, and the heartbeat stack (whichever apply);
         # the reducer clears them at each new phase.
         if running:
@@ -1151,7 +1151,7 @@ class SortProgressScreen(ModalScreen):
                 t.append(f"  → {self._friendly_detail(s['detail'])}\n", style="dim")
         bar = s["bar"]
         # Honest progress (§3): a full bar under a still-running step reads as a
-        # finished phase — the bar yields to the spinner/heartbeat before ROUNDING
+        # finished phase - the bar yields to the spinner/heartbeat before ROUNDING
         # can print "100%" (F1: 0.996 must not display as a full-looking 100%).
         if running and bar and bar.get("total") and (bar.get("frac") or 0.0) < 0.995:
             frac = bar.get("frac") or 0.0
@@ -1163,7 +1163,7 @@ class SortProgressScreen(ModalScreen):
             spin = self._SPINNER[self._spin]
             t.append(f"  {spin} {s['heartbeat']} … still working "
                      f"({s['heartbeat_secs']}s)\n", style="dim")
-        # The array/yield headline card, once emitted — shown both during the run and
+        # The array/yield headline card, once emitted - shown both during the run and
         # on the final screen so the six metrics stay visible after the sort finishes.
         card = (s.get("summary") or {}).get("card")
         if card:
@@ -1197,13 +1197,13 @@ class SortProgressScreen(ModalScreen):
             t.append("\n⚠ 0 units found", style="bold #d29922")
             t.append(f" · {self._fmt_mmss(r.get('elapsed') or 0)}\n", style="dim")
             t.append("  lower detect_threshold (close, then e Edit parameters) and "
-                     "re-run — the recording loaded and preprocessed fine.\n",
+                     "re-run - the recording loaded and preprocessed fine.\n",
                      style="#d29922")
         else:
             t.append(f"\n✓ {units} units", style="bold #3fb950")
             good = r.get("good", d.get("good"))
             if good is not None:
-                # The rule TEXT rides the result event — the emitting process is
+                # The rule TEXT rides the result event - the emitting process is
                 # the one that computed `good`, so the label can never lie about
                 # which rule produced the number (W1 review F1).
                 rule = r.get("rule") or "the quality rule"
@@ -1215,20 +1215,20 @@ class SortProgressScreen(ModalScreen):
             nf = r.get("noise_floor_uV")
             if nf is not None:
                 # The canary is a verdict here (F5): in the observed band it reads
-                # as checked; outside it goes amber with the known cause named —
+                # as checked; outside it goes amber with the known cause named -
                 # never displayed as a mute number.
                 if 3.5 <= nf <= 4.5:
                     t.append(f"  noise floor {nf:.2f} µV ✓", style="#3fb950")
                     t.append(" (expected ≈3.9–4.1 for this rig)\n", style="dim")
                 else:
-                    t.append(f"  ⚠ noise floor {nf:.2f} µV — outside the expected "
+                    t.append(f"  ⚠ noise floor {nf:.2f} µV - outside the expected "
                              "≈3.9–4.1 band; check the run (a ~1 µV reading means "
                              "the µV scaling was applied twice)\n", style="#d29922")
         # The window fact matters in BOTH branches (F8): a 0-unit quick test's
         # likeliest fix is running the full recording.
         eff, tot = r.get("effective_seconds"), r.get("total_seconds")
         if eff and tot and eff < tot - 1.0:
-            t.append(f"  partial: first {eff:.0f} s of {tot:.0f} s — re-run "
+            t.append(f"  partial: first {eff:.0f} s of {tot:.0f} s - re-run "
                      "full for the whole recording\n", style="#d29922")
         out = r.get("out", d.get("out", ""))
         if out:
@@ -1237,7 +1237,7 @@ class SortProgressScreen(ModalScreen):
             t.append(f"  ⚠ {d['note']}\n", style="#d29922")
         # Chain keys only where the chained action can SUCCEED (F2): with 0 units
         # or failed metrics run_sorting deleted the analyzer, so report/GUI would
-        # dead-end — offering them as next steps would be the dishonesty this
+        # dead-end - offering them as next steps would be the dishonesty this
         # card exists to kill.
         if self._chainable():
             t.append("\n  ↵ close · 3 build report · 4 inspect in GUI",
@@ -1257,13 +1257,13 @@ class SortProgressScreen(ModalScreen):
         return not (isinstance(units, int) and units == 0)
 
     def action_cancel(self) -> None:
-        # A reflexive Esc AFTER completion closes normally — the sort already
+        # A reflexive Esc AFTER completion closes normally - the sort already
         # happened; calling it "cancelled" would misrecord a real result (F5).
         if self._state["done"] is not None:
             return self.action_close_if_done()
         # Kill the whole worker tree, cross-platform (T2/T3 review found the lab-box
         # gap: os.killpg is POSIX-only and the old blanket except swallowed the
-        # AttributeError — Windows showed "Sort cancelled" while the sort kept
+        # AttributeError - Windows showed "Sort cancelled" while the sort kept
         # burning CPU). POSIX: SIGTERM the process group (start_new_session gave us
         # one). Windows: taskkill /T /F takes the tree, since terminate() alone
         # would orphan SpikeInterface's spawn workers. Last resort: terminate().
@@ -1272,14 +1272,14 @@ class SortProgressScreen(ModalScreen):
 
     def _dismiss_message(self) -> tuple:
         """(ok, message, changed) for the current terminal state. The 0-unit case
-        carries the detect_threshold fix so it lands amber on the dashboard too —
+        carries the detect_threshold fix so it lands amber on the dashboard too -
         the same hint the result card shows (never a green '0 units')."""
         d = self._state["done"]
         ok = bool(d.get("ok"))
         units = (self._state.get("result") or {}).get("units", d.get("units", ""))
         if ok and isinstance(units, int) and units == 0:
             sorter = self._sorter or "sort"
-            return (ok, f"⚠ {sorter}: no units found — lower detect_threshold "
+            return (ok, f"⚠ {sorter}: no units found - lower detect_threshold "
                         f"(Edit parameters) and re-run", ok)
         if ok:
             return (ok, f"✓ Sorted {units} units".rstrip(), ok)
@@ -1287,14 +1287,14 @@ class SortProgressScreen(ModalScreen):
 
     def action_close_if_done(self) -> None:
         if self._state["done"] is None:
-            return                                  # still running — Enter is a no-op
+            return                                  # still running - Enter is a no-op
         ok, msg, changed = self._dismiss_message()
         # Only an OK sort changed the saved-sort universe (cancel/error did not).
         self.dismiss((ok, msg, changed, None))
 
     def action_chain(self, next_action: str) -> None:
         """3/4 on the result card: close AND hand the app the next step. Only an
-        OK finished sort chains — running or failed, the keys are no-ops."""
+        OK finished sort chains - running or failed, the keys are no-ops."""
         if self._state["done"] is None or not self._chainable():
             return
         ok, msg, changed = self._dismiss_message()
@@ -1387,7 +1387,7 @@ class DownloadProgressScreen(ModalScreen):
         t.append(f"  {pct:3d}%\n\n", style="dim")
         # Stats block. Size · speed · ETA only make sense for a real byte transfer;
         # the extract / cached-layer phases report a layer-count fraction (no bytes),
-        # so we show just the elapsed clock there — never a nonsensical "3 B / 9 B".
+        # so we show just the elapsed clock there - never a nonsensical "3 B / 9 B".
         if getattr(sess, "has_bytes", False) and sess.bytes_total:
             t.append(f"{dlstats.fmt_bytes(sess.bytes_done)} / "
                      f"{dlstats.fmt_bytes(sess.bytes_total)}"
@@ -1430,7 +1430,7 @@ class DownloadProgressScreen(ModalScreen):
 
 class ManageSorterScreen(ModalScreen):
     """Quick per-sorter 'x' confirm: a short list of the *applicable* destructive
-    operations for ONE sorter — delete its downloaded Docker image (only when the
+    operations for ONE sorter - delete its downloaded Docker image (only when the
     image is cached) and/or clear its saved sort (only when one exists). Each is a
     confirmed choice; dismisses with the chosen op key ('del_image'/'clear_sort')
     or None to cancel. The caller (``SpikeMenuApp.action_manage_highlighted``) only
@@ -1454,7 +1454,7 @@ class ManageSorterScreen(ModalScreen):
     def __init__(self, name: str, options: list[tuple[str, str]], accent: str):
         super().__init__()
         self._name = name
-        self._options = options          # [(op_key, label), ...] — only applicable ops
+        self._options = options          # [(op_key, label), ...] - only applicable ops
         self._accent = accent
 
     def compose(self) -> ComposeResult:
@@ -1656,7 +1656,7 @@ class ManageSortersScreen(ModalScreen):
         self.app.push_screen(
             ChoiceModal(f"Delete the downloaded image for {name}{sz}?",
                         [("confirm", "Delete image", ""), ("cancel", "Keep it", "")],
-                        note="Removes only the cached image — you can re-download it later."),
+                        note="Removes only the cached image - you can re-download it later."),
             lambda r: self._confirmed_delete_image(name) if r == "confirm" else None)
 
     def _confirmed_delete_image(self, name: str) -> None:
@@ -1673,11 +1673,11 @@ class ManageSortersScreen(ModalScreen):
             return
         name, units = info["name"], info.get("units", "?")
         # Curation decisions live in outputs/<name>/ too, and a re-run sort cannot
-        # get them back (unit ids are not stable across re-sorts) — say so.
-        note = f"Deletes outputs/{name}/ — you can re-run the sort later."
+        # get them back (unit ids are not stable across re-sorts) - say so.
+        note = f"Deletes outputs/{name}/ - you can re-run the sort later."
         if info.get("curated"):
             n = info["curated"].get("counts", {}).get("total", 0)
-            note = (f"Deletes outputs/{name}/ — the sort, its curation record "
+            note = (f"Deletes outputs/{name}/ - the sort, its curation record "
                     f"({n} decision{'' if n == 1 else 's'}) and the curated result. "
                     "A re-run sort cannot restore the decisions.")
         self.app.push_screen(
@@ -1713,7 +1713,7 @@ class ManageSortersScreen(ModalScreen):
 
 
 # The four verdicts the TUI writes, in key order. The vocabulary itself is
-# curation.py's (QUALITY_OPTIONS) — these strings must match it exactly; this is
+# curation.py's (QUALITY_OPTIONS) - these strings must match it exactly; this is
 # only its keyboard half, so the view still imports no curation module.
 _TRIAGE_KEYS = (("g", "good"), ("m", "MUA"), ("n", "noise"), ("u", "unsure"))
 # Colour is a ROLE (§1.5), never the carrier: the verdict WORD is always printed.
@@ -1724,8 +1724,8 @@ _TRIAGE_LABEL_STYLE = {"good": "#3fb950", "MUA": "#d29922",
 
 
 def _fmt_metric(value) -> str:
-    """One evidence cell. ``None`` — a value the sort could not compute, e.g.
-    amplitude_cutoff below 500 spikes — renders as an honest "–", never as 0."""
+    """One evidence cell. ``None`` - a value the sort could not compute, e.g.
+    amplitude_cutoff below 500 spikes - renders as an honest "–", never as 0."""
     if value is None:
         return "–"
     if isinstance(value, bool):
@@ -1747,12 +1747,12 @@ class UnitTriageScreen(ModalScreen):
     A *view*: it imports no SpikeInterface and no curation module. Every verdict
     goes out through the controller (``label_unit``) into the same curation record
     the report, the Phy export and ``curation.py`` read, and every fact on screen
-    comes back from ``triage_state`` — this screen decides nothing about the
+    comes back from ``triage_state`` - this screen decides nothing about the
     record, including whether a label may be written at all.
 
     D6 §2 language: sections are a dim label + hairline over borderless content,
     the key chips are inverse-video (visibly pressable), and the key row is docked
-    so it can never clip. The cursor is the detail-request gesture (§1.2) — rows
+    so it can never clip. The cursor is the detail-request gesture (§1.2) - rows
     carry the unit id and its verdict, all the evidence lives in the card.
     """
 
@@ -1782,7 +1782,7 @@ class UnitTriageScreen(ModalScreen):
           for k, v in _TRIAGE_KEYS],
     ]
 
-    # Below this the dim provenance/hint rows yield so the list keeps its rows —
+    # Below this the dim provenance/hint rows yield so the list keeps its rows -
     # air collapses before content (§1.4), and the key row is docked regardless.
     TINY_ROWS = 14
     # Width of the unit-list column; the card takes the rest.
@@ -1818,7 +1818,7 @@ class UnitTriageScreen(ModalScreen):
     # -- state ---------------------------------------------------------------- #
     def _refresh(self) -> None:
         """Re-read everything from the controller and repaint. Called on mount and
-        after every write, so a verdict — and the reviewed n/N count — is what the
+        after every write, so a verdict - and the reviewed n/N count - is what the
         record now says, not what this screen hoped it would say."""
         self._state = self._c.triage_state() or {}
         self._rebuild_list()
@@ -1837,7 +1837,7 @@ class UnitTriageScreen(ModalScreen):
     def _row_text(self, unit: dict) -> Text:
         # The unit id, WHERE it is, and its verdict. The peak contact is the fact
         # the lab reads the list for ("how many neurons at contact 5?"), so it is
-        # content rather than a third at-rest mark (§1.2) — dim, behind the id.
+        # content rather than a third at-rest mark (§1.2) - dim, behind the id.
         t = Text(no_wrap=True)
         t.append(f"{unit['unit']!s:>4} ", style=ui.PRIMARY)
         ch = unit.get("peak_channel")
@@ -1885,14 +1885,14 @@ class UnitTriageScreen(ModalScreen):
             line.append(f"reviewed {reviewed}/{total}",
                         style=f"bold {self._accent}" if reviewed else ui.PRIMARY)
             if st.get("blocked"):
-                line.append("   ✗ labels refused — this record is not for the sort "
+                line.append("   ✗ labels refused - this record is not for the sort "
                             "on disk", style="bold #f0883e")
         line.truncate(avail, overflow="ellipsis")
         self.query_one("#triagestate", Static).update(line)
         # curation.state()'s sentence, verbatim: the ONE source for curated-vs-raw.
         # With no sort there is nothing for it to describe, so it stays silent
         # rather than calling an absent result "raw sorter output". Under it, the
-        # quality rule VERBATIM — every row's verdict word is that rule's, so the
+        # quality rule VERBATIM - every row's verdict word is that rule's, so the
         # screen states which rule it is judging by rather than expecting the
         # reader to remember it from the report.
         prov = Text(style=ui.SECONDARY)
@@ -1908,10 +1908,10 @@ class UnitTriageScreen(ModalScreen):
             pass         # the card carries the refusal AND its next step, in full
         elif st.get("stale_reason"):
             # Verbatim + amber: a curated result that no longer matches disk.
-            hint.append("⚠ the curated result is stale — " + st["stale_reason"],
+            hint.append("⚠ the curated result is stale - " + st["stale_reason"],
                         style="#f0883e")
         else:
-            hint.append("verdicts are recorded, not applied — build the curated "
+            hint.append("verdicts are recorded, not applied - build the curated "
                         "result with  " + str(st.get("apply_hint", "")), style="dim")
         self.query_one("#triagehint", Static).update(hint)
 
@@ -1926,7 +1926,7 @@ class UnitTriageScreen(ModalScreen):
         self.query_one("#triagelisthead", Static).update(
             _hairline("UNITS", max(10, self.LIST_COLS - 2)))
         # A dead end states what happened and the one action that helps (§1.7), in
-        # full — the card is the only place with the room, so it takes the refusal.
+        # full - the card is the only place with the room, so it takes the refusal.
         if st.get("blocked"):
             head.update(_hairline("LABELS REFUSED", avail))
             card.update(Text(st["blocked"], style="#f0883e"))
@@ -1953,7 +1953,7 @@ class UnitTriageScreen(ModalScreen):
         t.append("\n")
         # The synthesis before the evidence: the rule's verdict on this unit (with
         # the criterion it failed, in the rule's words) and how separate it looks.
-        # Both come from the controller's rollup — this screen judges nothing.
+        # Both come from the controller's rollup - this screen judges nothing.
         word = unit.get("verdict_word")
         if word:
             t.append(f"{'quality rule':<22}", style=ui.SECONDARY)
@@ -1983,7 +1983,7 @@ class UnitTriageScreen(ModalScreen):
                 t.append(f"{col:<22}", style=ui.SECONDARY)
                 t.append(_fmt_metric(metrics.get(col)) + "\n", style=ui.PRIMARY)
         else:
-            t.append("no quality_metrics.csv beside this sort — the six headline "
+            t.append("no quality_metrics.csv beside this sort - the six headline "
                      "numbers above are all the evidence saved", style="dim")
         card.update(t)
 
@@ -2010,7 +2010,7 @@ class UnitTriageScreen(ModalScreen):
         self._render_card(self.size.width)
 
     def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
-        # Enter selects nothing here — the verdict keys are the action.
+        # Enter selects nothing here - the verdict keys are the action.
         event.stop()
 
     def action_label(self, label: str) -> None:
@@ -2031,7 +2031,7 @@ class UnitTriageScreen(ModalScreen):
                 ol.highlighted = index + 1
 
     def action_close(self) -> None:
-        """Esc goes back to the dashboard — the modal pattern. It never exits the
+        """Esc goes back to the dashboard - the modal pattern. It never exits the
         app (that stays q / Ctrl-C, and Esc on the dashboard is a no-op)."""
         st = self._state
         if not self._wrote:
@@ -2213,7 +2213,7 @@ class ProbeManagerScreen(ModalScreen):
 
     def action_new(self) -> None:
         opts = [(k, lbl, "") for k, lbl in self._NEW_KINDS]
-        self.app.push_screen(ChoiceModal("New probe — which kind?", opts),
+        self.app.push_screen(ChoiceModal("New probe - which kind?", opts),
                              self._after_new_kind)
 
     def _after_new_kind(self, kind) -> None:
@@ -2229,10 +2229,10 @@ class ProbeManagerScreen(ModalScreen):
             return
         # Imported probes are view/duplicate/delete-only (P1 handoff, 2026-08-18):
         # the generic field form knows no params for kind 'imported' and a rename
-        # would orphan the materialised geometry — refuse with the next step named
+        # would orphan the materialised geometry - refuse with the next step named
         # rather than offering a flow that ends in an error.
         if row.get("kind") == "imported":
-            self._last = Text("imported probes can't be edited — duplicate or "
+            self._last = Text("imported probes can't be edited - duplicate or "
                               "re-import instead", style="#f0883e")
             self._rebuild()
             return
@@ -2360,7 +2360,7 @@ class ProbeSetupScreen(ModalScreen):
         with Vertical(id="dialog"):
             yield Static("Your probe geometry", id="pstitle")
             yield Static(f"Active probe: {info['label']}. Keep it, pick another, or open the "
-                         "manager — you can change it any time with 'p'.", id="psblurb")
+                         "manager - you can change it any time with 'p'.", id="psblurb")
             yield NavList(*opts, id="pslist")
             yield Static("Enter to choose · Esc to keep", id="psfoot")
 
@@ -2399,7 +2399,7 @@ class HelpScreen(ModalScreen):
     /* A 20-column topic list, no body padding and a 1-column scrollbar: at the
        default 80-col terminal that leaves the body 50 usable columns, which is
        exactly what HELP_TOPICS' lines are written to. Help is LAID OUT (question
-       over answer over key), not free prose — a wrapped line breaks the columns,
+       over answer over key), not free prose - a wrapped line breaks the columns,
        so the width is a contract, pinned by test_help_lines_fit_the_help_pane. */
     HelpScreen #htopics { width: 20; height: 1fr; border: round #3a3f47; }
     HelpScreen #hscroll { width: 1fr; height: 1fr; padding: 0;
@@ -2529,7 +2529,7 @@ def _setup_body(report: dict, accent: str, pipeline=None) -> Text:
     t.append(").\n", style="dim")
     t.append(
         "\nThe raw .nev / .ns1–.ns6 files are git-ignored (the .ns5 exceeds GitHub's\n"
-        "100 MB limit), so a fresh clone has none — copy your own set in.\n",
+        "100 MB limit), so a fresh clone has none - copy your own set in.\n",
         style="dim",
     )
     err = report.get("error")
@@ -2571,14 +2571,14 @@ class CrestWidget(Static):
         self._repaint()
 
     def _tier_fragments(self):
-        """Flat list of the current (style, segment) fragments — a test seam and
+        """Flat list of the current (style, segment) fragments - a test seam and
         the source for _repaint."""
         if self._tier is None:
             return []
         accent = getattr(self.app, "_accent", "")
         return [frag for row in ui.wordmark_rows(self._tier, accent) for frag in row]
 
-    # NB: deliberately NOT named ``_render`` — that collides with Textual's
+    # NB: deliberately NOT named ``_render`` - that collides with Textual's
     # ``Widget._render`` (the layout engine calls it expecting a Visual).
     def _repaint(self) -> None:
         if self._tier is None:
@@ -2607,10 +2607,10 @@ _GROUP_REASON = {
 }
 # Semantic colour per readiness tier (degrades to bold text under NO_COLOR).
 _GROUP_COLOR = {
-    "ready": "#3fb950",         # green  — go
-    "docker": "#d29922",        # amber  — works, but heavier
-    "gpu": "#f0883e",           # orange — needs hardware you don't have
-    "unavailable": "#6e7681",   # grey   — not an option here
+    "ready": "#3fb950",         # green  - go
+    "docker": "#d29922",        # amber  - works, but heavier
+    "gpu": "#f0883e",           # orange - needs hardware you don't have
+    "unavailable": "#6e7681",   # grey   - not an option here
 }
 
 
@@ -2618,12 +2618,12 @@ class SorterPickerScreen(ModalScreen):
     """The sorter picker (D5): sorters are chosen once per session, so the list
     lives behind ``t`` instead of owning half the main screen.
 
-    A filter Input (focused on open — typing filters live) over the grouped
+    A filter Input (focused on open - typing filters live) over the grouped
     list; the GPU and not-available groups start collapsed (Enter on their
     header expands; a filter match auto-expands). ↑/↓ move the highlight from
     the filter box, Enter selects and closes (the app routes the choice through
     its normal activate/download/enable flows), Esc closes. A one-line footer
-    describes the highlighted sorter — the old INSPECTING prose, one line."""
+    describes the highlighted sorter - the old INSPECTING prose, one line."""
 
     DEFAULT_CSS = """
     SorterPickerScreen { align: center middle; }
@@ -2666,7 +2666,7 @@ class SorterPickerScreen(ModalScreen):
     def on_mount(self) -> None:
         self.query_one("#pickdialog").border_title = "SORTERS"
         self.query_one("#pickdialog").border_subtitle = "↑/↓ move · Enter choose · Esc close"
-        # The list is driven from the filter box — it never takes focus itself.
+        # The list is driven from the filter box - it never takes focus itself.
         self.query_one("#picklist", NavList).can_focus = False
         self._rebuild()
         self.query_one("#pickfilter", Input).focus()
@@ -2683,7 +2683,7 @@ class SorterPickerScreen(ModalScreen):
         t = Text()
         t.append("▌ " if active else "  ", style=self._accent if active else "")
         t.append(info["name"], style="bold" if active else ("" if runnable else ui.SECONDARY))
-        t.append(f"  {info['units']}u" if info.get("present") else "  —",
+        t.append(f"  {info['units']}u" if info.get("present") else "  -",
                  style=ui.SECONDARY if info.get("present") else "dim")
         needs_pull = info.get("group") == "docker" and not info.get("img_present")
         if info.get("downloading") is not None:
@@ -2733,7 +2733,7 @@ class SorterPickerScreen(ModalScreen):
             for info in members:
                 ol.add_option(Option(self._row_text(info), id=info["name"]))
         # Cursor policy (D5 review F2): a CHANGED filter must re-target Enter at a
-        # matching SORTER row — a stale index silently landing on the Docker toggle
+        # matching SORTER row - a stale index silently landing on the Docker toggle
         # made Enter flip Docker instead of choosing the filtered sorter. Otherwise
         # keep position; a fresh build lands on the active sorter; the toggle row
         # is only ever the last resort.
@@ -2861,14 +2861,14 @@ _STAGES = (("data", "GET DATA"),
 class SpikeMenuApp(App):
     """The resident dashboard (F2, the researcher dashboard). One instance per
     session: a STATE block (DATA/PROBE, SORT, RESULTS) over ONE list holding every
-    function the workbench has, grouped into the three stages of the workflow —
+    function the workbench has, grouped into the three stages of the workflow -
     GET DATA · SORT & CURATE · LOOK & SHARE. Every row prints its own key and says
     what it produces; nothing lives behind a bare letter on a footer line."""
 
     CSS = """
     Screen { background: $background; }
 
-    /* F2 keeps D6's language — NO boxed panels; sections are a dim label + a
+    /* F2 keeps D6's language - NO boxed panels; sections are a dim label + a
        hairline rule over borderless content, separated by blank-line air. The
        air lives in these margins and collapses (the Screen-level .dense class)
        before any content yields; the group air inside the list goes first. */
@@ -2888,7 +2888,7 @@ class SpikeMenuApp(App):
     #dlbar { height: 1; margin: 0 2 0 2; color: $accentcolor; }
     #dlbar.hidden { display: none; }
 
-    /* RESULTS — the findings, third line of the state block: present only when
+    /* RESULTS - the findings, third line of the state block: present only when
        the active sorter has a saved sort. Borderless; air above. */
     #results { height: auto; padding: 0 0; margin: 1 2 0 2; }
     #results.hidden, #results.collapsed { display: none; }
@@ -2896,7 +2896,7 @@ class SpikeMenuApp(App):
 
     /* THE WORKFLOW LIST: three stage groups in one borderless full-width list.
        Focus shows on the highlighted row, never on chrome. */
-    /* width:100% is load-bearing — without it Textual's vertical layout hands a
+    /* width:100% is load-bearing - without it Textual's vertical layout hands a
        1fr child the width MINUS a sibling's horizontal margin, and the list would
        sit 4 columns narrower than the state block above it (the stage rules and
        the RESULTS rule have to end in the same column). Zero padding on the pane
@@ -2920,7 +2920,7 @@ class SpikeMenuApp(App):
        repaint them a second, flatter colour. */
     #actions > .option-list--option-disabled { color: $foreground; }
 
-    /* LAST RESULT — the newest action outcome, persistent until the next one
+    /* LAST RESULT - the newest action outcome, persistent until the next one
        (results must not evaporate on a keystroke, DESIGN_UX §1). */
     #resultbar { height: 1; margin: 0 2; }
     #resultbar.hidden, #resultbar.collapsed { display: none; }
@@ -2935,7 +2935,7 @@ class SpikeMenuApp(App):
         # accelerators for a list you can simply arrow through, never the only way
         # to reach a function. The 1-6 numbers keep the meanings they have always
         # had, so existing muscle memory, docs/WORKFLOW.md and every in-app hint
-        # stay true — the redesign moved the rows, not the keys.
+        # stay true - the redesign moved the rows, not the keys.
         Binding("1", "run_key('explore')", "Explore", show=False),
         Binding("2", "run_key('sort')", "Sort", show=False),
         Binding("3", "run_key('report')", "Report", show=False),
@@ -2950,7 +2950,7 @@ class SpikeMenuApp(App):
         Binding("u", "run_key('triage')", "Judge the units", show=False),
         Binding("y", "run_key('phy')", "Export to Phy", show=False),
         Binding("r", "run_key('reopen')", "Reopen last result", show=False),
-        # Housekeeping — not workflow rows, so these live on the footer key line.
+        # Housekeeping - not workflow rows, so these live on the footer key line.
         Binding("m", "run_key('manage')", "Manage sorters", show=False),
         Binding("c", "run_key('theme')", "Colour theme", show=False),
         Binding("f", "choose_folder", "Data folder", show=False),
@@ -2960,7 +2960,7 @@ class SpikeMenuApp(App):
         Binding("w", "watch_download", "Download", show=False),
         Binding("question_mark", "help", "Help", show=False),
         Binding("q", "quit", "Quit", show=False),
-        # NOTE: Esc is deliberately NOT bound to quit — a reflexive "go back" press
+        # NOTE: Esc is deliberately NOT bound to quit - a reflexive "go back" press
         # should never hard-exit the dashboard and lose the user's place. Modals
         # keep their own Esc=cancel; q / Ctrl-C still quit the app.
         Binding("ctrl+c", "quit", "Quit", show=False),
@@ -3008,7 +3008,7 @@ class SpikeMenuApp(App):
     def on_mount(self) -> None:
         self._rebuild_actions()
         self._render_results()
-        # The workflow list IS the screen — a first-time user lands on the rows.
+        # The workflow list IS the screen - a first-time user lands on the rows.
         self.query_one("#actions", OptionList).focus()
         self._refresh_footer()
         self._relayout()
@@ -3041,7 +3041,7 @@ class SpikeMenuApp(App):
         self._render_dlbar(w)
         plan = self._plan_state = self._plan(w, h)
         # Collapse in the order the plan decided; the air tier is a Screen-level
-        # class set on the DASHBOARD's screen, never self.screen — a resize under a
+        # class set on the DASHBOARD's screen, never self.screen - a resize under a
         # modal must not stamp the tier onto the modal and leave the base screen
         # stale (D6 review #2, which clipped the last action row after Esc).
         self.query_one("#titlebar").set_class(not plan["title"], "collapsed")
@@ -3066,7 +3066,7 @@ class SpikeMenuApp(App):
     # ---- the yield ladder (F2) --------------------------------------------- #
     # What the screen gives up, in order, when the window is too short for
     # everything: whitespace first, then identity chrome, then state, and the
-    # stage headings dead last. The fourteen workflow ROWS never yield — they are
+    # stage headings dead last. The fourteen workflow ROWS never yield - they are
     # the design. Each entry is the plan key it flips and the value it flips to.
     _LADDER = (
         ("group_air", False),      # the blank line above each stage group
@@ -3084,7 +3084,7 @@ class SpikeMenuApp(App):
 
         Pure arithmetic over the SAME row counts the painters produce
         (``_results_lines``, ``_list_rows``), so the budget can never disagree
-        with what is actually painted — the D6 review-F6 failure mode, closed by
+        with what is actually painted - the D6 review-F6 failure mode, closed by
         construction rather than by keeping two numbers in step by hand."""
         info = self.c.infos[self.c.active_idx]
         plan = {
@@ -3130,11 +3130,11 @@ class SpikeMenuApp(App):
 
     # -- the always-on DATA / SORT banner ------------------------------------- #
     def _render_databar(self, width: int) -> None:
-        """The INPUTS row — DATA and PROBE share one line (DESIGN_UX §2: both are
+        """The INPUTS row - DATA and PROBE share one line (DESIGN_UX §2: both are
         verified inputs; the workbench state gets its own row). The quiet path is
-        'DATA ✓ all 3 streams · PROBE <label> ✓' — the label carries ch/pitch, so
+        'DATA ✓ all 3 streams · PROBE <label> ✓' - the label carries ch/pitch, so
         the probe is stated ONCE (D6, §1.1); a loud data problem (missing /
-        incomplete / unreadable broadband) takes the whole row — the probe half
+        incomplete / unreadable broadband) takes the whole row - the probe half
         yields to the thing that needs attention."""
         dr = self.c.data_report
         files = dr.get("files", [])
@@ -3147,20 +3147,20 @@ class SpikeMenuApp(App):
             loaded = [f for f in files if f.get("present")]
             t.append("✓ ", style="#3fb950")
             t.append(f"all {len(loaded)} streams", style=ui.PRIMARY)
-            # The probe half — one glance answers "which geometry am I sorting with?"
+            # The probe half - one glance answers "which geometry am I sorting with?"
             # A MISMATCH is correctness-relevant (wrong geometry feeds the sort), so
-            # it goes loud and LEADS the probe half — label/summary are dropped so
+            # it goes loud and LEADS the probe half - label/summary are dropped so
             # the warning can never be the part the ellipsis eats (D1 review #3).
             pinfo = self.c.probe_info
             match = pinfo.get("match", "")
             if match == "mismatch":
                 t.append("      PROBE  ", style=ui.SECONDARY)
                 t.append("✗ channel count mismatch", style="bold #f0883e")
-                t.append(" — p to fix", style="#f0883e")
+                t.append(" - p to fix", style="#f0883e")
             else:
                 t.append("      PROBE  ", style=ui.SECONDARY)
                 # ONE probe summary (D6, §1.1): the label already says what it is
-                # (ch/pitch live in it) — never restated by a second summary here.
+                # (ch/pitch live in it) - never restated by a second summary here.
                 t.append(pinfo.get("label", pinfo.get("name", "unknown probe")),
                          style=f"bold {self._accent}")
                 if match in ("fits", "auto"):
@@ -3168,13 +3168,13 @@ class SpikeMenuApp(App):
         elif not dr.get("present"):
             t.append("✗ no recording in ", style="bold #f0883e")
             t.append(f"{dr.get('data_dir', '.')} ", style="#f0883e")
-            t.append("— press f to choose · d for help", style="dim")
+            t.append("- press f to choose · d for help", style="dim")
         elif unreadable:
             t.append("✗ Broadband (.ns5) won't load ", style="bold #f0883e")
-            t.append("— press d for help", style="dim")
+            t.append("- press d for help", style="dim")
         else:
             missing = ", ".join(f["ext"] for f in files if not f.get("present"))
-            t.append(f"✗ incomplete set — missing {missing} ", style="bold #f0883e")
+            t.append(f"✗ incomplete set - missing {missing} ", style="bold #f0883e")
             t.append("· press f / d", style="dim")
         t.truncate(max(1, width - 2), overflow="ellipsis")
         self.query_one("#databar", Static).update(t)
@@ -3198,7 +3198,7 @@ class SpikeMenuApp(App):
                      if self.c.use_docker and info.get("group") == "docker"
                      else "Ready to run")
         elif info.get("group") == "docker":
-            ready = ("Docker image not downloaded — t to get it"
+            ready = ("Docker image not downloaded - t to get it"
                      if not info.get("img_present") else "Turn on Docker sorters to run")
         elif info.get("group") == "gpu":
             ready = "Needs an NVIDIA GPU"
@@ -3225,7 +3225,7 @@ class SpikeMenuApp(App):
 
     def _rule_width(self, width: int) -> int:
         """Content columns available to a dashboard row, and therefore to every
-        hairline rule — so RESULTS and the stage headings end in the same column.
+        hairline rule - so RESULTS and the stage headings end in the same column.
 
         The live window width is the truth: a widget's ``content_region`` is stale
         mid-resize (relayout runs on the resize EVENT, before the layout pass), and
@@ -3237,7 +3237,7 @@ class SpikeMenuApp(App):
 
     def on_click(self, event) -> None:
         # The SORT row is a pressable control: a click anywhere on it opens the
-        # sorter picker — the same action as its ` t ` chip and the "Choose the
+        # sorter picker - the same action as its ` t ` chip and the "Choose the
         # sorter" row.
         wid = getattr(event.widget, "id", None)
         if wid == "sortbar":
@@ -3292,7 +3292,7 @@ class SpikeMenuApp(App):
     def _render_results_text(self, width: int | None = None, plan=None) -> None:
         """Paint RESULTS: shown only when the active sorter has a saved sort AND
         the budget granted it rows. The content itself is built by
-        ``_results_lines`` — the one place its row count comes from."""
+        ``_results_lines`` - the one place its row count comes from."""
         plan = plan if plan is not None else self._plan_state
         panel = self.query_one("#results", Static)
         info = self.c.infos[self.c.active_idx]
@@ -3306,7 +3306,7 @@ class SpikeMenuApp(App):
             self._results_lines(self._rule_width(width), plan["compact"])))
 
     def _results_lines(self, avail: int, compact: bool) -> list[Text]:
-        """RESULTS as a list of finished rows — the takeaway, where the strong
+        """RESULTS as a list of finished rows - the takeaway, where the strong
         units sit, and (at full size) the hairline label and one metrics line.
 
         Every line is built no-wrap and clipped to ``avail``, so RESULTS occupies
@@ -3342,7 +3342,7 @@ class SpikeMenuApp(App):
             head.append(f" · {info['units']} units", style=ui.PRIMARY)
         head.append(f" · {info['duration']:.0f} s sorted", style=ui.PRIMARY)
         # A curated result is what the report shows, so this line must name it as
-        # curated rather than let the numbers read as raw sorter output — and say
+        # curated rather than let the numbers read as raw sorter output - and say
         # when its record is missing (0 decisions would read as "nothing was done")
         # or when it no longer matches what is on disk.
         curated = info.get("curated")
@@ -3356,7 +3356,7 @@ class SpikeMenuApp(App):
                 mark += " · stale"
             head.append(mark, style=ui.SECONDARY)
 
-        # WHERE the strong units are — the site view, in one line, WORDED BY
+        # WHERE the strong units are - the site view, in one line, WORDED BY
         # sort_summary from the same strong/thin split the report's headline uses,
         # so the two surfaces can never tell different stories (review F2). A
         # sort with nothing strong says so in amber: it has a next step (§1.7).
@@ -3368,7 +3368,7 @@ class SpikeMenuApp(App):
         # The pressable triage control, in D6's `t change` shape: an inverse-video
         # key chip + verb, with a click anywhere on RESULTS as the mouse path. It
         # lives HERE and not on the footer's key line because triage acts on the
-        # saved sort — and RESULTS is present exactly when there is one (§1.7: no
+        # saved sort - and RESULTS is present exactly when there is one (§1.7: no
         # affordance for a thing that isn't there). It rides the SITE line when
         # there is one: that is the line triage acts on, and it keeps the head line
         # short enough to survive a narrow terminal without clipping the takeaway.
@@ -3416,7 +3416,7 @@ class SpikeMenuApp(App):
     def _stage_groups(self) -> list:
         """The workflow list as (heading, rows) per stage, in workflow order.
         ``chrome`` actions (Manage sorters, Colour theme, Help, Quit) are
-        housekeeping and deliberately have no stage — they live on the key line."""
+        housekeeping and deliberately have no stage - they live on the key line."""
         out = []
         for stage, label in _STAGES:
             rows = [a for a in self.c.actions if a.get("stage") == stage]
@@ -3426,7 +3426,7 @@ class SpikeMenuApp(App):
 
     # The column the row hints start in (the longest title, 21, plus a two-space
     # gutter) and the narrowest hint worth printing. A hint that does not fit WHOLE
-    # is dropped rather than ellipsised to a fragment — the title alone still says
+    # is dropped rather than ellipsised to a fragment - the title alone still says
     # what the row does, and half a sentence is noise, not information.
     _TITLE_COL = 23
     _HINT_MIN = 18
@@ -3435,7 +3435,7 @@ class SpikeMenuApp(App):
         """Rebuild the workflow list: every function the workbench has, as a
         labelled row carrying its own key, under its stage heading.
 
-        Rows are truncated HERE, at ``_rule_width`` — Textual re-wraps option
+        Rows are truncated HERE, at ``_rule_width`` - Textual re-wraps option
         content by its own rules (a Rich ``no_wrap`` does not survive the trip), so
         a row one column too long silently becomes TWO painted rows and the yield
         budget starts lying. The list is also rebuilt on every resize for the same
@@ -3479,7 +3479,7 @@ class SpikeMenuApp(App):
     def _action_text(self, a: dict, disabled: bool, avail: int) -> Text:
         """One workflow row: its key chip, what it is, and what it produces."""
         t = Text()
-        # The key is an inverse-video chip on the row itself — every function the
+        # The key is an inverse-video chip on the row itself - every function the
         # workbench has is visible and says which key runs it (F2, decision 1).
         t.append(f" {a.get('hotkey', '·')} ", style="reverse dim" if disabled else "reverse")
         t.append("  ")
@@ -3511,7 +3511,7 @@ class SpikeMenuApp(App):
 
     def _refresh_footer(self, width: int | None = None, focus: str | None = None) -> None:
         """Footer: a transient-status line + the key hints. The active sorter is NOT
-        echoed here (DESIGN_UX §1 one-fact-one-place — the SORT banner is its home);
+        echoed here (DESIGN_UX §1 one-fact-one-place - the SORT banner is its home);
         durable results live on the LAST RESULT line, repainted alongside."""
         width = width if width is not None else self.size.width
         line1 = Text()
@@ -3569,7 +3569,7 @@ class SpikeMenuApp(App):
         return "↑↓ ↵ run · ? help · q quit"
 
     def action_manage_active(self) -> None:
-        """``x``: manage the ACTIVE sorter — a small confirm offering only the
+        """``x``: manage the ACTIVE sorter - a small confirm offering only the
         applicable destructive ops (delete its cached Docker image, clear its
         saved sort). If neither applies, a footer hint instead of an empty modal.
         (Per-row management for OTHER sorters lives in the m Manage hub.)"""
@@ -3628,7 +3628,7 @@ class SpikeMenuApp(App):
 
     def _after_triage(self, result) -> None:
         """Triage closed. Verdicts changed the curation record, so the per-sorter
-        facts the dashboard shows (curated counts, RESULTS) may have moved —
+        facts the dashboard shows (curated counts, RESULTS) may have moved -
         reload and repaint, exactly like the other state-mutating modals."""
         if result:
             self._last = Text(str(result), style=f"bold {self._accent}")
@@ -3642,7 +3642,7 @@ class SpikeMenuApp(App):
         self._refresh_footer()
 
     def action_pick_sorter(self) -> None:
-        """``t``: the sorter picker (D5) — filter, choose, done."""
+        """``t``: the sorter picker (D5) - filter, choose, done."""
         self.push_screen(SorterPickerScreen(self.c, self._accent), self._after_pick)
 
     def _after_pick(self, choice) -> None:
@@ -3722,7 +3722,7 @@ class SpikeMenuApp(App):
         if info is None:
             return
         if info.get("group") == "docker" and not info.get("img_present"):
-            # Download path — the image must be pulled before this can ever run, and
+            # Download path - the image must be pulled before this can ever run, and
             # it needs the daemon up. Pulling is SEPARATE from running a sort.
             if self.c.docker_status(refresh=False).get("running"):
                 self.start_download(name)
@@ -3731,10 +3731,10 @@ class SpikeMenuApp(App):
         elif info.get("runnable"):
             self._set_active_by_name(name)
         elif info.get("group") == "docker":
-            # Image is cached but the Docker toggle is off — offer to enable it.
+            # Image is cached but the Docker toggle is off - offer to enable it.
             self._toggle_docker(offer_from=name)
         else:
-            hint = ("needs a GPU build installed — see Help" if info.get("group") == "gpu"
+            hint = ("needs a GPU build installed - see Help" if info.get("group") == "gpu"
                     else "not available on this computer")
             self._last = Text(f"{name}: {hint}", style="#f0883e")
             self._refresh_footer()
@@ -3810,7 +3810,7 @@ class SpikeMenuApp(App):
             reload_err = None
         except Exception as e:  # noqa: BLE001
             reload_err = f"reload after download failed: {e!r}"
-        # A newer download may have superseded this one within its finish window —
+        # A newer download may have superseded this one within its finish window -
         # don't let this stale finish repaint over the live session or schedule a
         # clear that would null the newer one.
         if self._download is not sess:
@@ -3828,7 +3828,7 @@ class SpikeMenuApp(App):
         self.set_timer(4.0, lambda: self._clear_download(sess))
 
     def _clear_download(self, sess) -> None:
-        # Only clear if this is still the same finished session — a newer download
+        # Only clear if this is still the same finished session - a newer download
         # started within the 4s window must not be nulled out.
         if self._download is sess:
             self._download = None
@@ -3853,7 +3853,7 @@ class SpikeMenuApp(App):
         status so a collapse reads clearly."""
         if result == "collapsed":
             sess = getattr(self, "_download", None)
-            # Only claim it's still downloading when it genuinely is — a cancelled or
+            # Only claim it's still downloading when it genuinely is - a cancelled or
             # already-finished session must not say "downloading".
             if sess is not None and sess.result is None and not sess.cancelled:
                 self._last = Text(f"{sess.name} downloading · w to expand", style="dim")
@@ -3878,7 +3878,7 @@ class SpikeMenuApp(App):
         self._render_results()
         self._rebuild_actions()
         if on:
-            self._last = Text("Docker sorters on ✓ — pick one, then run a sort to use it",
+            self._last = Text("Docker sorters on ✓ - pick one, then run a sort to use it",
                               style=f"bold {self._accent}")
         else:
             self._last = Text("Docker sorters off", style="dim")
@@ -3905,7 +3905,7 @@ class SpikeMenuApp(App):
         elif key == "probe":
             self._open_probes()
         elif key == "triage":
-            # Reads outputs/<sorter>/ only — it needs no recording, so it opens
+            # Reads outputs/<sorter>/ only - it needs no recording, so it opens
             # even when the data folder is empty and says so on the screen.
             self._open_triage()
         elif key == "report" and self.c.data_report.get("present"):
@@ -3921,11 +3921,11 @@ class SpikeMenuApp(App):
         elif self._needs_data(key) and not self.c.data_report.get("present"):
             # Guarded BEFORE the sort branch so sort can't open its modal with no data.
             self._last = Text("✗ ", style="bold #f85149") + Text(
-                f"{key} needs the recording files — press d for help")
+                f"{key} needs the recording files - press d for help")
             self._refresh_footer()
         elif key == "sort":
             # Active sorter needs a container but Docker isn't running (e.g. it was
-            # stopped after the sorter was picked) — guide instead of failing mid-sort.
+            # stopped after the sorter was picked) - guide instead of failing mid-sort.
             if self.c.active_blocked_on_docker():
                 self._last = Text(
                     f"{self.c.active_sorter} runs in Docker, which isn't running. "
@@ -3937,7 +3937,7 @@ class SpikeMenuApp(App):
             note = None
             if info.get("present"):     # warn before silently replacing a saved sort
                 note = (f"⚠ {info['name']} already has a saved sort "
-                        f"({info['units']}u · {info['duration']:.0f}s) — running again replaces it.")
+                        f"({info['units']}u · {info['duration']:.0f}s) - running again replaces it.")
             exp = {}
             try:
                 exp = self.c.sort_expectations() or {}
@@ -3948,7 +3948,7 @@ class SpikeMenuApp(App):
                 mm, ss = divmod(int(exp["wall_seconds"]), 60)
                 hint = f"~{mm}:{ss:02d} last time"
             full_hint = hint if exp.get("span") == "full" else ""
-            # A CLI --duration 100 run is neither of these choices — its wall time
+            # A CLI --duration 100 run is neither of these choices - its wall time
             # must not decorate the 30 s row (D4 review F7): the quick hint only
             # attaches when the last cut actually WAS the quick span.
             eff = exp.get("eff_seconds")
@@ -3958,7 +3958,7 @@ class SpikeMenuApp(App):
             self.push_screen(
                 ChoiceModal("Sort how much?", [
                     ("full", "Full recording", full_hint),
-                    ("quick", f"Quick test — first {self.c.quick_seconds}s", quick_hint),
+                    ("quick", f"Quick test - first {self.c.quick_seconds}s", quick_hint),
                 ], note=note),
                 self._after_sort_span,
             )
@@ -3986,7 +3986,7 @@ class SpikeMenuApp(App):
         self.push_screen(SortProgressScreen(argv, self._accent, log_path), self._after_sort)
 
     def _after_sort(self, result) -> None:
-        # The modal contract (DESIGN_UX §3): (ok, message, changed, next_action) —
+        # The modal contract (DESIGN_UX §3): (ok, message, changed, next_action) -
         # next_action set when the result card chained into report/inspect.
         ok, message, changed, next_action = result or (False, "Sort cancelled", False, None)
         # Record real outcomes on the LAST RESULT line; a cancel is benign noise,
@@ -4082,13 +4082,13 @@ class SpikeMenuApp(App):
     def _open_compare_picker(self) -> None:
         if self._needs_data("compare") and not self.c.data_report.get("present"):
             self._last = Text("✗ ", style="bold #f85149") + Text(
-                "compare needs the recording files — press d for help")
+                "compare needs the recording files - press d for help")
             self._refresh_footer()
             return
         saved = self.c.saved_sorters()
         if len(saved) < 2:
             self._last = Text(
-                "Need two saved sorts to compare — run 'sort' for two sorters first.",
+                "Need two saved sorts to compare - run 'sort' for two sorters first.",
                 style="#f0883e")
             self._refresh_footer()
             return
@@ -4114,20 +4114,20 @@ class SpikeMenuApp(App):
 
     def _run_compare(self, pair) -> None:
         """Run the (blocking, in-process) compare in a thread worker behind an
-        honest BusyScreen — named step, ticking elapsed, a stated no-cancel —
+        honest BusyScreen - named step, ticking elapsed, a stated no-cancel -
         instead of a silent suspend() (DESIGN_UX §6; the audit's quiet-terminal
         friction). Stdout is buffered so the controller's prints can't garble
         the live TUI; a failure surfaces the buffer's tail."""
         a, b = pair
         busy = BusyScreen(f"Comparing {a} vs {b}", self._accent,
-                          "builds the agreement matrix — runs to completion "
+                          "builds the agreement matrix - runs to completion "
                           "(no cancel)")
         self.push_screen(busy, self._after_compare_done)
         self.run_worker(lambda: self._compare_worker(pair, busy), thread=True)
 
     def _compare_worker(self, pair, busy) -> None:
         # NOTE: the redirect swaps the GLOBAL sys.stdout/stderr for the compare's
-        # whole (minutes-long) window — Textual paints via its own driver handle so
+        # whole (minutes-long) window - Textual paints via its own driver handle so
         # the TUI is unaffected, but any other thread's prints land in this buffer
         # for the duration (D4 review F6, accepted with this note).
         import contextlib
@@ -4140,7 +4140,7 @@ class SpikeMenuApp(App):
         except Exception as e:  # noqa: BLE001
             res = (False, f"compare failed: {e!r}", False)
         # The real controller CATCHES compare failures internally and warns into
-        # the (redirected) buffer, returning a bare False — so the tail must be
+        # the (redirected) buffer, returning a bare False - so the tail must be
         # surfaced on ANY failure, not only on an exception here (D4 review F1:
         # otherwise the cause exists nowhere, not even scrollback).
         if res and not res[0]:
@@ -4167,7 +4167,7 @@ class SpikeMenuApp(App):
     def _run(self, key: str, span: str | None) -> None:
         # Drop out of the alt-screen so the action's own stdout scrolls; if the
         # driver can't suspend (headless/unsupported), run in place rather than
-        # crash. Any failure surfaces as a red 'last action' line — never a crash.
+        # crash. Any failure surfaces as a red 'last action' line - never a crash.
         try:
             with self.suspend():
                 ok, message, changed = self.c.run(key, span)
@@ -4190,7 +4190,7 @@ class SpikeMenuApp(App):
 
 def _fmt_when(when: str) -> str:
     """Format a LAST RESULT timestamp for display: today's read as a clock time,
-    older ones carry their date — persisted results must not masquerade as fresh.
+    older ones carry their date - persisted results must not masquerade as fresh.
     A value that isn't ISO (or a pre-ISO record in an existing .si_menu.json) is
     shown as-is rather than dropped."""
     from datetime import datetime

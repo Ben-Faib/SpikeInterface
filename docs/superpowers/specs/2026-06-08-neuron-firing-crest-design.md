@@ -6,21 +6,21 @@
 
 ## Problem
 
-The v2 dashboard's top crest is a brain (`ui._BRAIN_FULL/_COMPACT/_MINI`) — a
+The v2 dashboard's top crest is a brain (`ui._BRAIN_FULL/_COMPACT/_MINI`) - a
 solid, photo-derived Braille blob (`scripts/_brain_art_gen.py`'s `S_NEURON`)
 area-averaged down to 30/18/12 columns. It does not read as a brain: a brain is
 recognised from its *silhouette* (bumpy cerebrum, cerebellum bulge, brainstem
-stub) and its *cortical folds*, and a downscaled filled photo preserves neither —
+stub) and its *cortical folds*, and a downscaled filled photo preserves neither -
 the folds are texture noise and averaging erases them, worst at the small tiers.
 The result is a featureless pink potato.
 
 ## Goal
 
 Replace the brain hero with a **single firing neuron** drawn as deliberate
-line-art, and — in the Textual dashboard only — play a slow, subtle
+line-art, and - in the Textual dashboard only - play a slow, subtle
 "receive → fire → rest" animation on a ~5–7 s loop. The neuron is more
 distinctive *and* more on-theme than a brain: spike sorting isolates individual
-units (cells), and the mark depicts exactly that — a cell receiving a signal and
+units (cells), and the mark depicts exactly that - a cell receiving a signal and
 firing a spike (the data this tool actually produces).
 
 ## Non-goals
@@ -29,7 +29,7 @@ firing a spike (the data this tool actually produces).
   "About" topic, unchanged).
 - No change to the sorter sidebar, actions pane, pipeline panel, or any data /
   loader / sorting logic.
-- **No new dependencies** — Textual and rich are already present.
+- **No new dependencies** - Textual and rich are already present.
 - Animation is **Textual-only**. The legacy prompt_toolkit / typed fallback menu,
   off-TTY output, Welcome, and Help all render the neuron **at rest** (static).
 
@@ -44,16 +44,16 @@ A horizontal neuron, reading left → right like the signal path:
    dendrites · soma · ───── axon ───── · spike (action potential)
 ```
 
-- **Dendrites** — a few branching strokes on the left, converging on the soma.
-- **Soma** — a small filled body where the dendrites meet.
-- **Axon** — a horizontal line running rightward from the soma.
-- **Spike** — at the axon terminal, an **action-potential waveform** (sharp
+- **Dendrites** - a few branching strokes on the left, converging on the soma.
+- **Soma** - a small filled body where the dendrites meet.
+- **Axon** - a horizontal line running rightward from the soma.
+- **Spike** - at the axon terminal, an **action-potential waveform** (sharp
   upstroke → fall → afterhyperpolarization dip). Flat at rest.
 
 The exact glyphs (Braille `U+28xx`, block, and box-drawing) are settled during the
 build's candidate phase (below). Constraints that the art **must** satisfy:
 
-- Three responsive tiers — **full / compact / mini** — reusing the existing
+- Three responsive tiers - **full / compact / mini** - reusing the existing
   fit-and-collapse ladder (largest tier that fits the live window; hidden when
   even mini won't fit).
 - **Every row in a tier is the same display width** (code points), so Textual's
@@ -65,12 +65,12 @@ build's candidate phase (below). Constraints that the art **must** satisfy:
 
 Mostly at rest; the active portion is brief (~1–1.5 s) and gentle.
 
-1. **Rest** — neuron at the calm base colour, trace flat.
-2. **Input** — a bright pulse appears at the dendrite tips.
-3. **Integrate** — the pulse converges; the soma briefly brightens.
-4. **Propagate** — the pulse travels rightward along the axon.
-5. **Fire** — the AP waveform rises to a peak at the axon terminal.
-6. **Decay** — the AP settles back to flat; brightness fades to rest. Hold, then
+1. **Rest** - neuron at the calm base colour, trace flat.
+2. **Input** - a bright pulse appears at the dendrite tips.
+3. **Integrate** - the pulse converges; the soma briefly brightens.
+4. **Propagate** - the pulse travels rightward along the axon.
+5. **Fire** - the AP waveform rises to a peak at the axon terminal.
+6. **Decay** - the AP settles back to flat; brightness fades to rest. Hold, then
    repeat.
 
 **Colour (two-tone).** Neuron body in the existing calm pink (`#ff6fb5`, the
@@ -92,7 +92,7 @@ one-line change.) Two-tone is free: `_crest_text(rows)` already renders multiple
 
 ## Architecture
 
-### `scripts/ui.py` — the neuron crest renderer
+### `scripts/ui.py` - the neuron crest renderer
 
 Replace the static brain (`_BRAIN_FULL/_COMPACT/_MINI`, `_build_brain`, `_BRAINS`,
 `pick_brain`) and delete the dev tool `scripts/_brain_art_gen.py`. Add a
@@ -102,11 +102,11 @@ Replace the static brain (`_BRAIN_FULL/_COMPACT/_MINI`, `_build_brain`, `_BRAINS
   an ordered **conduction path** (dendrite tip → soma → axon terminal, as a list of
   cell positions so the pulse can be placed at `path[int(phase·len)]`), and the
   **spike anchor** (where the AP waveform draws).
-- `neuron_frame(tier, phase) -> rows` — returns built rows (each a list of
+- `neuron_frame(tier, phase) -> rows` - returns built rows (each a list of
   `(style, segment)` fragments, exactly what `_crest_text` consumes). It starts
   from the rest pose, overlays the bright pulse at the phase position, and grows
   the AP waveform by phase. `phase` at/within the rest band returns the rest pose.
-- `pick_neuron(cols, rows, reserve) -> tier_id | None` — same fit math as the
+- `pick_neuron(cols, rows, reserve) -> tier_id | None` - same fit math as the
   current `_pick`, but returns **which tier** fits (since the rows now depend on
   phase) rather than baked rows. `None` ⇒ hide the crest.
 - A convenience for static contexts (fallback menu, Welcome, tests):
@@ -116,7 +116,7 @@ Procedural (phase-driven) rather than dozens of hand-authored frames: smoother
 travel, no combinatorial art across 3 tiers × N frames, and a single source of
 truth for the rest pose.
 
-### `scripts/menu_app.py` — `CrestWidget` gains a phase + timer
+### `scripts/menu_app.py` - `CrestWidget` gains a phase + timer
 
 - `CrestWidget` keeps the **chosen tier** (set by `fit()` on resize via
   `pick_neuron`) and a `phase` float.
@@ -127,10 +127,10 @@ truth for the rest pose.
 - `animate` **off** ⇒ no timer; render the rest pose once.
 - Pause/stop the timer when the widget is hidden (collapsed) or during
   `suspend()`; resume on return.
-- This is the **only** crest swap — the shield (`ui.pick_logo`, `#wcrest`, Help
+- This is the **only** crest swap - the shield (`ui.pick_logo`, `#wcrest`, Help
   "About") is untouched.
 
-### Config — an `animate` flag
+### Config - an `animate` flag
 
 - Add `animate: bool` (default `True`) to `.si_menu.json`, plumbed through the
   controller alongside `theme` / `seen_welcome` / `use_docker`
@@ -142,24 +142,24 @@ truth for the rest pose.
 ### Legacy fallback
 
 `ui.dashboard_menu()` (prompt_toolkit / typed) renders `neuron_rest(tier)` for the
-top crest — same rest pose as the Textual path, no animation.
+top crest - same rest pose as the Textual path, no animation.
 
 ## Build approach
 
 The art is the hard part, so the build **starts with a candidate-generation
 workflow** before any wiring:
 
-1. **Generate** — several agents each draft a neuron rest-pose + AP-waveform style
+1. **Generate** - several agents each draft a neuron rest-pose + AP-waveform style
    across the 3 tiers (Braille / block / box-drawing line-art), honouring the
    equal-row-width and mini-legibility constraints.
-2. **Render** — each candidate is rendered at true terminal scale (and a fired
+2. **Render** - each candidate is rendered at true terminal scale (and a fired
    frame), captured as text.
-3. **Judge** — a panel scores each on: reads instantly as a *firing neuron*,
+3. **Judge** - a panel scores each on: reads instantly as a *firing neuron*,
    legible at mini, clean two-tone, equal row widths. Pick the winner (graft the
    best dendrite/soma/axon/AP ideas from runners-up).
 
 Then wire the renderer + `CrestWidget` timer + config flag + fallback, and update
-tests. (Implementation phase — after this spec is approved and a plan is written.)
+tests. (Implementation phase - after this spec is approved and a plan is written.)
 
 ## Testing (`tests/test_menu_app.py`, Textual Pilot)
 
@@ -170,7 +170,7 @@ Update the existing crest tests and add animation coverage:
 - **Retarget** `test_dashboard_crest_is_the_brain` → the dashboard crest is the
   neuron (rest pose) at a tall size.
 - **Keep** `test_welcome_screen_shows_pitt_shield` and
-  `test_help_about_topic_shows_pitt_shield` (shield unchanged) — these guard that
+  `test_help_about_topic_shows_pitt_shield` (shield unchanged) - these guard that
   the swap did not disturb the shield.
 - **Add**: `neuron_frame(tier, phase)` returns equal-width rows with both the body
   and spark styles present at the fire phase; rest phase contains no spark style.

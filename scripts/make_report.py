@@ -1,4 +1,4 @@
-"""Thin shim — the report flow now lives in the root SpikeInterface_Menu.py.
+"""Thin shim - the report flow now lives in the root SpikeInterface_Menu.py.
 
     uv run python scripts/make_report.py                 # builds + opens the report
     uv run python scripts/make_report.py --data-dir DIR

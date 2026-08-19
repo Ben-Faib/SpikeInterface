@@ -3,8 +3,8 @@
 The dashboard (F2, the researcher dashboard) is a STATE block (#databar DATA +
 PROBE, #sortbar the active sorter, #results the takeaway from the saved sort) over
 ONE workflow list (#actions) holding every function the workbench has as a
-labelled row carrying its own key, grouped into three stages — GET DATA · SORT &
-CURATE · LOOK & SHARE — with the LAST RESULT line (#resultbar) and a two-row
+labelled row carrying its own key, grouped into three stages - GET DATA · SORT &
+CURATE · LOOK & SHARE - with the LAST RESULT line (#resultbar) and a two-row
 footer below.
 
 These tests exercise the requirements that motivated the redesign: every function
@@ -79,7 +79,7 @@ async def test_arrows_step_over_the_stage_headings(make_app):
 
 
 async def test_page_keys_never_drop_the_cursor_on_a_heading(make_app):
-    # PageUp clamps the OptionList to option 0 — the GET DATA heading, disabled —
+    # PageUp clamps the OptionList to option 0 - the GET DATA heading, disabled -
     # which left the highlight None and Enter dead (face2 review, finding 1).
     # NavList lands on the nearest enabled row instead, in both directions.
     app = make_app(present=True)
@@ -131,7 +131,7 @@ async def test_sortbar_shows_active_and_readiness(make_app):
 
 async def test_action_title_never_restates_active_sorter(make_app):
     # One fact, one place (§1.1, D1 review #5): the SORT banner is the active
-    # sorter's only at-rest home — the pane title never restates it. (T2: the
+    # sorter's only at-rest home - the pane title never restates it. (T2: the
     # old exact-string match pinned the title's wording, not this contract.)
     app = make_app()
     async with app.run_test(size=(110, 40)) as pilot:
@@ -171,7 +171,7 @@ async def test_missing_data_dims_actions(make_app):
         assert "✗" in app.query_one("#databar").render().plain
         # The rows that need a recording are dimmed and say so IN PLACE of their
         # hint; the rows that don't (data files, probe, install, sorter choice,
-        # settings, triage, reopen) stay live — the workflow still has doors.
+        # settings, triage, reopen) stay live - the workflow still has doors.
         ol = app.query_one("#actions", OptionList)
         state = {ol.get_option_at_index(i).id: ol.get_option_at_index(i).disabled
                  for i in range(ol.option_count)}
@@ -328,7 +328,7 @@ async def test_disabled_action_does_not_run(make_app):
 
 async def test_sort_opens_progress_screen(make_app):
     # Sort now runs IN-UI: the span ChoiceModal first, then (on confirm) a
-    # SortProgressScreen that spawns the sort subprocess — not the old suspend+stdout
+    # SortProgressScreen that spawns the sort subprocess - not the old suspend+stdout
     # _run path. The FakeController.sort_command returns ['true'] so the worker
     # spawns + exits cleanly.
     app = make_app(present=True)
@@ -379,7 +379,7 @@ class _LiveSortScreen(menu_app.SortProgressScreen):
 
 async def test_sort_progress_shows_the_pending_phases_up_front(make_app):
     # D2b: the run announces its whole checklist before doing anything, so the
-    # modal shows what is still coming instead of growing one line at a time —
+    # modal shows what is still coming instead of growing one line at a time -
     # and the phases that never ran vanish when the run ends, rather than sitting
     # there looking queued.
     app = make_app(present=True)
@@ -409,7 +409,7 @@ async def test_sort_progress_shows_the_pending_phases_up_front(make_app):
 
 async def test_sort_progress_renders_summary_card_and_note(make_app):
     # The array/yield headline card shows on the final screen, and a non-fatal
-    # metrics caveat (done.note) renders as a ⚠ line alongside the ✓ success — so a
+    # metrics caveat (done.note) renders as a ⚠ line alongside the ✓ success - so a
     # metrics hiccup never masquerades as a total failure.
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
@@ -428,7 +428,7 @@ async def test_sort_progress_renders_summary_card_and_note(make_app):
         body = screen.query_one("#sortbody").render().plain
         assert "Array / yield summary" in body and "V_pp: 22.9" in body
         # D2: completion renders the RESULT CARD, not a bare Done line. This run
-        # carries a metrics-failure note, so the analyzer is GONE — the card must
+        # carries a metrics-failure note, so the analyzer is GONE - the card must
         # not offer report/GUI chaining (F2), only the close.
         assert "7 units" in body and "3 build report" not in body
         assert "↵ close" in body
@@ -462,7 +462,7 @@ async def test_sort_progress_surfaces_real_error_from_log(make_app, tmp_path):
 async def test_sort_progress_renders_substep_and_detail(make_app):
     # Under the current (▶) phase the screen renders both the named substep
     # (→ name (i/n)) and the latest forwarded sorter step line (→ detail), and they
-    # coexist with the heartbeat spinner — none of them fight. Neuter the worker so
+    # coexist with the heartbeat spinner - none of them fight. Neuter the worker so
     # the screen stays mid-sort (no auto-injected 'done' wipes the live view).
     class _NoRun(menu_app.SortProgressScreen):
         async def _run(self):
@@ -860,7 +860,7 @@ async def test_help_about_topic_shows_pitt_shield(make_app):
 
 # --- PROBE banner -------------------------------------------------------- #
 async def test_probe_banner_shows_active_probe(make_app):
-    # D1: DATA and PROBE share the inputs row — the merged banner shows the active
+    # D1: DATA and PROBE share the inputs row - the merged banner shows the active
     # probe label (contains 'A1x16' for the FakeController default).
     app = make_app()
     async with app.run_test(size=(110, 40)) as pilot:
@@ -1035,7 +1035,7 @@ async def test_sort_chain_keys_noop_while_running(make_app):
         await pilot.pause()
         await pilot.press("3")
         await pilot.pause()
-        assert app.screen is screen       # still up — no chain mid-run
+        assert app.screen is screen       # still up - no chain mid-run
 
 
 async def test_sort_full_bar_yields_to_heartbeat(make_app):
@@ -1064,7 +1064,7 @@ async def test_sort_full_bar_yields_to_heartbeat(make_app):
 
 
 async def test_sort_bar_hides_before_rounding_lies(make_app):
-    # frac 0.996 would round to a displayed "100%" under a running step — the bar
+    # frac 0.996 would round to a displayed "100%" under a running step - the bar
     # must yield before rounding can lie (D2v review F1).
     class _NoRun(menu_app.SortProgressScreen):
         async def _run(self):
@@ -1153,11 +1153,11 @@ def test_result_style_amber_for_warning_message():
 
 
 # ========================================================================== #
-# T2 — journeys: whole flows through the real screens and the real event pipe
+# T2 - journeys: whole flows through the real screens and the real event pipe
 # ========================================================================== #
 
 def _events_argv(tmp_path, events):
-    """argv for a child that speaks the real protocol on stdout — the sort worker
+    """argv for a child that speaks the real protocol on stdout - the sort worker
     parses it exactly as it parses run_sorting.py, so the journey crosses the
     actual subprocess pipe, not a handle_event shortcut."""
     import json
@@ -1259,7 +1259,7 @@ async def test_journey_cancel_mid_sort(make_app):
         assert not isinstance(app.screen, menu_app.SortProgressScreen)
         assert "cancel" in app._last.plain.lower()
         # Cross-platform since D4 (f115015): killpg on POSIX, a taskkill/terminate
-        # fallback on Windows — cancel must never leave the child running anywhere.
+        # fallback on Windows - cancel must never leave the child running anywhere.
         await _wait_until(pilot, lambda: screen._proc.returncode is not None,
                           what="the cancelled child to die")
         assert screen._proc.returncode is not None
@@ -1268,7 +1268,7 @@ async def test_journey_cancel_mid_sort(make_app):
 async def test_journey_failure_card(make_app, tmp_path):
     # A hard crash (non-zero exit, no protocol error event): the red card carries
     # the REAL cause from the captured stderr, the log path as the next step
-    # (§1.7), offers no chaining, and dismisses as a failure — never a success.
+    # (§1.7), offers no chaining, and dismisses as a failure - never a success.
     import sys as _sys
 
     app = make_app(present=True)
@@ -1325,7 +1325,7 @@ async def test_journey_zero_units_amber_reaches_dashboard(make_app, tmp_path):
 
 
 # ========================================================================== #
-# T3 — honesty states (§1.7): every dead-end names its next step
+# T3 - honesty states (§1.7): every dead-end names its next step
 # ========================================================================== #
 
 async def test_reopen_gone_names_next_step(make_app):
@@ -1350,7 +1350,7 @@ async def test_reopen_with_no_result_yet_hints(make_app):
 
 
 async def test_imported_probe_edit_refused_names_next_step(make_app):
-    # P1 handoff: imported probes are view/duplicate/delete-only — Edit must
+    # P1 handoff: imported probes are view/duplicate/delete-only - Edit must
     # refuse with the next step named, never open the geometry-stripping form.
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
@@ -1372,7 +1372,7 @@ async def test_imported_probe_edit_refused_names_next_step(make_app):
 
 async def test_chain_suppression_states_name_why(make_app):
     # When the card withholds report/GUI chaining (analyzer gone), the reason is
-    # ON the card — a silently missing option is a dead-end without a name.
+    # ON the card - a silently missing option is a dead-end without a name.
     class _NoRun(menu_app.SortProgressScreen):
         async def _run(self):
             pass
@@ -1391,7 +1391,7 @@ async def test_chain_suppression_states_name_why(make_app):
         assert "quality metrics failed" in body   # the why, on the card
 
 
-# --- D4: flow modals — informed choices, live validation, honest waits ------ #
+# --- D4: flow modals - informed choices, live validation, honest waits ------ #
 async def test_sort_span_modal_shows_last_duration(make_app):
     app = make_app(present=True)
     app.c.sort_expectations = lambda: {"span": "full", "wall_seconds": 247.0}
@@ -1496,7 +1496,7 @@ async def test_compare_runs_behind_busy_screen(make_app):
 
 
 # =========================================================================== #
-# D5 — the actions-first main screen + the sorter picker (Ben, 2026-08-18)
+# D5 - the actions-first main screen + the sorter picker (Ben, 2026-08-18)
 # =========================================================================== #
 async def _open_picker(pilot, app):
     await pilot.press("t")
@@ -1523,7 +1523,7 @@ async def _pick(pilot, app, row_id):
 
 # --- boot + layout --------------------------------------------------------- #
 async def test_boots_on_the_workflow_list(make_app):
-    # F2: the workflow list IS the screen — borderless, focused on launch, and
+    # F2: the workflow list IS the screen - borderless, focused on launch, and
     # holding EVERY function the workbench has (no sorters pane, no INSPECTING,
     # no separate manage row). The footer carries only the housekeeping that has
     # no row of its own.
@@ -1537,14 +1537,14 @@ async def test_boots_on_the_workflow_list(make_app):
         footer = app.query_one("#footer").render().plain
         for key in ("m sorters", "c colour", "? help", "q quit"):
             assert key in footer
-        # The workflow keys are NOT on the key line any more — they are on rows.
+        # The workflow keys are NOT on the key line any more - they are on rows.
         for gone in ("e params", "p probe", "v verify", "y phy"):
             assert gone not in footer
 
 
 async def test_every_function_is_a_visible_labelled_row(make_app):
     # Decision 1 of the F2 directive: every function is a VISIBLE, LABELED ROW
-    # carrying its own key — nothing hides behind a bare letter on a footer line.
+    # carrying its own key - nothing hides behind a bare letter on a footer line.
     app = make_app(present=True)
     async with app.run_test(size=(80, 24)) as pilot:
         await pilot.pause()
@@ -1564,7 +1564,7 @@ async def test_every_function_is_a_visible_labelled_row(make_app):
 
 async def test_rows_say_what_they_produce(make_app):
     # Decision 1: each row says what it gives you. At the default terminal the
-    # hint is present in full — a hint that cannot fit whole is dropped, never
+    # hint is present in full - a hint that cannot fit whole is dropped, never
     # ellipsised to a fragment.
     app = make_app(present=True)
     async with app.run_test(size=(80, 24)) as pilot:
@@ -1620,7 +1620,7 @@ async def test_d6_section_rules_track_resize(make_app):
 
 
 async def test_d6_resize_under_modal_keeps_dashboard_honest(make_app):
-    # A resize while a modal is up must retier the DASHBOARD, not the modal —
+    # A resize while a modal is up must retier the DASHBOARD, not the modal -
     # the stale-air bug clipped the last action row after Esc (D6 review #2).
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
@@ -1663,7 +1663,7 @@ async def test_d6_databar_probe_stated_once(make_app):
 async def test_dashboard_carries_no_prose_sentence(make_app):
     # Decision 2 of the F2 directive ("the design should just not be full of
     # text"): the sorter's description sentence left the dashboard. It lives in
-    # the picker, where you are actually choosing a sorter — the row that opens
+    # the picker, where you are actually choosing a sorter - the row that opens
     # the picker says what it is FOR, which is the dashboard's whole job.
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
@@ -1689,7 +1689,7 @@ async def test_d6_sortbar_click_opens_picker(make_app):
 
 
 async def test_action_rows_carry_their_own_key_chip(make_app):
-    # Inverse-video key chips on every row — pressable-looking keys, and the key
+    # Inverse-video key chips on every row - pressable-looking keys, and the key
     # printed is the key that runs the row.
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
@@ -1702,7 +1702,7 @@ async def test_action_rows_carry_their_own_key_chip(make_app):
 
 async def test_data_row_carries_the_folder_chip(make_app):
     # "data files/folder" is ONE row with two doors: `d` says what loaded, `f`
-    # points the workbench elsewhere — and the second key is drawn on the row.
+    # points the workbench elsewhere - and the second key is drawn on the row.
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
@@ -1727,7 +1727,7 @@ async def test_a_key_moves_the_cursor_to_its_row(make_app):
 
 async def test_the_ladder_yields_air_then_chrome_then_state(make_app):
     # The yield law, rewritten for F2: whitespace goes first, then identity
-    # chrome, then state — and the fourteen workflow rows never yield. Walking
+    # chrome, then state - and the fourteen workflow rows never yield. Walking
     # the window down must never take a row away before it has taken air.
     app = make_app(present=True)
     async with app.run_test(size=(100, 40)) as pilot:
@@ -1790,7 +1790,7 @@ async def test_results_section_only_with_saved_sort(make_app):
 
 async def test_results_names_a_curated_result(make_app):
     """W1 slice 2: when a curated result exists it is what the report shows, so
-    RESULTS must say so — the numbers must never read as raw sorter output."""
+    RESULTS must say so - the numbers must never read as raw sorter output."""
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
@@ -1817,7 +1817,7 @@ async def test_results_names_a_curated_result(make_app):
         app.c.infos[app.c.active_idx]["curated"] = {
             "has_curated": True, "has_record": False, "stale": True,
             "counts": {"splits": 0, "merges": 0, "labels": 0, "removed": 0, "total": 0},
-            "line": "curated result — its curation record is missing; provenance unknown"}
+            "line": "curated result - its curation record is missing; provenance unknown"}
         app._render_results()
         await pilot.pause()
         text = app.query_one("#results").render().plain
@@ -1857,7 +1857,7 @@ async def test_default_terminal_shows_the_whole_workflow(make_app):
 
 
 async def test_painted_rows_match_the_budget(make_app):
-    # The budget counts rows its own painter produces — a row that wrapped into
+    # The budget counts rows its own painter produces - a row that wrapped into
     # two painted lines (Textual re-wraps option content by its own rules) would
     # make the yield law guess. Pin the two numbers together at real widths.
     for size in [(110, 40), (100, 30), (80, 24), (72, 26), (60, 24)]:
@@ -1876,7 +1876,7 @@ async def test_tiny_never_clips_actions(make_app):
             await pilot.pause()
             r = app.query_one("#actions").region
             assert r.intersection(app.screen.region).height > 0
-            # Every function is still REACHABLE — the list scrolls, it never drops
+            # Every function is still REACHABLE - the list scrolls, it never drops
             # a row to fit.
             assert app.query_one("#actions", OptionList).option_count >= 14
 
@@ -2069,7 +2069,7 @@ async def test_x_on_nothing_to_delete_hints(make_app):
 
 # --- D5 review regressions -------------------------------------------------- #
 async def test_picker_desc_footer_actually_paints(make_app):
-    # F1: height:1 + padding-top:1 left ZERO content rows — the desc rendered in
+    # F1: height:1 + padding-top:1 left ZERO content rows - the desc rendered in
     # memory but never painted. Pin the painted region, not render().plain.
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
@@ -2122,7 +2122,7 @@ async def test_picker_gpu_pick_gives_honest_hint(make_app):
         ol, rows = _picker_rows(picker)
         gi, _ = rows["__grp_gpu__"]
         ol.highlighted = gi
-        await pilot.press("enter")        # expand — lands on the first member (F6)
+        await pilot.press("enter")        # expand - lands on the first member (F6)
         await pilot.pause()
         ol, rows = _picker_rows(picker)
         assert ol.get_option_at_index(ol.highlighted).id == "kilosort4"
@@ -2134,10 +2134,10 @@ async def test_picker_gpu_pick_gives_honest_hint(make_app):
 
 
 # ========================================================================== #
-# W1 slice 4 — in-TUI unit triage: label -> record -> back, and every refusal
+# W1 slice 4 - in-TUI unit triage: label -> record -> back, and every refusal
 # ========================================================================== #
 STALE_RECORD = ("this curation record was written against a different tridesclous2 "
-                "sort — units: record 12, on disk 18. Unit ids are not stable across "
+                "sort - units: record 12, on disk 18. Unit ids are not stable across "
                 "re-sorts, so replaying these decisions would curate the wrong units. "
                 "Next step: write a fresh record against the sort now in "
                 "outputs/tridesclous2/.")
@@ -2172,7 +2172,7 @@ async def test_journey_triage_label_persists_and_relaunch_shows_it(make_controll
         assert units.highlighted == 1
 
         # The cursor advanced to the SECOND row of the strong-first order, which
-        # is unit 3 — not unit 1. The list is the rollup's ranking, not unit ids.
+        # is unit 3 - not unit 1. The list is the rollup's ranking, not unit ids.
         await pilot.press("n")                       # second strong unit -> noise
         await pilot.pause()
         assert c.labelled[-1] == ("tridesclous2", 3, "noise")
@@ -2212,7 +2212,7 @@ async def test_triage_card_shows_the_evidence_and_is_nan_honest(make_app):
         # how separate it looks, both decided by the controller's rollup.
         assert "quality rule" in card and "strong" in card
         assert "isolation" in card and "clean" in card
-        # The cursor is the detail request: moving it repaints the card — onto the
+        # The cursor is the detail request: moving it repaints the card - onto the
         # SECOND strong unit (unit 3), because the list is ranked, not id-ordered.
         await pilot.press("down")
         await pilot.pause()
@@ -2221,7 +2221,7 @@ async def test_triage_card_shows_the_evidence_and_is_nan_honest(make_app):
 
 async def test_journey_takeaway_ranks_triage_strong_first_and_shows_the_contact(make_app):
     """The face slice's journey: the dashboard states the takeaway rather than a
-    raw count, and triage opens on the strong units with their contact visible —
+    raw count, and triage opens on the strong units with their contact visible -
     both from the ONE rollup, so the two surfaces cannot disagree."""
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
@@ -2229,7 +2229,7 @@ async def test_journey_takeaway_ranks_triage_strong_first_and_shows_the_contact(
         results = app.query_one("#results").render().plain
         rollup = app.c.infos[app.c.active_idx]["rollup"]
         # The head counts STRONG units (not every rule pass), and the site line is
-        # sort_summary's own sentence — the report's headline comes from the same
+        # sort_summary's own sentence - the report's headline comes from the same
         # split fields, so the two surfaces cannot diverge.
         assert f"{rollup['n_strong']} strong units of {rollup['n_units']}" in results
         assert rollup["site_line"] in results
@@ -2315,7 +2315,7 @@ async def test_triage_key_row_never_clips(make_app):
 
 
 async def test_triage_reachable_from_the_results_section(make_app):
-    """The entry point: the ` u  triage` chip on RESULTS — key and mouse."""
+    """The entry point: the ` u  triage` chip on RESULTS - key and mouse."""
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()

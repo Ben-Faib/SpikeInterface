@@ -1,6 +1,6 @@
 """Unit tests for the pure download-progress module (scripts/download_stats.py).
 
-No Textual / Docker imports — timestamps are injected so the clock is deterministic.
+No Textual / Docker imports - timestamps are injected so the clock is deterministic.
 """
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ def test_speed_does_not_spike_on_a_completed_layer_burst():
 
 def test_speed_none_until_min_span():
     """Two samples a few milliseconds apart must not report a divide-by-near-zero
-    speed — wait until the window spans a meaningful interval."""
+    speed - wait until the window spans a meaningful interval."""
     s = ds.DownloadStats()
     s.update(0, 1_000_000, now=0.0)
     s.update(10_000, 1_000_000, now=0.05)   # 10 KB in 50 ms -> 200 KB/s instantaneous
@@ -56,7 +56,7 @@ def test_speed_none_until_min_span():
 def test_layer_count_progress_yields_estimated_eta():
     """Extraction reports no bytes, only completed-layer counts. The same window
     machinery must turn the layer-completion rate into an ETA so the extract phase
-    isn't a mystery — e.g. 9 layers, 3 done over 3 s -> ~6 s left."""
+    isn't a mystery - e.g. 9 layers, 3 done over 3 s -> ~6 s left."""
     s = ds.DownloadStats()
     s.update(0, 9, now=0.0)
     s.update(1, 9, now=1.0)
@@ -107,10 +107,10 @@ def test_phase_change_resets_speed_window_no_negative():
 
 def test_formatters():
     assert ds.fmt_bytes(423 * 1024 * 1024).endswith("MB")
-    assert ds.fmt_bytes(None) == "—"
+    assert ds.fmt_bytes(None) == "-"
     assert ds.fmt_speed(2.3 * 1024 * 1024).endswith("MB/s")
-    assert ds.fmt_speed(None) == "—"
+    assert ds.fmt_speed(None) == "-"
     assert ds.fmt_clock(38) == "0:38"
     assert ds.fmt_clock(72) == "1:12"
     assert ds.fmt_clock(3661) == "1:01:01"
-    assert ds.fmt_clock(None) == "—"
+    assert ds.fmt_clock(None) == "-"

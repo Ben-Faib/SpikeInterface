@@ -132,7 +132,7 @@ def test_action_explain_sort_shows_docker_block(monkeypatch, tmp_path):
     monkeypatch.setattr(reg, "installed", lambda: ["tridesclous2"])
     monkeypatch.setattr(reg, "available", lambda: sorted(["tridesclous2", "mountainsort5"]))
     # Daemon was up when the sorter was picked (runnable() probes it with refresh=False),
-    # then went down — active_blocked_on_docker re-probes with refresh=True. Model both:
+    # then went down - active_blocked_on_docker re-probes with refresh=True. Model both:
     # available unless a fresh re-probe is requested.
     monkeypatch.setattr(reg, "docker_available", lambda *a, **k: not k.get("refresh", False))
     monkeypatch.setattr(report, "_gather", lambda *a, **k: ({}, []))
@@ -341,7 +341,7 @@ def test_probe_match_uses_neural_count(monkeypatch, tmp_path):
     c = M.MenuController(args, {"use_docker": False})
 
     assert c.recording_channels() == 16, (
-        "expected neural count 16, got something else — "
+        "expected neural count 16, got something else - "
         "recording_channels() is not parsing the neural count from the detail string")
     assert c.active_probe_info()["match"] == "fits", (
         "default nnx-a1x16 (16 contacts) should 'fit' 16 neural channels, not 'mismatch'")
@@ -500,7 +500,7 @@ def test_report_command_argv(monkeypatch, tmp_path):
 
 
 def test_report_cli_speaks_the_protocol(tmp_path):
-    # The report's json mode emits protocol-pure stdout ending in done/error —
+    # The report's json mode emits protocol-pure stdout ending in done/error -
     # even on an empty data dir (honest-skip report, rc 0).
     import subprocess
     import sys as _sys
@@ -588,9 +588,9 @@ def test_triage_state_reads_the_evidence_off_disk(monkeypatch, tmp_path):
     assert by_unit[0]["n_spikes"] is None
     assert by_unit[0]["strong"] is False
     assert by_unit[0]["verdict_word"] == "passes the rule · spike count unknown"
-    assert by_unit[0]["isolation"] == "spike count unknown — isolation not judged"
+    assert by_unit[0]["isolation"] == "spike count unknown - isolation not judged"
     # curation.state() is the one source for what is being shown.
-    assert st["line"] == "raw sorter output — no curation applied"
+    assert st["line"] == "raw sorter output - no curation applied"
     assert st["stale"] is False and st["stale_reason"] == ""
     assert f"--sorter {TRIAGE_SORTER}" in st["apply_hint"]
 
@@ -673,7 +673,7 @@ def test_every_row_key_is_bound_to_that_row():
     """The dashboard's promise is that the key printed on a row runs that row.
 
     The row's key lives in the controller's action table and the binding lives in
-    the view's BINDINGS — two lists that must agree, or the screen lies. This
+    the view's BINDINGS - two lists that must agree, or the screen lies. This
     pins them together (and the workflow-key set against the stage bins).
     """
     import menu_app
@@ -689,7 +689,7 @@ def test_every_row_key_is_bound_to_that_row():
             f"{hotkey!r} runs {bindings[bkey]!r}, not {key!r}")
     # `f` is the second door on the Data files row; it must stay bound too.
     assert bindings.get("f") == "choose_folder"
-    # The historical number keys keep their meanings — docs/WORKFLOW.md, the help
+    # The historical number keys keep their meanings - docs/WORKFLOW.md, the help
     # and every in-app hint name them, so a remap is a silent lie everywhere.
     numbers = {hk: k for k, _t, _h, _n, _s, hk in M._ACTIONS if hk.isdigit()}
     assert numbers == {"1": "explore", "2": "sort", "3": "report",
@@ -704,6 +704,6 @@ def test_actions_bin_into_the_three_workflow_stages():
     assert stages["sort"] == ["picker", "params", "sort", "triage", "phy"]
     assert stages["share"] == ["report", "gui", "compare", "reopen"]
     assert stages["chrome"] == ["manage", "theme", "help", "quit"]
-    # Every hotkey is unique — two rows claiming one key is a lie on one of them.
+    # Every hotkey is unique - two rows claiming one key is a lie on one of them.
     hotkeys = [hk for _k, _t, _h, _n, _s, hk in M._ACTIONS]
     assert len(hotkeys) == len(set(hotkeys))

@@ -1,7 +1,7 @@
 """Tests for the Phy round trip: export → a curator's verdicts → back in the record.
 
 The import half is pure Python (csv + json), so all of it runs on a fake Phy
-folder in a tmp dir — no SpikeInterface, no recording. What the real export
+folder in a tmp dir - no SpikeInterface, no recording. What the real export
 writes is fixed by SI's exporter and verified structurally on the real sort; what
 these pin is the part this repo owns: which file is the verdict, how Phy's
 cluster_id maps back to a unit id, the refusals that stop verdicts landing on the
@@ -41,7 +41,7 @@ def _write_tsv(path, header, rows):
 def _sort_on_disk(tmp_path, labels=None, run=RUN_ID):
     """A saved sort + its record, as curation.py's own CLI would leave them.
 
-    In the RUN STORE by default — a run directory under ``outputs/<sorter>/runs/``
+    In the RUN STORE by default - a run directory under ``outputs/<sorter>/runs/``
     with the record and (where a test builds one) the curated result inside it,
     which is what a post-W2 sort produces. ``run=None`` writes the pre-store
     layout instead, for the tests that claim to exercise that.
@@ -123,7 +123,7 @@ def test_import_maps_phy_cluster_ids_back_to_unit_ids(tmp_path):
     _phy_folder(tmp_path, groups={1: "good", 3: "noise"})
     result = curation.import_phy_labels(SORTER, root=tmp_path)
 
-    # cluster 1 is unit 2 and cluster 3 is unit 7 — NOT units 1 and 3.
+    # cluster 1 is unit 2 and cluster 3 is unit 7 - NOT units 1 and 3.
     assert [(e["unit"], e["label"]) for e in result["imported"]] == [(2, "good"),
                                                                     (7, "noise")]
     record = curation.load_record(SORTER, tmp_path)
@@ -134,7 +134,7 @@ def test_import_maps_phy_cluster_ids_back_to_unit_ids(tmp_path):
 
 def test_the_round_trip_lands_inside_the_run_it_curates(tmp_path):
     """Post-W2 the export, the record and the curated result all live in the run
-    directory, not beside the sorter — so a later sort in its own run directory
+    directory, not beside the sorter - so a later sort in its own run directory
     cannot leave any of them attached to a sort they do not describe."""
     paths = _sort_on_disk(tmp_path)
     run = tmp_path / "outputs" / SORTER / "runs" / RUN_ID
@@ -226,7 +226,7 @@ def test_dry_run_reports_without_writing(tmp_path):
 
 
 def test_import_is_pure_python(tmp_path):
-    """The record's read/write path never pays for SpikeInterface — the view
+    """The record's read/write path never pays for SpikeInterface - the view
     process and the coming TUI triage slice depend on that."""
     _sort_on_disk(tmp_path)
     _phy_folder(tmp_path, groups={0: "good"})
@@ -260,7 +260,7 @@ def test_import_refuses_a_curated_export(tmp_path):
 
     with pytest.raises(RuntimeError) as e:
         curation.import_phy_labels(SORTER, folder=d, root=tmp_path)
-    # The curated ids are not the record's ids — say so, and name the way round it.
+    # The curated ids are not the record's ids - say so, and name the way round it.
     assert "CURATED" in str(e.value) and "--raw" in str(e.value)
 
 
@@ -305,13 +305,13 @@ def test_import_refuses_when_there_is_no_folder(tmp_path):
 # --------------------------------------------------------------------------- #
 def test_seeding_maps_labels_onto_phy_cluster_ids(tmp_path):
     d = _phy_folder(tmp_path)
-    # Unit 5 is cluster 2, unit 7 is cluster 3 — the index, not the id.
+    # Unit 5 is cluster 2, unit 7 is cluster 3 - the index, not the id.
     n = curation._seed_phy_labels(d, {5: "noise", 7: "unsure"})
 
     assert n == 2
     groups = dict(curation._read_tsv(d / curation.PHY_GROUP_FILE))
     assert groups == {"0": "unsorted", "1": "unsorted", "2": "noise",
-                      # "unsure" has no Phy group — it travels in cluster_quality.tsv
+                      # "unsure" has no Phy group - it travels in cluster_quality.tsv
                       "3": "unsorted"}
     quality = dict(curation._read_tsv(d / curation.PHY_QUALITY_FILE))
     assert quality["2"] == "noise" and quality["3"] == "unsure"
@@ -336,7 +336,7 @@ def test_a_seeded_export_round_trips_unchanged(tmp_path):
 # --------------------------------------------------------------------------- #
 async def test_phy_runs_from_its_manage_letter(make_app):
     """``y`` dispatches the export through the controller, like the other MANAGE
-    letters — under the headless driver suspend() is unsupported, so this also
+    letters - under the headless driver suspend() is unsupported, so this also
     pins that the fallback in-place run does not crash the app."""
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
@@ -348,7 +348,7 @@ async def test_phy_runs_from_its_manage_letter(make_app):
 
 
 async def test_phy_is_blocked_without_the_recording(make_app):
-    """The export copies the preprocessed traces Phy needs, so it needs the data —
+    """The export copies the preprocessed traces Phy needs, so it needs the data -
     with none present it must guide rather than dispatch."""
     app = make_app(present=False)
     async with app.run_test(size=(110, 40)) as pilot:
@@ -397,7 +397,7 @@ def test_export_out_dir_refuses_a_nonempty_stranger(tmp_path):
 
 # --------------------------------------------------------------------------- #
 # Blank anchors refuse on BOTH sides of the trip (a blank compares as
-# "matches everything" — the exact failure the anchor exists to prevent)
+# "matches everything" - the exact failure the anchor exists to prevent)
 # --------------------------------------------------------------------------- #
 def test_import_refuses_a_blank_anchored_manifest(tmp_path):
     _sort_on_disk(tmp_path)

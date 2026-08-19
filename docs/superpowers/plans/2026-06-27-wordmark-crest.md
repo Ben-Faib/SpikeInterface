@@ -10,7 +10,7 @@
 
 ## Global Constraints
 
-- **Glyph discipline:** wordmark art uses ONLY the full block `█` (U+2588) and spaces — same rule as the shield, so it aligns in any monospace font. No `●`, quadrant blocks, or ambiguous-width glyphs.
+- **Glyph discipline:** wordmark art uses ONLY the full block `█` (U+2588) and spaces - same rule as the shield, so it aligns in any monospace font. No `●`, quadrant blocks, or ambiguous-width glyphs.
 - **Equal-width rows:** every row of a tier must be the same length (the picker and render assume rectangular grids).
 - **Themeable:** the wordmark colour is applied at *render* time from the live accent (`self.app._accent`), never baked at module load.
 - **No SpikeInterface import** in `menu_app.py` or `ui.py` at import time (unchanged invariant).
@@ -29,9 +29,9 @@ Add the new wordmark infrastructure alongside (not yet replacing) the neuron art
 **Interfaces:**
 - Consumes: `ui._pick(ladder, cols, rows, reserve)` (existing).
 - Produces:
-  - `ui._WORDMARK_FULL: list[str]`, `ui._WORDMARK_COMPACT: list[str]` — equal-width rows of `█`/space.
-  - `ui.pick_wordmark(cols, rows=None, reserve=0) -> list[str]` — largest tier that fits, or `[]`.
-  - `ui.wordmark_rows(tier: list[str], accent: str) -> list[list[tuple[str, str]]]` — per-row `(style, segment)` fragments; non-space runs styled `accent`, space runs unstyled.
+  - `ui._WORDMARK_FULL: list[str]`, `ui._WORDMARK_COMPACT: list[str]` - equal-width rows of `█`/space.
+  - `ui.pick_wordmark(cols, rows=None, reserve=0) -> list[str]` - largest tier that fits, or `[]`.
+  - `ui.wordmark_rows(tier: list[str], accent: str) -> list[list[tuple[str, str]]]` - per-row `(style, segment)` fragments; non-space runs styled `accent`, space runs unstyled.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -69,7 +69,7 @@ def test_wordmark_rows_colours_blocks_with_accent():
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_menu_app.py -k wordmark -q`
-Expected: FAIL — `AttributeError: module 'ui' has no attribute '_WORDMARK_FULL'`.
+Expected: FAIL - `AttributeError: module 'ui' has no attribute '_WORDMARK_FULL'`.
 
 - [ ] **Step 3: Add the wordmark art + helpers to `scripts/ui.py`**
 
@@ -77,7 +77,7 @@ Insert immediately **after** the `pick_neuron` function (currently ends ~line 31
 
 ```python
 # --------------------------------------------------------------------------- #
-# Block-letter "SPIKE" wordmark — the v2 dashboard's static top crest (replaces
+# Block-letter "SPIKE" wordmark - the v2 dashboard's static top crest (replaces
 # the firing neuron). Block letters in width-safe glyphs ONLY (full block █ +
 # spaces, same discipline as the shield). Two responsive tiers; below compact the
 # crest hides and the always-present title rule carries the branding. Unlike the
@@ -85,14 +85,14 @@ Insert immediately **after** the `pick_neuron` function (currently ends ~line 31
 # RENDER time from the live accent (wordmark_rows), so it follows the theme.
 # Preview with `uv run python scripts/_wordmark_preview.py`.
 # --------------------------------------------------------------------------- #
-_WORDMARK_FULL = [                    # 19 cols x 5 rows — block "SPIKE"
+_WORDMARK_FULL = [                    # 19 cols x 5 rows - block "SPIKE"
     "███ ███ ███ █ █ ███",
     "█   █ █  █  ██  █  ",
     "███ ███  █  █   ███",
     "  █ █    █  ██  █  ",
     "███ █   ███ █ █ ███",
 ]
-_WORDMARK_COMPACT = ["S P I K E"]     # 9 cols x 1 row — letter-spaced caps fallback
+_WORDMARK_COMPACT = ["S P I K E"]     # 9 cols x 1 row - letter-spaced caps fallback
 
 _WORDMARKS = [
     (len(_WORDMARK_FULL[0]), len(_WORDMARK_FULL), _WORDMARK_FULL),
@@ -102,7 +102,7 @@ _WORDMARKS = [
 
 def _encode_wordmark_row(line, accent):
     """Run-length-merge a row into (style, segment) fragments: non-space runs get
-    ``accent``, space runs are unstyled — the same row shape _build_logo produces,
+    ``accent``, space runs are unstyled - the same row shape _build_logo produces,
     so menu_app._crest_text renders the wordmark unchanged."""
     frags, i, n = [], 0, len(line)
     while i < n:
@@ -121,7 +121,7 @@ def wordmark_rows(tier, accent):
 
 
 def pick_wordmark(cols, rows=None, reserve=0):
-    """Largest wordmark tier (full -> compact -> none) that fits — same fit rules
+    """Largest wordmark tier (full -> compact -> none) that fits - same fit rules
     as pick_logo. Returns the tier (list[str], truthy) or [] when none fits."""
     return _pick(_WORDMARKS, cols, rows, reserve)
 ```
@@ -150,9 +150,9 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
   - constants `_CREST_FPS` / `_CREST_CYCLE_S` (~lines 93-94)
   - `Binding("m", "toggle_motion", ...)` (~line 1407)
   - `action_toggle_motion` (~line 2037-2039)
-  - `_after_theme` (~lines 2273-2284) — add a relayout so the crest recolours
-  - `ControllerProtocol` (~lines 117, 123) — remove `animate` / `set_animate`
-- Test: `tests/test_menu_app.py` — replace the neuron Pilot tests (~lines 1057-1105)
+  - `_after_theme` (~lines 2273-2284) - add a relayout so the crest recolours
+  - `ControllerProtocol` (~lines 117, 123) - remove `animate` / `set_animate`
+- Test: `tests/test_menu_app.py` - replace the neuron Pilot tests (~lines 1057-1105)
 
 **Interfaces:**
 - Consumes: `ui.pick_wordmark`, `ui.wordmark_rows` (Task 1); `self.app._accent` (existing on `SpikeMenuApp`); `menu_app._crest_text` (existing).
@@ -229,14 +229,14 @@ class CrestWidget(Static):
         self._repaint()
 
     def _tier_fragments(self):
-        """Flat list of the current (style, segment) fragments — a test seam and
+        """Flat list of the current (style, segment) fragments - a test seam and
         the source for _repaint."""
         if self._tier is None:
             return []
         accent = getattr(self.app, "_accent", "")
         return [frag for row in ui.wordmark_rows(self._tier, accent) for frag in row]
 
-    # NB: deliberately NOT named ``_render`` — that collides with Textual's
+    # NB: deliberately NOT named ``_render`` - that collides with Textual's
     # ``Widget._render`` (the layout engine calls it expecting a Visual).
     def _repaint(self) -> None:
         if self._tier is None:
@@ -254,7 +254,7 @@ _CREST_FPS = 6
 _CREST_CYCLE_S = 6.0
 ```
 
-(Keep `SHIELD_RESERVE = 24` at line 87 — `CrestWidget.fit` still uses it as the default.)
+(Keep `SHIELD_RESERVE = 24` at line 87 - `CrestWidget.fit` still uses it as the default.)
 
 - [ ] **Step 5: Remove the `m` motion binding and its action**
 
@@ -325,8 +325,8 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 Now that nothing references the neuron, delete it.
 
 **Files:**
-- Modify: `scripts/ui.py` — remove the neuron block (~lines 176-312: `NEURON_BODY` … `pick_neuron`)
-- Test: `tests/test_menu_app.py` — remove the neuron unit tests (~lines 1031-1054)
+- Modify: `scripts/ui.py` - remove the neuron block (~lines 176-312: `NEURON_BODY` … `pick_neuron`)
+- Test: `tests/test_menu_app.py` - remove the neuron unit tests (~lines 1031-1054)
 
 - [ ] **Step 1: Delete the neuron unit tests**
 
@@ -350,7 +350,7 @@ and `_pick`/`pick_logo` below.
 - [ ] **Step 3: Verify nothing else imports the neuron symbols**
 
 Run: `grep -rn "neuron\|NEURON\|pick_neuron" scripts/ tests/`
-Expected: only the new `_wordmark_preview.py` comment (Task 4) or nothing — NO hits in
+Expected: only the new `_wordmark_preview.py` comment (Task 4) or nothing - NO hits in
 `ui.py`, `menu_app.py`, or the test files. If any remain, remove them.
 
 - [ ] **Step 4: Run the full ui/menu test module**
@@ -372,9 +372,9 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ### Task 4: Remove the `animate` flag from the real controller + fake controller + controller tests
 
 **Files:**
-- Modify: `SpikeInterface_Menu.py` — `self.animate` (~698), `set_animate` (~739-743)
-- Modify: `tests/conftest.py` — `self.animate` (~49), `set_animate` (~156-158)
-- Test: `tests/test_menu_controller.py` — remove the 3 animate tests (~244-261)
+- Modify: `SpikeInterface_Menu.py` - `self.animate` (~698), `set_animate` (~739-743)
+- Modify: `tests/conftest.py` - `self.animate` (~49), `set_animate` (~156-158)
+- Test: `tests/test_menu_controller.py` - remove the 3 animate tests (~244-261)
 
 - [ ] **Step 1: Remove the animate controller tests**
 
@@ -400,7 +400,7 @@ and the method ~739-743:
         return self.animate
 ```
 
-(Leave `_load_config`/`_save_config` themselves intact — a stale `animate` key in an
+(Leave `_load_config`/`_save_config` themselves intact - a stale `animate` key in an
 existing `.si_menu.json` is simply ignored.)
 
 - [ ] **Step 3: Remove `animate` from the fake controller**
@@ -503,8 +503,8 @@ A **static block-letter "SPIKE" wordmark** sits atop the dashboard, drawn by
 `CrestWidget` (`ui.pick_wordmark`/`ui.wordmark_rows`/`ui._WORDMARK_*`): the letters
 in width-safe glyphs only (full block `█` + spaces, the same discipline as the
 shield), picking the largest tier (full 5-row → compact `S P I K E` one-liner →
-hidden) that fits the live window. It is **not animated** — painted once and
-re-painted on resize/theme change — and is coloured at render time from the live
+hidden) that fits the live window. It is **not animated** - painted once and
+re-painted on resize/theme change - and is coloured at render time from the live
 accent, so it follows the colour theme. Preview it with
 `scripts/_wordmark_preview.py`.
 ```

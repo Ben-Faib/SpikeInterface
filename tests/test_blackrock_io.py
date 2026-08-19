@@ -2,10 +2,10 @@
 
 Discovery is the part that bites: this repo's folder permanently holds a SECOND
 .nev beside the recording (``…_manuallySorted.nev``, Ben's manual re-export).
-neo keys a file set on the extension-less stem, so that export is its own set —
+neo keys a file set on the extension-less stem, so that export is its own set -
 but nothing stopped ``find_blackrock_base`` from returning it and handing every
 loader a base with no analog data. The discovery tests below are hermetic (empty
-stub files — discovery is pure path logic); one integration test runs against the
+stub files - discovery is pure path logic); one integration test runs against the
 real folder, where the extra .nev actually sits, and skips cleanly without data.
 
 The unit-class helpers (``online_unit_labels`` / ``unit_class``) moved here from
@@ -34,7 +34,7 @@ def _touch(folder: Path, *names: str) -> None:
 
 
 # --------------------------------------------------------------------------- #
-# find_blackrock_base — extra .nev files beside the recording set
+# find_blackrock_base - extra .nev files beside the recording set
 # --------------------------------------------------------------------------- #
 def test_base_is_the_set_with_analog_data_not_a_stray_nev(tmp_path):
     # The manual re-export sorts AFTER the recording here...
@@ -116,7 +116,7 @@ def test_read_spikes_explicit_missing_path_fails_hard(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
-# .nev unit classes — the one home for the Blackrock convention
+# .nev unit classes - the one home for the Blackrock convention
 # --------------------------------------------------------------------------- #
 def test_unit_class_covers_the_three_blackrock_classes():
     assert bio.unit_class("ch3#0") == "unsorted"
@@ -144,7 +144,7 @@ def test_online_unit_labels_reads_the_neo_spike_channel_names():
 
 
 # --------------------------------------------------------------------------- #
-# Integration — the real folder, where the extra .nev really does sit
+# Integration - the real folder, where the extra .nev really does sit
 # --------------------------------------------------------------------------- #
 def test_the_real_folder_resolves_past_its_extra_nev():
     try:

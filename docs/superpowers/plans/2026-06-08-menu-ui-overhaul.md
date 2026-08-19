@@ -12,10 +12,10 @@
 
 **Conventions (follow exactly):**
 - The Textual process must never `import spikeinterface` (kept import-light + testable). All SI work stays in the controller or a child process.
-- Registry/Docker helpers never raise — they return `False`/`None`/`(False, msg)` on any failure.
+- Registry/Docker helpers never raise - they return `False`/`None`/`(False, msg)` on any failure.
 - Run tests with `uv run python -m pytest`. Install dev deps once with `uv sync --group dev`.
 - Commit after every green step. Branch is `menu-ui-overhaul-three-panel` (already created).
-- Keep the user's unrelated `.gitignore` WIP out of every commit — `git add` exact paths only.
+- Keep the user's unrelated `.gitignore` WIP out of every commit - `git add` exact paths only.
 
 ---
 
@@ -38,9 +38,9 @@
 
 ---
 
-# STAGE 1 — Pure logic & emitter (TDD, no UI)
+# STAGE 1 - Pure logic & emitter (TDD, no UI)
 
-### Task 1: `scripts/sort_progress.py` — progress event schema
+### Task 1: `scripts/sort_progress.py` - progress event schema
 
 **Files:**
 - Create: `scripts/sort_progress.py`
@@ -460,7 +460,7 @@ git commit -m "feat(sorters): delete_docker_image + image_size helpers"
 ### Task 4: Controller methods + catalog image state
 
 **Files:**
-- Modify: `SpikeInterface_Menu.py` — `_catalog()` (~line 163) to add `img_present`/`img_size` to docker-group rows; add `MenuController` methods `image_state`, `download_image`, `delete_image`, `clear_saved_sort`, and a `sort_command()` builder.
+- Modify: `SpikeInterface_Menu.py` - `_catalog()` (~line 163) to add `img_present`/`img_size` to docker-group rows; add `MenuController` methods `image_state`, `download_image`, `delete_image`, `clear_saved_sort`, and a `sort_command()` builder.
 - Test: `tests/test_menu_controller.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -609,14 +609,14 @@ git commit -m "feat(menu): controller image-state/download/delete/clear + sort_c
 
 ---
 
-# STAGE 2 — Three-panel layout & banner
+# STAGE 2 - Three-panel layout & banner
 
-> From here the work is in `scripts/menu_app.py`. The accordion (`_switch_mode`, `_mode`, `action_focus_*`, `#activebar`, `#statusline`, `#panelabel`, `#explain`) is replaced. Read the current file before editing; reuse the existing render helpers (`_sorter_text`, `_action_text`, `_render_*_explain`, `_relayout`, `CrestWidget`) where possible — they change, but their logic is the starting point.
+> From here the work is in `scripts/menu_app.py`. The accordion (`_switch_mode`, `_mode`, `action_focus_*`, `#activebar`, `#statusline`, `#panelabel`, `#explain`) is replaced. Read the current file before editing; reuse the existing render helpers (`_sorter_text`, `_action_text`, `_render_*_explain`, `_relayout`, `CrestWidget`) where possible - they change, but their logic is the starting point.
 
 ### Task 5: New CSS + `compose()` (both panels + banner + INSPECTING)
 
 **Files:**
-- Modify: `scripts/menu_app.py` — `CSS` (~737), `compose()` (~829), `on_mount` (~845)
+- Modify: `scripts/menu_app.py` - `CSS` (~737), `compose()` (~829), `on_mount` (~845)
 
 - [ ] **Step 1: Replace the `CSS` block** with the three-panel stylesheet:
 
@@ -651,7 +651,7 @@ git commit -m "feat(menu): controller image-state/download/delete/clear + sort_c
     OptionList > .option-list--option-highlighted {
         background: transparent; text-style: underline; }
 
-    /* Bottom INSPECTING panel — full width, capped height, scrolls. */
+    /* Bottom INSPECTING panel - full width, capped height, scrolls. */
     #inspect { height: auto; max-height: 7; border: round #3a3f47;
         padding: 0 1; margin: 1 1 0 1; }
     #inspect.hidden { display: none; }
@@ -698,7 +698,7 @@ git add scripts/menu_app.py && git commit -m "refactor(menu): three-panel compos
 
 ### Task 6: Focus-driven nav (move focus, don't hide lists)
 
-**Files:** Modify `scripts/menu_app.py` — `BINDINGS` (~789) and the focus actions.
+**Files:** Modify `scripts/menu_app.py` - `BINDINGS` (~789) and the focus actions.
 
 - [ ] **Step 1: Write the failing Pilot test** (replaces the old accordion test):
 
@@ -727,7 +727,7 @@ async def test_both_lists_visible_and_focus_moves(make_app):
 Run: `uv run python -m pytest tests/test_menu_app.py -q -k both_lists_visible`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement** — replace the mode actions with plain focus moves:
+- [ ] **Step 3: Implement** - replace the mode actions with plain focus moves:
 
 ```python
     BINDINGS = [
@@ -773,7 +773,7 @@ git commit -m "feat(menu): focus-driven nav between always-visible panes"
 
 ### Task 7: DATA / SORT banner + ACTIONS title
 
-**Files:** Modify `scripts/menu_app.py` — add `_render_databar`, `_render_sortbar`, `_refresh_action_title`; call them from `_relayout`/after reloads. Remove `_render_statusline`/`_render_activebar`.
+**Files:** Modify `scripts/menu_app.py` - add `_render_databar`, `_render_sortbar`, `_refresh_action_title`; call them from `_relayout`/after reloads. Remove `_render_statusline`/`_render_activebar`.
 
 - [ ] **Step 1: Write the failing tests** (replace the statusline tests):
 
@@ -807,7 +807,7 @@ async def test_sortbar_shows_active_and_readiness(make_app):
 Run: `uv run python -m pytest tests/test_menu_app.py -q -k "databar or sortbar"`
 Expected: FAIL.
 
-- [ ] **Step 3: Implement** the renderers (mirror the data the old `_render_statusline`/`_render_activebar` used — `self.c.data_report`, `self.c.pipeline`, `self.c.infos[self.c.active_idx]`):
+- [ ] **Step 3: Implement** the renderers (mirror the data the old `_render_statusline`/`_render_activebar` used - `self.c.data_report`, `self.c.pipeline`, `self.c.infos[self.c.active_idx]`):
 
 ```python
     def _render_databar(self, width: int) -> None:
@@ -829,13 +829,13 @@ Expected: FAIL.
         elif not dr.get("present"):
             t.append("✗ no recording in ", style="bold #f0883e")
             t.append(f"{dr.get('data_dir','.')} ", style="#f0883e")
-            t.append("— press f to choose · d for help", style="dim")
+            t.append("- press f to choose · d for help", style="dim")
         elif unreadable:
             t.append("✗ Broadband (.ns5) won't load ", style="bold #f0883e")
-            t.append("— press d for help", style="dim")
+            t.append("- press d for help", style="dim")
         else:
             missing = ", ".join(f["ext"] for f in files if not f.get("present"))
-            t.append(f"✗ incomplete set — missing {missing} ", style="bold #f0883e")
+            t.append(f"✗ incomplete set - missing {missing} ", style="bold #f0883e")
             t.append("· press f / d", style="dim")
         t.truncate(max(1, width - 2), overflow="ellipsis")
         self.query_one("#databar", Static).update(t)
@@ -856,7 +856,7 @@ Expected: FAIL.
             ready = "Ready to run (Docker)" if self.c.use_docker and info.get("group") == "docker" \
                     else "Ready to run (CPU, no Docker)"
         elif info.get("group") == "docker":
-            ready = ("Docker image not downloaded — Enter to get it"
+            ready = ("Docker image not downloaded - Enter to get it"
                      if not info.get("img_present") else "Turn on Docker sorters to run")
         elif info.get("group") == "gpu":
             ready = "Needs an NVIDIA GPU"
@@ -870,7 +870,7 @@ Expected: FAIL.
         self.query_one("#sortbar", Static).update(t)
 
     def _refresh_action_title(self) -> None:
-        self.query_one("#actionpane").border_title = f"ACTIONS — on {self.c.active_sorter}"
+        self.query_one("#actionpane").border_title = f"ACTIONS - on {self.c.active_sorter}"
 ```
 
 Call all three from `_relayout` and after every `reload`/activation.
@@ -891,7 +891,7 @@ git commit -m "feat(menu): always-on DATA/SORT banner + ACTIONS title"
 
 ### Task 8: Merged INSPECTING (focused pane's highlight)
 
-**Files:** Modify `scripts/menu_app.py` — add `_render_inspect()` dispatching to the existing `_render_sorter_explain`/`_render_action_explain` bodies (rename their target to `#inspectbody`, panel title to `#inspect`'s `border_title`). Wire `on_option_list_option_highlighted` for **both** lists to call `_render_inspect()`.
+**Files:** Modify `scripts/menu_app.py` - add `_render_inspect()` dispatching to the existing `_render_sorter_explain`/`_render_action_explain` bodies (rename their target to `#inspectbody`, panel title to `#inspect`'s `border_title`). Wire `on_option_list_option_highlighted` for **both** lists to call `_render_inspect()`.
 
 - [ ] **Step 1: Write the failing test:**
 
@@ -946,7 +946,7 @@ git commit -m "feat(menu): bottom INSPECTING panel follows the focused pane"
 
 ### Task 9: Responsive ladder (stack, crest reserve, never-clip)
 
-**Files:** Modify `scripts/menu_app.py` — rework `_relayout` for the fixed 2-row banner; constants near line 72.
+**Files:** Modify `scripts/menu_app.py` - rework `_relayout` for the fixed 2-row banner; constants near line 72.
 
 - [ ] **Step 1: Write the failing tests** (port the survivors + the new shape):
 
@@ -1004,7 +1004,7 @@ Delete the `SHIELD_RESERVE`/`NARROW_COLS`/`_BANNER_MIN_ROWS`/`_ACTIVEBAR_MIN_ROW
 - [ ] **Step 4: Run to verify it passes.** Then run the **whole** app test file and fix any remaining accordion-era references:
 
 Run: `uv run python -m pytest tests/test_menu_app.py -q`
-Expected: PASS for all ported/rewritten tests. Delete obsolete accordion-only tests (the old `#activebar`/`#explain`/`#statusline`/mode tests — A.2, A.4 auto-advance, A.18, A.38, A.39, etc.) and keep the re-pinned equivalents above.
+Expected: PASS for all ported/rewritten tests. Delete obsolete accordion-only tests (the old `#activebar`/`#explain`/`#statusline`/mode tests - A.2, A.4 auto-advance, A.18, A.38, A.39, etc.) and keep the re-pinned equivalents above.
 
 - [ ] **Step 5: Commit**
 
@@ -1015,11 +1015,11 @@ git commit -m "feat(menu): responsive three-panel ladder (stack/crest/inspect, n
 
 ---
 
-# STAGE 3 — In-UI sorting
+# STAGE 3 - In-UI sorting
 
 ### Task 10: `SortProgressScreen`
 
-**Files:** Modify `scripts/menu_app.py` — new `ModalScreen` that spawns the sort subprocess and renders `sort_progress` events.
+**Files:** Modify `scripts/menu_app.py` - new `ModalScreen` that spawns the sort subprocess and renders `sort_progress` events.
 
 - [ ] **Step 1: Write the failing test** (drive with synthetic events; no real subprocess):
 
@@ -1158,7 +1158,7 @@ git commit -m "feat(menu): SortProgressScreen renders in-UI sort progress events
 
 ### Task 11: Wire the Sort action to the modal
 
-**Files:** Modify `scripts/menu_app.py` — `_activate_action` for `"sort"` now opens the span ChoiceModal (kept) then pushes `SortProgressScreen(self.c.sort_command(span), self._accent)` instead of `_run("sort", span)`. On dismiss `(ok, msg, changed)`, set `_last`, and if `changed` call `reload()` + rebuild + `_relayout`.
+**Files:** Modify `scripts/menu_app.py` - `_activate_action` for `"sort"` now opens the span ChoiceModal (kept) then pushes `SortProgressScreen(self.c.sort_command(span), self._accent)` instead of `_run("sort", span)`. On dismiss `(ok, msg, changed)`, set `_last`, and if `changed` call `reload()` + rebuild + `_relayout`.
 
 - [ ] **Step 1: Write the failing test:**
 
@@ -1208,11 +1208,11 @@ git commit -m "feat(menu): Sort action runs in-UI via SortProgressScreen"
 
 ---
 
-# STAGE 4 — Docker download + sorter-row state
+# STAGE 4 - Docker download + sorter-row state
 
 ### Task 12: Docker-row download badges
 
-**Files:** Modify `scripts/menu_app.py` — `_sorter_text` adds the download badge for docker rows; `scripts/ui.py` adds glyph constants.
+**Files:** Modify `scripts/menu_app.py` - `_sorter_text` adds the download badge for docker rows; `scripts/ui.py` adds glyph constants.
 
 - [ ] **Step 1: Write the failing test:**
 
@@ -1227,7 +1227,7 @@ async def test_docker_row_shows_download_badge(make_app):
         assert "get" in ms.lower() or "⬇" in ms      # not-downloaded badge
 ```
 
-(The FakeController docker universe must expose `img_present=False` for mountainsort5 — Task 17.)
+(The FakeController docker universe must expose `img_present=False` for mountainsort5 - Task 17.)
 
 - [ ] **Step 2: Run to verify it fails.**
 
@@ -1256,7 +1256,7 @@ git commit -m "feat(menu): Docker sorter rows show downloaded/get badge"
 
 ### Task 13: `DownloadProgressScreen` + Enter→download
 
-**Files:** Modify `scripts/menu_app.py` — new modal + the Enter decision table in `_select_sorter`.
+**Files:** Modify `scripts/menu_app.py` - new modal + the Enter decision table in `_select_sorter`.
 
 - [ ] **Step 1: Write the failing test:**
 
@@ -1339,7 +1339,7 @@ class DownloadProgressScreen(ModalScreen):
         if info is None:
             return
         if info.get("group") == "docker" and not info.get("img_present"):
-            # download path — ensure docker is up first
+            # download path - ensure docker is up first
             if self.c.docker_status(refresh=False)["running"]:
                 self.push_screen(DownloadProgressScreen(self.c, name, self._accent),
                                  self._after_download)
@@ -1350,7 +1350,7 @@ class DownloadProgressScreen(ModalScreen):
         elif info.get("group") == "docker":
             self._toggle_docker(offer_from=name)
         else:
-            hint = ("needs a GPU build — see Help" if info.get("group") == "gpu"
+            hint = ("needs a GPU build - see Help" if info.get("group") == "gpu"
                     else "not available on this computer")
             self._last = Text(f"{name}: {hint}", style="#f0883e"); self._refresh_footer()
 
@@ -1371,11 +1371,11 @@ git commit -m "feat(menu): in-UI Docker image download (DownloadProgressScreen)"
 
 ---
 
-# STAGE 5 — Manage hub, delete, fallback, docs
+# STAGE 5 - Manage hub, delete, fallback, docs
 
 ### Task 14: `ManageSorterScreen` (single-sorter `x` confirm) + clears
 
-**Files:** Modify `scripts/menu_app.py` — `action_manage_highlighted` opens a confirm modal offering the applicable deletes for the highlighted sorter.
+**Files:** Modify `scripts/menu_app.py` - `action_manage_highlighted` opens a confirm modal offering the applicable deletes for the highlighted sorter.
 
 - [ ] **Step 1: Write the failing test:**
 
@@ -1469,7 +1469,7 @@ and to `_ACTION_DETAIL`:
 
 ```python
     "manage": {"what": "Download Docker sorter images, delete downloaded images, "
-                       "and clear saved sort outputs — all in one place."},
+                       "and clear saved sort outputs - all in one place."},
 ```
 
 Mirror both in `tests/conftest.py`'s `ACTIONS` (insert `("manage", "Manage sorters", "download · delete", False)` after `params`). `ManageSortersScreen` is a scrollable list of `self.c.infos` rows with per-row keys: `enter`/`g` → push `DownloadProgressScreen` (docker, not present), `x` → `delete_image`, `c` → `clear_saved_sort`, `r` → `self.c.reload()` + rebuild, `escape` → close. On any change call the controller method, then `reload` + re-render the hub list. `_activate_action("manage")` pushes it.
@@ -1485,9 +1485,9 @@ git commit -m "feat(menu): Manage sorters action + full management hub"
 
 ---
 
-### Task 16: Fallback typed menu — Manage sorters
+### Task 16: Fallback typed menu - Manage sorters
 
-**Files:** Modify `SpikeInterface_Menu.py` — `_menu_fallback` gains a "Manage sorters" option (typed) that lists install/download/saved state and offers download (blocking, prints simple progress), delete image, clear saved sort. Reuse `_pick_compare_pair`-style `ui.select`.
+**Files:** Modify `SpikeInterface_Menu.py` - `_menu_fallback` gains a "Manage sorters" option (typed) that lists install/download/saved state and offers download (blocking, prints simple progress), delete image, clear saved sort. Reuse `_pick_compare_pair`-style `ui.select`.
 
 - [ ] **Step 1:** Add a `_manage_sorters_typed(cfg)` helper and wire it into the fallback action loop. (No new test required beyond import-clean + an existing fallback smoke test; add a `test_fallback.py` assertion that the option appears in the menu list.)
 
@@ -1504,7 +1504,7 @@ git commit -m "feat(menu): typed fallback gains a Manage-sorters option"
 
 ### Task 17: Consolidate `FakeController` extensions
 
-**Files:** Modify `tests/conftest.py` — ensure the fake exposes everything the new screens/tests use: `image_state`, `download_image`, `delete_image`, `clear_saved_sort`, `sort_command`, `docker_status`, per-info `img_present`/`img_size`/`image`/`overrides`, and a `use_docker`/`present` constructor knob. Add `make_app(present=True, use_docker=False)` support if the fixture lacks it.
+**Files:** Modify `tests/conftest.py` - ensure the fake exposes everything the new screens/tests use: `image_state`, `download_image`, `delete_image`, `clear_saved_sort`, `sort_command`, `docker_status`, per-info `img_present`/`img_size`/`image`/`overrides`, and a `use_docker`/`present` constructor knob. Add `make_app(present=True, use_docker=False)` support if the fixture lacks it.
 
 - [ ] **Step 1:** Implement the fake methods to return deterministic values (e.g. `download_image` calls `on_progress(50,100)` then returns `(True, "Downloaded")`; `sort_command` returns `["true"]`). Set `mountainsort5.img_present=False`, give a `spykingcircus` docker row `img_present=True` so badge tests cover both.
 
@@ -1562,4 +1562,4 @@ git commit -m "docs: CLAUDE.md describes the three-panel in-UI menu overhaul"
 
 **Placeholder scan:** No "TBD/TODO"; UI tasks that can't show every line (large rewrite) give the exact new methods/CSS/compose and exact tests; the remaining adaptation (porting render-helper targets from `#explainbody`→`#inspectbody`) is spelled out. The `~X GB` is a runtime value, not a placeholder.
 
-**Type consistency:** `sort_progress.emit/parse_line/new_state/reduce`, `Reporter.{phase,detail,bar,heartbeat,metrics,done_ok,error}`, controller `{image_state,download_image,delete_image,clear_saved_sort,sort_command}`, registry `{delete_docker_image,image_size}`, screens `{SortProgressScreen,DownloadProgressScreen,ManageSortersScreen,ManageSorterScreen}` — names used consistently across tasks. Catalog keys `img_present`/`img_size`/`image` consistent between Task 4 (producer) and Tasks 7/12/14 (consumers).
+**Type consistency:** `sort_progress.emit/parse_line/new_state/reduce`, `Reporter.{phase,detail,bar,heartbeat,metrics,done_ok,error}`, controller `{image_state,download_image,delete_image,clear_saved_sort,sort_command}`, registry `{delete_docker_image,image_size}`, screens `{SortProgressScreen,DownloadProgressScreen,ManageSortersScreen,ManageSorterScreen}` - names used consistently across tasks. Catalog keys `img_present`/`img_size`/`image` consistent between Task 4 (producer) and Tasks 7/12/14 (consumers).

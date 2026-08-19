@@ -10,10 +10,10 @@
 
 Single source of truth for **what was decided about a sort and what that
 produced**. A sort finds candidate units; the decisions a human (or a scripted
-method) makes about them — merge, split, label — live here, in a record beside
+method) makes about them - merge, split, label - live here, in a record beside
 the sort, and are replayed deterministically to build the curated output.
 
-    outputs/<sorter>/runs/<run_id>/       the RAW sort (never mutated — the audit trail)
+    outputs/<sorter>/runs/<run_id>/       the RAW sort (never mutated - the audit trail)
         sorting/ analyzer/ run_info.json summary.json quality_metrics.csv
         curation.json                     THE RECORD (this module owns it)
         phy/                              the raw sort exported for Phy
@@ -24,7 +24,7 @@ the sort, and are replayed deterministically to build the curated output.
 ``sort_paths()`` is the ONE place any of those paths is resolved, and it delegates
 to the versioned run store (``runs.py``), which decides WHICH run those paths
 name. The record and the curated output live inside the run they curate, so a
-re-sort — which lands in a new run directory — leaves them attached to the sort
+re-sort - which lands in a new run directory - leaves them attached to the sort
 they describe. A pre-store ``outputs/<sorter>/`` layout still resolves, read-only,
 so curated results built before the store are still readable where they are.
 
@@ -85,10 +85,10 @@ present; this CLI does not write them (label a unit ``noise`` instead).
 Reading is pure Python
 ----------------------
 Everything above the ``propose_splits`` / ``apply_record`` line imports **no
-SpikeInterface** — ``load_record``, ``counts``, ``provenance_line``, ``state``
+SpikeInterface** - ``load_record``, ``counts``, ``provenance_line``, ``state``
 and ``sort_paths`` are json + pathlib only, so the menu's view process (and the
 coming TUI triage slice) can read curation state without paying for SI.
-``import_phy_labels`` is pure too — bringing verdicts back is json + csv.
+``import_phy_labels`` is pure too - bringing verdicts back is json + csv.
 ``propose_splits``, ``apply_record`` and ``export_phy`` import SI inside the
 function.
 
@@ -100,7 +100,7 @@ sees. Phy is the path for those: the export goes out, a human decides, the
 verdicts come back into this record.
 
     1. uv run python scripts/curation.py export-phy --sorter tridesclous2
-       Writes the current run's ``phy/`` (or its ``curated/phy/`` — the CURATED result
+       Writes the current run's ``phy/`` (or its ``curated/phy/`` - the CURATED result
        is exported when one exists, mirroring the report's rule; ``--raw`` forces
        the raw sort). Labels already in the record are seeded into the export, so
        Phy opens showing what was decided rather than a blank slate.
@@ -112,26 +112,26 @@ verdicts come back into this record.
        Each verdict becomes a labelled decision in the record with
        ``method: "phy"``. Then ``apply`` as usual.
 
-Phy's ``cluster_id`` is a 0-based INDEX, not a unit id — SI's exporter writes the
+Phy's ``cluster_id`` is a 0-based INDEX, not a unit id - SI's exporter writes the
 mapping to ``cluster_si_unit_ids.tsv`` and the import reads verdicts back through
 it. The export drops ``workbench_phy.json`` beside it carrying the run-identity
 anchor, so an import onto a different sort is refused (unit ids
 are not stable across re-sorts) rather than labelling the wrong units.
 
-**Which file is the verdict:** ``cluster_group.tsv`` — the column Phy's own UI
-edits — and ``cluster_quality.tsv`` fills in ONLY where group is ``unsorted``.
+**Which file is the verdict:** ``cluster_group.tsv`` - the column Phy's own UI
+edits - and ``cluster_quality.tsv`` fills in ONLY where group is ``unsorted``.
 That ordering is deliberate: quality is a column *we* exported, so letting it win
 would let a stale exported value override the curator's group edit.
 ``unsorted`` means "no verdict", never a decision.
 
-**Collision rule — newest wins, loudly.** A Phy verdict that disagrees with a
+**Collision rule - newest wins, loudly.** A Phy verdict that disagrees with a
 label already in the record replaces it, and the decision entry keeps what it
 replaced (``detail: {"replaced": "good", "replaced_method": "manual"}``) so the
 audit trail still shows the hand-written verdict. The import prints every
 override. A verdict identical to the recorded one writes nothing at all, so
 re-importing the same folder is a no-op.
 
-**Labels only.** Merges and splits performed *inside* Phy are not imported —
+**Labels only.** Merges and splits performed *inside* Phy are not imported -
 they create cluster ids this sort never had. Those clusters are skipped and
 named in the import's report, never silently dropped. A curated export cannot be
 imported at all: its unit ids are the curated ones, and the record is keyed to
@@ -191,10 +191,10 @@ SpikeInterface-backed:
     apply_record(record, root=None, ...)       -> {"out", "n_units", ...}
     export_phy(sorter, root=None, raw=False, ...)  -> {"out", "curated", ...}
 
-``propose_splits`` partitions a unit's spikes by k-means on per-spike features —
+``propose_splits`` partitions a unit's spikes by k-means on per-spike features -
 spike amplitude and/or the top principal components on the unit's peak channel,
 z-scored, k-means++ with a fixed seed (deterministic). It is the *scientific*
-half: it decides where the split goes. ``apply_record`` never calls it — apply is
+half: it decides where the split goes. ``apply_record`` never calls it - apply is
 replay of the indices already in the record.
 
 What ``curated/run_info.json`` adds, for the surfaces and the slices after this
@@ -202,17 +202,17 @@ one: ``curated: true``, ``curated_from`` (repo-relative raw output dir),
 ``curation_record`` (repo-relative), ``curation_updated`` + ``curation_counts`` +
 ``curation_line``, ``curated_from_run`` (the raw run's identity, so a later
 re-sort under the curated result is visible), ``n_units``/``n_units_raw``, and
-``unit_id_map`` — ``{"curated_to_raw": {curated id: [{"unit", "n_spikes"}, ...]},
+``unit_id_map`` - ``{"curated_to_raw": {curated id: [{"unit", "n_spikes"}, ...]},
 "raw_to_curated": {raw id: [curated id, ...]}}``, unit ids as strings, read off
 the saved spike trains. That map is how a Phy round-trip (or any later import)
 says which sorter unit a curated unit came from. The window/geometry/band fields
-are copied from the raw run — same recording, same preprocessing, different units.
+are copied from the raw run - same recording, same preprocessing, different units.
 
 ``apply_record`` reads the RAW saved Sorting, applies the record with SI's
 ``apply_curation``, saves ``curated/sorting``, then builds ``curated/analyzer``
 and re-scores it through the existing owners: ``sort_summary`` computes the six
 headline metrics and the quality rule. Quality metrics are non-fatal exactly as
-in the sort pipeline — the curated Sorting is saved *before* metrics run, and a
+in the sort pipeline - the curated Sorting is saved *before* metrics run, and a
 metrics failure deletes the half-built ``analyzer/``, ``quality_metrics.csv`` and
 ``summary.*`` so no surface reads stale derived data.
 """
@@ -226,7 +226,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import blackrock_io as bio  # noqa: E402  (REPO_ROOT only — no SpikeInterface)
+import blackrock_io as bio  # noqa: E402  (REPO_ROOT only - no SpikeInterface)
 import runs  # noqa: E402  (the versioned run store: where a run lives, which is current)
 import sort_summary as _summary  # noqa: E402  (the metrics + quality-rule owner)
 
@@ -262,7 +262,7 @@ PHY_GROUP_FOR_LABEL = {"good": "good", "MUA": "mua", "noise": "noise",
                        "unsure": "unsorted"}
 LABEL_FOR_PHY_GROUP = {"good": "good", "mua": "MUA", "noise": "noise"}
 
-# Defaults for the scripted split. Chosen once and applied to every unit — a
+# Defaults for the scripted split. Chosen once and applied to every unit - a
 # per-unit tuning would make the record a story about the answer, not a method.
 SPLIT_METHOD = "kmeans"
 SPLIT_FEATURES = "amplitude+pca"     # also accepted: "amplitude", "pca"
@@ -272,14 +272,14 @@ SPLIT_SEED = 0
 
 
 # --------------------------------------------------------------------------- #
-# Paths — the ONE resolver, delegated to the versioned run store
+# Paths - the ONE resolver, delegated to the versioned run store
 # --------------------------------------------------------------------------- #
 def sort_paths(sorter: str, root=None, *, run=None) -> dict:
     """Every path the curation lifecycle needs for one sorter's saved run.
 
     Delegates to ``runs.sort_paths``: the store owns where a run lives and which
     one is current, and the curation record and the curated output ride INSIDE
-    the run directory they curate — so a re-sort lands in its own directory and
+    the run directory they curate - so a re-sort lands in its own directory and
     can never leave a record beside a sort it does not describe.
 
     ``root`` defaults to the repo root (tests pass a tmp dir); ``run`` pins an
@@ -306,7 +306,7 @@ def preferred_analyzer_dir(analyzer_dir) -> "tuple[Path, bool]":
 
 
 def preferred_analyzer(sorter: str, root=None, *, run=None) -> "tuple[Path, bool]":
-    """(analyzer dir to show, is_curated) for a sorter — the same rule, by name.
+    """(analyzer dir to show, is_curated) for a sorter - the same rule, by name.
 
     ``run`` pins a specific run instead of the current one (``sort_paths``)."""
     return preferred_analyzer_dir(sort_paths(sorter, root, run=run)["analyzer"])
@@ -319,7 +319,7 @@ def curated_elsewhere(sorter: str, root=None) -> "dict | None":
     means a fresh sort moves the pointer and the older curated result stops being
     shown anywhere. Correct anchoring, unacceptable silence: this finds it so the
     surfaces can name it. Returns {"run", "legacy", "dir", "current", "line"} for
-    the newest such run, or None — including None when the current run is itself
+    the newest such run, or None - including None when the current run is itself
     curated, because then nothing is being hidden.
 
     Nothing is migrated or adopted: the curated result stays where it was built,
@@ -338,16 +338,16 @@ def curated_elsewhere(sorter: str, root=None) -> "dict | None":
                 "where": _rel(entry["dir"] / CURATED_DIRNAME, root),
                 "current": current["id"],
                 "line": (f"a curated result exists on {which}; the current run "
-                         f"({current['id']}) is uncurated — apply a record to this "
+                         f"({current['id']}) is uncurated - apply a record to this "
                          f"run to curate it"),
                 # The same fact for a width-constrained surface. Both sentences
                 # live here so no surface composes curation language itself.
-                "short": f"curated result on {which} — apply to curate this run"}
+                "short": f"curated result on {which} - apply to curate this run"}
     return None
 
 
 # --------------------------------------------------------------------------- #
-# The record — construction and decisions (pure Python)
+# The record - construction and decisions (pure Python)
 # --------------------------------------------------------------------------- #
 def _now() -> str:
     return datetime.now().isoformat(timespec="seconds")
@@ -355,7 +355,7 @@ def _now() -> str:
 
 def _tool_versions() -> dict:
     """Versions at write time. SpikeInterface's is read from its distribution
-    metadata, not by importing it — the record stays writable from the view."""
+    metadata, not by importing it - the record stays writable from the view."""
     import platform
     from importlib import metadata
 
@@ -378,7 +378,7 @@ def _identity_mismatch(want: dict, have: dict, want_label: str = "record") -> li
     """Human-readable differences between two run identities ([] when they agree).
 
     Only the fields that actually pin a sort are compared, and a field missing on
-    either side is not a mismatch — an older run_info without it must not read as
+    either side is not a mismatch - an older run_info without it must not read as
     a different sort. ``want_label`` names what is being compared against disk
     (the curation record, or a Phy export's manifest).
     """
@@ -401,7 +401,7 @@ def read_run_info(sorter: str, root=None, *, run=None) -> dict:
 
 
 def new_record(sorter: str, unit_ids, run=None, root=None) -> dict:
-    """An empty record for ``sorter``'s saved sort — no decisions yet."""
+    """An empty record for ``sorter``'s saved sort - no decisions yet."""
     out = sort_paths(sorter, root)["out"]
     try:
         rel = out.relative_to(sort_paths(sorter, root)["root"]).as_posix()
@@ -475,7 +475,7 @@ def add_label(record: dict, unit_id, label: str, note: str = "",
     cluster id and folder it read the verdict from).
     """
     if label not in QUALITY_OPTIONS:
-        raise ValueError(f"unknown label {label!r} — one of {list(QUALITY_OPTIONS)}")
+        raise ValueError(f"unknown label {label!r} - one of {list(QUALITY_OPTIONS)}")
     uid = _plain(unit_id)
     _require_unit(record, uid)
     labels = [m for m in record["curation"]["manual_labels"] if m["unit_id"] != uid]
@@ -500,7 +500,7 @@ def label_of(record: "dict | None", unit_id) -> "str | None":
 def label_method_of(record: "dict | None", unit_id) -> "str | None":
     """How the unit's current label was decided ("manual", "phy", …), or None.
 
-    The last label decision for that unit wins — decisions are append-only, and
+    The last label decision for that unit wins - decisions are append-only, and
     ``add_label`` replaces the unit's entry in ``manual_labels`` each time.
     """
     uid = _plain(unit_id)
@@ -556,7 +556,7 @@ def _match_unit(unit_ids, text):
 
     SpikeInterface unit ids are ints here but may be strings in another sort, and
     a "4" arriving from a CLI flag or a Phy TSV must mean the same unit either
-    way — so resolve against the ids the sort actually has, never by guessing.
+    way - so resolve against the ids the sort actually has, never by guessing.
     """
     if text in unit_ids:
         return text
@@ -568,7 +568,7 @@ def _match_unit(unit_ids, text):
 
 
 # --------------------------------------------------------------------------- #
-# Reading + honest-surface text (pure Python — no SpikeInterface)
+# Reading + honest-surface text (pure Python - no SpikeInterface)
 # --------------------------------------------------------------------------- #
 def load_record(sorter: str = None, root=None, path=None) -> "dict | None":
     """Read a record by sorter (or an explicit path). None if absent/unreadable."""
@@ -609,20 +609,20 @@ def provenance_line(record: "dict | None", curated: bool = True,
 
     Curated:  "curated from the tridesclous2 run (sorted 2026-08-18 21:15),
                4 decisions (3 splits, 0 merges, 1 label), 2026-08-18 21:52"
-    Raw:      "raw tridesclous2 sorter output — no curation applied"
-              "... — 4 decisions recorded but not applied"        (record, nothing built)
-              "... — a curated result exists (4 decisions) and is not shown here"
+    Raw:      "raw tridesclous2 sorter output - no curation applied"
+              "... - 4 decisions recorded but not applied"        (record, nothing built)
+              "... - a curated result exists (4 decisions) and is not shown here"
                                                                  (``has_curated``)
     No record but a curated result on disk (someone deleted curation.json, or
-    the folder was copied without it) — the numbers ARE curated and must never be
+    the folder was copied without it) - the numbers ARE curated and must never be
     labelled raw:
-              "curated result — its curation record is missing; provenance unknown"
+              "curated result - its curation record is missing; provenance unknown"
     """
     if not record:
         if curated:
-            return ("curated result — its curation record is missing; "
+            return ("curated result - its curation record is missing; "
                     "provenance unknown")
-        return "raw sorter output — no curation applied"
+        return "raw sorter output - no curation applied"
     sorter = record.get("curates", {}).get("sorter") or "sorter"
     run_created = str(record.get("curates", {}).get("run", {}).get("created") or "")
     run_created = run_created.replace("T", " ")[:16]
@@ -634,11 +634,11 @@ def provenance_line(record: "dict | None", curated: bool = True,
     when = str(record.get("updated") or "").replace("T", " ")[:16]
     if not curated:
         if c["total"] == 0:
-            return f"raw {sorter} sorter output — no curation applied"
+            return f"raw {sorter} sorter output - no curation applied"
         if has_curated:
-            return (f"raw {sorter} sorter output — a curated result exists "
+            return (f"raw {sorter} sorter output - a curated result exists "
                     f"({_plural(c['total'], 'decision')}) and is not shown here")
-        return (f"raw {sorter} sorter output — {_plural(c['total'], 'decision')} "
+        return (f"raw {sorter} sorter output - {_plural(c['total'], 'decision')} "
                 f"recorded but not applied")
     run_bit = f" (sorted {run_created})" if run_created else ""
     return (f"curated from the {sorter} run{run_bit}, {_plural(c['total'], 'decision')} "
@@ -655,7 +655,7 @@ def stale_reason(curated_run: dict, record: "dict | None", raw_run: dict) -> str
     """
     curated_run = curated_run or {}
     if record is None:
-        return ("the curation record is missing — nothing on disk says which "
+        return ("the curation record is missing - nothing on disk says which "
                 "decisions produced this result")
     if curated_run.get("curation_updated") \
             and curated_run["curation_updated"] != record.get("updated"):
@@ -670,14 +670,14 @@ def anchor_error(record: "dict | None", sorter: str, root=None) -> str:
     """Why a decision must NOT be written into ``record`` for the sort on disk.
 
     "" when the record is anchored to the sorter's CURRENT run (``sort_paths``,
-    i.e. the store) and may be decided on or applied. Pure — json + pathlib, so
+    i.e. the store) and may be decided on or applied. Pure - json + pathlib, so
     the menu can ask before offering to label. ``record=None`` asks the same
     question about a record that does not exist yet: only the disk side has to be
     identifiable, because ``new_record`` anchors a fresh record to exactly that
     identity.
 
     An anchor only binds if BOTH sides carry it. All-None compares as "matches
-    everything", which is the exact failure the anchor exists to prevent — so a
+    everything", which is the exact failure the anchor exists to prevent - so a
     missing/corrupt run_info.json, or a record written when one was missing, is a
     refusal, not a pass. Every refusal names its next step (DESIGN_UX §1.7).
     """
@@ -702,26 +702,26 @@ def anchor_error(record: "dict | None", sorter: str, root=None) -> str:
             f"this curation record has no usable anchor (no {', '.join(blank_record)} "
             "under 'curates.run'), so it cannot be tied to the sort on disk. It was "
             "most likely written while run_info.json was missing. Next step: write a "
-            f"fresh record against the sort now in outputs/{sorter}/ — the old record "
+            f"fresh record against the sort now in outputs/{sorter}/ - the old record "
             "stays as the audit trail of what was decided.")
     mismatch = _identity_mismatch(want, have)
     if not mismatch:
         return ""
     return (
-        f"this curation record was written against a different {sorter} sort — "
+        f"this curation record was written against a different {sorter} sort - "
         + "; ".join(mismatch)
         + ". Unit ids are not stable across re-sorts, so replaying these decisions "
           "would curate the wrong units. Next step: re-run the comparison against "
           "this sort and write a fresh record (curation.py split/label/merge on the "
           f"sort now in outputs/{sorter}/), or restore the sort the record was made "
-          "on. The old record is not deleted — it stays as the audit trail of what "
+          "on. The old record is not deleted - it stays as the audit trail of what "
           "was decided about that run.")
 
 
 def state(sorter: str, root=None, *, run=None) -> dict:
     """What a surface needs to be honest about curated-vs-raw. No SI import.
 
-    ``stale`` is True when the curated result cannot be trusted as-is — the
+    ``stale`` is True when the curated result cannot be trusted as-is - the
     record moved on, the raw sort was re-run under it, or the record is gone
     (see ``stale_reason``). ``has_record`` False with ``has_curated`` True is
     exactly that last case: the numbers are curated, their provenance is not on
@@ -732,7 +732,7 @@ def state(sorter: str, root=None, *, run=None) -> dict:
     every surface the moment a new sort moves the pointer. It carries a line
     naming where that result is; None when there is none, or when the run being
     shown is itself curated. ``run`` pins a specific run instead of the current
-    one, in which case ``elsewhere`` is not looked for — it is a fact about which
+    one, in which case ``elsewhere`` is not looked for - it is a fact about which
     run is current, and a pinned view is not making that claim.
     """
     p = sort_paths(sorter, root, run=run)
@@ -764,11 +764,11 @@ def state(sorter: str, root=None, *, run=None) -> dict:
 
 
 def structural_errors(record: "dict | None") -> list:
-    """Schema problems in a record, as plain sentences. Pure — no SI import.
+    """Schema problems in a record, as plain sentences. Pure - no SI import.
 
     Catches the shape mistakes (wrong kind, missing curation block, a decision
-    naming a unit the sort never had); SI's ``validate_curation_dict`` — run by
-    ``validate()`` and by ``apply_record`` — is the authority on the embedded
+    naming a unit the sort never had); SI's ``validate_curation_dict`` - run by
+    ``validate()`` and by ``apply_record`` - is the authority on the embedded
     curation dict itself.
     """
     errs = []
@@ -827,7 +827,7 @@ def open_record(sorter: str, root=None) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# The Phy round trip, half 2: verdicts back into the record (pure — csv + json)
+# The Phy round trip, half 2: verdicts back into the record (pure - csv + json)
 # --------------------------------------------------------------------------- #
 def _read_tsv(path) -> list:
     """[(first column, second column), …] from a Phy TSV; [] when it isn't there.
@@ -860,7 +860,7 @@ def _write_tsv(path, header, rows) -> None:
 def phy_verdicts(folder) -> tuple:
     """``({cluster_id: (label, file)}, [rejected values])`` for a Phy folder.
 
-    ``cluster_group.tsv`` is the verdict — it is the column Phy's own UI edits.
+    ``cluster_group.tsv`` is the verdict - it is the column Phy's own UI edits.
     ``cluster_quality.tsv`` (the workbench's exported column, which a curator can
     set in Phy with ``:quality unsure``) fills in ONLY where group says
     ``unsorted``: quality is a column *we* wrote, so letting it win would let a
@@ -868,7 +868,7 @@ def phy_verdicts(folder) -> tuple:
 
     ``unsorted`` (and an empty quality cell) means "no verdict" and is not a
     decision. Anything else outside the two vocabularies is REJECTED and named in
-    the second return value — a curator's typo is not a thing to drop quietly.
+    the second return value - a curator's typo is not a thing to drop quietly.
     """
     found, rejected = {}, []
     for cid, value in _read_tsv(Path(folder) / PHY_GROUP_FILE):
@@ -892,7 +892,7 @@ def phy_verdicts(folder) -> tuple:
 
 def _cluster_order(cid: str):
     """Sort key for Phy cluster ids: numeric where they are numbers ("10" after
-    "2"), lexical otherwise — decisions land in the record in cluster order."""
+    "2"), lexical otherwise - decisions land in the record in cluster order."""
     try:
         return (0, int(cid), "")
     except (TypeError, ValueError):
@@ -921,7 +921,7 @@ def import_phy_labels(sorter: str, folder=None, root=None, *,
     Every verdict is written through ``add_label`` with ``method="phy"``. A
     verdict that disagrees with a label already in the record replaces it and
     keeps what it replaced in the decision entry; an identical one writes
-    nothing. Merges and splits made inside Phy are not imported — the cluster ids
+    nothing. Merges and splits made inside Phy are not imported - the cluster ids
     they create are reported as skipped, never silently dropped.
 
     Returns ``{"folder", "record_path", "imported", "unchanged", "overridden",
@@ -931,7 +931,7 @@ def import_phy_labels(sorter: str, folder=None, root=None, *,
     folder = Path(folder) if folder is not None else paths["phy"]
     if not folder.is_dir():
         raise RuntimeError(
-            f"no Phy folder at {folder} — export one first: "
+            f"no Phy folder at {folder} - export one first: "
             f"python scripts/curation.py export-phy --sorter {sorter}")
 
     manifest = phy_manifest(folder)
@@ -943,7 +943,7 @@ def import_phy_labels(sorter: str, folder=None, root=None, *,
             "folder in Phy, and import it.")
     if manifest.get("curated"):
         raise RuntimeError(
-            f"{folder} is an export of the CURATED result — its cluster ids are the "
+            f"{folder} is an export of the CURATED result - its cluster ids are the "
             "curated units', and the curation record is keyed to the raw sort's, so "
             "these verdicts cannot be attached to it. Next step: export the raw sort "
             f"(python scripts/curation.py export-phy --sorter {sorter} --raw), curate "
@@ -954,16 +954,16 @@ def import_phy_labels(sorter: str, folder=None, root=None, *,
             f"{sorter!r}. Next step: import it against that sorter, or re-export.")
 
     # An anchor only binds when the manifest actually carries one. A blank or
-    # missing run block would compare as "matches everything" — the exact
+    # missing run block would compare as "matches everything" - the exact
     # failure the anchor exists to prevent (unit ids are not stable across
-    # re-sorts) — so it is a refusal, not a pass.
+    # re-sorts) - so it is a refusal, not a pass.
     want = manifest.get("run") or {}
     blank = [k for k in ("sorter", "created", "n_units") if want.get(k) is None]
     if blank:
         raise RuntimeError(
             f"{folder} carries no usable run anchor (no {', '.join(blank)} in "
             f"{PHY_MANIFEST_NAME}'s 'run'), so there is no way to tell which "
-            "sort its cluster ids belong to — these verdicts could land on the "
+            "sort its cluster ids belong to - these verdicts could land on the "
             "wrong units. It was most likely exported while run_info.json was "
             "missing. Next step: re-export the sort now on disk (python "
             f"scripts/curation.py export-phy --sorter {sorter} --raw), curate "
@@ -973,7 +973,7 @@ def import_phy_labels(sorter: str, folder=None, root=None, *,
                                   want_label="export")
     if mismatch:
         raise RuntimeError(
-            f"{folder} was exported from a different {sorter} sort — "
+            f"{folder} was exported from a different {sorter} sort - "
             + "; ".join(mismatch)
             + ". Unit ids are not stable across re-sorts, so these verdicts would "
               "land on the wrong units. Next step: re-export the sort now in "
@@ -997,7 +997,7 @@ def import_phy_labels(sorter: str, folder=None, root=None, *,
         named = cluster_to_unit.get(cid)
         uid = _match_unit(unit_ids, named) if named is not None else None
         if uid is None:
-            # A cluster Phy created (a merge or split done in its UI) — this
+            # A cluster Phy created (a merge or split done in its UI) - this
             # imports labels only, and silence here would look like agreement.
             skipped.append(f"cluster {cid} ({label}) is not a unit of this sort")
             continue
@@ -1061,7 +1061,7 @@ def propose_splits(analyzer, unit_ids, *, n_parts: int = SPLIT_N_PARTS,
     (the saved PCA extension only holds the random-spikes subset, so this runs
     ``run_for_all_spikes`` once for all requested units, ~13 s on this
     recording); ``amplitude+pca`` = both. Columns are z-scored, then
-    ``scipy.cluster.vq.kmeans2`` with k-means++ init and a fixed ``seed`` — the
+    ``scipy.cluster.vq.kmeans2`` with k-means++ init and a fixed ``seed`` - the
     same inputs always give the same partition. Parts come back ordered by
     descending mean |amplitude|, so part 0 is the larger-amplitude cluster.
 
@@ -1071,8 +1071,8 @@ def propose_splits(analyzer, unit_ids, *, n_parts: int = SPLIT_N_PARTS,
     against Ben's manual re-export). Splitting reproduced the manual pair on the
     ch7 unit (each manual unit mapping to its own curated unit) but not on the
     ch5 and ch9 units. The reason is not the clustering: those merged units are
-    **3.6-5.4x residue-contaminated** — tridesclous2's unit holds several
-    thousand events the human never assigned to either manual unit — so any
+    **3.6-5.4x residue-contaminated** - tridesclous2's unit holds several
+    thousand events the human never assigned to either manual unit - so any
     within-unit split, by any method, hands back children that are still mostly
     residue and are not defensible single units. The leverage is upstream of the
     split: label or remove the residue, or sort better. Read a split as "this
@@ -1084,7 +1084,7 @@ def propose_splits(analyzer, unit_ids, *, n_parts: int = SPLIT_N_PARTS,
     from scipy.cluster.vq import kmeans2
 
     if features not in ("amplitude", "pca", "amplitude+pca"):
-        raise ValueError(f"unknown features {features!r} — one of "
+        raise ValueError(f"unknown features {features!r} - one of "
                          "'amplitude', 'pca', 'amplitude+pca'")
     sorting = analyzer.sorting
     all_ids = list(sorting.unit_ids)
@@ -1093,7 +1093,7 @@ def propose_splits(analyzer, unit_ids, *, n_parts: int = SPLIT_N_PARTS,
     if "amplitude" in features:
         ext = analyzer.get_extension("spike_amplitudes")
         if ext is None:
-            raise RuntimeError("this sort has no spike_amplitudes extension — "
+            raise RuntimeError("this sort has no spike_amplitudes extension - "
                                "re-run the sort, or split with --features pca")
         amps = np.asarray(ext.get_data(), dtype=float)
 
@@ -1102,7 +1102,7 @@ def propose_splits(analyzer, unit_ids, *, n_parts: int = SPLIT_N_PARTS,
     if "pca" in features:
         pc_ext = analyzer.get_extension("principal_components")
         if pc_ext is None:
-            raise RuntimeError("this sort has no principal_components extension — "
+            raise RuntimeError("this sort has no principal_components extension - "
                                "re-run the sort, or split with --features amplitude")
         tmpdir = tempfile.TemporaryDirectory()
         npy = Path(tmpdir.name) / "all_spike_pcs.npy"
@@ -1121,7 +1121,7 @@ def propose_splits(analyzer, unit_ids, *, n_parts: int = SPLIT_N_PARTS,
             mask = spikes["unit_index"] == index
             n_spikes = int(mask.sum())
             if n_spikes < n_parts * 2:
-                raise ValueError(f"unit {uid} has {n_spikes} spikes — too few to "
+                raise ValueError(f"unit {uid} has {n_spikes} spikes - too few to "
                                  f"split into {n_parts}")
             peak = _peak_channel_index(analyzer, all_ids[index])
             cols, names = [], []
@@ -1138,7 +1138,7 @@ def propose_splits(analyzer, unit_ids, *, n_parts: int = SPLIT_N_PARTS,
             _centroids, labels = kmeans2(Xz, n_parts, minit="++", seed=seed)
             parts = [np.flatnonzero(labels == k) for k in range(n_parts)]
             if any(len(p) == 0 for p in parts):
-                raise ValueError(f"unit {uid}: k-means returned an empty cluster — "
+                raise ValueError(f"unit {uid}: k-means returned an empty cluster - "
                                  "these spikes do not separate into "
                                  f"{n_parts} groups")
             # Deterministic part order: biggest mean |amplitude| first (falls back
@@ -1169,7 +1169,7 @@ def propose_splits(analyzer, unit_ids, *, n_parts: int = SPLIT_N_PARTS,
 def _check_run_identity(record: dict, sorter: str, root=None) -> None:
     """Refuse to apply a record whose sort is not the sort it was written against.
 
-    **Unit ids are not stable across re-sorts here** — tridesclous2 is
+    **Unit ids are not stable across re-sorts here** - tridesclous2 is
     non-deterministic on this recording (repeat full runs have returned 14, 16, 17
     and 18 units), and a record can be read beside a pre-store layout, a copied run
     directory, or a run the pointer has since moved off. So a record replayed onto
@@ -1187,7 +1187,7 @@ def _check_out_dir(out, paths: dict, sorter: str) -> None:
     """Refuse an output dir that would write the curated result INTO the raw sort.
 
     ``apply`` clears ``<out>/sorting`` and ``<out>/analyzer`` before rebuilding
-    them, so ``--out <the run directory>`` would delete the raw sort — the audit
+    them, so ``--out <the run directory>`` would delete the raw sort - the audit
     trail the whole design rests on. Resolved, so ``.`` / ``..`` / a symlink
     cannot sneak past.
     """
@@ -1195,7 +1195,7 @@ def _check_out_dir(out, paths: dict, sorter: str) -> None:
     for key in ("out", "sorting", "analyzer"):
         if target == paths[key].resolve():
             raise RuntimeError(
-                f"refusing to write the curated result to {target} — that is the raw "
+                f"refusing to write the curated result to {target} - that is the raw "
                 f"{sorter} sort itself ({key}/), and applying would delete it. The raw "
                 "sort is the audit trail: it is never written to. Leave --out unset to "
                 f"use {paths['curated']}, or pass a directory outside "
@@ -1206,7 +1206,7 @@ def _check_phy_out_dir(out, paths: dict, sorter: str) -> None:
     """Refuse an export target the wholesale rmtree below must never eat.
 
     ``export_phy`` clears its target before SI writes the folder, so ``--out``
-    pointed at anything that is not a previous Phy export would delete it —
+    pointed at anything that is not a previous Phy export would delete it -
     the run directory itself (the raw sort, the audit trail), ``outputs/``,
     or an unrelated directory. Resolved, so ``.``/``..``/symlinks cannot sneak
     past. A non-empty existing target is only cleared when it carries a previous
@@ -1218,7 +1218,7 @@ def _check_phy_out_dir(out, paths: dict, sorter: str) -> None:
         p = paths[key].resolve()
         if target == p or p.is_relative_to(target):
             raise RuntimeError(
-                f"refusing to export to {target} — clearing it would delete the "
+                f"refusing to export to {target} - clearing it would delete the "
                 f"{sorter} sort's {key.replace('_', ' ')} ({p}). The raw sort and "
                 "its curated result are the audit trail: they are never written "
                 "to. Leave --out unset, or pass a directory outside "
@@ -1227,7 +1227,7 @@ def _check_phy_out_dir(out, paths: dict, sorter: str) -> None:
             and not (target / PHY_MANIFEST_NAME).exists() \
             and not (target / "params.py").exists():
         raise RuntimeError(
-            f"refusing to clear {target} — it is not empty and does not look "
+            f"refusing to clear {target} - it is not empty and does not look "
             f"like a previous Phy export (no {PHY_MANIFEST_NAME}, no params.py). "
             "Pass an empty directory, a previous export, or a path that does "
             "not exist yet.")
@@ -1266,7 +1266,7 @@ def _rel(path, root=None) -> str:
     path = Path(path)
     try:
         return path.relative_to(base).as_posix()
-    except ValueError:      # outside the root (an explicit --out) — keep it whole
+    except ValueError:      # outside the root (an explicit --out) - keep it whole
         return path.as_posix()
 
 
@@ -1275,7 +1275,7 @@ def apply_record(record: dict, root=None, *, out_dir=None, verbose: bool = True,
     """Apply a validated record to the RAW saved Sorting; write the run's curated/.
 
     The raw sort is read, never written. Produces ``curated/sorting`` (saved
-    first — the units are the result), then ``curated/analyzer`` with the same
+    first - the units are the result), then ``curated/analyzer`` with the same
     extensions the sort computes, ``quality_metrics.csv``, ``summary.json``/``.csv``
     via ``sort_summary``, and ``run_info.json`` naming the record it replayed.
 
@@ -1300,7 +1300,7 @@ def apply_record(record: dict, root=None, *, out_dir=None, verbose: bool = True,
     if recording is None:
         raise RuntimeError(
             f"the saved {sorter} analyzer cannot reach its recording, so a curated "
-            "analyzer cannot be built on the same preprocessed signal — check that "
+            "analyzer cannot be built on the same preprocessed signal - check that "
             "the raw data is where it was at sort time.")
 
     if verbose:
@@ -1336,7 +1336,7 @@ def apply_record(record: dict, root=None, *, out_dir=None, verbose: bool = True,
                 analyzer.compute(ext)
                 deps_ok.add(ext)
             except Exception as e:  # noqa: BLE001 - drop dependent metrics, keep the rest
-                print(f"  skipped {ext} ({type(e).__name__}) — its metrics dropped")
+                print(f"  skipped {ext} ({type(e).__name__}) - its metrics dropped")
         metric_names = ["firing_rate", "snr", "isi_violation", "presence_ratio"]
         if "spike_amplitudes" in deps_ok:
             metric_names += ["amplitude_cutoff", "amplitude_median"]
@@ -1356,7 +1356,7 @@ def apply_record(record: dict, root=None, *, out_dir=None, verbose: bool = True,
 
         traceback.print_exc()
         metrics_note = f"quality metrics failed: {type(e).__name__}: {e}"
-        print(f"! {metrics_note} — the curated sorting itself is saved.")
+        print(f"! {metrics_note} - the curated sorting itself is saved.")
         # Never leave half-built derived data for a surface to read as this result.
         _sort._robust_rmtree(out / "analyzer")
         for stale in ("quality_metrics.csv", "summary.json", "summary.csv"):
@@ -1376,7 +1376,7 @@ def apply_record(record: dict, root=None, *, out_dir=None, verbose: bool = True,
             traceback.print_exc()
             summary = None
             print(f"! array/yield summary couldn't be computed: {type(e).__name__}: {e}"
-                  " — the curated analyzer and quality metrics are saved.")
+                  " - the curated analyzer and quality metrics are saved.")
 
     raw_info = read_run_info(sorter, root)
     c = counts(record)
@@ -1405,7 +1405,7 @@ def apply_record(record: dict, root=None, *, out_dir=None, verbose: bool = True,
         "quality_rule_text": _summary.rule_text(
             _summary.load_quality_rule(bio.REPO_ROOT / ".si_menu.json")),
         "si_version": si.__version__,
-        # The recording window / geometry / band are the raw run's — the curated
+        # The recording window / geometry / band are the raw run's - the curated
         # result is the same recording, the same preprocessing, different units.
         "probe": raw_info.get("probe"),
         "channel_ids": raw_info.get("channel_ids"),
@@ -1417,7 +1417,7 @@ def apply_record(record: dict, root=None, *, out_dir=None, verbose: bool = True,
     }
     (out / "run_info.json").write_text(json.dumps(info, indent=2), encoding="utf-8")
     if verbose:
-        print(f"done — {provenance_line(record, curated=True)}")
+        print(f"done - {provenance_line(record, curated=True)}")
         print(f"results in {out}")
     return {"out": out, "n_units": n_units, "n_units_raw": raw_info.get("n_units"),
             "n_high_quality": n_high_quality, "metrics_note": metrics_note,
@@ -1453,7 +1453,7 @@ def export_phy(sorter: str, root=None, *, raw: bool = False, out_dir=None,
                verbose: bool = True, n_jobs: int = 1) -> dict:
     """Export the sort a curator should open in Phy → a Phy folder.
 
-    Which sort: the CURATED result when one has been built, else the raw sort —
+    Which sort: the CURATED result when one has been built, else the raw sort -
     the same curated-supersedes-raw rule the report follows (``preferred_analyzer``).
     ``raw=True`` forces the raw sort even when a curated result exists. The
     returned dict says which was exported; so does ``workbench_phy.json`` in the
@@ -1471,10 +1471,10 @@ def export_phy(sorter: str, root=None, *, raw: bool = False, out_dir=None,
         analyzer_dir, curated = paths["analyzer"], False
     if not analyzer_dir.is_dir():
         raise RuntimeError(
-            f"no saved {sorter} analyzer at {analyzer_dir} — run a sort first: "
+            f"no saved {sorter} analyzer at {analyzer_dir} - run a sort first: "
             f"uv run python scripts/run_sorting.py --sorter {sorter}")
 
-    # An export that cannot be anchored could never be safely imported back —
+    # An export that cannot be anchored could never be safely imported back -
     # a blank anchor would let verdicts land on the wrong units of a later sort.
     run_anchor = _run_identity(read_run_info(sorter, root))
     blank = [k for k in ("sorter", "created", "n_units")
@@ -1491,7 +1491,7 @@ def export_phy(sorter: str, root=None, *, raw: bool = False, out_dir=None,
     if curated:
         # A curated result the record or sort has moved past must not travel:
         # the manifest would stamp the CURRENT sort's anchor onto an analyzer
-        # built from a different one — provenance that is actively wrong.
+        # built from a different one - provenance that is actively wrong.
         try:
             curated_run = json.loads(
                 paths["curated_run_info"].read_text(encoding="utf-8"))
@@ -1501,7 +1501,7 @@ def export_phy(sorter: str, root=None, *, raw: bool = False, out_dir=None,
         if stale:
             raise RuntimeError(
                 f"the curated {sorter} result no longer describes what is on "
-                f"disk — {stale}. Next step: re-apply the record (uv run python "
+                f"disk - {stale}. Next step: re-apply the record (uv run python "
                 f"scripts/curation.py apply --sorter {sorter}) and export that, "
                 f"or export the raw sort (uv run python scripts/curation.py "
                 f"export-phy --sorter {sorter} --raw).")
@@ -1516,7 +1516,7 @@ def export_phy(sorter: str, root=None, *, raw: bool = False, out_dir=None,
               f"{analyzer_dir}) for Phy → {out}")
     _sort._robust_rmtree(out)
     # use_relative_path: params.py then points at "recording.dat" beside it rather
-    # than at this machine's absolute path — the export is meant to be COPIED to a
+    # than at this machine's absolute path - the export is meant to be COPIED to a
     # machine that has Phy, and an absolute dat_path would not survive the trip
     # (least of all across macOS -> Windows).
     export_to_phy(analyzer, out, verbose=verbose, use_relative_path=True,
@@ -1558,7 +1558,7 @@ def export_phy(sorter: str, root=None, *, raw: bool = False, out_dir=None,
               "already decided")
         print(f"open it with: phy template-gui {out / 'params.py'}")
         if curated:
-            print("this is the CURATED result — its verdicts cannot be imported "
+            print("this is the CURATED result - its verdicts cannot be imported "
                   "back into the record (export --raw for a round trip)")
         else:
             print(f"bring verdicts back with: python scripts/curation.py "
@@ -1571,7 +1571,7 @@ def export_phy(sorter: str, root=None, *, raw: bool = False, out_dir=None,
 # CLI
 # --------------------------------------------------------------------------- #
 def _show(sorter: str, root=None) -> int:
-    """Print the record + curated state (pure read — no SpikeInterface)."""
+    """Print the record + curated state (pure read - no SpikeInterface)."""
     st = state(sorter, root)
     record = load_record(sorter, root)
     if record is None:
@@ -1584,11 +1584,11 @@ def _show(sorter: str, root=None) -> int:
     c = st["counts"]
     print(f"{sorter}: {st['line']}")
     print(f"  record   {st['record_path']}  (updated {record.get('updated')})")
-    print(f"  curates  {record['curates']['output_dir']} — sort of "
+    print(f"  curates  {record['curates']['output_dir']} - sort of "
           f"{record['curates']['run'].get('created')} "
           f"({record['curates']['run'].get('n_units')} units)")
     print("  tools    " + ", ".join(f"{k} {v}" for k, v in record.get("tools", {}).items()))
-    print(f"  decisions {c['total']} — {c['splits']} split(s), {c['merges']} merge(s), "
+    print(f"  decisions {c['total']} - {c['splits']} split(s), {c['merges']} merge(s), "
           f"{c['labels']} label(s), {c['removed']} removal(s)")
     for d in record.get("decisions", []):
         detail = d.get("detail", {})
@@ -1596,12 +1596,12 @@ def _show(sorter: str, root=None) -> int:
         print(f"    {d['at']}  {d['type']:6} units={d['units']} "
               f"method={d['method']} params={d.get('params', {})}{extra}")
     if st["has_curated"]:
-        print(f"  curated  {st['curated_dir']} — {st['curated_units']} units")
+        print(f"  curated  {st['curated_dir']} - {st['curated_units']} units")
         if st["stale"]:
-            print(f"  ! {st['stale_reason']} — re-run 'curation.py apply "
+            print(f"  ! {st['stale_reason']} - re-run 'curation.py apply "
                   f"--sorter {sorter}'")
     else:
-        print(f"  curated  not built yet — run: python scripts/curation.py apply "
+        print(f"  curated  not built yet - run: python scripts/curation.py apply "
               f"--sorter {sorter}")
     if st["elsewhere"]:
         print(f"  ! {st['elsewhere']['line']}")
@@ -1625,17 +1625,17 @@ def _report_import(result: dict, sorter: str, dry_run: bool = False) -> int:
               f"[phy cluster {e['cluster']}, {e['from']}]{was}")
     if result["overridden"]:
         print(f"! {_plural(len(result['overridden']), 'label')} already in the record "
-              "changed — the replaced value is kept in the decision log")
+              "changed - the replaced value is kept in the decision log")
     if result["unchanged"]:
         print(f"  {_plural(len(result['unchanged']), 'unit')} already carried the "
-              "same verdict — nothing written for them")
+              "same verdict - nothing written for them")
     for s in result["skipped"]:
         print(f"  skipped: {s}")
     if result["skipped"]:
-        print("  (this imports labels only — merges/splits made in Phy are not "
+        print("  (this imports labels only - merges/splits made in Phy are not "
               "brought back)")
     for s in result["rejected"]:
-        print(f"! not a verdict this workbench understands — {s}")
+        print(f"! not a verdict this workbench understands - {s}")
     if result["saved"]:
         print(result["record_path"])
         print(f"next step: python scripts/curation.py apply --sorter {sorter}")
@@ -1701,7 +1701,7 @@ def main(argv=None) -> int:
         return _show(args.sorter, root)
 
     if not paths["sorting"].is_dir():
-        print(f"no saved {args.sorter} sort in {paths['out']} — run one first: "
+        print(f"no saved {args.sorter} sort in {paths['out']} - run one first: "
               f"uv run python scripts/run_sorting.py --sorter {args.sorter}",
               file=sys.stderr)
         return 1
@@ -1709,11 +1709,11 @@ def main(argv=None) -> int:
     if args.cmd == "apply":
         record = load_record(args.sorter, root)
         if record is None:
-            print(f"no curation record for {args.sorter} ({paths['record']}) — "
+            print(f"no curation record for {args.sorter} ({paths['record']}) - "
                   "record a decision first (label / merge / split).", file=sys.stderr)
             return 1
         if counts(record)["total"] == 0:
-            print(f"the {args.sorter} curation record holds no decisions — nothing "
+            print(f"the {args.sorter} curation record holds no decisions - nothing "
                   "to apply.", file=sys.stderr)
             return 1
         try:

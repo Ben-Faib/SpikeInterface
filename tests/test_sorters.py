@@ -1,7 +1,7 @@
 """Hermetic unit tests for scripts/sorters.py.
 
 The registry's discovery functions import SpikeInterface lazily, so every test
-here monkeypatches them — no SpikeInterface, no Docker, no sorting is invoked.
+here monkeypatches them - no SpikeInterface, no Docker, no sorting is invoked.
 """
 from __future__ import annotations
 
@@ -192,7 +192,7 @@ def test_run_passes_docker_and_params(fake_params, monkeypatch):
 
 def test_run_installed_sorter_runs_native_even_with_docker_on(fake_params, monkeypatch):
     """An installed sorter runs natively even when Docker mode is on (Docker is a
-    fallback only — there's no image for the local-only sorters)."""
+    fallback only - there's no image for the local-only sorters)."""
     calls = {}
 
     class FakeSS:
@@ -540,7 +540,7 @@ def test_pull_progress_denominator_never_shrinks_in_download_phase(monkeypatch):
     Records (status, done, total) interleaved so we can isolate the download
     phase: while the caption is 'Downloading n/N', the denominator must only
     grow as new layers reveal their size (a finished layer keeps its bytes in
-    both done and total — the inflated-early-% bug was the denominator shrinking).
+    both done and total - the inflated-early-% bug was the denominator shrinking).
     """
     _install_fake_pull(monkeypatch, _two_layer_pull_events())
     events = []  # ('status', text) | ('progress', done, total)
@@ -586,7 +586,7 @@ def test_pull_extracting_drives_progress_in_extract_phase(monkeypatch):
 
 def test_pull_status_image_up_to_date_finishes_done(monkeypatch):
     """A cached image ('Image is up to date') still reaches Done with no layers,
-    and snaps the bar to 100% (not a blank bar) — the real fully-cached re-download
+    and snaps the bar to 100% (not a blank bar) - the real fully-cached re-download
     shape, where Docker streams only 'Pulling from'/'Digest'/'Status:' lines."""
     events = [
         {"status": "Pulling from library/x", "id": "latest"},
@@ -622,7 +622,7 @@ def _all_cached_pull_events():
 def test_pull_progress_moves_when_all_layers_cached(monkeypatch):
     """Re-download-after-delete: cached 'Already exists' layers carry no byte
     sizes, so the byte total is 0. The bar must still advance to 100% by completed
-    -layer count (not sit blank), and the caption must reflect the layers — the
+    -layer count (not sit blank), and the caption must reflect the layers - the
     'redownload looks broken' bug."""
     _install_fake_pull(monkeypatch, _all_cached_pull_events())
     progress = []
@@ -642,7 +642,7 @@ def test_pull_progress_moves_when_all_layers_cached(monkeypatch):
 
 def test_pull_on_summary_reports_pulled_vs_cached(monkeypatch):
     """on_summary tells the caller how many layers actually downloaded vs were
-    reused from Docker's cache — so the UI can honestly explain an instant pull."""
+    reused from Docker's cache - so the UI can honestly explain an instant pull."""
     events = [
         {"status": "Pulling fs layer", "id": "a"},
         {"status": "Downloading", "id": "a",

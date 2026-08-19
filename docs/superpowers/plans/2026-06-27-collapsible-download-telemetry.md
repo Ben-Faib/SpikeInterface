@@ -4,18 +4,18 @@
 
 **Goal:** Give the in-UI Docker-image download a rich telemetry view (downloaded/total, speed, ETA, elapsed) that can collapse to a one-line dashboard indicator while the download keeps running, and re-expand on demand.
 
-**Architecture:** A new pure module `scripts/download_stats.py` holds all progress math + a session dataclass (no Textual, no Docker — like `scripts/sort_progress.py`). The pull worker moves from `DownloadProgressScreen` up to `SpikeMenuApp`, which owns a single live `DownloadSession`; the modal and a new `#dlbar` banner indicator are both pure views over that session. `sorters.pull_docker_image` gains a `should_cancel` hook so the now-detached worker stays abortable.
+**Architecture:** A new pure module `scripts/download_stats.py` holds all progress math + a session dataclass (no Textual, no Docker - like `scripts/sort_progress.py`). The pull worker moves from `DownloadProgressScreen` up to `SpikeMenuApp`, which owns a single live `DownloadSession`; the modal and a new `#dlbar` banner indicator are both pure views over that session. `sorters.pull_docker_image` gains a `should_cancel` hook so the now-detached worker stays abortable.
 
 **Tech Stack:** Python 3.12, Textual (TUI), Docker SDK (registry only), pytest + pytest-asyncio (Textual Pilot tests).
 
 ## Global Constraints
 
 - **Python 3.12** only (`requires-python = "==3.12.*"`).
-- **The Textual process imports NO SpikeInterface and NO Docker SDK** — all Docker work stays in the controller/registry on the worker thread; `download_stats.py` is stdlib-only.
-- **Scripts are imported by basename** — consumers do `sys.path.insert(0, "scripts")`; tests import `menu_app` / `download_stats` directly (see `tests/conftest.py`).
+- **The Textual process imports NO SpikeInterface and NO Docker SDK** - all Docker work stays in the controller/registry on the worker thread; `download_stats.py` is stdlib-only.
+- **Scripts are imported by basename** - consumers do `sys.path.insert(0, "scripts")`; tests import `menu_app` / `download_stats` directly (see `tests/conftest.py`).
 - **`from __future__ import annotations`** at the top of every new module (matches existing files).
 - **NO_COLOR-safe shape cues:** every status conveyed by colour must also have a glyph/word cue (`⬇`/`✓`/`✗` + `%`/`ready`), consistent with the DATA/SORT banner.
-- **Never let a worker exception kill the app** — wrap worker bodies in `try/except` and surface as a `(False, msg)` result (existing pattern).
+- **Never let a worker exception kill the app** - wrap worker bodies in `try/except` and surface as a `(False, msg)` result (existing pattern).
 - **Commit after each task** with a `feat:`/`test:`/`refactor:` message ending:
   `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`
 - Do **not** stage `.gitignore` (the user has an unrelated working change there).
@@ -57,7 +57,7 @@ Create `tests/test_download_stats.py`:
 ```python
 """Unit tests for the pure download-progress module (scripts/download_stats.py).
 
-No Textual / Docker imports — timestamps are injected so the clock is deterministic.
+No Textual / Docker imports - timestamps are injected so the clock is deterministic.
 """
 from __future__ import annotations
 
@@ -115,19 +115,19 @@ def test_phase_change_resets_speed_window_no_negative():
 
 def test_formatters():
     assert ds.fmt_bytes(423 * 1024 * 1024).endswith("MB")
-    assert ds.fmt_bytes(None) == "—"
+    assert ds.fmt_bytes(None) == "-"
     assert ds.fmt_speed(2.3 * 1024 * 1024).endswith("MB/s")
-    assert ds.fmt_speed(None) == "—"
+    assert ds.fmt_speed(None) == "-"
     assert ds.fmt_clock(38) == "0:38"
     assert ds.fmt_clock(72) == "1:12"
     assert ds.fmt_clock(3661) == "1:01:01"
-    assert ds.fmt_clock(None) == "—"
+    assert ds.fmt_clock(None) == "-"
 ```
 
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_download_stats.py -v`
-Expected: FAIL — `ModuleNotFoundError: No module named 'download_stats'` (the `scripts/` dir is on `sys.path` via conftest; the module doesn't exist yet).
+Expected: FAIL - `ModuleNotFoundError: No module named 'download_stats'` (the `scripts/` dir is on `sys.path` via conftest; the module doesn't exist yet).
 
 - [ ] **Step 3: Write the module**
 
@@ -136,7 +136,7 @@ Create `scripts/download_stats.py`:
 ```python
 """Pure, dependency-free progress math for the in-UI Docker-image download.
 
-No Textual / Docker imports — like ``scripts/sort_progress.py`` this holds the
+No Textual / Docker imports - like ``scripts/sort_progress.py`` this holds the
 arithmetic and formatting so the TUI stays a thin renderer and the logic is
 trivially unit-testable. Timestamps are passed IN (monotonic seconds) so the
 clock is deterministic in tests.
@@ -145,7 +145,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-# EMA weight for new samples — small enough to smooth the bursty per-event byte
+# EMA weight for new samples - small enough to smooth the bursty per-event byte
 # deltas the Docker SDK emits, large enough to track real speed changes.
 _EMA_ALPHA = 0.3
 _KB = 1024
@@ -227,7 +227,7 @@ class DownloadSession:
 
 def fmt_bytes(n: int | None) -> str:
     if n is None:
-        return "—"
+        return "-"
     if n >= _GB:
         return f"{n / _GB:.1f} GB"
     if n >= _MB:
@@ -239,7 +239,7 @@ def fmt_bytes(n: int | None) -> str:
 
 def fmt_speed(bps: float | None) -> str:
     if bps is None:
-        return "—"
+        return "-"
     if bps >= _MB:
         return f"{bps / _MB:.1f} MB/s"
     if bps >= _KB:
@@ -249,7 +249,7 @@ def fmt_speed(bps: float | None) -> str:
 
 def fmt_clock(secs: float | None) -> str:
     if secs is None:
-        return "—"
+        return "-"
     secs = int(secs)
     h, rem = divmod(secs, 3600)
     m, s = divmod(rem, 60)
@@ -284,12 +284,12 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 **Interfaces:**
 - Consumes: nothing new.
 - Produces:
-  - `sorters.pull_docker_image(image, on_progress=None, on_status=None, should_cancel=None) -> bool` — when `should_cancel` is a callable returning True, the pull loop breaks and returns `False`.
-  - `MenuController.download_image(name, on_progress=None, on_status=None, should_cancel=None) -> tuple[bool, str]` — threads `should_cancel` to the registry.
+  - `sorters.pull_docker_image(image, on_progress=None, on_status=None, should_cancel=None) -> bool` - when `should_cancel` is a callable returning True, the pull loop breaks and returns `False`.
+  - `MenuController.download_image(name, on_progress=None, on_status=None, should_cancel=None) -> tuple[bool, str]` - threads `should_cancel` to the registry.
 
 - [ ] **Step 1: Write the failing test**
 
-Add to `tests/test_sorters.py` (module imports `sorters` already; check the top of the file and reuse its import name — it is imported as `sorters`):
+Add to `tests/test_sorters.py` (module imports `sorters` already; check the top of the file and reuse its import name - it is imported as `sorters`):
 
 ```python
 def test_pull_docker_image_honours_should_cancel(monkeypatch):
@@ -329,7 +329,7 @@ def test_pull_docker_image_honours_should_cancel(monkeypatch):
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_sorters.py::test_pull_docker_image_honours_should_cancel -v`
-Expected: FAIL — `TypeError: pull_docker_image() got an unexpected keyword argument 'should_cancel'`.
+Expected: FAIL - `TypeError: pull_docker_image() got an unexpected keyword argument 'should_cancel'`.
 
 - [ ] **Step 3: Add the parameter + check**
 
@@ -421,7 +421,7 @@ upgrade to the test `FakeController` and Pilot tests.
 - Consumes: `download_stats.DownloadStats/DownloadSession/fmt_bytes/fmt_speed/fmt_clock` (Task 1); `controller.download_image(name, on_progress, on_status, should_cancel)` (Task 2).
 - Produces (on `SpikeMenuApp`): `self._download: DownloadSession | None`; `start_download(name)`; `action_watch_download()` (bound to `w`); `_render_dlbar(width)`. `DownloadProgressScreen(controller, name, accent)` becomes view-only and is dismissed with `"collapsed"` (collapse), `(ok, msg)` (finished), or a cancel sentinel.
 
-### Part A — make the test `FakeController` drive a stepped download
+### Part A - make the test `FakeController` drive a stepped download
 
 - [ ] **Step 1: Upgrade `FakeController.download_image`**
 
@@ -461,7 +461,7 @@ method body (lines 263-277) with:
         return True, f"Downloaded {name}"
 ```
 
-(No new imports at module top are needed — `threading` is imported locally.)
+(No new imports at module top are needed - `threading` is imported locally.)
 
 - [ ] **Step 2: Commit the fixture upgrade**
 
@@ -472,7 +472,7 @@ git commit -m "test: stepped fake download_image (gate + should_cancel)
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
-### Part B — App-owned session + indicator + view-only modal
+### Part B - App-owned session + indicator + view-only modal
 
 - [ ] **Step 3: Write the failing Pilot tests**
 
@@ -524,7 +524,7 @@ async def test_download_indicator_hidden_when_idle(make_app):
 - [ ] **Step 4: Run the tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_menu_app.py::test_download_shows_telemetry_then_collapses_and_expands tests/test_menu_app.py::test_download_indicator_hidden_when_idle -v`
-Expected: FAIL — `AttributeError: 'SpikeMenuApp' object has no attribute 'start_download'` / no `#dlbar`.
+Expected: FAIL - `AttributeError: 'SpikeMenuApp' object has no attribute 'start_download'` / no `#dlbar`.
 
 - [ ] **Step 5: Add the download-stats import**
 
@@ -626,7 +626,7 @@ class DownloadProgressScreen(ModalScreen):
         t.append("█" * fill + "░" * (24 - fill), style=self._accent)
         t.append(f"  {pct:3d}%\n\n", style="dim")
         # Stats block (size · speed ; ETA · elapsed). During verify/extract the byte
-        # readout/speed/ETA may be unknown -> render as "—" (fmt_* handle None).
+        # readout/speed/ETA may be unknown -> render as "-" (fmt_* handle None).
         done, total = sess.bytes_done, sess.bytes_total
         t.append(f"{dlstats.fmt_bytes(done)} / {dlstats.fmt_bytes(total)}"
                  f"   {dlstats.fmt_speed(st.speed)}\n", style="dim")
@@ -656,7 +656,7 @@ class DownloadProgressScreen(ModalScreen):
             self.dismiss("collapsed")
 ```
 
-NOTE: `_repaint` references `sess.phase_caption`, `sess.bytes_done`, `sess.bytes_total` — add those as derived helpers on the session via the App's update path (Step 7 stores raw bytes + caption on the session). To keep `download_stats.DownloadSession` pure, store these as **plain attributes set by the App** rather than dataclass fields requiring imports. In Step 7 the App sets `sess.phase_caption`, `sess.bytes_done`, `sess.bytes_total` directly; initialise them in `start_download`.
+NOTE: `_repaint` references `sess.phase_caption`, `sess.bytes_done`, `sess.bytes_total` - add those as derived helpers on the session via the App's update path (Step 7 stores raw bytes + caption on the session). To keep `download_stats.DownloadSession` pure, store these as **plain attributes set by the App** rather than dataclass fields requiring imports. In Step 7 the App sets `sess.phase_caption`, `sess.bytes_done`, `sess.bytes_total` directly; initialise them in `start_download`.
 
 - [ ] **Step 7: Add the App download lifecycle**
 
@@ -761,7 +761,7 @@ action methods:
 ```
 
 Add `from time import monotonic` to the imports at the top of `scripts/menu_app.py`
-(no `time`/`monotonic` import exists yet — add it near the other stdlib imports at
+(no `time`/`monotonic` import exists yet - add it near the other stdlib imports at
 line ~49, `import asyncio`). And in the existing `SpikeMenuApp.__init__` (line 1423),
 add `self._download = None` right after the existing `self._last = None` (line 1428),
 before `super().__init__()`:
@@ -779,7 +779,7 @@ before `super().__init__()`:
 
 The screen reads `sess.phase_caption`/`sess.bytes_done`/`sess.bytes_total`, all set by
 the App above (Step 7 initialises them in `start_download` and updates them in
-`_dl_progress`/`_dl_status`). No change to `download_stats.py` is needed — they are
+`_dl_progress`/`_dl_status`). No change to `download_stats.py` is needed - they are
 plain attributes on the session instance.
 
 - [ ] **Step 9: Repoint `_select_sorter` to `start_download`**
@@ -885,7 +885,7 @@ live download stays visible:
             self.query_one(wid).set_class(tiny, "collapsed")
 ```
 
-(unchanged — `#dlbar` is deliberately NOT in this tuple).
+(unchanged - `#dlbar` is deliberately NOT in this tuple).
 
 (e) Add the `w` binding to the dashboard `BINDINGS` (after the `m` binding, line ~1407):
 
@@ -907,13 +907,13 @@ behaviour is now covered by the new tests in Step 3 (telemetry render, phase cap
 collapse/expand, finish→reload). **Delete these three test functions in full:**
 
 - `test_download_screen_reaches_done_and_reloads` (the `_done`/enter-to-reload model is
-  gone — `_dl_finish` reloads on the App, not the screen on close).
+  gone - `_dl_finish` reloads on the App, not the screen on close).
 - `test_download_screen_shows_phase_label_and_spinner` (constructs the screen standalone
-  and calls `_set_status`/`_spin_timer` — the screen is now a view over `app._download`).
+  and calls `_set_status`/`_spin_timer` - the screen is now a view over `app._download`).
 - `test_download_screen_never_shows_complete_below_100` (uses `_set_pct`/`_finish`).
 
 **Keep** `test_enter_on_undownloaded_docker_opens_download` and
-`test_enter_on_undownloaded_docker_offers_docker_when_daemon_down` — they exercise
+`test_enter_on_undownloaded_docker_offers_docker_when_daemon_down` - they exercise
 `_select_sorter` routing (Enter → `start_download` pushes the screen / offers Docker),
 which still holds. Preserve the "no false 'complete' at partial percent" intent by
 adding this assertion inside the new `test_download_shows_telemetry_...` test, right
@@ -926,7 +926,7 @@ after the size-readout assertion (while the worker is gated mid-download):
 - [ ] **Step 14: Run the full suite (no regressions)**
 
 Run: `uv run python -m pytest tests/ -q`
-Expected: PASS — the whole suite green, the three deleted tests gone, the new download
+Expected: PASS - the whole suite green, the three deleted tests gone, the new download
 tests passing.
 
 - [ ] **Step 15: Commit**
@@ -940,7 +940,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Task 4: Docs — update CLAUDE.md
+## Task 4: Docs - update CLAUDE.md
 
 **Files:**
 - Modify: `CLAUDE.md` (the `DownloadProgressScreen` description in the architecture section)
@@ -954,7 +954,7 @@ architecture paragraph, "In-UI Docker download:"). Replace its sentence(s) with:
 
 ```
 **In-UI Docker download:** the pull worker is owned by the **App** (not the modal),
-so the view is **collapsible** — `start_download(name)` runs `sorters.pull_docker_image`
+so the view is **collapsible** - `start_download(name)` runs `sorters.pull_docker_image`
 (now with a `should_cancel` hook) in an App-owned worker thread and opens
 `DownloadProgressScreen`, a pure **telemetry view** over the App's single live
 `download_stats.DownloadSession` (downloaded/total · speed · ETA · elapsed, via the
@@ -995,9 +995,9 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Docs → Task 4.
 
 **Type consistency:** `DownloadSession` (Task 1) is consumed in Task 3 with extra
-plain attributes (`phase_caption`, `bytes_done`, `bytes_total`) set by the App — not
+plain attributes (`phase_caption`, `bytes_done`, `bytes_total`) set by the App - not
 dataclass fields, by design, to keep the module pure. `should_cancel` signature
 matches across `pull_docker_image` / `download_image` / the worker. `_render_dlbar`,
 `start_download`, `action_watch_download` names are used consistently.
 
-**Placeholder scan:** none — every code step shows full code.
+**Placeholder scan:** none - every code step shows full code.

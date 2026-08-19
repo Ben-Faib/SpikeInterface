@@ -1,6 +1,6 @@
 ---
 name: run-spikeinterface
-description: Use when asked to run, launch, start, smoke-test, or verify that this repo's SpikeInterface menu app (SpikeInterface_Menu.py) works — covers the uv environment bootstrap and a headless launch check for the Textual TUI on Windows.
+description: Use when asked to run, launch, start, smoke-test, or verify that this repo's SpikeInterface menu app (SpikeInterface_Menu.py) works - covers the uv environment bootstrap and a headless launch check for the Textual TUI on Windows.
 ---
 
 # Run the SpikeInterface menu
@@ -8,7 +8,7 @@ description: Use when asked to run, launch, start, smoke-test, or verify that th
 The front door is `SpikeInterface_Menu.py` (repo root). Bare, it opens a
 full-screen **Textual** TUI dashboard; with an action arg it dispatches directly.
 The environment is **uv**-managed (Python 3.12 + `uv.lock`). Follow the verified
-path below — every command here has been run and confirmed on this machine.
+path below - every command here has been run and confirmed on this machine.
 
 ## 1. Bootstrap the environment
 
@@ -34,10 +34,10 @@ uv run python SpikeInterface_Menu.py report    # or one action directly: explore
 ```
 
 The dashboard opens with a red **"no recording"** banner until the
-`PFCM7_d0ephys_Block2.{ns2,ns5,nev}` set is in the repo root — the raw files are
+`PFCM7_d0ephys_Block2.{ns2,ns5,nev}` set is in the repo root - the raw files are
 git-ignored, so this is normal on a clean tree (press `d` in-app for the checklist).
 
-## 3. Verify it launches (headless — no real terminal needed)
+## 3. Verify it launches (headless - no real terminal needed)
 
 A Textual TUI can't be confirmed by piping stdout (it needs a TTY, and a
 non-interactive `SpikeInterface_Menu.py` bare-run just builds the report instead).
@@ -59,7 +59,7 @@ rendered dashboard.
 | Symptom | Cause / fix |
 |---|---|
 | `uv : command not found` / not recognized | Not on PATH. `$env:Path = "C:\Users\Ben\.local\bin;$env:Path"` (or restart shell). |
-| `pytest`: `test_sort_progress_surfaces_real_error_from_log` FAILS (`WinError 2`) | Windows-only artifact — that test hard-codes `sh -c`, and `sh` isn't on Windows. Not an app defect; every app-mount test passes. |
-| `verify_install.py` / menu says "No Blackrock files" | Expected — raw `.ns5/.ns2/.nev` are git-ignored. Drop the recording set in the repo root or pass `--data-dir`. |
+| `pytest`: `test_sort_progress_surfaces_real_error_from_log` FAILS (`WinError 2`) | Windows-only artifact - that test hard-codes `sh -c`, and `sh` isn't on Windows. Not an app defect; every app-mount test passes. |
+| `verify_install.py` / menu says "No Blackrock files" | Expected - raw `.ns5/.ns2/.nev` are git-ignored. Drop the recording set in the repo root or pass `--data-dir`. |
 | `UnicodeEncodeError: 'charmap'` when printing app widgets | Textual captures stdout as cp1252 during a run. Collect text and write it UTF-8 *after* the app closes (this is what `verify_launch.py` does). |
 | Bare run in a non-interactive shell builds a report instead of the menu | By design: `_menu()` sees `stdin` isn't a TTY and falls back. Use `verify_launch.py` to test the actual TUI. |

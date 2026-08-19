@@ -1,4 +1,4 @@
-# PFCM7 HTML report + interactive re-sort launcher — Implementation Plan
+# PFCM7 HTML report + interactive re-sort launcher - Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.12, SpikeInterface (`spikeinterface.full`), Plotly (graph_objects + offline), numpy 2.4.6, scipy.signal.welch. Env: conda `si_env`.
 
-> **Testing note — this repo has NO pytest suite** (see `CLAUDE.md`: "no test suite"; `verify_install.py` is "the closest thing to a test"). Strict red-green TDD does not fit visual HTML output here, so each task is verified by a **runnable smoke check** (`conda run -n si_env python -c "..."` that asserts on the generated HTML / printed output) and a commit — matching the project's established `verify_install.py` idiom. This deliberately adapts the TDD default to the project's reality.
+> **Testing note - this repo has NO pytest suite** (see `CLAUDE.md`: "no test suite"; `verify_install.py` is "the closest thing to a test"). Strict red-green TDD does not fit visual HTML output here, so each task is verified by a **runnable smoke check** (`conda run -n si_env python -c "..."` that asserts on the generated HTML / printed output) and a commit - matching the project's established `verify_install.py` idiom. This deliberately adapts the TDD default to the project's reality.
 
 > **Run all commands from the repo root** `/Users/benfaib/Spike/SpikeInterface`. The data set `PFCM7_d0ephys_Block2.{ns2,ns5,nev}` must be present in the root (it is).
 
@@ -65,7 +65,7 @@ git commit -m "deps: add plotly for the HTML report"
 
 ---
 
-### Task 2: `report.py` scaffold — document shell, status banner, footer
+### Task 2: `report.py` scaffold - document shell, status banner, footer
 
 **Files:**
 - Create: `scripts/report.py`
@@ -81,7 +81,7 @@ This task produces a working `outputs/report.html` containing the status banner 
     python scripts/make_report.py          # interactive launcher (preferred)
     python -c "import sys; sys.path.insert(0,'scripts'); import report; report.build_report()"
 
-Writes outputs/report.html — one offline file (Plotly JS inlined) covering loader
+Writes outputs/report.html - one offline file (Plotly JS inlined) covering loader
 health, LFP, .nev online units, the tridesclous2 sort, quality metrics and
 events. Read-only with respect to the data; it only writes the HTML.
 
@@ -222,7 +222,7 @@ def _html_document(title, sections) -> str:
 <nav>{nav}</nav>
 <main>
 <h1>{html.escape(title)}</h1>
-<p class="sub">Generated {generated} — self-contained, works offline.</p>
+<p class="sub">Generated {generated} - self-contained, works offline.</p>
 {''.join(body)}
 </main></body></html>"""
 
@@ -236,7 +236,7 @@ def _render_status(status) -> str:
         f'<td>{html.escape(r["stage"])}</td><td>{html.escape(r["detail"])}</td></tr>'
         for r in status
     )
-    return ('<p class="note">One row per pipeline stage — PASS means it loaded, '
+    return ('<p class="note">One row per pipeline stage - PASS means it loaded, '
             'SKIP means optional/absent, FAIL means broken.</p>'
             f'<table><thead><tr><th>Status</th><th>Stage</th><th>Detail</th></tr></thead>'
             f'<tbody>{rows}</tbody></table>')
@@ -252,7 +252,7 @@ def _render_footer(status) -> str:
             versions.append(f"{mod} (not importable)")
     return (f'<p class="note">{html.escape(" · ".join(versions))}</p>'
             '<div class="caveat">Geometry caveat: the Blackrock files carry no electrode map, '
-            'so sorting uses a placeholder independent-channel probe — per-unit results are valid, '
+            'so sorting uses a placeholder independent-channel probe - per-unit results are valid, '
             'but cross-channel spatial information is not physical. The broadband stream also mixes '
             '16 neural channels (raw 1–16) with 6 analog aux channels (analog 1–6).</div>')
 
@@ -284,7 +284,7 @@ Run:
 ```bash
 conda run -n si_env python -c "import sys; sys.path.insert(0,'scripts'); import report; p=report.build_report(); h=p.read_text(); assert 'Status &amp; provenance' in h; assert 'badge PASS' in h; assert 'Plotly' in h; print('ok', p, len(h), 'bytes')"
 ```
-Expected: `ok .../outputs/report.html <a few million> bytes` (the size is large because Plotly JS is inlined — that is intended).
+Expected: `ok .../outputs/report.html <a few million> bytes` (the size is large because Plotly JS is inlined - that is intended).
 
 - [ ] **Step 3: Commit**
 
@@ -295,7 +295,7 @@ git commit -m "feat(report): scaffold report.py with status banner + footer"
 
 ---
 
-### Task 3: LFP section — stacked traces + power spectrum
+### Task 3: LFP section - stacked traces + power spectrum
 
 **Files:**
 - Modify: `scripts/report.py`
@@ -305,7 +305,7 @@ git commit -m "feat(report): scaffold report.py with status banner + footer"
 ```python
 def _render_lfp(lfp) -> str:
     if lfp is None:
-        return '<p class="skip">LFP failed to load — see the status banner.</p>'
+        return '<p class="skip">LFP failed to load - see the status banner.</p>'
     from scipy.signal import welch
 
     fs = lfp.get_sampling_frequency()
@@ -323,7 +323,7 @@ def _render_lfp(lfp) -> str:
                                         name=str(ch), line=dict(width=0.8)))
     traces_fig.update_yaxes(tickvals=[i * spacing for i in range(len(chan_ids))],
                             ticktext=[str(c) for c in chan_ids], title="channel")
-    traces_fig.update_layout(title=f"LFP — first {LFP_WINDOW_S:g}s, {len(chan_ids)} channels @ {fs:g} Hz",
+    traces_fig.update_layout(title=f"LFP - first {LFP_WINDOW_S:g}s, {len(chan_ids)} channels @ {fs:g} Hz",
                              xaxis_title="time (s)", height=460, margin=dict(t=40, b=40))
 
     # Power spectrum (Welch) over the same channels.
@@ -363,7 +363,7 @@ git commit -m "feat(report): LFP traces + power-spectrum section"
 
 ---
 
-### Task 4: `.nev` online units section — raster + firing rates
+### Task 4: `.nev` online units section - raster + firing rates
 
 **Files:**
 - Modify: `scripts/report.py`
@@ -384,20 +384,20 @@ def _spike_figs(unit_ids, train_seconds, title_prefix):
                                     name=f"unit {int(u)}"))
     raster.update_yaxes(tickvals=list(range(len(unit_ids))),
                         ticktext=[str(int(u)) for u in unit_ids], title="unit id")
-    raster.update_layout(title=f"{title_prefix} — spike raster ({len(unit_ids)} units)",
+    raster.update_layout(title=f"{title_prefix} - spike raster ({len(unit_ids)} units)",
                          xaxis_title="time (s)", height=max(320, 22 * len(unit_ids) + 80),
                          margin=dict(t=40, b=40), showlegend=False)
 
     rates = [trains[u].size / duration for u in unit_ids]
     rate = go.Figure(go.Bar(x=[str(int(u)) for u in unit_ids], y=rates))
-    rate.update_layout(title=f"{title_prefix} — mean firing rate", xaxis_title="unit id",
+    rate.update_layout(title=f"{title_prefix} - mean firing rate", xaxis_title="unit id",
                        yaxis_title="rate (Hz)", height=360, margin=dict(t=40, b=40))
     return raster, rate
 
 
 def _render_nev(nev) -> str:
     if nev is None:
-        return '<p class="skip">.nev units failed to load — see the status banner.</p>'
+        return '<p class="skip">.nev units failed to load - see the status banner.</p>'
     fs = nev.get_sampling_frequency()
     unit_ids = list(nev.get_unit_ids())
     raster, rate = _spike_figs(unit_ids, lambda u: nev.get_unit_spike_train(u) / fs,
@@ -432,7 +432,7 @@ git commit -m "feat(report): .nev online-units raster + firing rates"
 
 ---
 
-### Task 5: Sorted-units section — raster, rates, waveform templates
+### Task 5: Sorted-units section - raster, rates, waveform templates
 
 **Files:**
 - Modify: `scripts/report.py`
@@ -442,7 +442,7 @@ git commit -m "feat(report): .nev online-units raster + firing rates"
 ```python
 def _render_sorted(analyzer) -> str:
     if analyzer is None:
-        return ('<p class="skip">No saved analyzer found — run a sort from the launcher '
+        return ('<p class="skip">No saved analyzer found - run a sort from the launcher '
                 '(<code>python scripts/make_report.py</code>).</p>')
     sorting = analyzer.sorting
     fs = analyzer.sampling_frequency
@@ -471,7 +471,7 @@ def _render_sorted(analyzer) -> str:
     return (f'<p class="note">Sorted with tridesclous2 over {dur:.1f}s sorted data, '
             f'{len(unit_ids)} units. Toggle units via the legend.</p>'
             '<div class="caveat">Placeholder independent-channel probe + 6 analog aux channels '
-            'are included — cross-channel spatial structure is not physical.</div>'
+            'are included - cross-channel spatial structure is not physical.</div>'
             + _fig_html(raster) + _fig_html(rate) + _fig_html(wf))
 ```
 
@@ -500,7 +500,7 @@ git commit -m "feat(report): sorted-units raster, rates, waveform templates"
 
 ---
 
-### Task 6: Quality-metrics section — sortable table + SNR scatter
+### Task 6: Quality-metrics section - sortable table + SNR scatter
 
 **Files:**
 - Modify: `scripts/report.py`
@@ -510,7 +510,7 @@ git commit -m "feat(report): sorted-units raster, rates, waveform templates"
 ```python
 def _render_qc(analyzer) -> str:
     if analyzer is None:
-        return '<p class="skip">No saved analyzer — quality metrics unavailable.</p>'
+        return '<p class="skip">No saved analyzer - quality metrics unavailable.</p>'
     qm = analyzer.get_extension("quality_metrics").get_data()  # DataFrame, index = unit ids
     cols = [c for c in ["firing_rate", "snr", "isi_violations_ratio", "isi_violations_count"]
             if c in qm.columns]
@@ -572,7 +572,7 @@ git commit -m "feat(report): quality-metrics sortable table + SNR scatter"
 
 ---
 
-### Task 7: Events section — digital-marker timeline
+### Task 7: Events section - digital-marker timeline
 
 **Files:**
 - Modify: `scripts/report.py`
@@ -582,7 +582,7 @@ git commit -m "feat(report): quality-metrics sortable table + SNR scatter"
 ```python
 def _render_events(events) -> str:
     if events is None:
-        return '<p class="skip">Events could not be read (best-effort) — see the status banner.</p>'
+        return '<p class="skip">Events could not be read (best-effort) - see the status banner.</p>'
     nonempty = [e for e in events if len(e["times"])]
     empty_names = [e["name"] for e in events if not len(e["times"])]
     if not nonempty:
@@ -637,7 +637,7 @@ git commit -m "feat(report): events timeline; full 7-section report"
 
 ---
 
-### Task 8: `make_report.py` — interactive launcher
+### Task 8: `make_report.py` - interactive launcher
 
 **Files:**
 - Create: `scripts/make_report.py`
@@ -733,7 +733,7 @@ def main() -> int:
         if not ok:
             print("\nRe-sort failed (non-zero exit).")
             if not analyzer_dir.exists():
-                print("No analyzer to report on — aborting.")
+                print("No analyzer to report on - aborting.")
                 return 1
             print("Building the report against the existing analyzer instead.")
 
@@ -762,7 +762,7 @@ Run:
 ```bash
 printf "\n" | conda run -n si_env python scripts/make_report.py 2>&1 | tail -5
 ```
-Expected: ends with `Report written:` / `Open it:` lines. (Because stdin is piped, it follows the non-interactive branch — that is fine; this just confirms it never blocks.)
+Expected: ends with `Report written:` / `Open it:` lines. (Because stdin is piped, it follows the non-interactive branch - that is fine; this just confirms it never blocks.)
 
 - [ ] **Step 4: Commit**
 
@@ -785,7 +785,7 @@ Run:
 ```bash
 conda run -n si_env python -c "import sys; sys.path.insert(0,'scripts'); import report; p=report.build_report(analyzer_dir='outputs/does_not_exist'); h=p.read_text(); assert 'badge SKIP' in h; assert 'No saved analyzer' in h; assert 'id=\"qc\"' in h; print('ok degraded', len(h))"
 ```
-Expected: `ok degraded <bytes>` — the report still builds; sorted + QC sections show SKIP, status banner has a SKIP badge for the analyzer.
+Expected: `ok degraded <bytes>` - the report still builds; sorted + QC sections show SKIP, status banner has a SKIP badge for the analyzer.
 
 - [ ] **Step 2: Rebuild the normal report (restore good state)**
 
@@ -803,7 +803,7 @@ python scripts/make_report.py          # interactive: health check + re-sort men
 python scripts/make_report.py --data-dir /path/to/recording
 ```
 And add a short sentence to the `## Architecture` section near the `run_sorting.py` paragraph:
-> `scripts/report.py` builds a single self-contained `outputs/report.html` (Plotly inlined) from the loaders + the saved `SortingAnalyzer` (its single source of truth — the loose `sorting/` folder and `quality_metrics.csv` come from other runs and are ignored). `scripts/make_report.py` is the interactive launcher: it prints loader health + live sort provenance and offers reuse / quick / full re-sort (shelling out to `run_sorting.py`) before building.
+> `scripts/report.py` builds a single self-contained `outputs/report.html` (Plotly inlined) from the loaders + the saved `SortingAnalyzer` (its single source of truth - the loose `sorting/` folder and `quality_metrics.csv` come from other runs and are ignored). `scripts/make_report.py` is the interactive launcher: it prints loader health + live sort provenance and offers reuse / quick / full re-sort (shelling out to `run_sorting.py`) before building.
 
 - [ ] **Step 4: Add a "Report" subsection to `README.md`**
 

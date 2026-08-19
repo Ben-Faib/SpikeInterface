@@ -1,10 +1,10 @@
-# Multi-sorter support — Implementation Plan
+# Multi-sorter support - Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace the two hardcoded sorters with a registry that auto-detects every locally-installed SpikeInterface sorter, optionally runs not-installed CPU sorters via Docker, lets the user edit any sorter's parameters, and lets the user choose which sorters to compare.
 
-**Architecture:** A new `scripts/sorters.py` module becomes the single source of truth for sorter discovery, availability status (`local`/`docker`/`gpu`/`unavailable`), parameters, and running — mirroring how `blackrock_io.py` owns dataset loading. `run_sorting.py`, `SpikeInterface_Menu.py`, `scripts/compare.py`, `scripts/verify_install.py`, and `scripts/menu_app.py` all consume it. Heavy SpikeInterface imports stay lazy (inside functions) so importing the registry is cheap.
+**Architecture:** A new `scripts/sorters.py` module becomes the single source of truth for sorter discovery, availability status (`local`/`docker`/`gpu`/`unavailable`), parameters, and running - mirroring how `blackrock_io.py` owns dataset loading. `run_sorting.py`, `SpikeInterface_Menu.py`, `scripts/compare.py`, `scripts/verify_install.py`, and `scripts/menu_app.py` all consume it. Heavy SpikeInterface imports stay lazy (inside functions) so importing the registry is cheap.
 
 **Tech Stack:** Python 3.12, SpikeInterface 0.104.3 (`spikeinterface.sorters`), Textual (menu app), rich (shared UI), pytest + pytest-asyncio (tests), Docker CLI (opt-in container path).
 
@@ -15,22 +15,22 @@
 ## File Structure
 
 **Create:**
-- `scripts/sorters.py` — sorter registry: discovery, status, params, run. No UI, no top-level SpikeInterface import.
-- `tests/test_sorters.py` — hermetic unit tests for the registry (monkeypatched installed/docker/default_params).
+- `scripts/sorters.py` - sorter registry: discovery, status, params, run. No UI, no top-level SpikeInterface import.
+- `tests/test_sorters.py` - hermetic unit tests for the registry (monkeypatched installed/docker/default_params).
 
 **Modify:**
-- `scripts/run_sorting.py` — dynamic `--sorter`, `--docker`, `--param`, `--params-file`, `--list-sorters`; sort via `sorters.run`.
-- `scripts/compare.py` — `build_comparison(sorters=None)` defaults to the first two *saved* sorts.
-- `scripts/verify_install.py` — print a sorter status table.
-- `SpikeInterface_Menu.py` — import sorters from the registry; controller gains `use_docker`, per-sorter params, a compare picker; sort forwards params + docker.
-- `scripts/menu_app.py` — Docker toggle row atop the Sorter sidebar; "Edit sorter parameters" action + Param Editor modal; sequential compare picker; status glyphs.
-- `tests/conftest.py` — extend `FakeController` + `ACTIONS` for the new capabilities.
-- `tests/test_menu_app.py` — fix action-index assertions; add tests for the Docker row, Param Editor, compare picker.
-- `CLAUDE.md` — document the registry, Docker opt-in, param editing, dynamic sidebar, compare picker, new config keys.
+- `scripts/run_sorting.py` - dynamic `--sorter`, `--docker`, `--param`, `--params-file`, `--list-sorters`; sort via `sorters.run`.
+- `scripts/compare.py` - `build_comparison(sorters=None)` defaults to the first two *saved* sorts.
+- `scripts/verify_install.py` - print a sorter status table.
+- `SpikeInterface_Menu.py` - import sorters from the registry; controller gains `use_docker`, per-sorter params, a compare picker; sort forwards params + docker.
+- `scripts/menu_app.py` - Docker toggle row atop the Sorter sidebar; "Edit sorter parameters" action + Param Editor modal; sequential compare picker; status glyphs.
+- `tests/conftest.py` - extend `FakeController` + `ACTIONS` for the new capabilities.
+- `tests/test_menu_app.py` - fix action-index assertions; add tests for the Docker row, Param Editor, compare picker.
+- `CLAUDE.md` - document the registry, Docker opt-in, param editing, dynamic sidebar, compare picker, new config keys.
 
 ---
 
-## Task 1: Registry — discovery & availability status
+## Task 1: Registry - discovery & availability status
 
 **Files:**
 - Create: `scripts/sorters.py`
@@ -44,7 +44,7 @@ Create `tests/test_sorters.py`:
 """Hermetic unit tests for scripts/sorters.py.
 
 The registry's discovery functions import SpikeInterface lazily, so every test
-here monkeypatches them — no SpikeInterface, no Docker, no sorting is invoked.
+here monkeypatches them - no SpikeInterface, no Docker, no sorting is invoked.
 """
 from __future__ import annotations
 
@@ -124,12 +124,12 @@ def test_default_sorter_falls_back_to_first_installed(fake_env, monkeypatch):
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_sorters.py -q`
-Expected: FAIL — `ModuleNotFoundError: No module named 'sorters'`.
+Expected: FAIL - `ModuleNotFoundError: No module named 'sorters'`.
 
 - [ ] **Step 3: Create `scripts/sorters.py` with discovery + status**
 
 ```python
-"""Sorter registry — discovery, availability, parameters, and running.
+"""Sorter registry - discovery, availability, parameters, and running.
 
 Single source of truth for which spike sorters this workspace can use. Replaces
 the old hardcoded ``SORTERS = ["tridesclous2", "spykingcircus2"]``: it reports
@@ -268,7 +268,7 @@ git commit -m "feat(sorters): registry discovery + availability status"
 
 ---
 
-## Task 2: Registry — parameters (coerce, merge, introspect)
+## Task 2: Registry - parameters (coerce, merge, introspect)
 
 **Files:**
 - Modify: `scripts/sorters.py`
@@ -342,7 +342,7 @@ def test_merge_params_unknown_key_raises(fake_params):
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_sorters.py -q`
-Expected: FAIL — `AttributeError: module 'sorters' has no attribute 'coerce_param'`.
+Expected: FAIL - `AttributeError: module 'sorters' has no attribute 'coerce_param'`.
 
 - [ ] **Step 3: Add the param helpers to `scripts/sorters.py`**
 
@@ -426,7 +426,7 @@ git commit -m "feat(sorters): parameter coercion, merge, and introspection"
 
 ---
 
-## Task 3: Registry — run() + status_table()
+## Task 3: Registry - run() + status_table()
 
 **Files:**
 - Modify: `scripts/sorters.py`
@@ -481,7 +481,7 @@ def test_status_table_shape(fake_env, fake_params):
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_sorters.py -q`
-Expected: FAIL — `AttributeError: module 'sorters' has no attribute 'run'`.
+Expected: FAIL - `AttributeError: module 'sorters' has no attribute 'run'`.
 
 - [ ] **Step 3: Add `run()` and `status_table()` to `scripts/sorters.py`**
 
@@ -548,7 +548,7 @@ git commit -m "feat(sorters): run() wrapper + status_table()"
 
 ---
 
-## Task 4: `run_sorting.py` — dynamic sorter, Docker, param flags
+## Task 4: `run_sorting.py` - dynamic sorter, Docker, param flags
 
 **Files:**
 - Modify: `scripts/run_sorting.py`
@@ -622,7 +622,7 @@ def test_resolve_overrides_bad_value_exits(fake):
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_run_sorting.py -q`
-Expected: FAIL — `AttributeError: module 'run_sorting' has no attribute 'resolve_sorter'`.
+Expected: FAIL - `AttributeError: module 'run_sorting' has no attribute 'resolve_sorter'`.
 
 - [ ] **Step 3: Edit `scripts/run_sorting.py`**
 
@@ -661,7 +661,7 @@ def resolve_sorter(name: str, use_docker: bool) -> str:
     st = sorters.status(name)
     reason = {
         "gpu": "needs an NVIDIA GPU (not available here)",
-        "docker": "is a container sorter — re-run with --docker (and start Docker)",
+        "docker": "is a container sorter - re-run with --docker (and start Docker)",
         "unavailable": "is not installed and has no usable container image",
         "local": "is installed",  # unreachable (would be in runnable)
     }.get(st, "is not available")
@@ -711,7 +711,7 @@ def resolve_overrides(sorter: str, param_kv: list[str], params_file: "str | None
 def print_sorter_table() -> None:
     """Print the availability of every SpikeInterface sorter, then return."""
     rows = sorters.status_table()
-    label = {"local": "local", "docker": "docker", "gpu": "GPU-only", "unavailable": "—"}
+    label = {"local": "local", "docker": "docker", "gpu": "GPU-only", "unavailable": "-"}
     print("Sorters known to SpikeInterface (status on this machine):\n")
     for r in rows:
         print(f"  {r['name']:18} {label.get(r['status'], r['status']):9} "
@@ -721,7 +721,7 @@ def print_sorter_table() -> None:
     n_gpu = sum(r["status"] == "gpu" for r in rows)
     print(f"\n{n_local} local · {n_dock} container-capable · {n_gpu} GPU-only.")
     if not sorters.docker_available():
-        print("(Docker not detected — container sorters need Docker running.)")
+        print("(Docker not detected - container sorters need Docker running.)")
 ```
 
 Add `import json` to the import block at the top of the file (after `import gc`):
@@ -806,7 +806,7 @@ Replace with:
     if overrides:
         ui.detail("overrides: " + ", ".join(f"{k}={v}" for k, v in overrides.items()))
     if args.docker:
-        ui.detail("first Docker run pulls the sorter image — this can take a while")
+        ui.detail("first Docker run pulls the sorter image - this can take a while")
     sorting = sorters.run(
         args.sorter,
         rec,
@@ -818,8 +818,8 @@ Replace with:
     ui.result(f"{len(sorting.get_unit_ids())} units found")
 ```
 
-(The unused `import spikeinterface.sorters as ss` line in `main()` may stay — it's
-harmless — or be removed; leave it to minimise the diff.)
+(The unused `import spikeinterface.sorters as ss` line in `main()` may stay - it's
+harmless - or be removed; leave it to minimise the diff.)
 
 - [ ] **Step 4: Run the test to verify it passes**
 
@@ -835,7 +835,7 @@ git commit -m "feat(run_sorting): dynamic sorter, --docker, --param/--params-fil
 
 ---
 
-## Task 5: `compare.py` — default to the first two saved sorts
+## Task 5: `compare.py` - default to the first two saved sorts
 
 **Files:**
 - Modify: `scripts/compare.py`
@@ -871,7 +871,7 @@ def test_saved_sorters_finds_analyzer_dirs(tmp_path, monkeypatch):
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_compare.py -q`
-Expected: FAIL — `AttributeError: module 'compare' has no attribute 'saved_sorters'`.
+Expected: FAIL - `AttributeError: module 'compare' has no attribute 'saved_sorters'`.
 
 - [ ] **Step 3: Edit `scripts/compare.py`**
 
@@ -926,7 +926,7 @@ git commit -m "feat(compare): default to the first two saved sorts"
 
 ---
 
-## Task 6: `verify_install.py` — sorter status section
+## Task 6: `verify_install.py` - sorter status section
 
 **Files:**
 - Modify: `scripts/verify_install.py`
@@ -952,7 +952,7 @@ Replace with:
     import sorters as sorter_registry
 
     rows = sorter_registry.status_table()
-    label = {"local": "local", "docker": "docker", "gpu": "GPU-only", "unavailable": "—"}
+    label = {"local": "local", "docker": "docker", "gpu": "GPU-only", "unavailable": "-"}
     for r in rows:
         print(f"  {r['name']:18} {label.get(r['status'], r['status']):9} "
               f"{r['n_params']:>3} params")
@@ -961,13 +961,13 @@ Replace with:
     n_gpu = sum(r["status"] == "gpu" for r in rows)
     print(f"  -> {n_local} local · {n_dock} container-capable · {n_gpu} GPU-only")
     if not sorter_registry.docker_available():
-        print("     (Docker not detected — container sorters need Docker running)")
+        print("     (Docker not detected - container sorters need Docker running)")
 ```
 
 - [ ] **Step 2: Run the smoke test to verify it works**
 
 Run: `uv run python scripts/verify_install.py 2>/dev/null | sed -n '/Sorters (availability/,/GPU-only/p'`
-Expected: a table listing sorters with `local`/`docker`/`GPU-only`/`—`, then the
+Expected: a table listing sorters with `local`/`docker`/`GPU-only`/`-`, then the
 summary line. (Exit code 0 if data is present; the sorter section prints regardless.)
 
 - [ ] **Step 3: Commit**
@@ -979,7 +979,7 @@ git commit -m "feat(verify): show full sorter availability table"
 
 ---
 
-## Task 7: `SpikeInterface_Menu.py` — controller: registry, docker, params, compare picker
+## Task 7: `SpikeInterface_Menu.py` - controller: registry, docker, params, compare picker
 
 **Files:**
 - Modify: `SpikeInterface_Menu.py`
@@ -1027,7 +1027,7 @@ def test_write_params_file_empty_returns_none():
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_menu_controller.py -q`
-Expected: FAIL — `AttributeError: module 'SpikeInterface_Menu' has no attribute '_effective_params'`.
+Expected: FAIL - `AttributeError: module 'SpikeInterface_Menu' has no attribute '_effective_params'`.
 
 - [ ] **Step 3: Edit `SpikeInterface_Menu.py`**
 
@@ -1381,8 +1381,8 @@ def action_compare(args) -> bool:
                 + ", ".join(f"{s}={d:.1f}s" for s, d in durations.items()) + ".")
         choice = ui.select(
             f"Re-sort both over the first {QUICK_SECONDS}s so the comparison is meaningful?",
-            [("no", "No — just show the window-mismatch caveat", ""),
-             ("yes", f"Yes — re-sort both ({QUICK_SECONDS}s) then compare", "")],
+            [("no", "No - just show the window-mismatch caveat", ""),
+             ("yes", f"Yes - re-sort both ({QUICK_SECONDS}s) then compare", "")],
             default=0)
         if choice == "yes":
             for s in sorters:
@@ -1418,8 +1418,8 @@ def _compare_pair(args, sorters) -> bool:
                 + ", ".join(f"{s}={d:.1f}s" for s, d in durations.items()) + ".")
         choice = ui.select(
             f"Re-sort both over the first {QUICK_SECONDS}s so the comparison is meaningful?",
-            [("no", "No — just show the window-mismatch caveat", ""),
-             ("yes", f"Yes — re-sort both ({QUICK_SECONDS}s) then compare", "")],
+            [("no", "No - just show the window-mismatch caveat", ""),
+             ("yes", f"Yes - re-sort both ({QUICK_SECONDS}s) then compare", "")],
             default=0)
         if choice == "yes":
             for s in sorters:
@@ -1484,7 +1484,7 @@ _ACTIONS = [
 ```
 
 (`_DATA_ACTIONS` is derived from this table by the existing comprehension, so
-`params` — `needs_data=False` — is correctly excluded; no change needed there.)
+`params` - `needs_data=False` - is correctly excluded; no change needed there.)
 
 - [ ] **Step 4: Run the test to verify it passes**
 
@@ -1505,7 +1505,7 @@ git commit -m "feat(menu): controller gains docker toggle, per-sorter params, co
 
 ---
 
-## Task 8: `menu_app.py` + conftest — Docker row, Param Editor, compare picker
+## Task 8: `menu_app.py` + conftest - Docker row, Param Editor, compare picker
 
 **Files:**
 - Modify: `tests/conftest.py`
@@ -1644,7 +1644,7 @@ Add the new methods to `FakeController`, just after `set_theme`:
 ```
 
 (The `reload` edit above already keeps `infos` in sync with `self.sorters`, so
-toggling Docker on surfaces the third — container — sorter.)
+toggling Docker on surfaces the third - container - sorter.)
 
 - [ ] **Step 2: Update existing index-based tests in `tests/test_menu_app.py`**
 
@@ -1676,7 +1676,7 @@ async def test_number_key_opens_param_editor(make_controller):
 - [ ] **Step 3: Run those tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_menu_app.py -q`
-Expected: FAIL — references to `menu_app.ParamEditorScreen` (not yet defined) and the
+Expected: FAIL - references to `menu_app.ParamEditorScreen` (not yet defined) and the
 new behaviours; some count assertions fail until the app is updated.
 
 ### 8b. Implement the app changes
@@ -1728,7 +1728,7 @@ Find `_sorter_text` and add a status glyph:
         t = Text()
         t.append("● " if active else "○ ", style=self._accent if active else "dim")
         t.append(info["name"], style=f"bold {self._accent}" if active else "")
-        t.append(f"  {info['units']}u" if info.get("present") else "  —", style="dim")
+        t.append(f"  {info['units']}u" if info.get("present") else "  -", style="dim")
         if active:  # explicit text tag, not colour alone (spec: unmistakable)
             t.append("  ACTIVE", style=f"bold {self._accent}")
         return t
@@ -1750,7 +1750,7 @@ Replace with:
         if glyph:
             t.append(glyph + " ", style="dim")
         t.append(info["name"], style=f"bold {self._accent}" if active else "")
-        t.append(f"  {info['units']}u" if info.get("present") else "  —", style="dim")
+        t.append(f"  {info['units']}u" if info.get("present") else "  -", style="dim")
         if active:
             t.append("  ACTIVE", style=f"bold {self._accent}")
         return t
@@ -1792,7 +1792,7 @@ Replace with:
 ```
 
 `action_cycle_sorter` ('t') still cycles only real sorters via `_set_active`, which
-indexes `self.c.sorters` — unaffected by the toggle row. Leave it as-is.
+indexes `self.c.sorters` - unaffected by the toggle row. Leave it as-is.
 
 - [ ] **Step 6: Add the "params" and "compare" branches to `_activate_action`**
 
@@ -1800,7 +1800,7 @@ Two edits. `params` does **not** need data, so its branch goes *before* the data
 guard. `compare` **does** need data, so it goes *after* the guard (the guard catches
 it when no recording is present; otherwise it falls through to the compare branch).
 
-Edit 1 — add the `params` branch before the guard. Find:
+Edit 1 - add the `params` branch before the guard. Find:
 
 ```python
         elif key == "data-setup":
@@ -1818,7 +1818,7 @@ Replace with:
         elif self._needs_data(key) and not self.c.data_report.get("present"):
 ```
 
-Edit 2 — add the `compare` branch just before the final `else`. Find:
+Edit 2 - add the `compare` branch just before the final `else`. Find:
 
 ```python
         else:
@@ -1988,13 +1988,13 @@ Add to `SpikeMenuApp` (near `_open_params`):
     def _open_compare_picker(self) -> None:
         if self._needs_data("compare") and not self.c.data_report.get("present"):
             self._last = Text("✗ ", style="bold #f85149") + Text(
-                "compare needs the recording files — press d for help")
+                "compare needs the recording files - press d for help")
             self._refresh_footer()
             return
         saved = self.c.saved_sorters()
         if len(saved) < 2:
             self._last = Text(
-                "Need two saved sorts to compare — run 'sort' for two sorters first.",
+                "Need two saved sorts to compare - run 'sort' for two sorters first.",
                 style="#f0883e")
             self._refresh_footer()
             return
@@ -2158,7 +2158,7 @@ git commit -m "feat(menu-app): docker toggle row, param editor, compare picker"
 
 ---
 
-## Task 9: Fallback typed menu — docker toggle, params, compare picker
+## Task 9: Fallback typed menu - docker toggle, params, compare picker
 
 **Files:**
 - Modify: `SpikeInterface_Menu.py` (`_menu_fallback`, `_MENU`)
@@ -2222,7 +2222,7 @@ through the end of the loop):
         if action == "sort":
             span = ui.select("Sort how much?",
                              [("full", "Full recording", ""),
-                              ("quick", f"Quick test — first {QUICK_SECONDS}s", "")],
+                              ("quick", f"Quick test - first {QUICK_SECONDS}s", "")],
                              default=0)
             if span is None:  # cancelled -> back to the menu without sorting
                 last = "Sort cancelled"
@@ -2278,7 +2278,7 @@ Replace with:
         if action == "sort":
             span = ui.select("Sort how much?",
                              [("full", "Full recording", ""),
-                              ("quick", f"Quick test — first {QUICK_SECONDS}s", "")],
+                              ("quick", f"Quick test - first {QUICK_SECONDS}s", "")],
                              default=0)
             if span is None:  # cancelled -> back to the menu without sorting
                 last = "Sort cancelled"
@@ -2378,7 +2378,7 @@ def _edit_params_typed(sorter: str, cfg: dict) -> None:
     descs = sorter_registry.param_descriptions(sorter) if hasattr(sorter_registry, "param_descriptions") else {}
     while True:
         opts = [(k, k, f"{overrides.get(k, defaults[k])}") for k in defaults]
-        opts.append(("__done__", "Done — save & return", ""))
+        opts.append(("__done__", "Done - save & return", ""))
         key = ui.select(f"Edit which parameter of {sorter}?", opts, default=len(opts) - 1)
         if key in (None, "__done__"):
             break
@@ -2410,7 +2410,7 @@ def _pick_compare_pair(data_dir):
 
     found = compare.saved_sorters()
     if len(found) < 2:
-        ui.warn("Need two saved sorts to compare — run 'sort' for two sorters first.")
+        ui.warn("Need two saved sorts to compare - run 'sort' for two sorters first.")
         return None
     first = ui.select("Compare which sorter?", [(s, s, "") for s in found], default=0)
     if first is None:
@@ -2458,7 +2458,7 @@ In `CLAUDE.md`, in the **Sorting status & the probe gap** section, replace the
 with:
 
 ```
-- **Sorters are discovered dynamically** via `scripts/sorters.py` (the registry — single source of truth). `installed_sorters()` runnable locally today: `tridesclous2`, `spykingcircus2`, `lupin`, `simple`. Not-installed **CPU** sorters (mountainsort5, herdingspikes, spykingcircus, waveclus, combinato, …) can run via **opt-in Docker** (`run_sorter(..., docker_image=True)`) — Docker is detected at runtime. **GPU sorters** (kilosort*, pykilosort, yass) are shown but never offered: no NVIDIA GPU here, and Docker-on-Mac has no GPU passthrough. `sorters.status(name)` → `local`/`docker`/`gpu`/`unavailable`.
+- **Sorters are discovered dynamically** via `scripts/sorters.py` (the registry - single source of truth). `installed_sorters()` runnable locally today: `tridesclous2`, `spykingcircus2`, `lupin`, `simple`. Not-installed **CPU** sorters (mountainsort5, herdingspikes, spykingcircus, waveclus, combinato, …) can run via **opt-in Docker** (`run_sorter(..., docker_image=True)`) - Docker is detected at runtime. **GPU sorters** (kilosort*, pykilosort, yass) are shown but never offered: no NVIDIA GPU here, and Docker-on-Mac has no GPU passthrough. `sorters.status(name)` → `local`/`docker`/`gpu`/`unavailable`.
 ```
 
 Add to the **Commands** block (after the `run_sorting.py --verbosity quiet` line):
@@ -2474,7 +2474,7 @@ Add a new paragraph to the **Architecture** section, right after the
 `scripts/blackrock_io.py` description:
 
 ```
-`scripts/sorters.py` is the **sorter registry** — the single source of truth for
+`scripts/sorters.py` is the **sorter registry** - the single source of truth for
 which spike sorters are usable (replacing the old hardcoded two-element list).
 `available()`/`installed()` wrap SpikeInterface; `docker_available()` probes the
 Docker daemon; `status(name)` classifies each sorter `local`/`docker`/`gpu`/
@@ -2491,7 +2491,7 @@ In the `SpikeInterface_Menu.py` paragraph of the **Architecture** section, appen
 ```
 The **Sorter sidebar** is now dynamic over `sorters.runnable(use_docker)` with a
 `⊞ Docker sorters: off/on` **toggle row at the top** (↑/↓ to reach it, Enter to
-flip — it re-lists the container sorters); each sorter row shows a `◇` glyph when
+flip - it re-lists the container sorters); each sorter row shows a `◇` glyph when
 it runs via Docker. An **"Edit sorter parameters"** action opens a Param Editor
 modal for the active sorter (scalars inline, bool as a checkbox, dict/None as
 JSON; Ctrl+S saves only the changed keys, Ctrl+R resets). **Compare** now opens a
@@ -2525,7 +2525,7 @@ report, menu app). No failures, no errors.
 Run: `uv run python scripts/run_sorting.py --list-sorters`
 Expected: a table of ~22 sorters; `tridesclous2`/`spykingcircus2`/`lupin`/`simple`
 shown `local`; kilosort* shown `GPU-only`; mountainsort5/herdingspikes/… shown
-`docker` (if Docker is running) or `—`; a summary line; exit 0.
+`docker` (if Docker is running) or `-`; a summary line; exit 0.
 
 - [ ] **Step 3: Confirm a quick real sort still works with the new run path**
 
@@ -2543,7 +2543,7 @@ exit 0. (Confirms `--param` coercion + `sorter_params` plumbing end-to-end.)
 
 Run: `uv run python scripts/verify_install.py`
 Expected: the "Sorters (availability on this machine)" section lists each sorter
-with local/docker/GPU-only/—, then the summary. Exit 0 (data present).
+with local/docker/GPU-only/-, then the summary. Exit 0 (data present).
 
 - [ ] **Step 6: Final commit if any verification fix was needed**
 
@@ -2557,7 +2557,7 @@ git commit -m "test: multi-sorter support verification pass" || echo "nothing to
 ## Self-Review (completed during planning)
 
 **Spec coverage:** registry module (Tasks 1–3) ✓; local auto-detect + opt-in Docker
-(`runnable`, `--docker`, toggle row — Tasks 1, 4, 7, 8, 9) ✓; full per-sorter param
+(`runnable`, `--docker`, toggle row - Tasks 1, 4, 7, 8, 9) ✓; full per-sorter param
 editing (CLI `--param`/`--params-file` Task 4; menu modal Task 8; typed editor Task
 9; persisted diffs Task 7) ✓; user-chosen compare (compare picker Tasks 7–9;
 `compare.saved_sorters` Task 5) ✓; controls = params Action + Docker sidebar row

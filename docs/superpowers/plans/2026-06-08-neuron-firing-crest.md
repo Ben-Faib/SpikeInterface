@@ -4,7 +4,7 @@
 
 **Goal:** Replace the unrecognizable brain hero crest with a single firing-neuron mark that plays a slow, subtle "receive → fire → rest" animation in the Textual dashboard.
 
-**Architecture:** A phase-driven renderer in `scripts/ui.py` (`neuron_frame(tier, phase)` + `pick_neuron`) builds the crest rows for any animation phase, in width-safe glyphs (box-drawing + the full block `█`, the same no-`●`/no-quadrant discipline as the shield). The Textual `CrestWidget` in `scripts/menu_app.py` gains a `phase` + a `set_interval` timer that walks the phase and re-renders via the existing `_crest_text`, honoring an `animate` config flag and memoizing identical rest frames. Everything else (Welcome, Help "About", the legacy fallback menu) is unchanged — they already draw the Pitt shield, not the brain.
+**Architecture:** A phase-driven renderer in `scripts/ui.py` (`neuron_frame(tier, phase)` + `pick_neuron`) builds the crest rows for any animation phase, in width-safe glyphs (box-drawing + the full block `█`, the same no-`●`/no-quadrant discipline as the shield). The Textual `CrestWidget` in `scripts/menu_app.py` gains a `phase` + a `set_interval` timer that walks the phase and re-renders via the existing `_crest_text`, honoring an `animate` config flag and memoizing identical rest frames. Everything else (Welcome, Help "About", the legacy fallback menu) is unchanged - they already draw the Pitt shield, not the brain.
 
 **Tech Stack:** Python 3.12, Textual (already a dep), rich (already a dep), pytest + pytest-asyncio (`uv sync --group dev`). No new dependencies.
 
@@ -14,27 +14,27 @@
 
 - The crest renders through `menu_app._crest_text(rows)` (`scripts/menu_app.py:658`), where each *row* is a list of `(style, segment)` fragments → so **two-tone color is free**.
 - `menu_app.CrestWidget` (`scripts/menu_app.py:670`) is the **only** consumer of `ui.pick_brain`. Its `fit(cols, rows, reserve)` calls `picker(cols-4, rows, reserve=reserve)` and renders **once**. `_relayout` calls `self.query_one("#crest", CrestWidget).fit(w, h, reserve)` (`scripts/menu_app.py:842`).
-- The legacy fallback `ui.dashboard_menu` draws the **shield** via `ui.pick_logo` (`scripts/ui.py:339,660`) — NOT the brain. Welcome (`#wcrest`) and Help "About" use `ui.SHIELD_FULL`/`ui.SHIELD_COMPACT`. **None of these change.**
+- The legacy fallback `ui.dashboard_menu` draws the **shield** via `ui.pick_logo` (`scripts/ui.py:339,660`) - NOT the brain. Welcome (`#wcrest`) and Help "About" use `ui.SHIELD_FULL`/`ui.SHIELD_COMPACT`. **None of these change.**
 - Config persists via `SpikeInterface_Menu._load_config`/`_save_config` and the `MenuController` (`self.use_docker = bool(cfg.get("use_docker", False))` at `SpikeInterface_Menu.py:675`; `set_theme` saves cfg at `:708-714`; `toggle_docker` at `:739-752`; `mark_welcome_seen` at `:798-801`).
 - The Controller contract is a `Protocol` in `menu_app.py:91`. The test double is `tests/conftest.py:36 FakeController` (fixture `make_controller` at `:219`). Real-controller tests build via `tests/test_menu_controller.py:35 _controller(monkeypatch, tmp_path, ..., cfg=None)`.
 
-> **Line numbers may have shifted** — the user is editing this branch concurrently. Locate by symbol (the names above), not by line.
+> **Line numbers may have shifted** - the user is editing this branch concurrently. Locate by symbol (the names above), not by line.
 
 ## File Structure
 
-- **Modify `scripts/ui.py`** — add the neuron crest (color constants, phase bands, `_NeuronTier`, three baseline tiers, `_encode_neuron_row`, `neuron_frame`, `neuron_rest`, `_NEURONS`, `pick_neuron`) **additively** in Task 1 (the brain stays so imports don't break mid-migration), then remove the brain crest (`_BRAIN_*`, `_build_brain`, `_BRAINS`, `pick_brain`, `BRAIN_PINK`) in Task 5 once nothing references it; add `m animation` to the `HELP_TOPICS` "keys" entry (Task 4). Responsibility: all crest art + the phase renderer.
-- **Delete `scripts/_brain_art_gen.py`** — the brain bitmap generator (in Task 5, with the brain removal); the neuron is procedural.
-- **Create `scripts/_neuron_art_preview.py`** — dev tool that prints each tier's rest + fire frame for visual QA (replaces the deleted generator's role).
-- **Modify `scripts/menu_app.py`** — `CrestWidget` becomes the animated neuron (phase, timer, `_animate`, `set_animate`, `_render`, `fit` via `pick_neuron`); `compose` yields `CrestWidget(id="crest")`; add `Binding("m", "toggle_motion", ...)` + `action_toggle_motion`; `Controller` Protocol gains `animate: bool` + `set_animate`. Responsibility: the animated widget + its toggle.
-- **Modify `SpikeInterface_Menu.py`** — `MenuController` gains `self.animate` (from `cfg.get("animate", True)`) + `set_animate`. Responsibility: persist the flag.
-- **Modify `tests/conftest.py`** — `FakeController` gains `animate = True` + `set_animate`.
-- **Modify `tests/test_menu_app.py`** — retarget the brain tests to the neuron + add animation tests.
-- **Modify `tests/test_menu_controller.py`** — add `animate` persistence/default tests.
-- **Modify `CLAUDE.md`** — swap the brain-crest description for the neuron (done last, lightly, given concurrent edits).
+- **Modify `scripts/ui.py`** - add the neuron crest (color constants, phase bands, `_NeuronTier`, three baseline tiers, `_encode_neuron_row`, `neuron_frame`, `neuron_rest`, `_NEURONS`, `pick_neuron`) **additively** in Task 1 (the brain stays so imports don't break mid-migration), then remove the brain crest (`_BRAIN_*`, `_build_brain`, `_BRAINS`, `pick_brain`, `BRAIN_PINK`) in Task 5 once nothing references it; add `m animation` to the `HELP_TOPICS` "keys" entry (Task 4). Responsibility: all crest art + the phase renderer.
+- **Delete `scripts/_brain_art_gen.py`** - the brain bitmap generator (in Task 5, with the brain removal); the neuron is procedural.
+- **Create `scripts/_neuron_art_preview.py`** - dev tool that prints each tier's rest + fire frame for visual QA (replaces the deleted generator's role).
+- **Modify `scripts/menu_app.py`** - `CrestWidget` becomes the animated neuron (phase, timer, `_animate`, `set_animate`, `_render`, `fit` via `pick_neuron`); `compose` yields `CrestWidget(id="crest")`; add `Binding("m", "toggle_motion", ...)` + `action_toggle_motion`; `Controller` Protocol gains `animate: bool` + `set_animate`. Responsibility: the animated widget + its toggle.
+- **Modify `SpikeInterface_Menu.py`** - `MenuController` gains `self.animate` (from `cfg.get("animate", True)`) + `set_animate`. Responsibility: persist the flag.
+- **Modify `tests/conftest.py`** - `FakeController` gains `animate = True` + `set_animate`.
+- **Modify `tests/test_menu_app.py`** - retarget the brain tests to the neuron + add animation tests.
+- **Modify `tests/test_menu_controller.py`** - add `animate` persistence/default tests.
+- **Modify `CLAUDE.md`** - swap the brain-crest description for the neuron (done last, lightly, given concurrent edits).
 
 ---
 
-## Task 1: Neuron renderer in `ui.py` (additive — brain stays until Task 5)
+## Task 1: Neuron renderer in `ui.py` (additive - brain stays until Task 5)
 
 > **Why additive:** `menu_app.CrestWidget.__init__` currently has `picker=ui.pick_brain` as a *default argument*, evaluated at **import time**. Removing `ui.pick_brain` before the widget is migrated (Task 3) would break `import menu_app` for every test. So Task 1 only *adds* the neuron API; the brain is removed in Task 5 after Task 3 stops referencing it.
 
@@ -42,10 +42,10 @@
 - Modify: `scripts/ui.py` (add the neuron block after the `SHIELD_FULL, SHIELD_COMPACT, SHIELD_MINI = ...` line; leave the brain block in place)
 - Test: `tests/test_menu_app.py` (the unit-level tests; no app needed)
 
-- [ ] **Step 1: Write the failing tests** — replace the existing `test_brain_art_rows_equal_width` (around `tests/test_menu_app.py:673`) and add neuron-frame tests. (Leave `_has_braille` for now — `test_dashboard_crest_is_the_brain` still uses it until Task 3.)
+- [ ] **Step 1: Write the failing tests** - replace the existing `test_brain_art_rows_equal_width` (around `tests/test_menu_app.py:673`) and add neuron-frame tests. (Leave `_has_braille` for now - `test_dashboard_crest_is_the_brain` still uses it until Task 3.)
 
 ```python
-# tests/test_menu_app.py — replace test_brain_art_rows_equal_width with:
+# tests/test_menu_app.py - replace test_brain_art_rows_equal_width with:
 
 def test_neuron_tiers_equal_width():
     # Every row in each tier's rest pose must be the same width or Textual's
@@ -56,7 +56,7 @@ def test_neuron_tiers_equal_width():
 
 
 def test_neuron_frame_width_invariant():
-    # Animation only recolours / replaces cells in place — it never changes a
+    # Animation only recolours / replaces cells in place - it never changes a
     # row's display width, at any phase.
     for tier in (ui._NEURON_FULL, ui._NEURON_COMPACT, ui._NEURON_MINI):
         W = len(tier.rest[0])
@@ -79,7 +79,7 @@ def test_neuron_fire_has_spark():
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_menu_app.py -k "neuron" -q`
-Expected: FAIL — `AttributeError: module 'ui' has no attribute '_NEURON_FULL'` / `neuron_frame`.
+Expected: FAIL - `AttributeError: module 'ui' has no attribute '_NEURON_FULL'` / `neuron_frame`.
 
 - [ ] **Step 3: Add the `namedtuple` import** to the top-of-file imports in `scripts/ui.py` (next to `import sys`):
 
@@ -87,20 +87,20 @@ Expected: FAIL — `AttributeError: module 'ui' has no attribute '_NEURON_FULL'`
 from collections import namedtuple
 ```
 
-- [ ] **Step 4: Add the neuron block** after the `SHIELD_FULL, SHIELD_COMPACT, SHIELD_MINI = ...` line (before `_term_size`/`_pick`). Leave the existing brain block (`BRAIN_PINK`, `_BRAIN_*`, `_build_brain`, `_BRAINS`, `pick_brain`) untouched for now — it's removed in Task 5. Width-safe glyphs only — box-drawing + the full block `█`, no `●`/quadrant blocks (they misalign across fonts; same rule the shield header documents).
+- [ ] **Step 4: Add the neuron block** after the `SHIELD_FULL, SHIELD_COMPACT, SHIELD_MINI = ...` line (before `_term_size`/`_pick`). Leave the existing brain block (`BRAIN_PINK`, `_BRAIN_*`, `_build_brain`, `_BRAINS`, `pick_brain`) untouched for now - it's removed in Task 5. Width-safe glyphs only - box-drawing + the full block `█`, no `●`/quadrant blocks (they misalign across fonts; same rule the shield header documents).
 
 ```python
 # --------------------------------------------------------------------------- #
-# Firing-neuron hero — the v2 Textual dashboard's animated top crest (replaces
+# Firing-neuron hero - the v2 Textual dashboard's animated top crest (replaces
 # the brain). A single neuron: dendrites -> soma -> axon -> action-potential
 # spike, drawn in width-safe glyphs ONLY (box-drawing U+2500.. + the full block
-# █; NO ●/quadrant blocks, which misalign across fonts — same discipline as the
+# █; NO ●/quadrant blocks, which misalign across fonts - same discipline as the
 # shield). menu_app.CrestWidget walks `phase` on a slow timer (receive -> fire ->
 # rest); Welcome/Help/the legacy fallback keep the shield. Preview the art with
 # `uv run python scripts/_neuron_art_preview.py`.
 # --------------------------------------------------------------------------- #
-NEURON_BODY = "#ff6fb5"     # calm pink — the resting neuron body
-NEURON_SPARK = "#ffe066"    # electric yellow — the travelling pulse + firing AP
+NEURON_BODY = "#ff6fb5"     # calm pink - the resting neuron body
+NEURON_SPARK = "#ffe066"    # electric yellow - the travelling pulse + firing AP
 NEURON_REST_PHASE = 0.0
 
 # Phase bands over one [0,1) cycle. Most of the cycle is REST (identical frames
@@ -169,7 +169,7 @@ _NEURONS = [
 
 def _encode_neuron_row(chars, styles):
     """Run-length-merge adjacent cells of equal style into (style, segment)
-    fragments — the same row shape _build_logo produces, so _crest_text renders
+    fragments - the same row shape _build_logo produces, so _crest_text renders
     the neuron unchanged."""
     frags, i, n = [], 0, len(chars)
     while i < n:
@@ -215,12 +215,12 @@ def neuron_frame(tier, phase=NEURON_REST_PHASE):
 
 
 def neuron_rest(tier):
-    """The resting pose — for static contexts and tests."""
+    """The resting pose - for static contexts and tests."""
     return neuron_frame(tier, NEURON_REST_PHASE)
 
 
 def pick_neuron(cols, rows=None, reserve=0):
-    """Largest neuron tier (full -> compact -> mini -> none) that fits — same fit
+    """Largest neuron tier (full -> compact -> mini -> none) that fits - same fit
     rules as pick_logo. Returns the _NeuronTier (truthy) or [] when even mini
     won't fit."""
     return _pick(_NEURONS, cols, rows, reserve)
@@ -229,7 +229,7 @@ def pick_neuron(cols, rows=None, reserve=0):
 - [ ] **Step 5: Run the neuron tests to verify they pass**
 
 Run: `uv run python -m pytest tests/test_menu_app.py -k "neuron" -q`
-Expected: PASS (4 passed). If `test_neuron_tiers_equal_width` fails, a literal row was miscounted — pad the short row(s) with trailing spaces to match the longest in that tier; that is the only allowed fix.
+Expected: PASS (4 passed). If `test_neuron_tiers_equal_width` fails, a literal row was miscounted - pad the short row(s) with trailing spaces to match the longest in that tier; that is the only allowed fix.
 
 - [ ] **Step 6: Commit**
 
@@ -271,9 +271,9 @@ def main() -> int:
              ("MINI", ui._NEURON_MINI)]
     for name, tier in tiers:
         w, h = len(tier.rest[0]), len(tier.rest)
-        print(f"===== {name}: {w} cols x {h} rows — rest =====")
+        print(f"===== {name}: {w} cols x {h} rows - rest =====")
         print(_plain(ui.neuron_frame(tier, 0.0)))
-        print(f"----- {name} — fire -----")
+        print(f"----- {name} - fire -----")
         print(_plain(ui.neuron_frame(tier, 0.96)))
         print()
     return 0
@@ -303,10 +303,10 @@ git commit -m "$(printf 'chore(menu): neuron crest preview tool for visual QA\n\
 - Modify: `scripts/menu_app.py` (`CrestWidget` class; `compose`'s `CrestWidget(...)`; module constants near `SHIELD_RESERVE`)
 - Test: `tests/test_menu_app.py`
 
-- [ ] **Step 1: Write the failing tests** — retarget the brain dashboard test and add animation tests. Also delete the now-unused `_has_braille` helper from the top of `tests/test_menu_app.py` (its last user, `test_dashboard_crest_is_the_brain`, is replaced here).
+- [ ] **Step 1: Write the failing tests** - retarget the brain dashboard test and add animation tests. Also delete the now-unused `_has_braille` helper from the top of `tests/test_menu_app.py` (its last user, `test_dashboard_crest_is_the_brain`, is replaced here).
 
 ```python
-# tests/test_menu_app.py — replace test_dashboard_crest_is_the_brain with:
+# tests/test_menu_app.py - replace test_dashboard_crest_is_the_brain with:
 
 async def test_dashboard_crest_is_the_neuron(make_controller):
     app = _app(make_controller(present=True))
@@ -348,7 +348,7 @@ async def test_crest_static_when_disabled(make_controller):
 - [ ] **Step 2: Run to verify they fail**
 
 Run: `uv run python -m pytest tests/test_menu_app.py -k "crest" -q`
-Expected: FAIL — `AttributeError` on `crest._animate` / `_tick` / `_phase`, and the neuron-render assertion errors against the old brain widget.
+Expected: FAIL - `AttributeError` on `crest._animate` / `_tick` / `_phase`, and the neuron-render assertion errors against the old brain widget.
 
 - [ ] **Step 3: Add animation constants** near `SHIELD_RESERVE` (top of `scripts/menu_app.py`, after `_BORDER_DIM`):
 
@@ -412,7 +412,7 @@ class CrestWidget(Static):
             self.update(_crest_text(rows))
 ```
 
-- [ ] **Step 5: Update `compose`** — change the crest line from `yield CrestWidget(ui.pick_brain, id="crest")` to:
+- [ ] **Step 5: Update `compose`** - change the crest line from `yield CrestWidget(ui.pick_brain, id="crest")` to:
 
 ```python
         yield CrestWidget(id="crest")
@@ -426,7 +426,7 @@ Expected: PASS (3 passed).
 - [ ] **Step 7: Run the full menu suite (no regressions)**
 
 Run: `uv run python -m pytest tests/test_menu_app.py -q`
-Expected: PASS — including the unchanged shield tests `test_welcome_screen_shows_pitt_shield` and `test_help_about_topic_shows_pitt_shield`.
+Expected: PASS - including the unchanged shield tests `test_welcome_screen_shows_pitt_shield` and `test_help_about_topic_shows_pitt_shield`.
 
 - [ ] **Step 8: Commit**
 
@@ -437,7 +437,7 @@ git commit -m "$(printf 'feat(menu): animate the neuron crest (slow receive->fir
 
 ---
 
-## Task 4: `animate` flag — config, controller, toggle
+## Task 4: `animate` flag - config, controller, toggle
 
 **Files:**
 - Modify: `SpikeInterface_Menu.py` (`MenuController.__init__`, new `set_animate`)
@@ -446,7 +446,7 @@ git commit -m "$(printf 'feat(menu): animate the neuron crest (slow receive->fir
 - Modify: `tests/conftest.py` (`FakeController`)
 - Test: `tests/test_menu_controller.py`, `tests/test_menu_app.py`
 
-- [ ] **Step 1: Write the failing controller tests** — add to `tests/test_menu_controller.py` (uses the file's existing `_controller` helper):
+- [ ] **Step 1: Write the failing controller tests** - add to `tests/test_menu_controller.py` (uses the file's existing `_controller` helper):
 
 ```python
 def test_animate_defaults_on(monkeypatch, tmp_path):
@@ -472,7 +472,7 @@ def test_set_animate_updates_attr_and_persists(monkeypatch, tmp_path):
 - [ ] **Step 2: Run to verify they fail**
 
 Run: `uv run python -m pytest tests/test_menu_controller.py -k "animate" -q`
-Expected: FAIL — `AttributeError: 'MenuController' object has no attribute 'animate'` / `set_animate`.
+Expected: FAIL - `AttributeError: 'MenuController' object has no attribute 'animate'` / `set_animate`.
 
 - [ ] **Step 3: Add `animate` to `MenuController`** in `SpikeInterface_Menu.py`. After the line `self.use_docker = bool(cfg.get("use_docker", False))`, add:
 
@@ -542,7 +542,7 @@ and a method (next to `set_theme`):
         return self.animate
 ```
 
-- [ ] **Step 9: Write + run the toggle Pilot test** — add to `tests/test_menu_app.py`:
+- [ ] **Step 9: Write + run the toggle Pilot test** - add to `tests/test_menu_app.py`:
 
 ```python
 async def test_m_key_toggles_animation(make_controller):
@@ -591,7 +591,7 @@ Now that `CrestWidget` no longer references `ui.pick_brain` (Task 3) and the tes
 Run: `grep -rn "pick_brain\|_BRAIN\|BRAIN_PINK\|_build_brain\|_brain_art_gen" scripts/ tests/ SpikeInterface_Menu.py`
 Expected: **no hits** in `.py` files. (Doc hits in `CLAUDE.md`/specs are handled in Task 7.) If any `.py` reference remains, stop and migrate it first.
 
-- [ ] **Step 2: Delete the brain block from `scripts/ui.py`** — the comment header above `BRAIN_PINK`, the `BRAIN_PINK = "#ff6fb5"` line, `_BRAIN_FULL`, `_BRAIN_COMPACT`, `_BRAIN_MINI`, `def _build_brain(...)`, the `_BRAINS = [...]` ladder, and `def pick_brain(...)`. Leave `_pick`, `pick_logo`, `_LOGO_INDENT`, `SHIELD_*`, and the entire neuron block intact.
+- [ ] **Step 2: Delete the brain block from `scripts/ui.py`** - the comment header above `BRAIN_PINK`, the `BRAIN_PINK = "#ff6fb5"` line, `_BRAIN_FULL`, `_BRAIN_COMPACT`, `_BRAIN_MINI`, `def _build_brain(...)`, the `_BRAINS = [...]` ladder, and `def pick_brain(...)`. Leave `_pick`, `pick_logo`, `_LOGO_INDENT`, `SHIELD_*`, and the entire neuron block intact.
 
 - [ ] **Step 3: Delete the generator**
 
@@ -601,7 +601,7 @@ Expected: `rm 'scripts/_brain_art_gen.py'`
 - [ ] **Step 4: Full suite (import-clean, no regressions)**
 
 Run: `uv run python -m pytest tests/ -q`
-Expected: PASS — `import menu_app` no longer evaluates `ui.pick_brain` anywhere, so the removal is safe.
+Expected: PASS - `import menu_app` no longer evaluates `ui.pick_brain` anywhere, so the removal is safe.
 
 - [ ] **Step 5: Commit**
 
@@ -615,7 +615,7 @@ git commit -m "$(printf 'refactor(menu): drop the dead brain crest + its generat
 
 ## Task 6: Visual QA + art polish (recommended)
 
-The baseline art in Task 1 is correct-by-construction but plain. This task makes it genuinely read as a firing neuron. The renderer/format/tests do **not** change — only the three `_NeuronTier` literals in `scripts/ui.py`.
+The baseline art in Task 1 is correct-by-construction but plain. This task makes it genuinely read as a firing neuron. The renderer/format/tests do **not** change - only the three `_NeuronTier` literals in `scripts/ui.py`.
 
 - [ ] **Step 1: Eyeball the baseline**
 
@@ -631,7 +631,7 @@ A judging note for the workflow: the `ap` cells must land on cells that are blan
 - [ ] **Step 4: Re-run the structural tests** (these guard the swap):
 
 Run: `uv run python -m pytest tests/test_menu_app.py -k "neuron or crest" -q`
-Expected: PASS — equal-width + width-invariant + spark-on-fire still hold. Fix any ragged row by padding with trailing spaces.
+Expected: PASS - equal-width + width-invariant + spark-on-fire still hold. Fix any ragged row by padding with trailing spaces.
 
 - [ ] **Step 5: Re-preview + commit**
 
@@ -650,14 +650,14 @@ git commit -m "$(printf 'feat(menu): polish the firing-neuron crest art (workflo
 - Modify: `CLAUDE.md`
 - Modify: `docs/superpowers/specs/2026-06-08-brain-hero-crest-design.md` (one-line superseded note)
 
-- [ ] **Step 1: Update `CLAUDE.md`** — the menu/architecture section describes "the brain — not the shield — is the dashboard's top crest" and "a detailed, solid Braille brain in neural pink." Replace those with the neuron: the dashboard's top crest is now an **animated firing neuron** (dendrites → soma → axon → action-potential spike) drawn in width-safe box-drawing+block glyphs, on a slow `receive → fire → rest` loop (~6 fps, ~6 s) gated by an `animate` flag in `.si_menu.json` (toggle with `m`); the Pitt shield stays on Welcome + Help "About"; the legacy fallback keeps the shield. Note `pick_brain`/`_BRAIN_*` are gone, replaced by `neuron_frame`/`pick_neuron`/`_NEURON_*`, and `_brain_art_gen.py` by `_neuron_art_preview.py`.
+- [ ] **Step 1: Update `CLAUDE.md`** - the menu/architecture section describes "the brain - not the shield - is the dashboard's top crest" and "a detailed, solid Braille brain in neural pink." Replace those with the neuron: the dashboard's top crest is now an **animated firing neuron** (dendrites → soma → axon → action-potential spike) drawn in width-safe box-drawing+block glyphs, on a slow `receive → fire → rest` loop (~6 fps, ~6 s) gated by an `animate` flag in `.si_menu.json` (toggle with `m`); the Pitt shield stays on Welcome + Help "About"; the legacy fallback keeps the shield. Note `pick_brain`/`_BRAIN_*` are gone, replaced by `neuron_frame`/`pick_neuron`/`_NEURON_*`, and `_brain_art_gen.py` by `_neuron_art_preview.py`.
 
-> Edit by locating the phrases, not line numbers — the user is editing `CLAUDE.md` concurrently. Touch only the crest sentences; leave unrelated edits alone.
+> Edit by locating the phrases, not line numbers - the user is editing `CLAUDE.md` concurrently. Touch only the crest sentences; leave unrelated edits alone.
 
-- [ ] **Step 2: Mark the old spec superseded** — add one line at the top of `docs/superpowers/specs/2026-06-08-brain-hero-crest-design.md`:
+- [ ] **Step 2: Mark the old spec superseded** - add one line at the top of `docs/superpowers/specs/2026-06-08-brain-hero-crest-design.md`:
 
 ```markdown
-> **Superseded by `2026-06-08-neuron-firing-crest-design.md`** — the brain hero was replaced by an animated firing neuron.
+> **Superseded by `2026-06-08-neuron-firing-crest-design.md`** - the brain hero was replaced by an animated firing neuron.
 ```
 
 - [ ] **Step 3: Commit**
@@ -673,7 +673,7 @@ git commit -m "$(printf 'docs: neuron crest replaces the brain hero (CLAUDE.md +
 
 - **Motif / layout / spike** (horizontal neuron → AP spike): Task 1 art + renderer. ✓
 - **Animation, ~6 fps, gentle ~5–7 s loop, 6 states, two-tone, memoised rest**: Task 1 phase bands + Task 3 timer (`_CREST_CYCLE_S = 6.0`; rest band = 74% of the cycle ⇒ a fire roughly every ~6 s; `_render` memoises). ✓
-- **Textual-only animation; static rest elsewhere**: only `CrestWidget` animates; Welcome/Help/fallback are untouched (they draw the shield). ✓ — note this *deviates from the spec*, which said the fallback shows the neuron at rest; in the current code the fallback already shows the shield, so leaving it is less churn and still "no animation outside Textual." Flag for the user.
+- **Textual-only animation; static rest elsewhere**: only `CrestWidget` animates; Welcome/Help/fallback are untouched (they draw the shield). ✓ - note this *deviates from the spec*, which said the fallback shows the neuron at rest; in the current code the fallback already shows the shield, so leaving it is less churn and still "no animation outside Textual." Flag for the user.
 - **`animate` flag persisted + toggle**: Task 4. ✓
 - **Pitt shield unchanged on Welcome/About**: guarded by the kept shield tests. ✓
 - **Tests retargeted + animation tests added**: Tasks 1, 3, 4. ✓
@@ -684,5 +684,5 @@ git commit -m "$(printf 'docs: neuron crest replaces the brain hero (CLAUDE.md +
 ## Risks / watch-items
 
 - **`set_interval(..., pause=...)`** and `Timer.pause()/.resume()` are the Textual API used elsewhere in this file (the Docker poll timer). If a Textual version mismatch surfaces, fall back to starting the timer unpaused and early-returning in `_tick` when `not self._animate` (the guard is already there).
-- **Glyph width across fonts** — the art is restricted to box-drawing + `█`, the same set the shield uses. The equal-width test guards *code-point* width; the `_neuron_art_preview.py` eyeball (Task 6 Step 1) guards *display* width.
-- **Concurrent edits** — the user is actively editing `menu_app.py`/`CLAUDE.md` on this branch. Each `git add` lists explicit paths; never `git add -A`. Locate code by symbol, re-read before editing.
+- **Glyph width across fonts** - the art is restricted to box-drawing + `█`, the same set the shield uses. The equal-width test guards *code-point* width; the `_neuron_art_preview.py` eyeball (Task 6 Step 1) guards *display* width.
+- **Concurrent edits** - the user is actively editing `menu_app.py`/`CLAUDE.md` on this branch. Each `git add` lists explicit paths; never `git add -A`. Locate code by symbol, re-read before editing.

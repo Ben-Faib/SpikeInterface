@@ -1,4 +1,4 @@
-# Newcomer-friendly menu + Docker UX — design
+# Newcomer-friendly menu + Docker UX - design
 
 **Date:** 2026-06-07 · **Branch:** `multi-sorter-support` · **Status:** approved, ready for plan
 
@@ -14,8 +14,8 @@ The menu shipped multi-sorter support but is unfriendly to newcomers:
 - The sorter sidebar lists only the **runnable** sorters (~4 locally), so a new
   user never learns the other ~18 exist or how to reach them.
 - The `⊞ Docker sorters` row flips **silently**. A user who has never heard of
-  Docker gets no explanation, no setup help, and — if Docker isn't installed or
-  isn't running — no feedback beyond container sorters mysteriously not appearing.
+  Docker gets no explanation, no setup help, and - if Docker isn't installed or
+  isn't running - no feedback beyond container sorters mysteriously not appearing.
 - There is **no onboarding** and **two overlapping help affordances** (a
   "Data files & setup help" action + the `d` key) that only cover file placement,
   not "what is a sorter / what is Docker / what do these steps do."
@@ -23,17 +23,17 @@ The menu shipped multi-sorter support but is unfriendly to newcomers:
 **Deployment reality (important):** this tool will run on **Windows machines with
 an NVIDIA GPU**, not the developer's Mac. So the design must treat **GPU sorters
 as first-class** (they become runnable once installed on the target) and must be
-**portable** — no Mac-specific "GPU is dead" assumptions anywhere.
+**portable** - no Mac-specific "GPU is dead" assumptions anywhere.
 
 **Goal:** show *all* sorters grouped by availability with per-sorter descriptions;
 make Docker obvious and **guided** (detect state, open the download page, start
 Docker for the user, re-check); add light onboarding (a one-time welcome + an
 interactive Help that absorbs the data-setup content); keep the typed-fallback
-menu at parity; and preserve the two hard contracts from v2 — **responsiveness**
+menu at parity; and preserve the two hard contracts from v2 - **responsiveness**
 (usable from a wide desktop down to a short VS Code pane) and **test/action-index
 stability**.
 
-## Scope — decisions (approved with the user)
+## Scope - decisions (approved with the user)
 
 1. **Grouped sidebar, every sorter its own row.** Show all ~22 sorters
    (`sorters.available()`) in four labelled groups: `READY TO USE`,
@@ -44,7 +44,7 @@ stability**.
    running. **Selectability** (which rows can be made active) is the dynamic part,
    driven only by `sorters.runnable(use_docker)`.
 3. **GPU sorters are first-class and portable.** On the Windows+GPU target, an
-   installed `kilosort4` lands in `READY TO USE` and is fully runnable —
+   installed `kilosort4` lands in `READY TO USE` and is fully runnable -
    automatically, because grouping checks `installed()` first. No code special-
    cases "GPU = unavailable." Selecting a *not-installed* GPU row shows a footer
    hint only.
@@ -57,7 +57,7 @@ stability**.
    dialog that opens the Docker download page, offers **"Start Docker for me"**
    (launches Docker Desktop + polls until ready), and a Re-check button; friendly
    (non-traceback) errors; clear first-run download messaging. The **local ★
-   recommended sorter is the zero-setup default** — Docker is presented as an
+   recommended sorter is the zero-setup default** - Docker is presented as an
    optional "unlock more sorters" step, never pushed on a newcomer.
 6. **Onboarding.** A `WelcomeScreen` shown **once** (persist `seen_welcome`),
    re-openable from Help. A **★ Recommended** badge on the default sorter. The
@@ -115,7 +115,7 @@ def description(name: str) -> str:
     return DESCRIPTIONS.get(name, "A spike-sorting algorithm.")
 ```
 
-**`group_of(name, installed_set=None) -> str`** — the single source of truth for
+**`group_of(name, installed_set=None) -> str`** - the single source of truth for
 sidebar/fallback grouping. Membership precedence (so it is stable and portable):
 
 ```python
@@ -130,7 +130,7 @@ def group_of(name, installed_set=None) -> str:
 Group label/order: `ready` → "READY TO USE", `docker` → "DOCKER SORTERS
 (heavier)", `gpu` → "NEEDS A GPU", `unavailable` → "NOT AVAILABLE".
 
-**`docker_state(refresh=False) -> str`** — three-way, replacing the binary as the
+**`docker_state(refresh=False) -> str`** - three-way, replacing the binary as the
 detail source (`docker_available()` is kept, re-expressed as
 `docker_state() == "running"`, so existing callers are untouched):
 
@@ -147,8 +147,8 @@ def docker_state(refresh=False) -> str:
     return "running" if ok else "installed_not_running"
 ```
 
-**`start_docker() -> bool`** — best-effort launch of Docker Desktop; never raises;
-returns whether a launch command was issued (not whether Docker finished booting —
+**`start_docker() -> bool`** - best-effort launch of Docker Desktop; never raises;
+returns whether a launch command was issued (not whether Docker finished booting -
 the caller polls `docker_state(refresh=True)`):
 
 ```python
@@ -167,7 +167,7 @@ def start_docker() -> bool:
         return False
 ```
 
-`status()`, `runnable()`, `run()` are unchanged — `run()` already raises a
+`status()`, `runnable()`, `run()` are unchanged - `run()` already raises a
 readable `RuntimeError` when Docker is requested but unreachable, which the run
 path now surfaces verbatim.
 
@@ -201,8 +201,8 @@ def cycle_active(self) -> None:
     """`t` key: advance to the next *runnable* sorter, skipping non-runnable rows."""
 ```
 
-`active_idx` is kept as derived state — the index into `self.infos` of the active
-(always runnable) entry — so the footer and existing tests keep working.
+`active_idx` is kept as derived state - the index into `self.infos` of the active
+(always runnable) entry - so the footer and existing tests keep working.
 `set_active(idx)` remains (guards runnable).
 
 **Docker.**
@@ -230,14 +230,14 @@ and `quit` (10) are unchanged and every number-key test still passes:
 ## Component: `scripts/menu_app.py`
 
 **Sidebar.** `_rebuild_sorters()` emits: the Docker toggle row (id `__docker__`,
-bold `● ON` / `○ OFF` + a dim "heavier — downloads images, runs slower" caption),
+bold `● ON` / `○ OFF` + a dim "heavier - downloads images, runs slower" caption),
 then for each **non-empty** group **in order**: a **disabled** header `Option`
 (`disabled=True`, id `__grp_<group>__`) followed by its sorter rows. Empty groups
-are **omitted** (no header) to protect vertical space on short terminals — a
+are **omitted** (no header) to protect vertical space on short terminals - a
 deliberate departure from the literal "NOT AVAILABLE (none on this machine)"
 placeholder in the approved mockup. Row text
 (compact for the 36-col sidebar): `★` if recommended, `●/○` active, group glyph
-(`◇` docker, `·` gpu/unavailable, none for ready), name, `Nu` / `—`, `ACTIVE`
+(`◇` docker, `·` gpu/unavailable, none for ready), name, `Nu` / `-`, `ACTIVE`
 tag; **dim** when not runnable. The active (runnable) sorter is highlighted by
 default so useful rows are in view. (If Textual's `OptionList` does not skip
 disabled options during cursor movement, the highlight handler advances past
@@ -245,7 +245,7 @@ them.)
 
 **Activation.** `on_option_list_option_selected` reads `event.option.id`:
 `__docker__` → Docker toggle flow; `__grp_*` → ignored; otherwise a sorter name →
-if `runnable`, `controller.set_active_by_name(name)`; else a footer hint —
+if `runnable`, `controller.set_active_by_name(name)`; else a footer hint -
 **docker-group + Docker off → offer the enable dialog**; gpu → "needs a GPU build
 installed (see Help)"; unavailable → "not available on this computer."
 
@@ -258,7 +258,7 @@ and renders per state:
 - **running** → "✓ Docker is running" · `[ Enable ] [ Cancel ]`
 - **installed_not_running** → "✗ Docker is installed but not started" ·
   `[ Start Docker for me ] [ Re-check ] [ Cancel ]`
-- **not_installed** → "You don't have Docker yet — it's a free app that unlocks
+- **not_installed** → "You don't have Docker yet - it's a free app that unlocks
   extra sorters" · `[ Open download page ] [ Re-check ] [ Cancel ]`
 
 Buttons: **Open download page** → `webbrowser.open(<docker desktop url>)`;
@@ -277,7 +277,7 @@ The dialog has a max width and scrolls so it fits small windows.
 **Interactive `HelpScreen`.** Two-pane (topic list ↔ scrollable content), stacking
 on narrow terminals. Topics: **Overview** (the welcome text), **The 3 steps**
 (Explore / Sort / Report), **Sorters explained**, **Docker**, **Data files** (the
-present/missing checklist, rendered from `data_report` — this absorbs the old
+present/missing checklist, rendered from `data_report` - this absorbs the old
 `DataSetupScreen`), **Keyboard**. Highlighting a topic updates the content;
 `Esc`/`q` closes. Topic text comes from a shared `ui.HELP_TOPICS` so the fallback
 reuses it. Opens at **Overview** by default, **Data files** when launched via `d`.
@@ -293,7 +293,7 @@ reuses it. Opens at **Overview** by default, **Data files** when launched via `d
   description) and a **state-aware Docker confirm** for text mode: prints the
   three-state status and offers, per state, "open download page? [y/N]"
   (`webbrowser.open`), "start Docker for me? [y/N]" (`start_docker()` + a short
-  poll), and a Re-check loop — mirroring the dialog.
+  poll), and a Re-check loop - mirroring the dialog.
 - `_menu_fallback`: replace the data-setup action with **help** (prints
   `HELP_TOPICS`, selectable topics via `ui.select`); group the sorter listing;
   route the Docker toggle through the text confirm; show a **first-run welcome
@@ -303,20 +303,20 @@ reuses it. Opens at **Overview** by default, **Data files** when launched via `d
 ## Component: `scripts/run_sorting.py` (messaging + friendly errors)
 
 - First-run Docker message → "Downloading the `<sorter>` image (~1 GB, one time
-  only — later sorts skip this)," with pull progress streaming (verbose).
+  only - later sorts skip this)," with pull progress streaming (verbose).
 - Wrap `sorters.run(...)`: on the Docker-unreachable `RuntimeError`, print the
-  plain "Docker isn't running — open Docker Desktop and try again" and exit
+  plain "Docker isn't running - open Docker Desktop and try again" and exit
   non-zero, so `MenuController.run()` returns it as a friendly footer message
   rather than a traceback.
 
 ## Testing
 
-Hermetic throughout — monkeypatch `installed`/`available`/`docker_available`/
+Hermetic throughout - monkeypatch `installed`/`available`/`docker_available`/
 `docker_state`/`default_params`; no real Docker pulls, no real sorting; drive the
 app with `FakeController`.
 
 **Registry** (`test_sorters.py`): `description()` fallback; `RECOMMENDED ==
-default_sorter()` when installed; `group_of()` precedence — installed→ready,
+default_sorter()` when installed; `group_of()` precedence - installed→ready,
 installed-GPU→ready, not-installed-GPU→gpu, container→docker, else unavailable;
 `docker_state()` three states (mock `shutil.which` + `subprocess.run`);
 `start_docker()` issues the platform command and never raises.
@@ -340,8 +340,8 @@ assert the Help Data-files topic.
 
 **Index/size contracts:** number-key tests (`1`=explore, `2`=sort, `6`=compare,
 `7`=params, `8`=verify) keep passing unchanged (help replaced data-setup at index
-9, shifting nothing in 0–8). Re-assert the size-critical tests — `(110,40)`,
-`(77,24)`, `(40,12)`, `(30,6)`, and the stacked/short sweep — that actions and
+9, shifting nothing in 0–8). Re-assert the size-critical tests - `(110,40)`,
+`(77,24)`, `(40,12)`, `(30,6)`, and the stacked/short sweep - that actions and
 sorters are never fully clipped with the new header rows + toggle caption.
 
 **`conftest.py`:** update `ACTIONS` (help at index 9). Extend `FakeController`

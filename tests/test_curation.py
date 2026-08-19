@@ -1,7 +1,7 @@
 """Tests for the curation lifecycle: record -> apply -> re-scored -> honest surfaces.
 
 The pure half (schema round-trip, provenance, the sentence every surface prints,
-the path resolver) needs no SpikeInterface — that is the point: the menu's view
+the path resolver) needs no SpikeInterface - that is the point: the menu's view
 process reads curation state without importing SI. The SI half runs a real
 apply on a small synthetic sort: merges, an index split, labels, the curated
 analyzer + re-scored metrics, and the two ways an apply must refuse.
@@ -50,14 +50,14 @@ def test_sort_paths_is_the_single_home(tmp_path):
     assert p["curated"] == out / "curated"
     assert p["curated_analyzer"] == out / "curated" / "analyzer"
     # Every PATH this module hands out lives under the one output dir. (The store
-    # also returns labels — the sorter name and the run id — which are not paths.)
+    # also returns labels - the sorter name and the run id - which are not paths.)
     assert all(str(v).startswith(str(tmp_path))
                for v in p.values() if isinstance(v, Path))
 
 
 def test_sort_paths_puts_the_record_inside_the_run_it_curates(tmp_path):
     """Once a run exists in the store, the record and the curated result ride
-    inside THAT run directory — the whole point of the re-point."""
+    inside THAT run directory - the whole point of the re-point."""
     run = tmp_path / "outputs" / SORTER / "runs" / "20260819-101500-abc123"
     (run / "analyzer").mkdir(parents=True)
     (run / "run_info.json").write_text(json.dumps({**RUN_INFO, "run_id": run.name}),
@@ -78,7 +78,7 @@ def test_record_round_trip_is_pure_python(tmp_path):
                        {"features": "amplitude", "seed": 0})
     curation.save_record(record, paths["record"])
 
-    # Read back with the stdlib alone — no SpikeInterface, no helper.
+    # Read back with the stdlib alone - no SpikeInterface, no helper.
     raw = json.loads(paths["record"].read_text(encoding="utf-8"))
     assert raw == record
     assert curation.load_record(SORTER, tmp_path) == record
@@ -95,7 +95,7 @@ def test_record_carries_provenance(tmp_path):
                        {"n_spikes": 3})
     assert record["kind"] == curation.KIND
     assert record["schema_version"] == curation.SCHEMA_VERSION
-    # WHICH sort — the anchor.
+    # WHICH sort - the anchor.
     assert record["curates"]["sorter"] == SORTER
     assert record["curates"]["output_dir"].endswith(f"outputs/{SORTER}")
     assert record["curates"]["run"]["created"] == RUN_INFO["created"]
@@ -138,7 +138,7 @@ def test_structural_errors_catch_a_foreign_unit_and_a_repeated_index(tmp_path):
 def test_provenance_line_says_which_result(tmp_path):
     record, _paths = _record(tmp_path)
     assert (curation.provenance_line(None, curated=False)
-            == "raw sorter output — no curation applied")
+            == "raw sorter output - no curation applied")
     # No record while SHOWING curated data is a different, louder statement.
     assert "curation record is missing" in curation.provenance_line(None, curated=True)
     assert "no curation applied" in curation.provenance_line(record, curated=False)
@@ -195,7 +195,7 @@ def _run_on_disk(tmp_path, run_id, *, curated=False, units=3):
 
 
 def test_a_curated_result_on_a_non_current_run_is_named_not_hidden(tmp_path, monkeypatch):
-    """Curated output is anchored to the run it curates — correct, and it means a
+    """Curated output is anchored to the run it curates - correct, and it means a
     fresh sort moves the pointer and the curated result stops being shown. The
     surfaces must say where it went instead of going silent."""
     old = _run_on_disk(tmp_path, "20260818-100000-aaaaaa", curated=True)
@@ -210,7 +210,7 @@ def test_a_curated_result_on_a_non_current_run_is_named_not_hidden(tmp_path, mon
     assert other["run"] == "20260818-100000-aaaaaa" and not other["legacy"]
     assert other["line"] == (
         "a curated result exists on run 20260818-100000-aaaaaa; the current run "
-        "(20260819-100000-bbbbbb) is uncurated — apply a record to this run to "
+        "(20260819-100000-bbbbbb) is uncurated - apply a record to this run to "
         "curate it")
     assert other["where"] == "outputs/fakesorter/runs/20260818-100000-aaaaaa/curated"
     assert other["dir"] == old["out"]
@@ -237,7 +237,7 @@ def test_a_pre_store_curated_result_is_named_when_a_new_sort_supersedes_it(tmp_p
     assert other["legacy"] and other["run"] == "legacy"
     assert other["line"].startswith("a curated result exists on the pre-store layout;")
     assert other["where"] == "outputs/fakesorter/curated"
-    assert other["short"] == ("curated result on the pre-store layout — "
+    assert other["short"] == ("curated result on the pre-store layout - "
                               "apply to curate this run")
     # Nothing was moved or adopted: it is still exactly where it was built.
     assert (tmp_path / "outputs" / SORTER / "curated" / "analyzer").is_dir()
@@ -245,13 +245,13 @@ def test_a_pre_store_curated_result_is_named_when_a_new_sort_supersedes_it(tmp_p
 
 def test_curated_on_disk_without_a_record_is_never_called_raw(tmp_path):
     """Deleting curation.json must not turn curated numbers into "raw sorter
-    output — no curation applied" on any surface."""
+    output - no curation applied" on any surface."""
     _rec, paths = _record(tmp_path)          # run_info on disk, no curation.json
     paths["curated_analyzer"].mkdir(parents=True)
     paths["curated_run_info"].write_text(json.dumps({"curated": True, "n_units": 4}),
                                          encoding="utf-8")
     line = curation.provenance_line(None, curated=True)
-    assert line == ("curated result — its curation record is missing; "
+    assert line == ("curated result - its curation record is missing; "
                     "provenance unknown")
     st = curation.state(SORTER, tmp_path)
     assert st["has_curated"] and not st["has_record"]
@@ -312,7 +312,7 @@ def test_anchor_error_is_the_refusal_apply_raises(tmp_path):
         curation._check_run_identity(record, SORTER, tmp_path)
     assert str(exc.value) == err
 
-    # An unidentifiable sort refuses a fresh record too — an all-None anchor
+    # An unidentifiable sort refuses a fresh record too - an all-None anchor
     # would otherwise "match" every sort, the failure the anchor exists to stop.
     paths["run_info"].unlink()
     for rec in (record, None):
@@ -411,7 +411,7 @@ def synthetic(tmp_path_factory):
         analyzer.compute(ext)
     paths["run_info"].write_text(json.dumps(
         {**RUN_INFO, "n_units": len(sorting.unit_ids)}), encoding="utf-8")
-    # Unit ids come back in the sort's own type (SI writes str ids here) — the
+    # Unit ids come back in the sort's own type (SI writes str ids here) - the
     # record must carry them unchanged or apply would not recognise the units.
     return {"root": root, "paths": paths,
             "unit_ids": curation.unit_ids_of(SORTER, root)}
@@ -489,7 +489,7 @@ def test_apply_refuses_to_write_into_the_raw_sort(synthetic):
 
 
 def test_apply_refuses_when_the_sort_cannot_be_identified(synthetic, tmp_path):
-    """A missing/corrupt run_info.json unbinds the anchor — that must refuse, not
+    """A missing/corrupt run_info.json unbinds the anchor - that must refuse, not
     pass: an all-None identity would otherwise "match" any sort."""
     root, paths, unit_ids = synthetic["root"], synthetic["paths"], synthetic["unit_ids"]
     record = curation.new_record(SORTER, unit_ids, root=root)
@@ -566,7 +566,7 @@ def test_label_records_where_the_decision_came_from(tmp_path):
 
 
 def test_a_summary_failure_keeps_the_curated_analyzer(synthetic, monkeypatch, tmp_path):
-    """run_sorting's semantics: the array/yield summary is best-effort on its own —
+    """run_sorting's semantics: the array/yield summary is best-effort on its own -
     a summary hiccup must not delete a good analyzer + metrics."""
     root, unit_ids = synthetic["root"], synthetic["unit_ids"]
     record = curation.new_record(SORTER, unit_ids, root=root)
@@ -645,7 +645,7 @@ def test_unit_ids_of_falls_back_to_the_saved_sorting(synthetic):
 
 
 # --------------------------------------------------------------------------- #
-# The CLI path — and the record surviving a relaunch (a fresh process)
+# The CLI path - and the record surviving a relaunch (a fresh process)
 # --------------------------------------------------------------------------- #
 def _cli(*args, root):
     return subprocess.run(
@@ -673,7 +673,7 @@ def test_cli_writes_and_re_reads_the_record_in_a_fresh_process(synthetic):
 
 
 def test_cli_refuses_to_add_a_decision_to_a_record_from_another_sort(tmp_path):
-    """The anchor is checked when a decision is WRITTEN too — otherwise --unit 4
+    """The anchor is checked when a decision is WRITTEN too - otherwise --unit 4
     would silently mean a unit of the sort that used to be there."""
     record, paths = _record(tmp_path)
     paths["sorting"].mkdir(parents=True, exist_ok=True)

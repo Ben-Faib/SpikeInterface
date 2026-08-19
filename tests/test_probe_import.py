@@ -1,6 +1,6 @@
-"""P1 — probeinterface import into the probe library.
+"""P1 - probeinterface import into the probe library.
 
-All probe files are built in-test (never committed fixtures — imported probes
+All probe files are built in-test (never committed fixtures - imported probes
 are user data) and every store is a tmp probes.json, so nothing here touches
 the real library. Covers: materialisation (the library outlives the source
 file), wiring (honoured / refused honestly), honest errors naming the exact
@@ -207,7 +207,7 @@ def test_fit_uses_imported_density(tmp_path):
 
 def test_save_profile_guard_preserves_imported_geometry(tmp_path):
     # A generic upsert without params (e.g. a label-only edit surface) must not
-    # strip materialised geometry — or the provenance note.
+    # strip materialised geometry - or the provenance note.
     store = tmp_path / "probes.json"
     src = _write_linear_json(tmp_path / "keep.json", n=4, pitch=50.0)
     probes.import_probe_file(src, path=store)
@@ -222,7 +222,7 @@ def test_save_profile_guard_preserves_imported_geometry(tmp_path):
 
 def test_save_profile_refuses_orphaned_imported_geometry(tmp_path):
     # A rename-style upsert (new name, no params) has no stored geometry to
-    # carry forward — it must refuse loudly, never save a broken probe.
+    # carry forward - it must refuse loudly, never save a broken probe.
     store = tmp_path / "probes.json"
     probes.import_probe_file(
         _write_linear_json(tmp_path / "orig.json", n=4, pitch=50.0), path=store)
@@ -273,7 +273,7 @@ def test_duplicate_copies_imported_geometry(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
-# P2 — multi-shank / ProbeGroup
+# P2 - multi-shank / ProbeGroup
 # --------------------------------------------------------------------------- #
 
 def _write_group_json(path, n_probes=2, n=8, pitch=100.0, spacing=150.0, wiring="global"):
@@ -364,7 +364,7 @@ def test_group_nonidentity_wiring_is_honoured(tmp_path):
     # 8..15, probe 1 -> 0..7) must survive import + build verbatim, so a
     # specific CHANNEL provably lands on a specific shank and position. A
     # regression that reorders probes or renormalises indices scrambles every
-    # cross-shank channel->site association — this pins it.
+    # cross-shank channel->site association - this pins it.
     import probeinterface as pi
 
     pg = pi.ProbeGroup()

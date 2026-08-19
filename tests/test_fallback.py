@@ -1,7 +1,7 @@
 """Tests for the typed / prompt_toolkit fallback menu (no Textual).
 
 The fallback is intentionally NON-parity with the Textual app (no accordion,
-no explanation pane) — it keeps the always-visible Sorters + Pipeline + Actions.
+no explanation pane) - it keeps the always-visible Sorters + Pipeline + Actions.
 What it DOES borrow is the per-action ``what`` blurb and the destructive-sort
 caveat (so the typed menu still warns before a re-sort), plus the shared
 ``stream_detail`` per-stream channels/rate/duration in the Data-files guidance.
@@ -87,8 +87,8 @@ def test_setup_plain_shows_stream_detail_for_present_files(capsys):
         "present": True, "complete": False, "data_dir": "/data/rec",
         "base": "REC", "error": None,
         "files": [
-            {"ext": ".ns2", "label": "LFP — analog @ 1 kHz", "present": True},
-            {"ext": ".ns5", "label": "Broadband — raw @ 30 kHz (sortable)", "present": True},
+            {"ext": ".ns2", "label": "LFP - analog @ 1 kHz", "present": True},
+            {"ext": ".ns5", "label": "Broadband - raw @ 30 kHz (sortable)", "present": True},
             {"ext": ".nev", "label": "Spike events + digital markers", "present": False},
         ],
     }

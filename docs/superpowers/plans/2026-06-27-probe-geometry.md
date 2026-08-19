@@ -4,7 +4,7 @@
 
 **Goal:** Add an editable, library-based probe-geometry layer that flows into the sort/report/GUI pipeline and softly re-ranks the sorter suggestions by geometry, with a one-time skippable first-run probe-setup prompt.
 
-**Architecture:** A new `scripts/probes.py` is the single source of truth for probe geometry — shaped exactly like `scripts/sorters.py` (plain-data API, lazy `probeinterface`/`numpy` imports, never imported by the Textual process). `MenuController` (in `SpikeInterface_Menu.py`) wraps it and exposes plain dicts to the view. `run_sorting.py` gains `--probe`/`--probe-file` and applies the resolved probe after the analog-channel drop. The Textual app gains a PROBE banner line, a first-run `ProbeSetupScreen`, a `ProbeManagerScreen`/`ProbeEditorScreen`, and geometry-aware sorter badges. Persistence: built-in presets in code, user profiles in a git-ignored `probes.json`, the active-probe name + a `seen_probe_setup` flag in `.si_menu.json`.
+**Architecture:** A new `scripts/probes.py` is the single source of truth for probe geometry - shaped exactly like `scripts/sorters.py` (plain-data API, lazy `probeinterface`/`numpy` imports, never imported by the Textual process). `MenuController` (in `SpikeInterface_Menu.py`) wraps it and exposes plain dicts to the view. `run_sorting.py` gains `--probe`/`--probe-file` and applies the resolved probe after the analog-channel drop. The Textual app gains a PROBE banner line, a first-run `ProbeSetupScreen`, a `ProbeManagerScreen`/`ProbeEditorScreen`, and geometry-aware sorter badges. Persistence: built-in presets in code, user profiles in a git-ignored `probes.json`, the active-probe name + a `seen_probe_setup` flag in `.si_menu.json`.
 
 **Tech Stack:** Python 3.12, `probeinterface` 0.3.2, `numpy`, `spikeinterface` (sort subprocess only), `textual` (TUI), `rich.text.Text`, `pytest` + `pytest-asyncio` (Pilot).
 
@@ -40,7 +40,7 @@ This plan is the **general, editable-library** version that subsumes it:
 `attach_a1x16_probe`, and `--probe <profile-name>` generalizes the enum. The
 **`sparse=False` fix is adopted** here (Task 4). Because the tactical edits are
 uncommitted and live only in the main checkout (not this worktree), nothing needs
-removing here — but when merging `worktree-probe-geometry` → `main`, **discard the
+removing here - but when merging `worktree-probe-geometry` → `main`, **discard the
 uncommitted `run_sorting.py`/`blackrock_io.py` tactical edits** (the general
 feature replaces them); keep the rebuilt analyzer data (or re-sort to regenerate
 it). The `wordmark-crest` commits are unrelated and stay.
@@ -68,7 +68,7 @@ it). The `wordmark-crest` commits are unrelated and stay.
 
 ---
 
-## Phase 1 — `probes.py`: data model, store, geometry features
+## Phase 1 - `probes.py`: data model, store, geometry features
 
 ### Task 1: Probe profiles, persistence store, and geometry features
 
@@ -93,7 +93,7 @@ it). The `wordmark-crest` commits are unrelated and stay.
   - `geometry_features(profile) -> dict` (`{"n", "layout", "min_pitch_um", "density_class", "klass"}` where `layout ∈ {independent,linear,grid2d,tetrode,unknown}` and `klass ∈ {independent,tetrode,sparse,dense}`)
   - `summary(profile) -> str`
 
-- [ ] **Step 1: Write the failing tests** — `tests/test_probes.py`:
+- [ ] **Step 1: Write the failing tests** - `tests/test_probes.py`:
 
 ```python
 """Hermetic unit tests for scripts/probes.py (no probeinterface/numpy needed for
@@ -201,12 +201,12 @@ def test_default_probe_is_sparse_not_independent():
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `cd /Users/benfaib/Spike/SpikeInterface/.claude/worktrees/probe-geometry && uv run python -m pytest tests/test_probes.py -q`
-Expected: FAIL — `ModuleNotFoundError: No module named 'probes'`.
+Expected: FAIL - `ModuleNotFoundError: No module named 'probes'`.
 
 - [ ] **Step 3: Create `scripts/probes.py` (data model + store + features)**
 
 ```python
-"""Probe-geometry registry — the single source of truth for electrode geometry.
+"""Probe-geometry registry - the single source of truth for electrode geometry.
 
 Like ``scripts/sorters.py`` this module returns plain Python data and imports the
 heavy libraries (``probeinterface``/``numpy``) lazily, so importing it is cheap and
@@ -247,7 +247,7 @@ def _profile(name, label, kind, params, note=""):
 
 # Built-in presets (ordered; the real default first, then the placeholder, then
 # standards). All parametric so they build offline (the probeinterface catalog
-# needs network — see build()). The A1x16-3mm-100-703 IS this recording's probe
+# needs network - see build()). The A1x16-3mm-100-703 IS this recording's probe
 # (channels raw 1–16); a 100 µm pitch is the 'sparse' class, so the geometry-aware
 # default sorter stays tridesclous2. The single-shank identity mapping (contact i ↔
 # raw i) gives the correct 16-site × 100 µm linear geometry; users who want the
@@ -259,7 +259,7 @@ BUILTINS = [
              "(1 shank, 16 sites, 100 µm pitch, ~30 µm contacts) on channels raw 1–16."),
     _profile("independent", "Independent channels (placeholder)", "independent",
              {"pitch_um": 250.0},
-             "No real geometry — channels treated as independent (the old default; "
+             "No real geometry - channels treated as independent (the old default; "
              "use when a recording's probe is unknown)."),
     _profile("linear-16-50um", "Linear · 16 ch @ 50 µm", "linear",
              {"n": 16, "pitch_um": 50.0}, "Single-shank dense linear array."),
@@ -273,7 +273,7 @@ BUILTINS = [
              "Generic dense 2-D grid."),
     _profile("utah-10x10-400um", "Utah array · 10 × 10 @ 400 µm", "grid",
              {"rows": 10, "cols": 10, "xpitch_um": 400.0, "ypitch_um": 400.0},
-             "Blackrock Utah array — at 400 µm contacts are electrically independent."),
+             "Blackrock Utah array - at 400 µm contacts are electrically independent."),
     _profile("cui-flexible-16-300um", "Cui flexible MEA · 16 ch @ 300 µm", "linear",
              {"n": 16, "pitch_um": 300.0},
              "Cui-lab custom flexible polyimide array (effectively independent)."),
@@ -339,7 +339,7 @@ def _is_builtin(name) -> bool:
 
 def save_profile(profile, path=PROBES_PATH) -> None:
     """Upsert a user profile into probes.json (built-in names are stored as user
-    copies — callers should rename a built-in before saving; see duplicate())."""
+    copies - callers should rename a built-in before saving; see duplicate())."""
     store = _load_store(path)
     rec = {"name": profile["name"], "label": profile.get("label", profile["name"]),
            "kind": profile["kind"], "params": dict(profile.get("params", {})),
@@ -461,9 +461,9 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Phase 2 — `probes.py`: probe construction + sorter fit
+## Phase 2 - `probes.py`: probe construction + sorter fit
 
-### Task 2: `build()` — construct a probeinterface.Probe from a profile
+### Task 2: `build()` - construct a probeinterface.Probe from a profile
 
 **Files:**
 - Modify: `scripts/probes.py`
@@ -472,10 +472,10 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 **Interfaces:**
 - Consumes: `geometry_features`, `contact_count`, `auto_sizes` (Task 1).
 - Produces:
-  - `build(profile, n_channels) -> "probeinterface.Probe"` — sets device-channel indices `0..n-1`; raises `ValueError` on a contact-count mismatch (for fixed-count kinds) with a clear message.
-  - `catalog_manufacturers() -> list[str]` and `catalog_models(manufacturer) -> list[str]` — live probeinterface catalog, `[]` on any failure (offline).
+  - `build(profile, n_channels) -> "probeinterface.Probe"` - sets device-channel indices `0..n-1`; raises `ValueError` on a contact-count mismatch (for fixed-count kinds) with a clear message.
+  - `catalog_manufacturers() -> list[str]` and `catalog_models(manufacturer) -> list[str]` - live probeinterface catalog, `[]` on any failure (offline).
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/test_probes.py`:
+- [ ] **Step 1: Write the failing tests** - append to `tests/test_probes.py`:
 
 ```python
 def test_build_independent_autosizes():
@@ -510,7 +510,7 @@ def test_build_mismatch_raises():
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_probes.py -k build -q`
-Expected: FAIL — `AttributeError: module 'probes' has no attribute 'build'`.
+Expected: FAIL - `AttributeError: module 'probes' has no attribute 'build'`.
 
 - [ ] **Step 3: Append `build()` + catalog helpers to `scripts/probes.py`**
 
@@ -615,9 +615,9 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Produces:
   - `fit(name, profile) -> dict` → `{"rank": "good"|"ok"|"poor", "reason": str}`.
   - `ranked(names, profile) -> list[dict]` → `[{"name","rank","reason"}]`, stable-sorted good→ok→poor by the input order.
-  - `recommended_for(profile, runnable_names) -> str | None` — the top good-fit runnable sorter (None if none good).
+  - `recommended_for(profile, runnable_names) -> str | None` - the top good-fit runnable sorter (None if none good).
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/test_probes.py`:
+- [ ] **Step 1: Write the failing tests** - append to `tests/test_probes.py`:
 
 ```python
 def test_fit_independent_favours_tridesclous_over_herdingspikes():
@@ -654,7 +654,7 @@ def test_ranked_orders_good_first_and_recommends():
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_probes.py -k fit -q`
-Expected: FAIL — `AttributeError: module 'probes' has no attribute 'fit'`.
+Expected: FAIL - `AttributeError: module 'probes' has no attribute 'fit'`.
 
 - [ ] **Step 3: Append the fit engine to `scripts/probes.py`**
 
@@ -753,20 +753,20 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Phase 3 — Sort pipeline: apply the probe
+## Phase 3 - Sort pipeline: apply the probe
 
 ### Task 4: `run_sorting.py --probe` / `--probe-file`
 
 **Files:**
 - Modify: `scripts/run_sorting.py` (argparse `:714-755`; recording build `:819`/`:830-838`; add `resolve_probe`)
-- Modify: `scripts/blackrock_io.py:835`-context (comment only) — no behaviour change there
+- Modify: `scripts/blackrock_io.py:835`-context (comment only) - no behaviour change there
 - Modify: `tests/test_run_sorting.py`
 
 **Interfaces:**
 - Consumes: `probes.get`, `probes.build`, `probes.DEFAULT_PROBE` (Tasks 1–2).
 - Produces: a CLI where `--probe <name>` resolves a library profile and `--probe-file <path>` builds a `file`-kind profile; the resolved probe is applied to the recording **after** the analog-channel drop. New helper `resolve_probe(name, probe_file) -> dict`.
 
-- [ ] **Step 1: Write the failing test** — append to `tests/test_run_sorting.py`:
+- [ ] **Step 1: Write the failing test** - append to `tests/test_run_sorting.py`:
 
 ```python
 def test_resolve_probe_defaults_to_active_default():
@@ -791,7 +791,7 @@ def test_resolve_probe_file():
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_run_sorting.py -k probe -q`
-Expected: FAIL — `AttributeError: module 'run_sorting' has no attribute 'resolve_probe'`.
+Expected: FAIL - `AttributeError: module 'run_sorting' has no attribute 'resolve_probe'`.
 
 - [ ] **Step 3: Add the CLI flags + `resolve_probe`, and apply the probe**
 
@@ -862,14 +862,14 @@ then replace the `if not args.keep_analog:` block body with:
             return 1
         rec = bio.attach_dummy_probe(rec)
         probe_profile = probes.get(probes.PLACEHOLDER_PROBE)
-        _probe_msg = (f"default probe didn't match this recording ({e}) — using the "
+        _probe_msg = (f"default probe didn't match this recording ({e}) - using the "
                       "independent-channel placeholder; pass --probe to set geometry.")
         ui.warn(_probe_msg)
     ui.detail(_probe_msg)
     rep.detail(_probe_msg)
 ```
 
-(Delete the old `rec = bio.attach_dummy_probe(rec)` re-attach line — the probe is now applied unconditionally here.)
+(Delete the old `rec = bio.attach_dummy_probe(rec)` re-attach line - the probe is now applied unconditionally here.)
 
 In `scripts/blackrock_io.py`, update the `attach_dummy_probe` docstring's "swap in" sentence to point at the new module (comment-only, around line 184):
 
@@ -878,7 +878,7 @@ In `scripts/blackrock_io.py`, update the `attach_dummy_probe` docstring's "swap 
     raw ``probeinterface.Probe``) and call ``recording.set_probe(...)`` instead.
 ```
 
-Also build the **`SortingAnalyzer` dense (`sparse=False`)** — a proven fix from
+Also build the **`SortingAnalyzer` dense (`sparse=False`)** - a proven fix from
 prior tactical work. SpikeInterface defaults to `sparse=True`, which keeps only
 channels within ~100 µm of each unit's peak; with the old 250 µm placeholder probe
 that collapsed every unit to a single channel, so `spikeinterface-gui` could only
@@ -893,7 +893,7 @@ shows the full layout. Find the `si.create_sorting_analyzer(...)` call in `main(
             )
 ```
 
-And record the probe in `run_info.json` for provenance — in `_write_run_info`'s
+And record the probe in `run_info.json` for provenance - in `_write_run_info`'s
 payload (`run_sorting.py:~403`) add `"probe": getattr(args, "probe", None),`.
 
 - [ ] **Step 4: Run the tests to verify they pass**
@@ -917,7 +917,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Phase 4 — Controller: probe state, catalog fit, sort wiring
+## Phase 4 - Controller: probe state, catalog fit, sort wiring
 
 ### Task 5: Controller probe API + config persistence + sort_command
 
@@ -938,7 +938,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
   - `sorter_fit(name) -> dict` (`{rank,reason}` for the active probe)
   - `sort_command(span)` now appends `--probe <active_probe>`.
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/test_menu_controller.py`:
+- [ ] **Step 1: Write the failing tests** - append to `tests/test_menu_controller.py`:
 
 ```python
 def test_active_probe_defaults_to_nnx_a1x16(monkeypatch, tmp_path):
@@ -982,7 +982,7 @@ def test_probe_catalog_marks_active_and_match(monkeypatch, tmp_path):
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_menu_controller.py -k probe -q`
-Expected: FAIL — `AttributeError: 'MenuController' object has no attribute 'active_probe'`.
+Expected: FAIL - `AttributeError: 'MenuController' object has no attribute 'active_probe'`.
 
 - [ ] **Step 3: Wire the controller**
 
@@ -1013,7 +1013,7 @@ Add these methods to `MenuController` (e.g. after `mark_welcome_seen`):
     # -- probe geometry -------------------------------------------------------- #
     def recording_channels(self) -> "int | None":
         """Best-effort broadband channel count, parsed from the pipeline detail.
-        Advisory only — the real count is validated by probes.build at sort time."""
+        Advisory only - the real count is validated by probes.build at sort time."""
         import re
         bb = next((r for r in self.pipeline if "Broadband" in r.get("stage", "")), None)
         if not bb or bb.get("status") == "FAIL":
@@ -1136,7 +1136,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Consumes: `probes.fit`, `probes.ranked`, `probes.recommended_for`, `self.active_probe`, `sorter_registry.runnable`, `sorter_registry.RECOMMENDED`.
 - Produces: each catalog `info` gains `"fit": {"rank","reason"}`; `info["recommended"]` is the **geometry-aware** default (top good-fit runnable, else `RECOMMENDED`); members are re-ranked within each group (good→ok→poor, then name).
 
-- [ ] **Step 1: Write the failing test** — append to `tests/test_menu_controller.py`:
+- [ ] **Step 1: Write the failing test** - append to `tests/test_menu_controller.py`:
 
 ```python
 def test_catalog_has_fit_and_reranks_for_dense_probe(monkeypatch, tmp_path):
@@ -1151,7 +1151,7 @@ def test_catalog_has_fit_and_reranks_for_dense_probe(monkeypatch, tmp_path):
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_menu_controller.py -k fit -q`
-Expected: FAIL — `KeyError: 'fit'`.
+Expected: FAIL - `KeyError: 'fit'`.
 
 - [ ] **Step 3: Make `_catalog` geometry-aware**
 
@@ -1232,7 +1232,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Phase 5 — Report & spatial views honour the active probe
+## Phase 5 - Report & spatial views honour the active probe
 
 ### Task 7: report.py probe + conditional geometry caveat
 
@@ -1244,7 +1244,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Consumes: `probes.get`, `probes.build`, `probes.DEFAULT_PROBE`, `self.active_probe`.
 - Produces: the report and the trace browser load the recording with the active probe; the geometry caveat is shown **only** when the active probe is `independent`, otherwise it states the active geometry.
 
-- [ ] **Step 1: Write the failing test** — append to `tests/test_menu_controller.py`:
+- [ ] **Step 1: Write the failing test** - append to `tests/test_menu_controller.py`:
 
 ```python
 def test_geometry_caveat_conditional(monkeypatch, tmp_path):
@@ -1257,7 +1257,7 @@ def test_geometry_caveat_conditional(monkeypatch, tmp_path):
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_menu_controller.py -k caveat -q`
-Expected: FAIL — `AttributeError: module 'SpikeInterface_Menu' has no attribute '_geometry_note'`.
+Expected: FAIL - `AttributeError: module 'SpikeInterface_Menu' has no attribute '_geometry_note'`.
 
 - [ ] **Step 3: Add a conditional caveat helper and use the probe in the spatial paths**
 
@@ -1275,7 +1275,7 @@ def _geometry_note(active_probe: str) -> str:
         return _GEOMETRY_CAVEAT
     prof = probes.get(active_probe)
     label = prof["label"] if prof else active_probe
-    return (f"Probe geometry: {active_probe} — {label}. Spatial views (probe map, "
+    return (f"Probe geometry: {active_probe} - {label}. Spatial views (probe map, "
             "unit locations, depth) reflect this geometry; verify it matches your array.")
 ```
 
@@ -1285,7 +1285,7 @@ In `action_gui` replace `ui.warn(_GEOMETRY_CAVEAT)` (`:486`) with:
     ui.warn(_geometry_note(getattr(args, "probe", None) or "independent"))
 ```
 
-In `action_traces` replace `ui.warn(_GEOMETRY_CAVEAT)` (`:524`) the same way, and load the recording with the active probe — replace `rec = bio.read_broadband(args.data_dir)` (`:527`) with:
+In `action_traces` replace `ui.warn(_GEOMETRY_CAVEAT)` (`:524`) the same way, and load the recording with the active probe - replace `rec = bio.read_broadband(args.data_dir)` (`:527`) with:
 
 ```python
     import probes
@@ -1311,7 +1311,7 @@ Thread it through `_self` (after the `--data-dir` block `:309`):
         cmd += ["--probe", args.probe]
 ```
 
-In `MenuController.run()` set `self.args.probe = self.active_probe` for QT actions too — change the top of `run()` (`:950`) from `self.args.sorter = self.active_sorter` to also set `self.args.probe = self.active_probe`.
+In `MenuController.run()` set `self.args.probe = self.active_probe` for QT actions too - change the top of `run()` (`:950`) from `self.args.sorter = self.active_sorter` to also set `self.args.probe = self.active_probe`.
 
 In `action_report` pass the probe to the report builder (`:355`):
 
@@ -1333,7 +1333,7 @@ def _probe_caveat(probe, n_drop=0) -> str:
     drop = (f' {n_drop} non-neural analog aux channel(s) were excluded from the sort.'
             if n_drop else "")
     if probe in (None, "independent"):
-        return ('<div class="caveat">Placeholder independent-channel probe — cross-channel '
+        return ('<div class="caveat">Placeholder independent-channel probe - cross-channel '
                 'spatial structure (depth / probe map) is not physical.' + drop + '</div>')
     return (f'<div class="note">Probe geometry: <strong>{html.escape(str(probe))}</strong>. '
             'Spatial views reflect this geometry; verify it matches your array.' + drop + '</div>')
@@ -1380,7 +1380,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Phase 6 — Textual UI
+## Phase 6 - Textual UI
 
 ### Task 8: PROBE banner line + FakeController probe surface
 
@@ -1393,7 +1393,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Consumes (from the controller): `active_probe: str`, `probe_info: dict`, `want_probe_setup: bool`, and the methods from Task 5.
 - Produces: a `#probebar` Static rendered by `_render_probebar(width)`; `FakeController` gains `active_probe`, `want_probe_setup`, `probe_info`, `probe_catalog()`, `active_probe_info()`, `set_active_probe()`, `save_probe()`, `delete_probe()`, `duplicate_probe()`, `mark_probe_setup_seen()`, `sorter_fit()`, and a `fit` field on each `info`.
 
-- [ ] **Step 1: Write the failing test** — append to `tests/test_menu_app.py`:
+- [ ] **Step 1: Write the failing test** - append to `tests/test_menu_app.py`:
 
 ```python
 async def test_probe_banner_shows_active_probe(make_app):
@@ -1408,7 +1408,7 @@ async def test_probe_banner_shows_active_probe(make_app):
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_menu_app.py -k probe_banner -q`
-Expected: FAIL — `NoMatches: #probebar`.
+Expected: FAIL - `NoMatches: #probebar`.
 
 - [ ] **Step 3a: Extend `FakeController`** (in `tests/conftest.py`)
 
@@ -1444,7 +1444,7 @@ Add a `fit` field inside the `reload()` info dict (after `"overrides": ...`):
                         "reason": f"{name} fit."},
 ```
 
-Set `recommended` to follow the active probe trivially (leave `name == "tridesclous2"` — independent's good-fit default).
+Set `recommended` to follow the active probe trivially (leave `name == "tridesclous2"` - independent's good-fit default).
 
 Add the probe methods (after `mark_welcome_seen`):
 
@@ -1585,9 +1585,9 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 **Interfaces:**
 - Consumes: `controller.probe_catalog()`, `controller.set_active_probe()`, `controller.mark_probe_setup_seen()`, `controller.want_probe_setup`.
-- Produces: `ProbeSetupScreen(controller, accent)` shown after Welcome when `want_probe_setup` is true; choices = each built-in profile, "Open the probe manager", and "Skip — use placeholder for now"; dismissal marks setup seen.
+- Produces: `ProbeSetupScreen(controller, accent)` shown after Welcome when `want_probe_setup` is true; choices = each built-in profile, "Open the probe manager", and "Skip - use placeholder for now"; dismissal marks setup seen.
 
-- [ ] **Step 1: Write the failing tests** — create `tests/test_menu_probe.py`:
+- [ ] **Step 1: Write the failing tests** - create `tests/test_menu_probe.py`:
 
 ```python
 """Pilot tests for the probe-geometry UI (ProbeSetupScreen/Manager/Editor)."""
@@ -1628,7 +1628,7 @@ async def test_probe_setup_skip_keeps_default():
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_menu_probe.py -k setup -q`
-Expected: FAIL — `AttributeError: module 'menu_app' has no attribute 'ProbeSetupScreen'`.
+Expected: FAIL - `AttributeError: module 'menu_app' has no attribute 'ProbeSetupScreen'`.
 
 - [ ] **Step 3: Add `ProbeSetupScreen` and gate it after Welcome**
 
@@ -1677,7 +1677,7 @@ class ProbeSetupScreen(ModalScreen):
         with Vertical(id="dialog"):
             yield Static("Your probe geometry", id="pstitle")
             yield Static(f"Active probe: {info['label']}. Keep it, pick another, or open the "
-                         "manager — you can change it any time with 'p'.", id="psblurb")
+                         "manager - you can change it any time with 'p'.", id="psblurb")
             yield NavList(*opts, id="pslist")
             yield Static("Enter to choose · Esc to keep", id="psfoot")
 
@@ -1754,7 +1754,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Consumes: `controller.probe_catalog()`, `set_active_probe`, `save_probe`, `delete_probe`, `duplicate_probe`, `catalog_manufacturers`, `catalog_models`.
 - Produces: `ProbeManagerScreen(controller, accent)` (list/activate/new/edit/duplicate/delete + add-from-catalog/import) and `ProbeEditorScreen(profile, accent)`; `p` hotkey + a `probe` entry in ACTIONS both open the manager.
 
-- [ ] **Step 1: Write the failing tests** — append to `tests/test_menu_probe.py`:
+- [ ] **Step 1: Write the failing tests** - append to `tests/test_menu_probe.py`:
 
 ```python
 async def test_p_opens_probe_manager():
@@ -1797,7 +1797,7 @@ async def test_probe_action_in_actions_list():
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run python -m pytest tests/test_menu_probe.py -k "manager or action" -q`
-Expected: FAIL — `AttributeError: module 'menu_app' has no attribute 'ProbeManagerScreen'` (and the `probe` action missing).
+Expected: FAIL - `AttributeError: module 'menu_app' has no attribute 'ProbeManagerScreen'` (and the `probe` action missing).
 
 - [ ] **Step 3a: Add the `probe` action to the action tables**
 
@@ -1998,7 +1998,7 @@ class ProbeManagerScreen(ModalScreen):
 
     def action_new(self) -> None:
         opts = [(k, lbl, "") for k, lbl in self._NEW_KINDS]
-        self.app.push_screen(ChoiceModal("New probe — which kind?", opts),
+        self.app.push_screen(ChoiceModal("New probe - which kind?", opts),
                              self._after_new_kind)
 
     def _after_new_kind(self, kind) -> None:
@@ -2057,7 +2057,7 @@ class ProbeManagerScreen(ModalScreen):
         self.dismiss(True)
 ```
 
-> The editor seeds `params` empty for a brand-new profile; the `_PROBE_KIND_FIELDS` defaults fill the inputs, so a new profile always saves with valid params. "Add from catalog" / "Import file" can be added later via extra `_NEW_KINDS` entries that push manufacturer/model `ChoiceModal`s using `controller.catalog_manufacturers()/catalog_models()` and `controller.save_probe({kind:"library",...})` / `{kind:"file",...}` — out of scope for v1's required tests but the controller hooks exist.
+> The editor seeds `params` empty for a brand-new profile; the `_PROBE_KIND_FIELDS` defaults fill the inputs, so a new profile always saves with valid params. "Add from catalog" / "Import file" can be added later via extra `_NEW_KINDS` entries that push manufacturer/model `ChoiceModal`s using `controller.catalog_manufacturers()/catalog_models()` and `controller.save_probe({kind:"library",...})` / `{kind:"file",...}` - out of scope for v1's required tests but the controller hooks exist.
 
 - [ ] **Step 3d: Wire the hotkey + action**
 
@@ -2104,7 +2104,7 @@ Expected: PASS.
 - [ ] **Step 5: Run the full suite (action_count tests shift: +1 action)**
 
 Run: `uv run python -m pytest tests/ -q`
-Expected: PASS. Note: `tests/test_menu_app.py::test_boots_with_both_lists_and_sorter_focus` asserts `actions.option_count == 12` — update it to `13` (added the `probe` action) as part of this task.
+Expected: PASS. Note: `tests/test_menu_app.py::test_boots_with_both_lists_and_sorter_focus` asserts `actions.option_count == 12` - update it to `13` (added the `probe` action) as part of this task.
 
 - [ ] **Step 6: Commit**
 
@@ -2125,7 +2125,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Consumes: `info["fit"]` (Task 6 / FakeController Task 8).
 - Produces: a "✓ fits" / "△ weak" badge on sorter rows and a "Fit for \<probe\>:" line in the sorter INSPECTING blurb.
 
-- [ ] **Step 1: Write the failing test** — append to `tests/test_menu_app.py`:
+- [ ] **Step 1: Write the failing test** - append to `tests/test_menu_app.py`:
 
 ```python
 async def test_inspecting_shows_fit_line(make_app):
@@ -2140,7 +2140,7 @@ async def test_inspecting_shows_fit_line(make_app):
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_menu_app.py -k fit_line -q`
-Expected: FAIL — assertion error ("Fit" not in the blurb yet).
+Expected: FAIL - assertion error ("Fit" not in the blurb yet).
 
 - [ ] **Step 3: Add the fit badge + fit line**
 
@@ -2180,13 +2180,13 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Phase 7 — Fallback parity, Help, gitignore, docs
+## Phase 7 - Fallback parity, Help, gitignore, docs
 
 ### Task 12: Fallback menu parity, Help topic, .gitignore, CLAUDE.md
 
 **Files:**
 - Modify: `scripts/ui.py` (`HELP_TOPICS` `:47-74`; add a `print_probes` helper)
-- Modify: `SpikeInterface_Menu.py` (`_menu_fallback` — add a typed "Probe" option; the fallback `data` help already uses `HELP_TOPICS`)
+- Modify: `SpikeInterface_Menu.py` (`_menu_fallback` - add a typed "Probe" option; the fallback `data` help already uses `HELP_TOPICS`)
 - Modify: `.gitignore`
 - Modify: `CLAUDE.md`
 - Modify: `tests/test_fallback.py`
@@ -2195,7 +2195,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - Consumes: `controller.probe_catalog`, `set_active_probe` (Task 5); `ui.HELP_TOPICS`.
 - Produces: a typed "Set probe geometry" option in the non-Textual fallback (list + activate), a "Probe geometry" Help topic shared by both UIs, `probes.json` git-ignored, and CLAUDE.md documenting the layer.
 
-- [ ] **Step 1: Write the failing test** — append to `tests/test_fallback.py` (or create a small new test if absent):
+- [ ] **Step 1: Write the failing test** - append to `tests/test_fallback.py` (or create a small new test if absent):
 
 ```python
 def test_help_has_probe_topic():
@@ -2207,7 +2207,7 @@ def test_help_has_probe_topic():
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `uv run python -m pytest tests/test_fallback.py -k probe_topic -q`
-Expected: FAIL — `"probe" not in keys`.
+Expected: FAIL - `"probe" not in keys`.
 
 - [ ] **Step 3a: Add the Help topic** (in `scripts/ui.py`, insert into `HELP_TOPICS` after the `sorters` entry `:58`):
 
@@ -2216,7 +2216,7 @@ Expected: FAIL — `"probe" not in keys`.
      ["The Blackrock files carry no electrode map, so you choose the geometry.",
       "Press p (or the 'Set probe geometry' action) to pick a profile: a placeholder",
       "(independent channels), a standard layout, a Cui-lab preset, or your own.",
-      "Geometry decides which sorters fit — good-fit sorters are badged ✓ and float up.",
+      "Geometry decides which sorters fit - good-fit sorters are badged ✓ and float up.",
       "NeuroNexus model decoder:  A{shanks}x{sites}-{length}-{pitch_um}-{site_area}."]),
 ```
 
@@ -2234,16 +2234,16 @@ def print_probes(rows) -> None:
         say(f"  {mark} {r['name']:26} {r.get('summary','')}{tag}")
 ```
 
-In `SpikeInterface_Menu.py` `_menu_fallback`, where the typed action list is assembled, add a "probe" choice that lists `controller.probe_catalog()` via `ui.print_probes` and then `ui.select(...)`s a profile to `controller.set_active_probe(name)`. (Mirror the existing `_manage_sorters_typed` shape — a small helper `_probe_typed(controller)` that prints the list, prompts for a name, and activates it.)
+In `SpikeInterface_Menu.py` `_menu_fallback`, where the typed action list is assembled, add a "probe" choice that lists `controller.probe_catalog()` via `ui.print_probes` and then `ui.select(...)`s a profile to `controller.set_active_probe(name)`. (Mirror the existing `_manage_sorters_typed` shape - a small helper `_probe_typed(controller)` that prints the list, prompts for a name, and activates it.)
 
-- [ ] **Step 3c: Ignore `probes.json`** — append to `.gitignore`:
+- [ ] **Step 3c: Ignore `probes.json`** - append to `.gitignore`:
 
 ```
 # Probe-geometry user library (local, like .si_menu.json)
 probes.json
 ```
 
-- [ ] **Step 3d: Document in `CLAUDE.md`** — add a short "Probe geometry" paragraph under the "Sorting status & the probe gap" section, summarizing: `scripts/probes.py` is the source of truth; `independent` is the default placeholder; profiles persist in `probes.json` + `active_probe` in `.si_menu.json`; geometry softly re-ranks sorters; first-run `ProbeSetupScreen`; `--probe`/`--probe-file` on `run_sorting.py`.
+- [ ] **Step 3d: Document in `CLAUDE.md`** - add a short "Probe geometry" paragraph under the "Sorting status & the probe gap" section, summarizing: `scripts/probes.py` is the source of truth; `independent` is the default placeholder; profiles persist in `probes.json` + `active_probe` in `.si_menu.json`; geometry softly re-ranks sorters; first-run `ProbeSetupScreen`; `--probe`/`--probe-file` on `run_sorting.py`.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
@@ -2268,10 +2268,10 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ## Final verification
 
-- [ ] **Run the full suite:** `uv run python -m pytest tests/ -q` — expect all green (187 prior + the new probe tests).
+- [ ] **Run the full suite:** `uv run python -m pytest tests/ -q` - expect all green (187 prior + the new probe tests).
 - [ ] **Smoke the launcher:** `uv run python SpikeInterface_Menu.py --help` (shows `--probe`) and `uv run python scripts/run_sorting.py --help` (shows `--probe`/`--probe-file`).
 - [ ] **Smoke the registry:** `uv run python -c "import sys; sys.path.insert(0,'scripts'); import probes; print(probes.summary(probes.get('independent'))); print(probes.fit('herdingspikes', probes.get('independent')))"`.
-- [ ] **Optional real-data smoke (if the recording is present):** `uv run python scripts/run_sorting.py --duration 10 --probe nnx-a1x16-3mm-100` then `--probe independent` — confirm the probe line appears in the output and an explicit mismatch (`--probe linear-32-25um`) fails with the friendly message while the default falls back to the placeholder.
+- [ ] **Optional real-data smoke (if the recording is present):** `uv run python scripts/run_sorting.py --duration 10 --probe nnx-a1x16-3mm-100` then `--probe independent` - confirm the probe line appears in the output and an explicit mismatch (`--probe linear-32-25um`) fails with the friendly message while the default falls back to the placeholder.
 - [ ] **Headless geometry / GUI-data check (verifies the single-channel-collapse fix without opening a GUI):** after a real-geometry sort, run:
 
 ```bash
@@ -2283,4 +2283,4 @@ assert a.get_num_channels()==16, 'expected 16 A1x16 contacts'; \
 print('OK: templates span all', t.shape[-1], 'channels')"
 ```
 
-Expected: `probe contacts: 16` and templates spanning 16 channels (not 1) — proving the real geometry + dense analyzer reached the saved sort.
+Expected: `probe contacts: 16` and templates spanning 16 channels (not 1) - proving the real geometry + dense analyzer reached the saved sort.

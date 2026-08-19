@@ -1,4 +1,4 @@
-# Conda environment for SpikeInterface — works on macOS, Windows and Linux.
+# Conda environment for SpikeInterface - works on macOS, Windows and Linux.
 #
 # NOTE: the PRIMARY install path is now uv (`uv sync`, see pyproject.toml /
 # README.md). This conda file is kept as a fallback for conda users. Under conda
@@ -17,7 +17,7 @@
 # Linux-only helpers (htop, libxcb, cxx-compiler) and the GPU-only Kilosort
 # sorter removed so it installs cleanly everywhere. The CPU sorters used by
 # scripts/run_sorting.py (tridesclous2, spykingcircus2) are bundled in
-# spikeinterface[full] below — no extra packages needed. See README.md to add a
+# spikeinterface[full] below - no extra packages needed. See README.md to add a
 # GPU sorter (Kilosort) later if you have an NVIDIA GPU.
 name: si_env
 channels:

@@ -1,4 +1,4 @@
-"""Probe-geometry registry — the single source of truth for electrode geometry.
+"""Probe-geometry registry - the single source of truth for electrode geometry.
 
 Like ``scripts/sorters.py`` this module returns plain Python data and imports the
 heavy libraries (``probeinterface``/``numpy``) lazily, so importing it is cheap and
@@ -20,17 +20,17 @@ CLI (import a probe the lab already has a standard description for):
     uv run python scripts/probes.py list
 
 ``import`` reads a probeinterface ``.json`` (or ``.prb``) ONCE and materialises
-the geometry — contact positions, min pitch, layout, wiring — into a
+the geometry - contact positions, min pitch, layout, wiring - into a
 self-contained ``imported`` profile in ``probes.json``, so the library never
 depends on the source file again. It then checks the contact count against the
 recording's neural channel count and reports honestly (a mismatch is a loud
-warning at import — the library may serve other recordings — and stays a hard
+warning at import - the library may serve other recordings - and stays a hard
 error at sort time: ``run_sorting.py --probe <name>`` refuses a count mismatch).
 Wiring: a full-permutation ``device_channel_indices`` in the file is preserved
 and applied; absent wiring means the identity mapping (contact i ↔ channel i);
 partial wiring (unconnected ``-1`` contacts) is refused until P3's wiring
 surfaces land. Multi-shank (P2): a probe with shank ids, or a multi-probe
-ProbeGroup (probes = shanks), imports as ONE profile — shank labels and
+ProbeGroup (probes = shanks), imports as ONE profile - shank labels and
 per-shank pitch/density are materialised alongside the global geometry, and a
 group's wiring must be one permutation across all its contacts. Density
 classing stays physical: the global min contact distance sets the sorter-fit
@@ -38,7 +38,7 @@ class (proximity shares waveforms whatever the shank label); per-shank classes
 are carried for display.
 
 Known limits (on record for P3): ``run_sorting.py --probe-file`` (the one-off
-``file`` kind) still applies identity wiring unconditionally — use the import
+``file`` kind) still applies identity wiring unconditionally - use the import
 CLI for a probe that carries wiring. Imported geometry is density-classed by
 min contact pitch only, so a tetrode-style import ranks as a dense array
 rather than tetrodes (soft re-rank only; it never blocks a sort).
@@ -70,7 +70,7 @@ def _profile(name, label, kind, params, note=""):
 
 # Built-in presets (ordered; the real default first, then the placeholder, then
 # standards). All parametric so they build offline (the probeinterface catalog
-# needs network — see build()). The A1x16-3mm-100-703 IS this recording's probe
+# needs network - see build()). The A1x16-3mm-100-703 IS this recording's probe
 # (channels raw 1–16); a 100 µm pitch is the 'sparse' class, so the geometry-aware
 # default sorter stays tridesclous2. The single-shank identity mapping (contact i ↔
 # raw i) gives the correct 16-site × 100 µm linear geometry; users who want the
@@ -82,7 +82,7 @@ BUILTINS = [
              "(1 shank, 16 sites, 100 µm pitch, ~30 µm contacts) on channels raw 1–16."),
     _profile("independent", "Independent channels (placeholder)", "independent",
              {"pitch_um": 250.0},
-             "No real geometry — channels treated as independent (the old default; "
+             "No real geometry - channels treated as independent (the old default; "
              "use when a recording's probe is unknown)."),
     _profile("linear-16-50um", "Linear · 16 ch @ 50 µm", "linear",
              {"n": 16, "pitch_um": 50.0}, "Single-shank dense linear array."),
@@ -96,7 +96,7 @@ BUILTINS = [
              "Generic dense 2-D grid."),
     _profile("utah-10x10-400um", "Utah array · 10 × 10 @ 400 µm", "grid",
              {"rows": 10, "cols": 10, "xpitch_um": 400.0, "ypitch_um": 400.0},
-             "Blackrock Utah array — at 400 µm contacts are electrically independent."),
+             "Blackrock Utah array - at 400 µm contacts are electrically independent."),
     _profile("cui-flexible-16-300um", "Cui flexible MEA · 16 ch @ 300 µm", "linear",
              {"n": 16, "pitch_um": 300.0},
              "Cui-lab custom flexible polyimide array (effectively independent)."),
@@ -162,14 +162,14 @@ def _is_builtin(name) -> bool:
 
 def save_profile(profile, path=PROBES_PATH) -> None:
     """Upsert a user profile into probes.json (built-in names are stored as user
-    copies — callers should rename a built-in before saving; see duplicate())."""
+    copies - callers should rename a built-in before saving; see duplicate())."""
     store = _load_store(path)
     rec = {"name": profile["name"], "label": profile.get("label", profile["name"]),
            "kind": profile["kind"], "params": dict(profile.get("params", {})),
            "builtin": False, "note": profile.get("note", "")}
     # An 'imported' profile's geometry is materialised at import time and can't be
     # re-derived: a generic upsert that omits it (e.g. a name/label-only edit
-    # surface) must not strip it — carry the stored geometry (and provenance note)
+    # surface) must not strip it - carry the stored geometry (and provenance note)
     # forward, and refuse outright when there is nothing to carry (a rename that
     # orphans the geometry must fail loud, not save a broken probe).
     if rec["kind"] == "imported":
@@ -179,15 +179,15 @@ def save_profile(profile, path=PROBES_PATH) -> None:
             if not prev_params.get("positions"):
                 raise ValueError(
                     f"Refusing to save imported probe '{rec['name']}' without its geometry "
-                    "— re-import it from the source file instead (probes.py import).")
+                    "- re-import it from the source file instead (probes.py import).")
             rec["params"] = {**prev_params, **rec["params"]}
             if not rec["note"]:
                 rec["note"] = (prev or {}).get("note", "")
         elif prev_params:
             # An upsert that carries positions but omits other materialised keys
-            # must not silently strip them — wiring reverting to identity would be
+            # must not silently strip them - wiring reverting to identity would be
             # a silent scientific failure. (A wiring carried onto CHANGED positions
-            # fails loudly at build if lengths mismatch — never silently.)
+            # fails loudly at build if lengths mismatch - never silently.)
             for key in ("min_pitch_um", "layout", "radius_um", "source", "format",
                         "shank_ids", "per_shank", "device_channel_indices"):
                 if key not in rec["params"] and key in prev_params:
@@ -236,8 +236,8 @@ def import_probe_file(src, name=None, label=None, path=PROBES_PATH) -> dict:
     Reads ``src`` (probeinterface ``.json``, or ``.prb``) once and materialises
     the geometry into a self-contained ``imported`` profile: contact positions,
     min pitch, layout class, contact radius, shank labels (a multi-probe group
-    imports as ONE profile with probes-as-shanks), and — when the file carries a
-    full permutation — the channel wiring. Saves to ``path`` and returns the
+    imports as ONE profile with probes-as-shanks), and - when the file carries a
+    full permutation - the channel wiring. Saves to ``path`` and returns the
     stored profile. Raises ``ValueError`` naming the exact problem on anything
     unsupported (3-D geometry, partial or mixed wiring, name collisions,
     unreadable files); nothing is written on failure.
@@ -263,7 +263,7 @@ def import_probe_file(src, name=None, label=None, path=PROBES_PATH) -> dict:
             raise ValueError(f"{src.name} is not a readable .prb file: {e}") from e
     else:
         raise ValueError(
-            f"Unsupported probe file type '{src.suffix}' — supported: "
+            f"Unsupported probe file type '{src.suffix}' - supported: "
             ".json (probeinterface), .prb")
 
     if len(group.probes) == 0:
@@ -303,20 +303,20 @@ def import_probe_file(src, name=None, label=None, path=PROBES_PATH) -> dict:
         if any(d is None for d in dcis):
             raise ValueError(
                 f"{src.name}: some probes in the group carry device_channel_indices and "
-                "some don't — wire every contact or strip the wiring entirely.")
+                "some don't - wire every contact or strip the wiring entirely.")
         dci = np.concatenate([np.asarray(d) for d in dcis])
         if len(dci) != n:
             raise ValueError(
                 f"{src.name}: device_channel_indices has {len(dci)} entries for {n} contacts.")
         if (dci < 0).any():
             raise ValueError(
-                f"{src.name}: some contacts are unconnected (device index -1) — partial "
+                f"{src.name}: some contacts are unconnected (device index -1) - partial "
                 "wiring isn't supported yet (wiring surfaces land in P3); connect every "
                 "contact or strip the wiring from the file.")
         if sorted(int(i) for i in dci) != list(range(n)):
             raise ValueError(
                 f"{src.name}: device_channel_indices isn't a permutation of 0..{n - 1} "
-                "across the group — the contacts can't be mapped to channels honestly. "
+                "across the group - the contacts can't be mapped to channels honestly. "
                 "Renumber the wiring to 0-based consecutive channels, or strip it to use "
                 "the identity mapping.")
         if not np.array_equal(dci, np.arange(n)):
@@ -366,14 +366,14 @@ def import_probe_file(src, name=None, label=None, path=PROBES_PATH) -> dict:
 
     name = name or _sanitize_name(src.stem)
     if not name:
-        raise ValueError(f"Couldn't derive a probe name from '{src.name}' — pass --name.")
+        raise ValueError(f"Couldn't derive a probe name from '{src.name}' - pass --name.")
     if _is_builtin(name):
         raise ValueError(
-            f"'{name}' is a built-in profile name — pass --name to import under a "
+            f"'{name}' is a built-in profile name - pass --name to import under a "
             "different name.")
     if any(u["name"] == name for u in user_profiles(path)):
         raise ValueError(
-            f"A probe named '{name}' already exists in the library — pass --name, or "
+            f"A probe named '{name}' already exists in the library - pass --name, or "
             "delete the existing one first.")
 
     from datetime import date
@@ -393,13 +393,13 @@ def import_probe_file(src, name=None, label=None, path=PROBES_PATH) -> dict:
                        f"Wiring: {wiring_note}."}
     save_profile(profile, path=path)
     stored = get(name, path=path)
-    if stored is None:   # the store swallows write errors — success must mean written
-        raise ValueError(f"Couldn't write the probe library at {path} — is it writable?")
+    if stored is None:   # the store swallows write errors - success must mean written
+        raise ValueError(f"Couldn't write the probe library at {path} - is it writable?")
     return stored
 
 
 def recording_neural_count(data_dir=None) -> int:
-    """Neural (non-aux) channel count of the recording — for import validation.
+    """Neural (non-aux) channel count of the recording - for import validation.
 
     Loads broadband headers lazily; propagates the loader's honest
     ``FileNotFoundError`` when there is no recording to check against.
@@ -554,7 +554,7 @@ def build(profile, n_channels):
         pos = np.asarray(p.get("positions", []), dtype=float)
         if pos.size == 0 or pos.ndim != 2 or pos.shape[1] != 2:
             raise ValueError(
-                f"Probe '{profile['name']}' has no stored geometry — re-import it "
+                f"Probe '{profile['name']}' has no stored geometry - re-import it "
                 "from the source file (probes.py import).")
         probe = pi.Probe(ndim=2)
         probe.set_contacts(positions=pos, shapes="circle",
@@ -664,7 +664,7 @@ def recommended_for(profile, runnable_names, prefer=None) -> "str | None":
 
 
 # --------------------------------------------------------------------------- #
-# CLI (import / list) — see the module docstring for usage
+# CLI (import / list) - see the module docstring for usage
 # --------------------------------------------------------------------------- #
 def main(argv=None) -> int:
     import argparse
@@ -700,26 +700,26 @@ def main(argv=None) -> int:
         return 1
     wiring = ("from file" if prof["params"].get("device_channel_indices")
               else "identity (contact i ↔ channel i)")
-    print(f"✓ imported '{prof['name']}' — {summary(prof)}")
+    print(f"✓ imported '{prof['name']}' - {summary(prof)}")
     print(f"  wiring: {wiring}")
     print(f"  sort with it: uv run python scripts/run_sorting.py --probe {prof['name']}")
     # Honest channel-count verdict against the recording. A mismatch is a loud
     # warning here (the library may serve other recordings) and stays a hard
-    # error at sort time — the explicit-probe-fails-hard asymmetry.
+    # error at sort time - the explicit-probe-fails-hard asymmetry.
     try:
         n_rec = recording_neural_count(args.data_dir)
     except FileNotFoundError as e:
-        print(f"  channel check skipped — {e}")
+        print(f"  channel check skipped - {e}")
         return 0
     except Exception as e:  # noqa: BLE001 - unreadable recording -> honest skip
-        print(f"  channel check skipped — couldn't read the recording: {e}")
+        print(f"  channel check skipped - couldn't read the recording: {e}")
         return 0
     want = contact_count(prof)
     if want == n_rec:
         print(f"  ✓ matches the recording: {n_rec} neural channels")
     else:
         print(f"  ⚠ MISMATCH: probe has {want} contacts but the recording has {n_rec} "
-              f"neural channels — sorting with --probe {prof['name']} will fail "
+              f"neural channels - sorting with --probe {prof['name']} will fail "
               "until the counts match.")
     return 0
 

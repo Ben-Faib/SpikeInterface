@@ -1,15 +1,15 @@
-# Active + Explanation Pane Dashboard — Implementation Plan
+# Active + Explanation Pane Dashboard - Implementation Plan
 
 > **For agentic workers:** This plan is executed by the **Workflow** tool with a
 > dedicated **audit/verify** phase (the user's chosen path), not the
 > subagent-driven-development skill. Steps use checkbox (`- [ ]`) syntax for
 > tracking. The authoritative design is the committed spec:
-> `docs/superpowers/specs/2026-06-08-menu-active-explanation-panes-design.md` —
+> `docs/superpowers/specs/2026-06-08-menu-active-explanation-panes-design.md` -
 > tasks reference its sections rather than restating long render text.
 
-**Goal:** Rebuild the Textual dashboard as a focus-driven two-pane view — an
+**Goal:** Rebuild the Textual dashboard as a focus-driven two-pane view - an
 **active list** (sorters *or* actions, accordion) plus a persistent **explanation
-pane** — with a quiet-until-broken status line, the brain kept, and auto-advance to
+pane** - with a quiet-until-broken status line, the brain kept, and auto-advance to
 actions on Enter.
 
 **Architecture:** `scripts/menu_app.py` (Textual view) is refactored; the
@@ -27,19 +27,19 @@ explanation render. Tested with Textual's `run_test`/Pilot against the
 
 ## File structure
 
-- **Modify** `SpikeInterface_Menu.py` — add `_ACTION_DETAIL` + `MenuController.action_explain`; expose `controller.pipeline` (already an attribute) to the help body.
-- **Modify** `scripts/ui.py` — add a shared `stream_detail(files, pipeline)` helper; pipe action `what`/`caveat` into the fallback hints (non-parity note).
-- **Modify** `scripts/menu_app.py` — the accordion refactor: `#statusline`, `#activebar`, `#body` → `#activepane` (`#sorters`+`#actions`, one shown) + `#explain`; mode state + mode-switch handlers; `_render_statusline`, `_render_sorter_explain`, `_render_action_explain`; mode/status/stack-aware reserve; per-mode footers; remove `#pipeline`/`#sorterdetail`/`_render_pipeline`. Update the module-docstring ASCII.
-- **Modify** `tests/conftest.py` — add `action_explain` to `FakeController`.
-- **Modify** `tests/test_menu_controller.py`, `tests/test_menu_app.py`, `tests/test_fallback.py` — new + migrated tests.
-- **Modify** `CLAUDE.md` — Architecture/navigation/responsive passages + fallback parity claim.
+- **Modify** `SpikeInterface_Menu.py` - add `_ACTION_DETAIL` + `MenuController.action_explain`; expose `controller.pipeline` (already an attribute) to the help body.
+- **Modify** `scripts/ui.py` - add a shared `stream_detail(files, pipeline)` helper; pipe action `what`/`caveat` into the fallback hints (non-parity note).
+- **Modify** `scripts/menu_app.py` - the accordion refactor: `#statusline`, `#activebar`, `#body` → `#activepane` (`#sorters`+`#actions`, one shown) + `#explain`; mode state + mode-switch handlers; `_render_statusline`, `_render_sorter_explain`, `_render_action_explain`; mode/status/stack-aware reserve; per-mode footers; remove `#pipeline`/`#sorterdetail`/`_render_pipeline`. Update the module-docstring ASCII.
+- **Modify** `tests/conftest.py` - add `action_explain` to `FakeController`.
+- **Modify** `tests/test_menu_controller.py`, `tests/test_menu_app.py`, `tests/test_fallback.py` - new + migrated tests.
+- **Modify** `CLAUDE.md` - Architecture/navigation/responsive passages + fallback parity claim.
 
 Sorter-registry `when_to_use` blurbs (spec "optional") are **out of scope** for this
-plan — the explanation pane reads fine from the existing one-line `description`.
+plan - the explanation pane reads fine from the existing one-line `description`.
 
 ---
 
-## Task 1: Controller — action metadata + `action_explain`
+## Task 1: Controller - action metadata + `action_explain`
 
 **Files:**
 - Modify: `SpikeInterface_Menu.py` (after `_ACTIONS`, ~line 604; method on `MenuController`)
@@ -86,7 +86,7 @@ def test_action_explain_no_need_actions_have_empty_needs(monkeypatch, tmp_path):
 Run: `uv run python -m pytest tests/test_menu_controller.py -k action_explain -q`
 Expected: FAIL (`AttributeError: 'MenuController' object has no attribute 'action_explain'`).
 
-- [ ] **Step 3: Implement** — add the metadata table and method to `SpikeInterface_Menu.py`.
+- [ ] **Step 3: Implement** - add the metadata table and method to `SpikeInterface_Menu.py`.
 
 ```python
 # (module level, near _ACTIONS) Rich per-action explanation. `needs` keys are
@@ -148,11 +148,11 @@ def action_explain(self, key: str) -> dict:
         out["caveat"] = (f"Re-running replaces the saved {info['name']} sort "
                          f"({info['units']}u).")
     if key in ("gui",) and not info.get("present"):
-        out["caveat"] = "No saved sort yet — run Sort first."
+        out["caveat"] = "No saved sort yet - run Sort first."
     return out
 ```
 
-(Verify `sorter_registry.uses_docker(name, use_docker)` exists — it's used at
+(Verify `sorter_registry.uses_docker(name, use_docker)` exists - it's used at
 `menu_app.py` via `active_blocked_on_docker`/registry; if the signature differs,
 fall back to `self.active_blocked_on_docker()` only.)
 
@@ -189,7 +189,7 @@ Expected: PASS (all, incl. existing).
 
 ```bash
 git add SpikeInterface_Menu.py tests/conftest.py tests/test_menu_controller.py
-git commit -m "feat(menu): action_explain — per-action needs/caveat/output metadata"
+git commit -m "feat(menu): action_explain - per-action needs/caveat/output metadata"
 ```
 
 ---
@@ -206,7 +206,7 @@ git commit -m "feat(menu): action_explain — per-action needs/caveat/output met
 ```python
 def test_stream_detail_merges_pipeline_into_files():
     import ui
-    files = [{"ext": ".ns5", "label": "Broadband — raw @ 30 kHz", "present": True}]
+    files = [{"ext": ".ns5", "label": "Broadband - raw @ 30 kHz", "present": True}]
     pipeline = [{"stage": "Broadband (.ns5)", "status": "PASS",
                  "detail": "22 ch, 132.0s @ 30000 Hz"}]
     out = ui.stream_detail(files, pipeline)
@@ -264,7 +264,7 @@ git commit -m "feat(menu): shared stream-detail helper; 'd' help shows ch/rate/d
 
 ---
 
-## Task 3: View — the accordion refactor (the core)
+## Task 3: View - the accordion refactor (the core)
 
 Implement spec **"Code structure → `scripts/menu_app.py`"** verbatim. This is one
 cohesive change; update the affected Pilot tests in the SAME commit so the suite
@@ -276,53 +276,53 @@ stays green. Do the implementation and the test migration together.
 
 ### Implementation steps (follow the spec section; key invariants restated)
 
-- [ ] **Step 1 — Tree + CSS.** Compose order: `#crest`, `#titlebar`, `#statusline`
+- [ ] **Step 1 - Tree + CSS.** Compose order: `#crest`, `#titlebar`, `#statusline`
   (`height:auto`), `#activebar` (`height:1; display:none`), `#body` (`Horizontal`) →
   `#activepane` (`Vertical`: a section label + `#sorters` + `#actions`, exactly one
   `display:true`) + `#explain` (`VerticalScroll`→`Static`), `#footer`. Remove
   `#sorterdetail`, `#pipeline`, `#l-pipeline`, `_render_pipeline`. Stacked rule:
   `#body.stacked` → vertical; `#explain` gets `max-height: 40%` only when stacked.
-- [ ] **Step 2 — Mode state + switch ownership.** Add `self._mode`. Add explicit
+- [ ] **Step 2 - Mode state + switch ownership.** Add `self._mode`. Add explicit
   `Binding("tab","focus_actions")` / `Binding("shift+tab","focus_sorter")` (plus
   existing left/right). `action_focus_actions`/`action_focus_sorter` MUST, in order:
   flip both lists' `display`; show/hide `#activebar`; **explicitly** re-render
   `#explain` for the now-active list; `_relayout()`; `.focus()` the now-shown list.
   Invariant (assert): exactly one of `#sorters`/`#actions` is `display:true` and is
   `app.focused`. After reveal, scroll via `self.call_after_refresh(ol.scroll_to_highlight)`.
-- [ ] **Step 3 — Launch sorter mode.** `on_mount`: `self._mode="sorter"`, build both
+- [ ] **Step 3 - Launch sorter mode.** `on_mount`: `self._mode="sorter"`, build both
   lists, focus `#sorters`, render the sorter explanation, `_relayout()`. (Welcome
   unchanged.)
-- [ ] **Step 4 — Auto-advance.** `_select_sorter`: on a **runnable** sorter, after
+- [ ] **Step 4 - Auto-advance.** `_select_sorter`: on a **runnable** sorter, after
   `set_active_by_name`, call `action_focus_actions()` (activate → action mode).
   Non-runnable → today's Docker-offer/hint, stay in sorter mode. `__docker__`/headers
   unchanged.
-- [ ] **Step 5 — `1–9`.** `action_run_index(i)`: if `self._mode != "action"`, switch
+- [ ] **Step 5 - `1–9`.** `action_run_index(i)`: if `self._mode != "action"`, switch
   to action mode first (highlight row `i`, render its explanation), then activate
-  action `i` — never run while invisible.
-- [ ] **Step 6 — Explanation render.** Generalise `on_option_list_option_highlighted`
+  action `i` - never run while invisible.
+- [ ] **Step 6 - Explanation render.** Generalise `on_option_list_option_highlighted`
   to branch on `event.option_list` (`#sorters`→`_render_sorter_explain`,
   `#actions`→`_render_action_explain(self.c.action_explain(id))`). `_render_sorter_explain`
   = the multi-line full-width evolution of `_render_sorter_detail` (header states per
   spec; full description; saved/overrides; the `Press → or Enter for actions.` CTA;
   keep "no accent fg on the active name" so the chip survives the cursor wash).
   `__docker__` row → a toggle blurb; header rows → fall back to the active sorter.
-- [ ] **Step 7 — Status line.** `_update_banner` → `_render_statusline(w,h)`: healthy
-  → borderless `✓ Recording loaded — <verified streams>` (Events omitted/dim, never a
+- [ ] **Step 7 - Status line.** `_update_banner` → `_render_statusline(w,h)`: healthy
+  → borderless `✓ Recording loaded - <verified streams>` (Events omitted/dim, never a
   banner); failure → bordered `⚠ …` (the 3 variants, reusing `data_report` +
   `controller.pipeline` broadband-`FAIL`). Return height (1/3); fold into the
   reserve. Keep the `_BANNER_MIN_ROWS` short-window suppression.
-- [ ] **Step 8 — `#activebar` + footers.** Render the folded bar in action mode (forms
+- [ ] **Step 8 - `#activebar` + footers.** Render the folded bar in action mode (forms
   per spec; never suppressed in action mode). Per-mode width-adaptive footers; the
   `→/1-9 Actions` token is last-dropped in sorter mode; both keep `? d t q`. Unify
   `t` wording.
-- [ ] **Step 9 — Reserve.** `_relayout` reserve = `base + statusrows(1|3) +
+- [ ] **Step 9 - Reserve.** `_relayout` reserve = `base + statusrows(1|3) +
   activebar(1 if action mode)`; re-fit the crest on every mode switch and quiet→loud
   transition; stacked → cap `#explain`; extreme-short wide → hide `#explain`,
   `#activepane` full width. Keep disabled action rows' inline `(needs data)` suffix.
-- [ ] **Step 10 — Module docstring.** Update the layout ASCII at the top of
+- [ ] **Step 10 - Module docstring.** Update the layout ASCII at the top of
   `menu_app.py` to the new tree.
 
-### Test migration (same commit) — `tests/test_menu_app.py`
+### Test migration (same commit) - `tests/test_menu_app.py`
 
 - [ ] `test_boots_with_lists_and_focus` → assert `app.focused is #sorters`,
   `#sorters` displayed, `#actions.display is False`, `#sorters.highlighted ==
@@ -378,7 +378,7 @@ async def test_action_explain_shows_in_action_mode(make_controller):
 ```
 
 - [ ] Keep `test_actions_stay_on_screen_when_stacked` /
-  `test_missing_banner_never_clips_actions_on_tiny_windows` — but they query
+  `test_missing_banner_never_clips_actions_on_tiny_windows` - but they query
   `#actions`, which is hidden in sorter mode. Update them to first enter action mode
   (`await pilot.press("right")`) so `#actions` is displayed, then assert on-screen.
 - [ ] `test_tiny_window_stacks_and_keeps_actions`, `test_very_short_window_does_not_crash`,
@@ -396,23 +396,23 @@ git commit -m "feat(menu): focus-driven two-pane dashboard (active list + explan
 
 ---
 
-## Task 4: Fallback (ui.py) — pipe metadata, keep non-parity
+## Task 4: Fallback (ui.py) - pipe metadata, keep non-parity
 
 **Files:**
 - Modify: `scripts/ui.py` (`dashboard_menu` actions get `what` as hint; `HELP_TOPICS['data']` body via `stream_detail`)
 - Modify: `SpikeInterface_Menu.py` (`_menu_fallback` passes the per-action `what`/`caveat` into the `_MENU` hints; `_print_setup_plain` uses `stream_detail`)
 - Test: `tests/test_fallback.py`
 
-- [ ] **Step 1** — In `_menu_fallback`, build the action hint list from
+- [ ] **Step 1** - In `_menu_fallback`, build the action hint list from
   `_ACTION_DETAIL[key]["what"]` (fall back to the existing `_MENU` hint), and append
   the resolved `caveat` for `sort` so the typed menu still warns before a re-sort.
-- [ ] **Step 2** — `_print_setup_plain` (and `HELP_TOPICS['data']` render) use
+- [ ] **Step 2** - `_print_setup_plain` (and `HELP_TOPICS['data']` render) use
   `ui.stream_detail(report["files"], pipeline)` to show ch/rate/duration where present.
-- [ ] **Step 3 — Test** (append to `tests/test_fallback.py`): assert the fallback's
+- [ ] **Step 3 - Test** (append to `tests/test_fallback.py`): assert the fallback's
   action listing surfaces a `what` string for `sort` and the destructive caveat text
   is present when a saved sort exists. Keep it light (the fallback is intentionally
-  non-parity — no accordion).
-- [ ] **Step 4 — Run + commit**
+  non-parity - no accordion).
+- [ ] **Step 4 - Run + commit**
 
 Run: `uv run python -m pytest tests/test_fallback.py -q` → PASS.
 
@@ -423,7 +423,7 @@ git commit -m "feat(menu): typed fallback surfaces action descriptions + sort ca
 
 ---
 
-## Task 5: Docs — CLAUDE.md + module docstring
+## Task 5: Docs - CLAUDE.md + module docstring
 
 **Files:** Modify `CLAUDE.md`.
 
@@ -439,7 +439,7 @@ git commit -m "feat(menu): typed fallback surfaces action descriptions + sort ca
 
 ```bash
 git add CLAUDE.md
-git commit -m "docs: CLAUDE.md — two-pane accordion dashboard"
+git commit -m "docs: CLAUDE.md - two-pane accordion dashboard"
 ```
 
 ---

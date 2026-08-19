@@ -8,7 +8,7 @@
 The v2 Textual dashboard opens with an animated ASCII "firing neuron" crest
 (`CrestWidget` + `ui._NEURON_*`). Organic ASCII art reads poorly in a terminal and
 the user finds it unattractive. Replace it with a clean, intentional typographic
-header — a figlet-style block-letter wordmark.
+header - a figlet-style block-letter wordmark.
 
 ## Decision
 
@@ -32,8 +32,8 @@ Mirror the existing Pitt-shield infrastructure (`_build_logo` / `_pick` /
 tiers using only the full block `█` and spaces (aligns in any monospace font).
 
 - Define a block-letter "SPIKE" grid (fill/space mask) in two tiers:
-  - `_WORDMARK_FULL` — 5-row block letters (~19 cols), for tall terminals.
-  - `_WORDMARK_COMPACT` — 3-row block letters, for medium terminals.
+  - `_WORDMARK_FULL` - 5-row block letters (~19 cols), for tall terminals.
+  - `_WORDMARK_COMPACT` - 3-row block letters, for medium terminals.
   - No mini tier: below compact the wordmark **hides** and the always-present
     title rule carries the branding.
 - A `_WORDMARKS` ladder `[(w, h, art), …]` widest-first, and
@@ -59,7 +59,7 @@ tiers using only the full block `█` and spaces (aligns in any monospace font).
 
 ### Cleanup (animation removal)
 
-- `scripts/ui.py`: remove the neuron art + helpers — `_NEURON_FULL/COMPACT/MINI`,
+- `scripts/ui.py`: remove the neuron art + helpers - `_NEURON_FULL/COMPACT/MINI`,
   `_NEURONS`, `_NeuronTier`, `_encode_neuron_row`, `neuron_frame`, `neuron_rest`,
   `pick_neuron`, `NEURON_BODY`/`NEURON_SPARK`/`NEURON_REST_PHASE`, `_N_TRAVEL`/
   `_N_FIRE`.
@@ -67,7 +67,7 @@ tiers using only the full block `█` and spaces (aligns in any monospace font).
   any `animate`-related wiring.
 - `SpikeInterface_Menu.py` (controller): remove `self.animate`, `set_animate`, and
   the `animate` key in `_load_config`/`_save_config` config dict. (Existing
-  `.si_menu.json` files with a stale `animate` key are harmless — just ignored.)
+  `.si_menu.json` files with a stale `animate` key are harmless - just ignored.)
 - Delete `scripts/_neuron_art_preview.py`; add a tiny `scripts/_wordmark_preview.py`
   that prints the tiers (parity with the old preview script).
 
@@ -90,7 +90,7 @@ tiers using only the full block `█` and spaces (aligns in any monospace font).
 ## Success criteria
 
 - Launching the dashboard shows a static block-letter "SPIKE" in the accent colour,
-  the title rule beneath it, then the DATA/SORT banner — no animation, no organic
+  the title rule beneath it, then the DATA/SORT banner - no animation, no organic
   ASCII.
 - The wordmark follows the colour theme.
 - It degrades cleanly: full → compact → hidden as the window shrinks; lists never

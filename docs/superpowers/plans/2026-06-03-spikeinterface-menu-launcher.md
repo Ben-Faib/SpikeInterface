@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a single root-level launcher (`SpikeInterface_Menu.py`) that fronts every workspace capability — explore, sort, report, GUI inspector, trace browser, sorter comparison, verify — and make the HTML report sorter-aware.
+**Goal:** Add a single root-level launcher (`SpikeInterface_Menu.py`) that fronts every workspace capability - explore, sort, report, GUI inspector, trace browser, sorter comparison, verify - and make the HTML report sorter-aware.
 
 **Architecture:** A root launcher with a status dashboard + numbered menu (CLI-shy friendly) and direct arg-dispatch (power users). It shells out to the existing `scripts/*.py` for explore/sort/verify, calls `report.build_report(...)` in-process, and launches the blocking Qt GUIs (`sigui`, `ephyviewer`) in fresh child processes. A new `scripts/compare.py` builds a standalone `outputs/comparison.html`. `scripts/make_report.py` shrinks to a thin shim.
 
-**Tech Stack:** Python 3.12, conda env `si_env`, SpikeInterface 0.104.3, spikeinterface-gui 0.13.1 (`sigui`), ephyviewer 1.8.0, Plotly, PyQt5. No pytest in repo — **verification = runnable commands + `python -c` assertions** (matches the repo's `verify_install.py` style; do NOT add a pytest suite).
+**Tech Stack:** Python 3.12, conda env `si_env`, SpikeInterface 0.104.3, spikeinterface-gui 0.13.1 (`sigui`), ephyviewer 1.8.0, Plotly, PyQt5. No pytest in repo - **verification = runnable commands + `python -c` assertions** (matches the repo's `verify_install.py` style; do NOT add a pytest suite).
 
 **Design doc:** `docs/plans/2026-06-03-spikeinterface-menu-launcher-design.md`
 
@@ -37,7 +37,7 @@ Run:
 ```bash
 conda run -n si_env python -c "import sys; sys.path.insert(0,'scripts'); import report; out=report.build_report(analyzer_dir='outputs/spykingcircus2/analyzer'); h=open(out).read(); print('tridesclous2 label present:', 'Sorted units (tridesclous2)' in h)"
 ```
-Expected: `tridesclous2 label present: True` — i.e. a spykingcircus2 analyzer is wrongly labelled `tridesclous2`. This is the bug.
+Expected: `tridesclous2 label present: True` - i.e. a spykingcircus2 analyzer is wrongly labelled `tridesclous2`. This is the bug.
 
 - [ ] **Step 2: Change the `build_report` signature (line 366)**
 
@@ -131,7 +131,7 @@ assert 'Sorted units (tridesclous2)' in h
 print('OK default')
 "
 ```
-Expected: `OK tridesclous2`, `OK spykingcircus2`, `OK default`. (Note: this rebuilds `outputs/report.html` against spykingcircus2 last; that's fine — the launcher always passes the right `analyzer_dir`.)
+Expected: `OK tridesclous2`, `OK spykingcircus2`, `OK default`. (Note: this rebuilds `outputs/report.html` against spykingcircus2 last; that's fine - the launcher always passes the right `analyzer_dir`.)
 
 - [ ] **Step 9: Commit**
 
@@ -228,7 +228,7 @@ def _match_table(cmp) -> str:
     for u1, u2 in hm.items():
         p = _partner(u2)
         if p is None:
-            partner, frac = "—", 0.0
+            partner, frac = "-", 0.0
         else:
             partner, frac = str(p), cmp.get_agreement_fraction(u1, u2)
             n_matched += 1
@@ -254,7 +254,7 @@ def build_comparison(data_dir=None, sorters=DEFAULT_SORTERS, out_path=None) -> P
 
     if s1 is None or s2 is None:
         missing = [n for n, s in [(s1_name, s1), (s2_name, s2)] if s is None]
-        body = ('<div class="caveat">Cannot compare — no saved sort for: '
+        body = ('<div class="caveat">Cannot compare - no saved sort for: '
                 f'{", ".join(missing)}. Run a sort for each sorter first.</div>')
     elif abs(d1 - d2) > DURATION_TOLERANCE_S:
         body = ('<div class="caveat">The two sorts cover different windows '
@@ -326,7 +326,7 @@ git commit -m "feat(compare): standalone sorter-comparison report (comparison.ht
 Create `SpikeInterface_Menu.py` at the repo root with exactly:
 ```python
 #!/usr/bin/env python
-"""PFCM7 SpikeInterface workspace — single front-door menu launcher.
+"""PFCM7 SpikeInterface workspace - single front-door menu launcher.
 
     conda activate si_env
     python SpikeInterface_Menu.py            # interactive status + menu
@@ -424,7 +424,7 @@ def action_report(args) -> bool:
     if sys.stdin.isatty():
         try:
             if not webbrowser.open(uri):
-                print("(could not open a browser automatically — open the link above)")
+                print("(could not open a browser automatically - open the link above)")
         except Exception:  # noqa: BLE001
             pass
     return True
@@ -433,7 +433,7 @@ def action_report(args) -> bool:
 def action_gui(args) -> bool:
     analyzer_dir = _analyzer_dir(args.sorter)
     if not analyzer_dir.exists():
-        print(f"No saved sort for {args.sorter} — run 'sort' first.")
+        print(f"No saved sort for {args.sorter} - run 'sort' first.")
         return False
     try:
         import spikeinterface.full as si
@@ -580,7 +580,7 @@ Run:
 ```bash
 printf '' | conda run -n si_env python SpikeInterface_Menu.py
 ```
-Expected: the status dashboard (`PFCM7 workspace · active sorter: tridesclous2` + `[PASS]`/`[SKIP]` rows), then `(non-interactive stdin -> building the report)` and `Report written: .../outputs/report.html`. Exit 0. (No browser opens — stdin is not a TTY.)
+Expected: the status dashboard (`PFCM7 workspace · active sorter: tridesclous2` + `[PASS]`/`[SKIP]` rows), then `(non-interactive stdin -> building the report)` and `Report written: .../outputs/report.html`. Exit 0. (No browser opens - stdin is not a TTY.)
 
 - [ ] **Step 4: Verify arg-dispatch of `report` labels with the chosen sorter**
 
@@ -598,9 +598,9 @@ conda run -n si_env python SpikeInterface_Menu.py verify < /dev/null
 ```
 Expected: prints `$ .../python .../scripts/verify_install.py` then `verify_install.py`'s normal version/summary output, exit 0. (Confirms `verify` is called with no extra flags.)
 
-- [ ] **Step 6: Manual check (interactive menu — needs a real terminal)**
+- [ ] **Step 6: Manual check (interactive menu - needs a real terminal)**
 
-In a real terminal (not pipeable), run `conda run -n si_env python SpikeInterface_Menu.py`, confirm the numbered menu renders, press `t` and confirm the header sorter toggles tridesclous2 ⇄ spykingcircus2, then `q` to quit. (The TTY menu can't be exercised by a pipe because `sys.stdin.isatty()` is then False — that path is covered by Step 3.)
+In a real terminal (not pipeable), run `conda run -n si_env python SpikeInterface_Menu.py`, confirm the numbered menu renders, press `t` and confirm the header sorter toggles tridesclous2 ⇄ spykingcircus2, then `q` to quit. (The TTY menu can't be exercised by a pipe because `sys.stdin.isatty()` is then False - that path is covered by Step 3.)
 
 - [ ] **Step 7: Commit**
 
@@ -624,7 +624,7 @@ Run:
 ```bash
 QT_QPA_PLATFORM=offscreen timeout 60 conda run -n si_env python SpikeInterface_Menu.py gui --sorter tridesclous2 < /dev/null; echo "exit=$?"
 ```
-Expected: prints `Opening spikeinterface-gui on .../outputs/tridesclous2/analyzer ...`, loads the analyzer (may take a few seconds to lazy-compute extensions), opens the offscreen window, then is killed by `timeout` → `exit=124`. **`exit=124` is success** here — it means the GUI reached its event loop without an import/load error. (An import or load failure would print the error and exit non-124 quickly.)
+Expected: prints `Opening spikeinterface-gui on .../outputs/tridesclous2/analyzer ...`, loads the analyzer (may take a few seconds to lazy-compute extensions), opens the offscreen window, then is killed by `timeout` → `exit=124`. **`exit=124` is success** here - it means the GUI reached its event loop without an import/load error. (An import or load failure would print the error and exit non-124 quickly.)
 
 - [ ] **Step 2: Verify the GUI guard when no analyzer exists**
 
@@ -638,7 +638,7 @@ class A: sorter='nosuchsorter'; data_dir=None
 print('returned', m.action_gui(A()))
 "
 ```
-Expected: the second command prints `No saved sort for nosuchsorter — run 'sort' first.` and `returned False`. (Confirms the `analyzer_dir.exists()` guard; the `nosuchsorter` analyzer dir does not exist.)
+Expected: the second command prints `No saved sort for nosuchsorter - run 'sort' first.` and `returned False`. (Confirms the `analyzer_dir.exists()` guard; the `nosuchsorter` analyzer dir does not exist.)
 
 - [ ] **Step 3: Verify the ephyviewer trace browser launches (headless)**
 
@@ -654,7 +654,7 @@ Expected: prints `Opening ephyviewer on the broadband recording ...`, loads the 
 git add SpikeInterface_Menu.py
 git commit -m "fix: Qt action launch (gui/traces) adjustments from headless verification"
 ```
-If Steps 1–3 passed with no edits, there is nothing to commit — note that and move on.
+If Steps 1–3 passed with no edits, there is nothing to commit - note that and move on.
 
 ---
 
@@ -683,7 +683,7 @@ conda run -n si_env python SpikeInterface_Menu.py sort --sorter spykingcircus2 -
 conda run -n si_env python scripts/compare.py
 grep -c "Agreement scores" outputs/comparison.html
 ```
-Wait — `action_sort` does not pass `--verbosity`; call `run_sorting.py` directly for the quiet flag:
+Wait - `action_sort` does not pass `--verbosity`; call `run_sorting.py` directly for the quiet flag:
 ```bash
 conda run -n si_env python scripts/run_sorting.py --sorter tridesclous2 --duration 30 --verbosity quiet
 conda run -n si_env python scripts/run_sorting.py --sorter spykingcircus2 --duration 30 --verbosity quiet
@@ -710,7 +710,7 @@ git commit -m "fix: compare action wiring adjustments from verification"
 
 Overwrite `scripts/make_report.py` with exactly:
 ```python
-"""Thin shim — the report flow now lives in the root SpikeInterface_Menu.py.
+"""Thin shim - the report flow now lives in the root SpikeInterface_Menu.py.
 
     conda activate si_env
     python scripts/make_report.py                 # builds + opens the report
@@ -814,7 +814,7 @@ install but the conda env resolves to PyQt5; either works).
 
 In `README.md`, find the first usage code block (the one after first-time setup, beginning with `conda activate si_env`). Immediately before it, add:
 ```markdown
-### Quick start — the menu
+### Quick start - the menu
 
 Once set up, the simplest way in is the single launcher at the repo root:
 
@@ -853,4 +853,4 @@ git commit -m "docs: document SpikeInterface_Menu launcher, sigui, compare, make
 - **Spec coverage:** single launcher (Task 3/4/5), sorter-aware report (Task 1), compare → comparison.html (Task 2/5), GUI inspector + traces (Task 4), polish: auto-open report on TTY (Task 3 `action_report`), make_report shim (Task 6), docs incl. PyQt5/sigui (Task 7). All design sections mapped.
 - **Type/name consistency:** `build_report(..., sorter_label=...)` defined in Task 1 and called with `sorter_label=` in Task 3. `compare.build_comparison(data_dir, sorters, out_path)` and `compare.DURATION_TOLERANCE_S` defined in Task 2, used in Task 3's `action_compare`. `SORTERS` imported from `run_sorting` (a list). `report._gather`, `report._fig_html`, `report._html_document` are existing names used by `compare.py` and the launcher.
 - **Known limitation surfaced, not hidden:** the interactive TTY menu (Task 3 Step 6) is a manual check because `isatty()` is False under a pipe; the non-interactive default and all arg-dispatch paths are auto-verified.
-- **No pytest:** intentional — repo has no test framework; verification is runnable commands, consistent with `verify_install.py`.
+- **No pytest:** intentional - repo has no test framework; verification is runnable commands, consistent with `verify_install.py`.

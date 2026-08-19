@@ -1,6 +1,6 @@
 """Pure, dependency-free progress math for the in-UI Docker-image download.
 
-No Textual / Docker imports — like ``scripts/sort_progress.py`` this holds the
+No Textual / Docker imports - like ``scripts/sort_progress.py`` this holds the
 arithmetic and formatting so the TUI stays a thin renderer and the logic is
 trivially unit-testable. Timestamps are passed IN (monotonic seconds) so the
 clock is deterministic in tests.
@@ -19,7 +19,7 @@ _GB = 1024 * 1024 * 1024
 # a steady, honest "downloaded N bytes over the last W seconds" figure.
 _SPEED_WINDOW_S = 5.0
 # Don't quote a speed until at least this much wall-clock has accrued in the window
-# — early on, one or two sub-second samples divide by a near-zero span and produce a
+# - early on, one or two sub-second samples divide by a near-zero span and produce a
 # meaningless huge number.
 _SPEED_MIN_SPAN_S = 1.0
 
@@ -35,14 +35,14 @@ class DownloadStats:
         self._total = 0
         self._start: float | None = None      # first-ever sample time -> elapsed
         self._now: float = 0.0
-        # Recent (time, done_bytes) samples within the speed window — the average
+        # Recent (time, done_bytes) samples within the speed window - the average
         # rate is the slope across this window, which smooths Docker's bursty deltas.
         self._samples: list[tuple[float, int]] = []
 
     def reset_window(self, now: float) -> None:
         """Drop accumulated samples (NOT the start clock / elapsed) so the rate
         re-warms cleanly. Used on a phase change AND when the progress unit flips
-        between bytes and layer-counts — a slope across mixed units is meaningless."""
+        between bytes and layer-counts - a slope across mixed units is meaningless."""
         self._samples.clear()
         self._now = now
 
@@ -107,7 +107,7 @@ class DownloadSession:
 
 def fmt_bytes(n: int | None) -> str:
     if n is None:
-        return "—"
+        return "-"
     if n >= _GB:
         return f"{n / _GB:.1f} GB"
     if n >= _MB:
@@ -119,7 +119,7 @@ def fmt_bytes(n: int | None) -> str:
 
 def fmt_speed(bps: float | None) -> str:
     if bps is None:
-        return "—"
+        return "-"
     if bps >= _MB:
         return f"{bps / _MB:.1f} MB/s"
     if bps >= _KB:
@@ -129,7 +129,7 @@ def fmt_speed(bps: float | None) -> str:
 
 def fmt_clock(secs: float | None) -> str:
     if secs is None:
-        return "—"
+        return "-"
     secs = int(secs)
     h, rem = divmod(secs, 3600)
     m, s = divmod(rem, 60)

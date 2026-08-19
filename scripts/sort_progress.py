@@ -24,7 +24,7 @@ terminal event a consumer can also synthesise from a silent rc-0 exit.
 
 ``plan`` is the pipeline's *intent*: it lets a consumer show what is still
 pending from the first second instead of learning the checklist one phase at a
-time. It is advisory — ``phase`` remains the only claim that work has started,
+time. It is advisory - ``phase`` remains the only claim that work has started,
 and an emitter that sends no ``plan`` simply has no pending rows to show. Use
 :func:`phase_rows` to render the two together.
 
@@ -97,7 +97,7 @@ def reduce(state: dict, ev: dict) -> dict:
     t = ev.get("t")
     if t == "plan":
         # The manifest states what the run INTENDS to do; it never marks work as
-        # started or done — only `phase` does that.
+        # started or done - only `phase` does that.
         state["planned"] = [
             {"i": p.get("i"), "title": p.get("title", ""), "sub": p.get("sub", "")}
             for p in (ev.get("phases") or []) if isinstance(p, dict)
@@ -170,7 +170,7 @@ def phase_rows(state: dict) -> list:
 
     Each row is ``{i, title, sub, secs, state}`` with ``state`` one of ``done`` /
     ``running`` / ``pending``. Pending rows come from the ``plan`` manifest and
-    exist only while the run is alive — once it is over (``done`` or ``error``)
+    exist only while the run is alive - once it is over (``done`` or ``error``)
     the phases that never started are not "pending", they are never happening, so
     they are dropped rather than left looking queued.
     """

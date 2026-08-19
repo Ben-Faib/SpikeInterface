@@ -3,7 +3,7 @@
 
 The front door (``SpikeInterface_Menu.py`` with no action) is a full-screen
 Textual TUI, so it can't be "just run" from a non-interactive shell to confirm it
-works — it needs a real terminal, or a driver. This drives the *real*
+works - it needs a real terminal, or a driver. This drives the *real*
 ``SpikeMenuApp`` through Textual's Pilot harness: it mounts the app, dismisses any
 first-run modal, snapshots the key dashboard panels + an SVG, exercises
 navigation, and confirms a clean exit. A non-zero exit here means the menu does
@@ -61,7 +61,7 @@ async def drive(data_dir: "str | None") -> bool:
     app = menu_app.SpikeMenuApp(controller)
 
     buf, svg_len = [], 0
-    # Textual owns stdout while the app runs, and its capture is cp1252 on Windows —
+    # Textual owns stdout while the app runs, and its capture is cp1252 on Windows -
     # so collect everything and write it out (UTF-8) AFTER the app closes.
     async with app.run_test(size=(120, 42)) as pilot:
         await pilot.pause()
@@ -86,7 +86,7 @@ async def drive(data_dir: "str | None") -> bool:
         buf.append(_text(app.query_one("#results", Static)))
 
         # Exercise navigation (D5): move in the actions list, then open + close
-        # the sorter picker — must not crash.
+        # the sorter picker - must not crash.
         await pilot.press("down")
         await pilot.pause()
         await pilot.press("t")

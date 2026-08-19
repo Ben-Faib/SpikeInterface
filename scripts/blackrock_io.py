@@ -9,11 +9,11 @@ and notebooks) can load this dataset in one line:
 
 What the files in this repo can contain
 ---------------------------------------
-* ``*.ns2`` — analog data sampled at **1 kHz** (channels labelled ``lfp N``).
+* ``*.ns2`` - analog data sampled at **1 kHz** (channels labelled ``lfp N``).
   This is **LFP**, read as a SpikeInterface *Recording* (:func:`read_lfp`).
-* ``*.ns5`` — raw **broadband** sampled at **~30 kHz**. This is what you can
+* ``*.ns5`` - raw **broadband** sampled at **~30 kHz**. This is what you can
   spike-sort, read as a SpikeInterface *Recording* (:func:`read_broadband`).
-* ``*.nev`` — spike events / waveform snippets + digital event markers, with
+* ``*.nev`` - spike events / waveform snippets + digital event markers, with
   timestamps at the system clock rate (**30 kHz** for this file). The
   already-detected spikes are read as a SpikeInterface *Sorting*.
 
@@ -59,7 +59,7 @@ def use_utf8_stdout() -> None:
                 pass
 
 
-# Library/native chatter that is never useful signal — only clutter that breaks
+# Library/native chatter that is never useful signal - only clutter that breaks
 # the clean terminal formatting. Muted everywhere it can leak: the verbose
 # progress output, the in-process report/compare paths, and spawned sorter
 # workers. Each entry is a regex matched against the START of a warning message
@@ -67,7 +67,7 @@ def use_utf8_stdout() -> None:
 # subclass that raised it:
 #   - probe warning: sorters rebuild an internal recording that drops our probe
 #   - resource_tracker: known multiprocessing shared-memory cleanup chatter
-#   - non-persistent recording: expected — we register an in-memory recording
+#   - non-persistent recording: expected - we register an in-memory recording
 _MUTED_WARNINGS = (
     "There is no Probe attached",
     "resource_tracker",
@@ -109,8 +109,8 @@ def find_blackrock_base(data_dir: "Path | str | None" = None) -> Path:
     repo's folder carries a manually re-exported ``…_manuallySorted.nev``
     alongside the recording; because neo keys on the stem, that export is a
     separate (analog-less) file set. Discovery therefore prefers the stem that
-    actually has analog ``.nsX`` data — a stem with only a ``.nev`` is a derived
-    export, never the recording — and falls back to a lone ``.nev`` stem when the
+    actually has analog ``.nsX`` data - a stem with only a ``.nev`` is a derived
+    export, never the recording - and falls back to a lone ``.nev`` stem when the
     folder holds no analog data at all (spikes/events still load). Two stems that
     both carry analog data are genuinely ambiguous: that raises, naming both,
     rather than picking whichever sorts first.
@@ -144,8 +144,8 @@ def find_reference_nevs(data_dir: "Path | str | None" = None) -> "list[Path]":
     """The ``.nev`` files beside the recording that are NOT the recording's own.
 
     The flip side of :func:`find_blackrock_base`: a stem carrying only a ``.nev``
-    and no analog ``.nsX`` is a derived export — this repo's folder holds a
-    manually re-exported ``…_manuallySorted.nev`` — and those are the files a
+    and no analog ``.nsX`` is a derived export - this repo's folder holds a
+    manually re-exported ``…_manuallySorted.nev`` - and those are the files a
     surface can use as a sorted *reference*. Sorted by name; ``[]`` when the
     folder holds none, so a caller drops the comparison instead of guessing.
     Never raises: a folder with no recording at all simply has no references.
@@ -217,7 +217,7 @@ def attach_dummy_probe(recording, pitch_um: float = 250.0):
 
     The Blackrock files carry **no electrode geometry**, and the real physical
     layout of this array is unknown. This lays the channels out in a single
-    column ``pitch_um`` apart — far enough that sorters treat every channel as
+    column ``pitch_um`` apart - far enough that sorters treat every channel as
     **independent** (no shared spatial neighbourhood / no cross-channel merging).
     Per-channel results are valid; cross-channel *spatial* information is not
     physical until a real map is supplied.
@@ -247,13 +247,13 @@ def attach_a1x16_probe(recording, pitch_um: float = A1X16_PITCH_UM):
     shank with **16 sites in one column, 100 µm apart** (span 1500 µm). Unlike
     :func:`attach_dummy_probe` (a placeholder that spaces channels 250 µm apart so
     none are neighbours), this is the true layout, so cross-channel spatial
-    information — neighbours, depth, drift, multi-channel templates — is physical,
+    information - neighbours, depth, drift, multi-channel templates - is physical,
     and the ``spikeinterface-gui`` inspector shows each unit across all 16 sites.
 
     Wiring is **sequential / identity**: recording channel *i* → site *i*
     (tip→top), matching ``attach_dummy_probe``. The geometry and pitch are exact
     for this part; the physical depth *order* depends on the probe→Ripple adapter,
-    which is not in the data — flip the mapping here if a real adapter map says so.
+    which is not in the data - flip the mapping here if a real adapter map says so.
 
     Requires exactly :data:`A1X16_N_CONTACTS` channels (drop the analog aux inputs
     with :func:`neural_channel_ids` first). Returns a new recording (no mutation).
@@ -265,7 +265,7 @@ def attach_a1x16_probe(recording, pitch_um: float = A1X16_PITCH_UM):
     if n != A1X16_N_CONTACTS:
         raise ValueError(
             f"A1x16 probe has {A1X16_N_CONTACTS} sites but the recording has {n} "
-            "channels — drop the non-neural analog aux channels first "
+            "channels - drop the non-neural analog aux channels first "
             "(neural_channel_ids), or use attach_dummy_probe for a different array."
         )
     probe = generate_linear_probe(num_elec=A1X16_N_CONTACTS, ypitch=pitch_um)
@@ -314,7 +314,7 @@ def read_broadband(
     Selects the highest-sample-rate analog stream unless ``stream_id`` is given,
     and (by default) attaches a placeholder independent-channel probe via
     :func:`attach_dummy_probe` so the result is immediately sortable. Raises if
-    the chosen stream is slow enough to be LFP rather than broadband — sorting
+    the chosen stream is slow enough to be LFP rather than broadband - sorting
     1 kHz LFP is not meaningful.
     """
     import spikeinterface.extractors as se
@@ -328,7 +328,7 @@ def read_broadband(
     fs = recording.get_sampling_frequency()
     if fs < min_sampling_hz:
         raise ValueError(
-            f"Selected stream is {fs:g} Hz — that is LFP, not raw broadband. "
+            f"Selected stream is {fs:g} Hz - that is LFP, not raw broadband. "
             "Spike sorting needs the ~30 kHz broadband stream (a .ns5/.ns6 file). "
             "Add it to the data folder, or pass stream_id=... for the right stream."
         )
@@ -345,14 +345,14 @@ def read_spikes(
     """Read spike events from a ``.nev`` file as a SpikeInterface Sorting.
 
     By default reads the recording set's own ``.nev``; ``nev_path`` reads an
-    EXPLICIT file instead — e.g. a re-exported, manually/online-sorted `.nev`
+    EXPLICIT file instead - e.g. a re-exported, manually/online-sorted `.nev`
     for the same recording (``compare.py --nev``). A missing explicit path is a
     hard error (the explicit-fails-hard convention).
 
     Blackrock unit-id convention: ``0`` = unsorted threshold crossings,
     ``1..n`` = online-sorted units, ``255`` = noise / invalidated. SI renumbers
     the units positionally and drops that id, so the class is recovered from the
-    neo names — :func:`online_unit_labels` + :func:`unit_class`, the one home for
+    neo names - :func:`online_unit_labels` + :func:`unit_class`, the one home for
     it (compare.py and explore_data.py both read it from here).
     """
     import spikeinterface.extractors as se
@@ -398,11 +398,11 @@ def read_events(data_dir: "Path | str | None" = None):
 
 
 # --------------------------------------------------------------------------- #
-# .nev unit classes — this dataset's semantics, so they live with the loader
+# .nev unit classes - this dataset's semantics, so they live with the loader
 # --------------------------------------------------------------------------- #
 # The Blackrock unit id encodes the CLASS of a .nev unit (see read_spikes). Every
-# surface that reads the .nev — compare.py's --online reference, explore_data's
-# detection labels — asks here rather than re-deriving the convention.
+# surface that reads the .nev - compare.py's --online reference, explore_data's
+# detection labels - asks here rather than re-deriving the convention.
 UNSORTED_UNIT_ID = 0
 NOISE_UNIT_ID = 255
 UNIT_CLASS_LABELS = {
@@ -419,7 +419,7 @@ def online_unit_labels(sorting) -> "list[str] | None":
     """The ``ch<channel>#<unit>`` names of a .nev Sorting's units, in unit order.
 
     SpikeInterface numbers .nev units positionally (0..n-1), which throws away the
-    Blackrock unit id — and with it the class (unsorted / sorted / noise) that
+    Blackrock unit id - and with it the class (unsorted / sorted / noise) that
     decides what may be compared. The names neo parsed are still on the extractor
     and in the same order as the unit ids, so the class is recoverable there.
     Returns None when the sorting did not come from neo: the caller says so
@@ -447,7 +447,7 @@ def unit_class(label: str) -> str:
 def parse_unit_label(label: str) -> "tuple[int, int] | None":
     """(electrode number, blackrock unit id) from a ``ch<n>#<unit>`` label, else None.
 
-    The split matters because a .nev unit id is a PER-ELECTRODE slot — Trellis
+    The split matters because a .nev unit id is a PER-ELECTRODE slot - Trellis
     stores each electrode's unit labels independently, so "unit 1" on ch5 and
     "unit 1" on ch7 are different neurons that happen to share a slot number
     (measured on this recording's manual sort: cross-electrode same-slot spike

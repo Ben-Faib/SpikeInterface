@@ -1,6 +1,6 @@
-# Brain hero crest + preserved Pitt shield — design
+# Brain hero crest + preserved Pitt shield - design
 
-> **Superseded by `2026-06-08-neuron-firing-crest-design.md`** — the brain hero was replaced by an animated firing neuron.
+> **Superseded by `2026-06-08-neuron-firing-crest-design.md`** - the brain hero was replaced by an animated firing neuron.
 
 **Date:** 2026-06-08
 **Topic:** Replace the dashboard's top Pitt-shield crest with a brain+spike-sorting
@@ -9,8 +9,8 @@ hero; keep the Pitt shield on the Welcome and Help screens.
 ## Goal
 
 The tool sorts neurons from a brain recording, so the main-view hero should be a
-**brain**, not the institutional shield. The Pitt crest the user likes is kept —
-moved to the one-time **WelcomeScreen** and the **Help/About** screen — and the
+**brain**, not the institutional shield. The Pitt crest the user likes is kept -
+moved to the one-time **WelcomeScreen** and the **Help/About** screen - and the
 titlebar text "University of Pittsburgh · SpikeInterface" is unchanged, so Pitt
 branding is never lost.
 
@@ -20,7 +20,7 @@ branding is never lost.
   slot). Pitt shield → WelcomeScreen (top of dialog) + Help (an About spot). Titlebar
   text stays.
 - **Motif:** brain body + a probe/electrode descending into it + a row of
-  spike-raster ticks below — directly evoking spike sorting.
+  spike-raster ticks below - directly evoking spike sorting.
 - **Glyphs:** *full glyph freedom* (box-drawing/shading/Unicode allowed) for looks.
   **Hard constraint:** every row in a given size is **equal display width** (so
   Textual layout never shifts). Prefer glyphs that are unambiguous-width in common
@@ -37,8 +37,8 @@ branding is never lost.
 Each crest *size* is a list of rows; each row carries two parallel, equal-length
 strings:
 
-- **ink** — the literal display glyphs (any Unicode); a space = transparent cell.
-- **mask** — per-cell color class, same length as ink:
+- **ink** - the literal display glyphs (any Unicode); a space = transparent cell.
+- **mask** - per-cell color class, same length as ink:
   - `A` → accent (live theme color, emitted as the sentinel `@accent`)
   - `P` or any other non-space → pink brain body (`BRAIN_PINK`)
   - space / `.` over a non-space ink cell → inherit pink
@@ -64,17 +64,17 @@ Design-agent output per candidate (JSON): `{full, compact, mini}` where each is
   the top of its `#dialog`; **HelpScreen** shows the shield in an About spot. Reuse
   the existing `SHIELD_RESERVE` / relayout collapse behavior unchanged.
 
-## Build plan — workflow phases
+## Build plan - workflow phases
 
-1. **Design** — N agents each draft a full+compact+mini brain crest in the format
+1. **Design** - N agents each draft a full+compact+mini brain crest in the format
    above (equal row widths enforced; pink body + accent electrode/ticks).
-2. **Judge** — panel scores each candidate on: brain recognizability, spike-sorting
+2. **Judge** - panel scores each candidate on: brain recognizability, spike-sorting
    motif clarity, strict equal-row-width correctness, and aesthetic appeal in
    pink+accent. Pick a winner (graft best ideas from runners-up).
-3. **Human gate** — show the winning art to the user for a thumbs-up before wiring.
-4. **Integrate** — wire winner into `ui.py` + `menu_app.py` (brain → dashboard,
+3. **Human gate** - show the winning art to the user for a thumbs-up before wiring.
+4. **Integrate** - wire winner into `ui.py` + `menu_app.py` (brain → dashboard,
    shield → Welcome/Help) per the structure above.
-5. **Verify** — `uv run python -m pytest tests/` stays green; add a test that the
+5. **Verify** - `uv run python -m pytest tests/` stays green; add a test that the
    brain renders on the dashboard and the shield renders on Welcome/Help; render
    smoke-check at several window sizes for equal-width / no crash.
 

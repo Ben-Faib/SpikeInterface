@@ -1,4 +1,4 @@
-# Design: `SpikeInterface_Menu.py` — single workspace launcher + usability upgrades
+# Design: `SpikeInterface_Menu.py` - single workspace launcher + usability upgrades
 
 Date: 2026-06-03
 Status: approved (brainstorm), ready for implementation plan
@@ -32,17 +32,17 @@ Python 3.12.13.
   with_traces=True, curation=False, start_app=True, ...)`.
 - **Both GUIs block** on the Qt event loop (`app.exec()`); on macOS Qt must run on
   the main thread → **launch via subprocess**, never in-process from the menu.
-- **Active Qt binding is PyQt5 5.15.11** — **PySide6 is NOT installed**. The
+- **Active Qt binding is PyQt5 5.15.11** - **PySide6 is NOT installed**. The
   `PySide6<6.8` pin in `requirements.txt`/CLAUDE.md is currently moot.
 - The **`ephyviewer` console script is broken** here (`ImportError: cannot import
   name '__version__'`). Use `spikeinterface.widgets.plot_traces({'broadband':
-  rec}, backend='ephyviewer')` (blocks on `app.exec()` — run in a subprocess).
+  rec}, backend='ephyviewer')` (blocks on `app.exec()` - run in a subprocess).
 - **`compare_two_sorters(s1, s2, sorting1_name=, sorting2_name=)`** →
   `SymmetricSortingComparison`. Heatmap matrix = `get_ordered_agreement_scores()`;
   matched/unmatched from `hungarian_match_12` (unmatched sentinel is `""` in
-  SpikeInterface 0.104.3 — parse partner ids with `int()` and treat `""`/`-1` as
+  SpikeInterface 0.104.3 - parse partner ids with `int()` and treat `""`/`-1` as
   unmatched).
-- **Commensurability caveat:** the two saved sorts are NOT comparable as-is —
+- **Commensurability caveat:** the two saved sorts are NOT comparable as-is -
   `tridesclous2` = 132.0 s / 19 units (full), `spykingcircus2` = 10.0 s / 14 units
   (smoke run). Comparing them yields ~0 matches purely from the window mismatch.
   A valid comparison must run both over the same recording window first.
@@ -51,7 +51,7 @@ Python 3.12.13.
   `tridesclous2`. Sorter name is NOT stored in the analyzer → derive the label
   from `analyzer_dir.parent.name` (contract-respecting; does not peek into
   `sorter_output/`).
-- **`verify_install.py` takes no flags** (no argparse) — never pass `--data-dir`.
+- **`verify_install.py` takes no flags** (no argparse) - never pass `--data-dir`.
 - A bare loaded `Sorting` has no recording, so `.get_total_duration()` raises;
   read durations from the `SortingAnalyzer` instead.
 
@@ -73,7 +73,7 @@ positional action (`python SpikeInterface_Menu.py report`) → run that action
 directly and exit. Shared flags: `--data-dir`, `--sorter {tridesclous2,
 spykingcircus2}`, `--duration`.
 
-The launcher **never imports SpikeInterface at module top** — the menu appears
+The launcher **never imports SpikeInterface at module top** - the menu appears
 instantly; all heavy/Qt imports are lazy inside the action that needs them.
 
 ### Dispatch rules (mirror the existing `make_report.py` pattern)
@@ -96,7 +96,7 @@ PFCM7 workspace · active sorter: tridesclous2
   [PASS] Saved sort (analyzer)  19 units, 132.0s sorted
   [SKIP] Events                 (all empty)
 
-  1) Explore raw data        quick static figures (LFP + .nev) — no sort needed
+  1) Explore raw data        quick static figures (LFP + .nev) - no sort needed
   2) Run / re-run sorting    tridesclous2 or spykingcircus2 · full or quick (30s)
   3) Build & open report     interactive HTML → opens in browser
   4) Open GUI inspector      spikeinterface-gui on the saved sort
@@ -125,10 +125,10 @@ PFCM7 workspace · active sorter: tridesclous2
 | gui | guard `analyzer_dir.exists()` else "sort first"; subprocess → `sigui <analyzer_dir>` |
 | traces | subprocess → small in-process call `sw.plot_traces({'broadband': bio.read_broadband(D)}, backend='ephyviewer')` (avoids the broken `ephyviewer` CLI) |
 | compare | see below |
-| verify | `[exe, scripts/verify_install.py]` — no other flags |
+| verify | `[exe, scripts/verify_install.py]` - no other flags |
 
 For `gui` and `traces`, the menu shells out to **`[sys.executable,
-str(SCRIPTS/'SpikeInterface_Menu.py')... ]`**? No — simplest robust form: a
+str(SCRIPTS/'SpikeInterface_Menu.py')... ]`**? No - simplest robust form: a
 dedicated tiny subprocess target. Decision for the plan: the menu invokes the Qt
 actions by re-dispatching the launcher itself in a child process
 (`[exe, __file__, 'gui', '--sorter', active]`), so the child runs the action
@@ -182,7 +182,7 @@ works. Its reuse/quick/full re-sort menu is subsumed by the launcher's `sort` +
 ## Error handling
 
 Every action guards preconditions and degrades to a clear message, never a
-traceback — consistent with `_gather`'s PASS/SKIP/FAIL and `_safe_section`. GUI
+traceback - consistent with `_gather`'s PASS/SKIP/FAIL and `_safe_section`. GUI
 import failure → explain (suggest `verify_install.py`). Auto-open gated on
 `sys.stdin.isatty()`; `webbrowser.open` returning `False` → fall back to printing
 the path. Use `Path.resolve().as_uri()` (space-safe), not `f"file://{path}"`.

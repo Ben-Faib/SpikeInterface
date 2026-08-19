@@ -6,7 +6,7 @@ Run it after creating the environment:
 
 It prints library versions and a summary of the LFP recording (.ns2), the raw
 broadband recording (.ns5/.ns6, if present), the installed sorters, the spike
-units (.nev), and any digital event channels — without plotting anything, so it
+units (.nev), and any digital event channels - without plotting anything, so it
 works on a headless machine. If every section prints without an error, your
 install is good.
 """
@@ -61,7 +61,7 @@ def main() -> int:
     print(f"  duration        : {rec.get_total_duration():.2f} s")
     print(f"  first channels  : {[str(c) for c in rec.get_channel_ids()[:8]]}")
 
-    print("\n=== Broadband recording (.ns5/.ns6 — spike-sortable) ===")
+    print("\n=== Broadband recording (.ns5/.ns6 - spike-sortable) ===")
     try:
         bb = bio.read_broadband(data_dir, attach_probe=False)
         n_neural = len(bio.neural_channel_ids(bb))
@@ -78,7 +78,7 @@ def main() -> int:
     import sorters as sorter_registry
 
     rows = sorter_registry.status_table()
-    label = {"local": "local", "docker": "docker", "gpu": "GPU-only", "unavailable": "—"}
+    label = {"local": "local", "docker": "docker", "gpu": "GPU-only", "unavailable": "-"}
     for r in rows:
         print(f"  {r['name']:18} {label.get(r['status'], r['status']):9} "
               f"{r['n_params']:>3} params")
@@ -87,7 +87,7 @@ def main() -> int:
     n_gpu = sum(r["status"] == "gpu" for r in rows)
     print(f"  -> {n_local} local · {n_dock} container-capable · {n_gpu} GPU-only")
     if not sorter_registry.docker_available():
-        print("     (Docker not detected — container sorters need Docker running)")
+        print("     (Docker not detected - container sorters need Docker running)")
 
     print("\n=== Spike units (.nev) ===")
     sorting = bio.read_spikes(data_dir)
@@ -108,7 +108,7 @@ def main() -> int:
     except Exception as err:  # event parsing is best-effort
         print(f"  (could not read events: {err})")
 
-    print("\nAll good — SpikeInterface can read your data. ✓")
+    print("\nAll good - SpikeInterface can read your data. ✓")
     return 0
 
 

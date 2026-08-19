@@ -24,7 +24,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 ACTIONS = [
     ("data", "Data files", "which files loaded, and where", False, "data", "d"),
     ("probe", "Probe geometry", "the electrode map every sort uses", False, "data", "p"),
-    ("explore", "Explore the recording", "static figures — LFP, events, rates", True, "data", "1"),
+    ("explore", "Explore the recording", "static figures - LFP, events, rates", True, "data", "1"),
     ("traces", "Watch the traces", "scroll the raw signal in a window", True, "data", "6"),
     ("verify", "Check the install", "every library and loader, pass or fail", False, "data", "v"),
     ("picker", "Choose the sorter", "which algorithm finds the units", False, "sort", "t"),
@@ -70,7 +70,7 @@ class FakeController:
         self.deleted_images: list[str] = []
         self.cleared_sorts: list[str] = []
         # Which Docker images are cached locally. herdingspikes starts cached;
-        # mountainsort5 does not — so the badge tests cover both states. A download/
+        # mountainsort5 does not - so the badge tests cover both states. A download/
         # delete mutates this set and SURVIVES reload() (a real reload re-probes the
         # daemon and would see the now-cached / now-removed image).
         self._cached_images: set[str] = {"herdingspikes"}
@@ -101,7 +101,7 @@ class FakeController:
              "summary": "16 contacts · linear · 50 µm pitch", "n": 16,
              "density_class": "dense", "layout": "linear", "note": ""},
             # A P1-imported probe: geometry materialised at import, so the editor
-            # must refuse it (view/duplicate/delete only) — the T3 state test.
+            # must refuse it (view/duplicate/delete only) - the T3 state test.
             {"name": "lab-imported-16", "label": "lab_probe · 16 ch (imported)",
              "kind": "imported",
              "params": {"positions": [[0.0, 100.0 * i] for i in range(16)],
@@ -122,7 +122,7 @@ class FakeController:
         self.labelled: list[tuple] = []
         self.triage_blocked = ""            # tests set the anchor refusal here
         self.triage_stale_reason = ""
-        self.triage_line = "raw tridesclous2 sorter output — no curation applied"
+        self.triage_line = "raw tridesclous2 sorter output - no curation applied"
         self.reload()
 
     # A small fake universe spanning all four groups. READY sorters come first so
@@ -168,7 +168,7 @@ class FakeController:
                              "yield_pct": 75.0, "n_active_channels": 12,
                              "n_channels": 16, "units_per_channel": 0.81,
                              "units_per_active_channel": 1.08} if present else None),
-                # The takeaway (sort_summary.unit_rollup's shape) as plain data —
+                # The takeaway (sort_summary.unit_rollup's shape) as plain data -
                 # the RESULTS line says "N strong units", never a raw count.
                 "rollup": self._rollup(units) if present else None,
             }
@@ -190,15 +190,15 @@ class FakeController:
             "data_dir": "/data/recordings",
             "base": "PFCM7_d0ephys_Block2" if self._present else None,
             "files": [
-                {"ext": ".ns2", "label": "LFP — analog @ 1 kHz", "present": self._present},
-                {"ext": ".ns5", "label": "Broadband — raw @ 30 kHz", "present": self._present},
+                {"ext": ".ns2", "label": "LFP - analog @ 1 kHz", "present": self._present},
+                {"ext": ".ns5", "label": "Broadband - raw @ 30 kHz", "present": self._present},
                 {"ext": ".nev", "label": "Spike events", "present": self._present},
             ],
             "error": None if self._present else "No Blackrock .nev/.nsX files found in '/data/recordings'.",
         }
         self.probe_info = self.active_probe_info()
 
-    # A third of the units pass the rule, on ascending contacts — deterministic,
+    # A third of the units pass the rule, on ascending contacts - deterministic,
     # so both the RESULTS line and the strong-first triage order are assertable.
     _RULE_TEXT = ("SNR ≥ 4 · ISI ratio ≤ 0.5 · amp cutoff ≤ 0.1 · presence ≥ 0.9 "
                   "(NaN criteria skipped)")
@@ -208,7 +208,7 @@ class FakeController:
 
     def _rollup(self, n_units: int) -> dict:
         # Every fake unit has 1000+ spikes, so all its passes are STRONG (none
-        # thin) — the thin-evidence split is pinned against real numbers in
+        # thin) - the thin-evidence split is pinned against real numbers in
         # test_sort_summary.py, not simulated here.
         accepted = self._accepted(n_units)
         contacts = [str(u % 16 + 1) for u in accepted]
@@ -365,7 +365,7 @@ class FakeController:
               "blocked": self.triage_blocked, "empty": "",
               "columns": [], "units": [], "reviewed": 0, "total": 0}
         if not info.get("present"):
-            st["empty"] = (f"No saved {sorter} sort to triage yet — press 2 on the "
+            st["empty"] = (f"No saved {sorter} sort to triage yet - press 2 on the "
                            "dashboard to sort, then come back.")
             return st
         # A blocked record's labels are for a DIFFERENT sort's unit ids, so they are
@@ -384,7 +384,7 @@ class FakeController:
                 "v_pp_uV": 30.0 + u,
                 "verdict": ok, "strong": ok,
                 "verdict_word": "strong" if ok else "sub-threshold",
-                "why": "" if ok else "ISI ratio ≤ 0.5 — is 1.2",
+                "why": "" if ok else "ISI ratio ≤ 0.5 - is 1.2",
                 "isolation": "clean" if ok else "mostly separate",
                 # amplitude_cutoff is None: NaN on disk must render as "–", never 0.
                 "metrics": {"firing_rate": 0.5 + u, "snr": 5.0 + u * 0.1,
@@ -430,7 +430,7 @@ class FakeController:
         if not path.endswith(".html"):
             return False, f"{self.last_result.get('key')} has no page to reopen"
         if path in self.gone:                       # mirrors the real existence check
-            return False, f"{path} is gone — rebuild it"
+            return False, f"{path} is gone - rebuild it"
         self.reopened += 1
         return True, f"Reopened {path}"
 

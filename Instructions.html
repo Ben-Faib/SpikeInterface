@@ -154,7 +154,7 @@
     <p class="eyebrow">University of Pittsburgh · SpikeInterface</p>
     <h1>Run SpikeInterface on Windows</h1>
     <p>A clean, no-conda install using <strong>uv</strong>. uv installs Python for you and builds the
-       whole environment from a locked file — no Anaconda, no compiler, no PATH wrangling.</p>
+       whole environment from a locked file - no Anaconda, no compiler, no PATH wrangling.</p>
     <div class="badges">
       <span class="badge">⏱ <b>~10 min</b> first time</span>
       <span class="badge">🪟 Windows 10 / 11</span>
@@ -172,7 +172,7 @@
     the repository (the <code class="inline">.ns5</code> is ~176&nbsp;MB), so you copy it in yourself in Step&nbsp;3.
   </div>
 
-  <h2 class="section">Setup — do these once</h2>
+  <h2 class="section">Setup - do these once</h2>
 
   <!-- STEP 1 -->
   <div class="step">
@@ -206,9 +206,9 @@
          <code class="inline">pyproject.toml</code>):</p>
       <div class="files">SpikeInterface\
 ├─ PFCM7_d0ephys_Block2.ns2     (LFP, 1 kHz)
-├─ PFCM7_d0ephys_Block2.ns5     (raw broadband, 30 kHz — ~176 MB)
+├─ PFCM7_d0ephys_Block2.ns5     (raw broadband, 30 kHz - ~176 MB)
 └─ PFCM7_d0ephys_Block2.nev     (spike events)</div>
-      <p class="sub">No data yet? You can still install — the menu just won't have a recording to act on.</p>
+      <p class="sub">No data yet? You can still install - the menu just won't have a recording to act on.</p>
     </div>
   </div>
 
@@ -220,7 +220,7 @@
          the sorters) from the locked file:</p>
       <div class="cmd"><code><span class="tok">uv</span> sync</code><button class="copy" type="button">Copy</button></div>
       <p class="sub">First run takes ~5–10 minutes (PySide6 is large). Everything installs as prebuilt
-         wheels — <strong>no Visual C++ / build tools required.</strong> To also get the Jupyter notebooks:</p>
+         wheels - <strong>no Visual C++ / build tools required.</strong> To also get the Jupyter notebooks:</p>
       <div class="cmd"><code><span class="tok">uv</span> sync --extra notebooks</code><button class="copy" type="button">Copy</button></div>
     </div>
   </div>
@@ -229,13 +229,13 @@
   <div class="step">
     <div class="step-head"><span class="num">5</span><h3>Verify it works</h3><span class="opt">recommended</span></div>
     <div class="body">
-      <p>Quick smoke test — checks the libraries load and the data reads:</p>
+      <p>Quick smoke test - checks the libraries load and the data reads:</p>
       <div class="cmd"><code><span class="tok">uv</span> run python scripts\verify_install.py</code><button class="copy" type="button">Copy</button></div>
-      <p class="sub">Success ends with <code class="inline">All good — SpikeInterface can read your data. ✓</code></p>
+      <p class="sub">Success ends with <code class="inline">All good - SpikeInterface can read your data. ✓</code></p>
     </div>
   </div>
 
-  <h2 class="section">Run it — every time after</h2>
+  <h2 class="section">Run it - every time after</h2>
 
   <!-- STEP 6 -->
   <div class="step">
@@ -272,7 +272,7 @@
   </div>
   <div class="note info">
     <strong>“No module named …”?</strong> Make sure you ran <code class="inline">uv sync</code> in the project
-    folder, and launch scripts with <code class="inline">uv run python …</code> (or <code class="inline">run.bat</code>) —
+    folder, and launch scripts with <code class="inline">uv run python …</code> (or <code class="inline">run.bat</code>) -
     uv resolves the environment automatically, so there is nothing to “activate.”
   </div>
   <div class="note info">
@@ -281,7 +281,7 @@
   </div>
 
   <footer>
-    SpikeInterface workspace · University of Pittsburgh — generated setup guide. Open this file in any browser; the Copy buttons work offline.
+    SpikeInterface workspace · University of Pittsburgh - generated setup guide. Open this file in any browser; the Copy buttons work offline.
   </footer>
 </div>
 

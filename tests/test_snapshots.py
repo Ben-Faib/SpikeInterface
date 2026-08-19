@@ -6,7 +6,7 @@ redesign lands as reviewable visual diffs instead of silent churn. They assert
 ``test_menu_app.py`` (which assert behaviour and must stay layout-agnostic).
 
 A snapshot failure is not automatically a bug: if the change is an intended
-redesign, re-baseline deliberately — see ``tests/README.md``. Baselines live in
+redesign, re-baseline deliberately - see ``tests/README.md``. Baselines live in
 ``tests/__snapshots__/test_snapshots/``.
 
 Everything runs over ``FakeController`` (no SpikeInterface, no recording), and
@@ -38,7 +38,7 @@ class FrozenSortScreen(menu_app.SortProgressScreen):
     """SortProgressScreen with no subprocess and no spinner animation.
 
     ``_run`` is neutered so no worker injects a synthetic done event, and
-    ``_tick_spinner`` is a no-op so the heartbeat glyph stays at frame 0 —
+    ``_tick_spinner`` is a no-op so the heartbeat glyph stays at frame 0 -
     the screen renders only the synthetic events the test feeds it.
     """
 
@@ -194,9 +194,9 @@ def test_triage_screen_refused(snap_compare, make_app):
     # The anchor refusal owns the screen's body: what happened + the next step.
     app = make_app(present=True)
     app.c.triage_blocked = (
-        "this curation record was written against a different tridesclous2 sort — "
+        "this curation record was written against a different tridesclous2 sort - "
         "units: record 12, on disk 18. Unit ids are not stable across re-sorts, so "
         "replaying these decisions would curate the wrong units. Next step: write a "
-        "fresh record against the sort now in outputs/tridesclous2/ — the old record "
+        "fresh record against the sort now in outputs/tridesclous2/ - the old record "
         "stays as the audit trail of what was decided about that run.")
     assert snap_compare(app, terminal_size=FULL, run_before=_open_triage)

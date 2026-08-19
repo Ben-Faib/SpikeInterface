@@ -1,7 +1,7 @@
 """Tests for SpikeInterface_Menu._data_report (the missing-data classifier).
 
 Guards the base-scoped presence check: the present/missing checklist must reflect
-the *resolved* recording's files, not a folder-wide glob — otherwise a second
+the *resolved* recording's files, not a folder-wide glob - otherwise a second
 recording sharing the folder would make an incomplete set look complete. Which
 recording resolves is blackrock_io's call (see tests/test_blackrock_io.py); this
 module pins what the dashboard then says about it.
@@ -51,7 +51,7 @@ def test_incomplete_missing_ns5(tmp_path):
 
 
 def test_two_recordings_one_folder_refuses_to_guess(tmp_path):
-    # recA owns the .nev/.ns2; the .ns5 belongs to recB — two recordings sharing a
+    # recA owns the .nev/.ns2; the .ns5 belongs to recB - two recordings sharing a
     # folder. This USED to resolve to recA (whichever .nev sorted first) and report
     # its .ns5 missing. Since the extra-.nev pass, two stems that both carry analog
     # data are genuinely ambiguous: discovery refuses and names both, rather than
@@ -77,7 +77,7 @@ def test_an_extra_nev_beside_the_set_leaves_the_checklist_complete(tmp_path):
 
 def test_stream_detail_merges_pipeline_into_files():
     import ui
-    files = [{"ext": ".ns5", "label": "Broadband — raw @ 30 kHz", "present": True}]
+    files = [{"ext": ".ns5", "label": "Broadband - raw @ 30 kHz", "present": True}]
     pipeline = [{"stage": "Broadband (.ns5)", "status": "PASS",
                  "detail": "22 ch, 132.0s @ 30000 Hz"}]
     out = ui.stream_detail(files, pipeline)

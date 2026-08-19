@@ -1,8 +1,8 @@
-# Newcomer-friendly menu + guided Docker UX — Implementation Plan
+# Newcomer-friendly menu + guided Docker UX - Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Make the Textual menu approachable for non-technical users — show *all* sorters grouped by availability with plain-language descriptions, make Docker braindead-easy to enable (detect state, open the download page, start Docker for them, re-check), add a one-time welcome + unified interactive Help — while keeping the typed-fallback at parity and not breaking the v2 responsiveness/index contracts.
+**Goal:** Make the Textual menu approachable for non-technical users - show *all* sorters grouped by availability with plain-language descriptions, make Docker braindead-easy to enable (detect state, open the download page, start Docker for them, re-check), add a one-time welcome + unified interactive Help - while keeping the typed-fallback at parity and not breaking the v2 responsiveness/index contracts.
 
 **Architecture:** `scripts/menu_app.py` stays a pure **view**; all data/IO lives in `MenuController` (`SpikeInterface_Menu.py`) and the registry (`scripts/sorters.py`). New shared logic (descriptions, grouping, Docker state/start, help text) lives in the registry and `ui.py`. The sorter sidebar becomes a grouped list over the full catalog (all sorters), activation moves to **by-name** (the list now has non-selectable header rows), and three new modal screens (`DockerConfirmScreen`, `WelcomeScreen`, `HelpScreen`) follow the existing `ModalScreen` + `push_screen(modal, callback)` + `dismiss(result)` pattern.
 
@@ -40,7 +40,7 @@ uv run python -m pytest tests/ -q     # baseline: should be all green
 
 ---
 
-## Task 1: Registry — descriptions + recommended
+## Task 1: Registry - descriptions + recommended
 
 **Files:**
 - Modify: `scripts/sorters.py` (constants section, after `_PREFERRED_DEFAULT` at line 43)
@@ -124,7 +124,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Task 2: Registry — group_of()
+## Task 2: Registry - group_of()
 
 **Files:**
 - Modify: `scripts/sorters.py` (after `status()`, ~line 98)
@@ -168,7 +168,7 @@ def group_of(name: str, installed_set=None) -> str:
     'ready' (installed → runnable locally) | 'gpu' (NVIDIA GPU family, not
     installed) | 'docker' (has a CPU container image) | 'unavailable'. Unlike
     status(), this does NOT depend on the live Docker daemon, so a sorter never
-    jumps groups when Docker Desktop starts/stops — only its *selectability*
+    jumps groups when Docker Desktop starts/stops - only its *selectability*
     (runnable()) does. Installed wins first, so an installed kilosort on a GPU box
     lands in 'ready'.
     """
@@ -198,7 +198,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Task 3: Registry — docker_state() + start_docker()
+## Task 3: Registry - docker_state() + start_docker()
 
 **Files:**
 - Modify: `scripts/sorters.py` (`docker_available()` at lines 62-79)
@@ -300,7 +300,7 @@ def docker_available(refresh: bool = False) -> bool:
 def start_docker() -> bool:
     """Best-effort launch of Docker Desktop. Never raises.
 
-    Returns whether a launch command was issued — NOT whether Docker finished
+    Returns whether a launch command was issued - NOT whether Docker finished
     booting (the caller polls docker_state(refresh=True) until 'running').
     """
     import os
@@ -329,7 +329,7 @@ Note: this keeps `_docker_cache` (line 45) and the `import shutil` / `import sub
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `uv run python -m pytest tests/test_sorters.py -q`
-Expected: PASS. (Existing `runnable()`/`status()` tests still pass — they call `docker_available()`, now delegating to `docker_state()`.)
+Expected: PASS. (Existing `runnable()`/`status()` tests still pass - they call `docker_available()`, now delegating to `docker_state()`.)
 
 - [ ] **Step 5: Commit**
 
@@ -342,17 +342,17 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Task 4: Controller — catalog + by-name activation + docker/welcome state
+## Task 4: Controller - catalog + by-name activation + docker/welcome state
 
 **Files:**
 - Modify: `SpikeInterface_Menu.py` (`_sorter_info`/`_load_dashboard` area lines 113-142; `MenuController` lines 513-632; config defaults)
 - Test: `tests/test_menu_controller.py`
 
-This task changes only `MenuController` and its unit tests — the Textual app still uses `FakeController`, so Pilot tests are unaffected until Task 5.
+This task changes only `MenuController` and its unit tests - the Textual app still uses `FakeController`, so Pilot tests are unaffected until Task 5.
 
 - [ ] **Step 1: Write the failing tests**
 
-Read the current `tests/test_menu_controller.py` to match its fixture style (it builds a `MenuController` with a fake args + cfg and monkeypatches the registry). Append these tests (adapt the existing helper that constructs a controller — call it `_controller(...)` below; if the file already has such a helper, reuse it):
+Read the current `tests/test_menu_controller.py` to match its fixture style (it builds a `MenuController` with a fake args + cfg and monkeypatches the registry). Append these tests (adapt the existing helper that constructs a controller - call it `_controller(...)` below; if the file already has such a helper, reuse it):
 
 ```python
 def test_catalog_covers_all_sorters_with_groups(monkeypatch, tmp_path):
@@ -442,7 +442,7 @@ Expected: FAIL (`AttributeError` on `group`/`set_active_by_name`/`cycle_active`/
 
 - [ ] **Step 3: Add the catalog builder helpers**
 
-In `SpikeInterface_Menu.py`, replace `_load_dashboard` (lines 130-142) by ADDING two new functions next to it (keep `_sorter_info` and `_load_dashboard` — the fallback still uses `_load_dashboard`):
+In `SpikeInterface_Menu.py`, replace `_load_dashboard` (lines 130-142) by ADDING two new functions next to it (keep `_sorter_info` and `_load_dashboard` - the fallback still uses `_load_dashboard`):
 
 ```python
 def _saved_summary(sorter: str):
@@ -584,7 +584,7 @@ Note: `active_sorter` is now a plain attribute (set in `__init__` and `set_activ
 
 (f) `saved_sorters()` (lines 599-601) still works (`infos` entries keep `present`). Leave it.
 
-(g) `run()` (line 613-614) uses `self.args.sorter = self.active_sorter` — `active_sorter` is now an attribute, still valid. Leave it.
+(g) `run()` (line 613-614) uses `self.args.sorter = self.active_sorter` - `active_sorter` is now an attribute, still valid. Leave it.
 
 - [ ] **Step 5: Run tests to verify they pass**
 
@@ -604,7 +604,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Task 5: View — grouped sidebar + FakeController catalog + sorter-test rewrites
+## Task 5: View - grouped sidebar + FakeController catalog + sorter-test rewrites
 
 This is the big atomic change: the sidebar renders the full catalog in groups, activation goes by-name, and `FakeController` + the index-sensitive sorter tests are reshaped together so the suite stays green.
 
@@ -657,8 +657,8 @@ In `tests/conftest.py`, replace the `reload()` body (lines 58-84) and `set_activ
             "data_dir": "/data/recordings",
             "base": "PFCM7_d0ephys_Block2" if self._present else None,
             "files": [
-                {"ext": ".ns2", "label": "LFP — analog @ 1 kHz", "present": self._present},
-                {"ext": ".ns5", "label": "Broadband — raw @ 30 kHz", "present": self._present},
+                {"ext": ".ns2", "label": "LFP - analog @ 1 kHz", "present": self._present},
+                {"ext": ".ns5", "label": "Broadband - raw @ 30 kHz", "present": self._present},
                 {"ext": ".nev", "label": "Spike events", "present": self._present},
             ],
             "error": None if self._present else "No Blackrock .nev/.nsX files found in '/data/recordings'.",
@@ -729,12 +729,12 @@ Then update `__init__` (lines 44-56) to set the new state. Replace lines 44-56 w
         self.reload()
 ```
 
-Delete the old `set_active` method (was lines 86-89) — it is replaced by `set_active_by_name`. Keep `set_theme`, `default_params`, `param_descriptions`, `get_overrides`, `set_params`, `saved_sorters`, `run_compare`, `run` unchanged.
+Delete the old `set_active` method (was lines 86-89) - it is replaced by `set_active_by_name`. Keep `set_theme`, `default_params`, `param_descriptions`, `get_overrides`, `set_params`, `saved_sorters`, `run_compare`, `run` unchanged.
 
 - [ ] **Step 2: Run the suite to see the expected breakage**
 
 Run: `uv run python -m pytest tests/test_menu_app.py -q`
-Expected: FAIL — `menu_app` still calls `c.set_active(...)` / reads `c.active_idx` against the old shape; sorter-structure tests assume old indices. This is expected; the next steps fix the app + the tests.
+Expected: FAIL - `menu_app` still calls `c.set_active(...)` / reads `c.active_idx` against the old shape; sorter-structure tests assume old indices. This is expected; the next steps fix the app + the tests.
 
 - [ ] **Step 3: Update the `Controller` Protocol + sidebar rendering in `menu_app.py`**
 
@@ -800,7 +800,7 @@ Expected: FAIL — `menu_app` still calls `c.set_active(...)` / reads `c.active_
                           else active_row)
 ```
 
-(d) Replace `_sorter_text` (lines 540-553) — drop the `active` arg, read it from `info`, add ★/dim:
+(d) Replace `_sorter_text` (lines 540-553) - drop the `active` arg, read it from `info`, add ★/dim:
 
 ```python
     def _sorter_text(self, info: dict) -> Text:
@@ -818,7 +818,7 @@ Expected: FAIL — `menu_app` still calls `c.set_active(...)` / reads `c.active_
             t.append(glyph + " ", style="dim")
         name_style = f"bold {self._accent}" if active else ("" if runnable else "dim")
         t.append(info["name"], style=name_style)
-        t.append(f"  {info['units']}u" if info.get("present") else "  —", style="dim")
+        t.append(f"  {info['units']}u" if info.get("present") else "  -", style="dim")
         if active:
             t.append("  ACTIVE", style=f"bold {self._accent}")
         return t
@@ -854,7 +854,7 @@ Expected: FAIL — `menu_app` still calls `c.set_active(...)` / reads `c.active_
         elif info.get("group") == "docker":
             self._toggle_docker(offer_from=name)     # offer to enable Docker
         else:
-            hint = ("needs a GPU build installed — see Help" if info.get("group") == "gpu"
+            hint = ("needs a GPU build installed - see Help" if info.get("group") == "gpu"
                     else "not available on this computer")
             self._last = Text(f"{name}: {hint}", style="#f0883e")
             self._refresh_footer()
@@ -875,7 +875,7 @@ Expected: FAIL — `menu_app` still calls `c.set_active(...)` / reads `c.active_
         sorter = self.c.active_sorter
 ```
 
-(In Step (e) note `_toggle_docker` gains an `offer_from` kwarg — for now, in this task, make `_toggle_docker` accept and ignore it; Task 6 wires the dialog. Update the signature: `def _toggle_docker(self, offer_from: str | None = None) -> None:` and leave the body as the existing immediate toggle.)
+(In Step (e) note `_toggle_docker` gains an `offer_from` kwarg - for now, in this task, make `_toggle_docker` accept and ignore it; Task 6 wires the dialog. Update the signature: `def _toggle_docker(self, offer_from: str | None = None) -> None:` and leave the body as the existing immediate toggle.)
 
 (h) Footer description on highlight. Add a highlight handler and a description slot. After `_refresh_footer` (line 624), add:
 
@@ -996,7 +996,7 @@ async def test_active_marker_and_incomplete_banner(make_controller):
         assert "★" in sorters.get_option_at_index(row).prompt.plain   # recommended badge
 ```
 
-`test_docker_toggle_row_is_first_and_toggles` (lines 302-315) — toggling no longer changes the row count (all sorters always listed); it flips runnability:
+`test_docker_toggle_row_is_first_and_toggles` (lines 302-315) - toggling no longer changes the row count (all sorters always listed); it flips runnability:
 
 ```python
 async def test_docker_toggle_row_is_first_and_toggles(make_controller):
@@ -1029,12 +1029,12 @@ async def test_toggle_does_not_change_active_sorter_index(make_controller):
         assert c.active_sorter == "tridesclous2"   # active sorter unchanged
 ```
 
-`test_param_editor_*` tests call `app._open_params()` which now reads `c.active_sorter` (= "tridesclous2") — they keep asserting `sorter == "tridesclous2"`, unchanged.
+`test_param_editor_*` tests call `app._open_params()` which now reads `c.active_sorter` (= "tridesclous2") - they keep asserting `sorter == "tridesclous2"`, unchanged.
 
 - [ ] **Step 5: Run the menu_app tests**
 
 Run: `uv run python -m pytest tests/test_menu_app.py -q`
-Expected: PASS for all except the two still-on-old-behaviour tests `test_missing_data_shows_banner` (checks `by_id["data-setup"]`) and `test_data_setup_screen_lists_files` (presses `d`) — those stay GREEN here because Task 5 does **not** touch data-setup/`d` yet (Task 8 does). If they fail, you changed the actions table prematurely — revert that.
+Expected: PASS for all except the two still-on-old-behaviour tests `test_missing_data_shows_banner` (checks `by_id["data-setup"]`) and `test_data_setup_screen_lists_files` (presses `d`) - those stay GREEN here because Task 5 does **not** touch data-setup/`d` yet (Task 8 does). If they fail, you changed the actions table prematurely - revert that.
 
 Run the full suite:
 Run: `uv run python -m pytest tests/ -q`
@@ -1051,7 +1051,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Task 6: View — guided DockerConfirmScreen (start-Docker + poll)
+## Task 6: View - guided DockerConfirmScreen (start-Docker + poll)
 
 **Files:**
 - Modify: `scripts/menu_app.py` (new `DockerConfirmScreen`; wire `_toggle_docker`)
@@ -1240,7 +1240,7 @@ class DockerConfirmScreen(ModalScreen):
     def action_start_docker(self) -> None:
         self._c.start_docker()
         self.query_one("#dstatus", Static).update(
-            Text("Starting Docker…  (~30–60s — press [r] to re-check)", style="dim"))
+            Text("Starting Docker…  (~30–60s - press [r] to re-check)", style="dim"))
         self._polls = 0
         self.set_interval(2.0, self._poll)
 
@@ -1252,7 +1252,7 @@ class DockerConfirmScreen(ModalScreen):
             return
         if self._polls >= 45:                    # ~90s timeout -> manual fallback
             self.query_one("#dstatus", Static).update(
-                Text("Still not ready — open Docker Desktop, then press [r].", style="#f0883e"))
+                Text("Still not ready - open Docker Desktop, then press [r].", style="#f0883e"))
             return
 ```
 
@@ -1287,7 +1287,7 @@ Replace `_toggle_docker` (lines 659-666) with:
         self._relayout()
 ```
 
-(The `offer_from=name` path from a dimmed Docker row also opens the dialog — same `_after_docker_confirm`.)
+(The `offer_from=name` path from a dimmed Docker row also opens the dialog - same `_after_docker_confirm`.)
 
 - [ ] **Step 5: Run tests to verify they pass**
 
@@ -1298,14 +1298,14 @@ Expected: PASS. Then `uv run python -m pytest tests/ -q` → PASS.
 
 ```bash
 git add scripts/menu_app.py tests/test_menu_app.py
-git commit -m "feat(menu): guided DockerConfirmScreen — 3-state, start-Docker + poll, open download
+git commit -m "feat(menu): guided DockerConfirmScreen - 3-state, start-Docker + poll, open download
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 7: View — one-time WelcomeScreen
+## Task 7: View - one-time WelcomeScreen
 
 **Files:**
 - Modify: `scripts/menu_app.py` (new `WelcomeScreen`; show on mount when `want_welcome`)
@@ -1406,7 +1406,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Task 8: View — unified interactive HelpScreen (replaces data-setup)
+## Task 8: View - unified interactive HelpScreen (replaces data-setup)
 
 **Files:**
 - Modify: `scripts/ui.py` (add `HELP_TOPICS`)
@@ -1436,7 +1436,7 @@ HELP_TOPICS = [
       "sidebar grouped by what your computer can run right now."]),
     ("docker", "Docker (optional)",
      ["Docker lets you run extra sorters your computer doesn't have installed,",
-      "without installing them yourself. It's optional — the ★ recommended sorter",
+      "without installing them yourself. It's optional - the ★ recommended sorter",
       "needs no Docker. Turning it on downloads a large image the first time and",
       "runs a bit slower; the menu can start Docker Desktop for you."]),
     ("data", "Data files",
@@ -1524,7 +1524,7 @@ Update the comment above `_ACTIONS` (lines 493-495) to say `help` (not `data-set
 
 - [ ] **Step 5: Add `HelpScreen` and wire bindings/routing in `menu_app.py`**
 
-(a) Add `?` to `BINDINGS` and keep `d` (repurposed). Replace the `d` binding (line 398) region — change `BINDINGS` so `d` maps to data-help-via-help and add `?`:
+(a) Add `?` to `BINDINGS` and keep `d` (repurposed). Replace the `d` binding (line 398) region - change `BINDINGS` so `d` maps to data-help-via-help and add `?`:
 
 ```python
         Binding("d", "data_help", "Data files", show=False),
@@ -1629,7 +1629,7 @@ class HelpScreen(ModalScreen):
         self.dismiss(None)
 ```
 
-Note: `HelpScreen` reuses `_setup_body(...)` (already in this file) for the Data files topic, so `.ns2/.ns5/.nev` + "Where to put them" still render. `DataSetupScreen` is now unused but may stay in the file; remove it only if nothing references it (the `test_data_setup_screen_lists_files` test was replaced in Step 2). Removing it is optional cleanup — if you remove it, also drop its name from any import in tests.
+Note: `HelpScreen` reuses `_setup_body(...)` (already in this file) for the Data files topic, so `.ns2/.ns5/.nev` + "Where to put them" still render. `DataSetupScreen` is now unused but may stay in the file; remove it only if nothing references it (the `test_data_setup_screen_lists_files` test was replaced in Step 2). Removing it is optional cleanup - if you remove it, also drop its name from any import in tests.
 
 - [ ] **Step 6: Run tests to verify they pass**
 
@@ -1647,7 +1647,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 
 ---
 
-## Task 9: run_sorting.py — clearer Docker message + friendly error
+## Task 9: run_sorting.py - clearer Docker message + friendly error
 
 **Files:**
 - Modify: `scripts/run_sorting.py` (the Docker message at line 524-525; wrap the `sorters.run` call ~526-531)
@@ -1678,7 +1678,7 @@ def _friendly_sort_error(exc: Exception) -> str:
     """Turn a sort failure into a one-line, actionable message (no traceback)."""
     text = str(exc)
     if "daemon" in text.lower() or "docker" in text.lower():
-        return "Docker isn't running — open Docker Desktop and try again."
+        return "Docker isn't running - open Docker Desktop and try again."
     return f"Sorting failed: {text}"
 ```
 
@@ -1701,7 +1701,7 @@ Wrap the `sorters.run(...)` call (lines 526-531) in try/except so a Docker failu
         return 1
 ```
 
-(Keep the existing variable names — read the real lines in Step 1 and adapt; the `params=`/`verbose=` kwargs above mirror the current call.)
+(Keep the existing variable names - read the real lines in Step 1 and adapt; the `params=`/`verbose=` kwargs above mirror the current call.)
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -1783,7 +1783,7 @@ def print_catalog(catalog) -> None:
         say(f"\n[bold {ACCENT}]{_CATALOG_LABEL[group]}[/]")
         for info in members:
             star = "★ " if info.get("recommended") else "  "
-            units = f"{info['units']}u" if info.get("present") else "—"
+            units = f"{info['units']}u" if info.get("present") else "-"
             dim = "" if info.get("runnable") else f"[{MUTED}]"
             dimend = "" if info.get("runnable") else "[/]"
             say(f"  {dim}{star}{info['name']:18} {units:>5}   "
@@ -1795,9 +1795,9 @@ def docker_confirm_text(state: str) -> str:
     return {
         "running": "Docker is running. Enable extra sorters?",
         "installed_not_running":
-            "Docker is installed but not started — start Docker Desktop, then retry.",
+            "Docker is installed but not started - start Docker Desktop, then retry.",
         "not_installed":
-            "You don't have Docker — download Docker Desktop (docker.com), then retry.",
+            "You don't have Docker - download Docker Desktop (docker.com), then retry.",
     }.get(state, "Enable Docker sorters?")
 ```
 
@@ -1861,7 +1861,7 @@ Note: compute `use_docker` (already at line 739) before this block; move the `us
         if action == "help":
             topics = [(k, t, "") for k, t, _b in ui.HELP_TOPICS]
             while True:
-                topic = ui.select("Help — choose a topic", topics + [("__done__", "Back", "")],
+                topic = ui.select("Help - choose a topic", topics + [("__done__", "Back", "")],
                                   default=0)
                 if topic in (None, "__done__"):
                     break
@@ -1889,21 +1889,21 @@ Expected: shows the grouped catalog (READY/DOCKER/GPU headers) without crashing.
 
 ```bash
 git add scripts/ui.py SpikeInterface_Menu.py tests/test_fallback.py
-git commit -m "feat(menu): typed-fallback parity — grouped catalog, docker confirm, welcome, help
+git commit -m "feat(menu): typed-fallback parity - grouped catalog, docker confirm, welcome, help
 
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 ---
 
-## Task 11: Docs — CLAUDE.md
+## Task 11: Docs - CLAUDE.md
 
 **Files:**
 - Modify: `CLAUDE.md`
 
 - [ ] **Step 1: Update the relevant CLAUDE.md sections**
 
-Edit `CLAUDE.md` to document (find the existing menu/sorter paragraphs and update them — do not duplicate):
+Edit `CLAUDE.md` to document (find the existing menu/sorter paragraphs and update them - do not duplicate):
 - The **grouped sidebar**: all sorters via `sorters.available()`, four membership-precedence groups (READY/DOCKER/GPU/NOT AVAILABLE), GPU first-class (installed GPU sorter → READY on a GPU box), activation by name, footer shows the highlighted sorter's `description`, `★` recommended badge.
 - **Guided Docker UX**: `sorters.docker_state()` three-way + `start_docker()`; the `DockerConfirmScreen` (open download page / start Docker + poll / re-check); friendly Docker-not-running error in `run_sorting.py`.
 - **Onboarding**: one-time `WelcomeScreen` (`seen_welcome` in `.si_menu.json`); the unified interactive `HelpScreen` (replaces the data-setup screen/action) reachable via the **Help** action, **`?`**, and **`d`** (Data files topic).
@@ -1931,7 +1931,7 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - [ ] **Step 1: Run the whole suite**
 
 Run: `uv run python -m pytest tests/ -q`
-Expected: PASS — all green (66 prior + the new tests).
+Expected: PASS - all green (66 prior + the new tests).
 
 - [ ] **Step 2: Import-light sanity (no SpikeInterface at import)**
 

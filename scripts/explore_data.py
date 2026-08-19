@@ -4,15 +4,15 @@
     uv run python scripts/explore_data.py --data-dir /path/to/another/recording
 
 Figures are written to ./outputs/ (git-ignored):
-    * simultaneity.png — LFP (all neural channels) + online detections on ONE
-                         shared time axis — the "what happened at the same
+    * simultaneity.png - LFP (all neural channels) + online detections on ONE
+                         shared time axis - the "what happened at the same
                          moment" view
-    * lfp_traces.png   — a short window of every neural LFP channel (aux inputs
+    * lfp_traces.png   - a short window of every neural LFP channel (aux inputs
                          excluded when the neural/aux split is known)
-    * spike_raster.png — the .nev online DETECTIONS per channel group (ch#class
+    * spike_raster.png - the .nev online DETECTIONS per channel group (ch#class
                          labels; class 0 = unsorted threshold crossings)
-    * firing_rates.png — mean online-detection rate per channel group
-    * explore.html     — all of the above on one self-contained page (images
+    * firing_rates.png - mean online-detection rate per channel group
+    * explore.html     - all of the above on one self-contained page (images
                          embedded, so it can be moved/shared on its own)
 
 This is read-only with respect to your data; it only writes images.
@@ -39,7 +39,7 @@ OUTPUT_DIR = bio.REPO_ROOT / "outputs"
 
 def _neural_ids(recording):
     """(channel_ids, split_known): NEURAL channels with aux 'analog N' inputs
-    excluded when the split is determinable — the figure claims "neural" ONLY
+    excluded when the split is determinable - the figure claims "neural" ONLY
     then; otherwise everything is shown and titled plainly as channels."""
     try:
         ids = bio.neural_channel_ids(recording)
@@ -74,7 +74,7 @@ def plot_lfp(recording, out_path: Path, window_s: float = 5.0):
     else:
         aux = ""
         kind = f"{len(channel_ids)} channels (neural/aux split unknown)"
-    ax.set_title(f"LFP — first {window_s:g}s, {kind} @ {fs:g} Hz{aux}")
+    ax.set_title(f"LFP - first {window_s:g}s, {kind} @ {fs:g} Hz{aux}")
     fig.tight_layout()
     fig.savefig(out_path, dpi=120)
     plt.close(fig)
@@ -84,7 +84,7 @@ def _detection_labels(sorting):
     """Honest per-row labels for the .nev rows: 'ch5#1'-style channel#class names
     when the neo header carries them (SpikeInterface renumbers positionally),
     else the bare renumbered ids. The recovery itself belongs to the loader
-    (bio.online_unit_labels) — this only decides what to do without it."""
+    (bio.online_unit_labels) - this only decides what to do without it."""
     try:
         labels = bio.online_unit_labels(sorting)
         if labels and len(labels) == len(sorting.get_unit_ids()):
@@ -97,7 +97,7 @@ def _detection_labels(sorting):
 def plot_simultaneity(recording, sorting, out_path: Path, window_s: float = 5.0):
     """The shared-clock view: LFP (all neural channels) and the .nev detections on
     ONE time axis, so what happened at the same moment across the array is
-    visible — the question the separate figures cannot answer."""
+    visible - the question the separate figures cannot answer."""
     fs = recording.get_sampling_frequency()
     n_frames = int(min(window_s, recording.get_total_duration()) * fs)
     channel_ids, _split_known = _neural_ids(recording)
@@ -115,7 +115,7 @@ def plot_simultaneity(recording, sorting, out_path: Path, window_s: float = 5.0)
     ax1.set_yticks([i * spacing for i in range(len(channel_ids))])
     ax1.set_yticklabels([str(ch) for ch in channel_ids], fontsize=7)
     ax1.set_ylabel("Channel")
-    ax1.set_title(f"Same clock — LFP and online detections, first {window_s:g}s")
+    ax1.set_title(f"Same clock - LFP and online detections, first {window_s:g}s")
     t_end = n_frames / fs
     for row, unit in enumerate(unit_ids):
         times = _unit_spike_times(sorting, unit)
@@ -138,10 +138,10 @@ def plot_raster(sorting, out_path: Path):
     """The full-recording detections figure, readable at 132 s (Ben's feedback:
     the old squat scatter smeared every group into a dashed stripe).
 
-    Top: a real raster (eventplot — one thin vertical line per event, roomy
+    Top: a real raster (eventplot - one thin vertical line per event, roomy
     rows, per-row event counts so a near-empty row reads as a fact, not a
     rendering glitch). Bottom, same clock: per-group detection rate in 1 s bins,
-    which is what actually shows STRUCTURE at this time scale — bursts, quiet
+    which is what actually shows STRUCTURE at this time scale - bursts, quiet
     stretches, the coordinated episodes."""
     unit_ids = list(sorting.get_unit_ids())
     labels = _detection_labels(sorting)
@@ -159,9 +159,9 @@ def plot_raster(sorting, out_path: Path):
                        fontsize=9)
     ax.set_ylabel("Detection group (ch#class)")
     ax.margins(y=0.04)
-    # Honest naming (C1 finding): these are the rig's ONLINE DETECTIONS —
+    # Honest naming (C1 finding): these are the rig's ONLINE DETECTIONS -
     # class 0 rows are unsorted threshold crossings, not sorted units.
-    ax.set_title(f"Online detections (.nev) — {len(unit_ids)} channel groups, "
+    ax.set_title(f"Online detections (.nev) - {len(unit_ids)} channel groups, "
                  f"{t_end:.0f} s")
     bins = np.arange(0, t_end + 1.0, 1.0)
     for tr, c, lab in zip(trains, colors, labels):
@@ -204,7 +204,7 @@ def plot_firing_rates(sorting, out_path: Path):
 
 def write_gallery(figures: list[tuple[str, Path]], out_path: Path) -> None:
     """One self-contained HTML page showing every saved figure (base64-embedded,
-    like report.html — no sibling files needed, safe to move or share alone)."""
+    like report.html - no sibling files needed, safe to move or share alone)."""
     import base64
 
     sections = []
@@ -241,7 +241,7 @@ def main() -> int:
 
     OUTPUT_DIR.mkdir(exist_ok=True)
 
-    # Fail clean (one actionable line, not a raw traceback) if the data is absent —
+    # Fail clean (one actionable line, not a raw traceback) if the data is absent -
     # matching how the report/menu degrade for the same missing-files case.
     try:
         bio.find_blackrock_base(args.data_dir)
@@ -262,11 +262,11 @@ def main() -> int:
 
     print(f"Saving figures to {OUTPUT_DIR} ...")
     figures = [
-        ("Same clock — LFP + online detections (the simultaneity view)",
+        ("Same clock - LFP + online detections (the simultaneity view)",
          OUTPUT_DIR / "simultaneity.png"),
-        ("LFP traces (.ns2) — every channel the figure title claims",
+        ("LFP traces (.ns2) - every channel the figure title claims",
          OUTPUT_DIR / "lfp_traces.png"),
-        ("Online detections (.nev) — raster + per-group rate, full recording",
+        ("Online detections (.nev) - raster + per-group rate, full recording",
          OUTPUT_DIR / "spike_raster.png"),
         ("Mean detection rate per channel group (.nev)",
          OUTPUT_DIR / "firing_rates.png"),

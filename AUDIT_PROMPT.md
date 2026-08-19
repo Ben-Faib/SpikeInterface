@@ -15,7 +15,7 @@ and refer to numerical signal processing, not to anything else.
 The lab is about to hand this workspace to students who will run it on **Windows**, which is
 where it is currently breaking. It has only ever been exercised on macOS. That makes
 cross-platform correctness the point of this run, and it means you are running on the machine
-where the bug actually reproduces — use that.
+where the bug actually reproduces - use that.
 
 Read `CLAUDE.md` first. It is a freshly corrected map of the repo's real invariants
 (the aux-channel drop, the µV double-scaling trap, the probes layer, the sort pipeline order)
@@ -54,7 +54,7 @@ Array / yield summary
 
 Read the phase list before you touch anything, because it is the whole story: the sort
 **worked**. Every phase completed, the units were saved, the metrics computed, and the noise
-floor landed at 4.077 µV — right on the canary. The run then died in teardown and reported
+floor landed at 4.077 µV - right on the canary. The run then died in teardown and reported
 itself to the user as a failure. Two defects are tangled together here and both want fixing.
 
 The Windows one: `WinError 32` is Windows refusing to delete a file that still has an open
@@ -67,7 +67,7 @@ released before it is removed. That is how the evidence reads to me; confirm it 
 reproduction rather than taking my word for it, and follow the evidence if it points elsewhere.
 
 The reporting one: a crash in cleanup destroyed a run that had already finished and saved its
-real work. `CLAUDE.md` states this principle for quality metrics — the Sorting is saved before
+real work. `CLAUDE.md` states this principle for quality metrics - the Sorting is saved before
 metrics run, so a metrics crash degrades to success-with-a-note rather than discarding units.
 Teardown deserves the same treatment. A sort whose outputs are on disk should not be presented
 to a student as a red ✗.
@@ -80,8 +80,8 @@ Windows), file handles held open across a delete or rename, path and encoding as
 and anything expecting a Unix shell.
 
 **2. Verify every finding in `AUDIT_FINDINGS.md` against the code as it is now**, then fix the
-ones that survive. Each finding gets a verdict — confirmed, refuted, or true-but-different-than-
-described — backed by the actual code you read, not by re-reading the audit's own reasoning.
+ones that survive. Each finding gets a verdict - confirmed, refuted, or true-but-different-than-
+described - backed by the actual code you read, not by re-reading the audit's own reasoning.
 Findings 1 through 5 are the substantive ones; 11 and 12 are cosmetic and worth doing only if
 they are as trivial as they look. A refuted finding is a real result: record why and move on.
 
@@ -95,7 +95,7 @@ On this Windows machine, from a clean checkout of your branch:
 
 - `uv run python -m pytest tests/` is fully green, with no test deleted, skipped, or loosened
   to get there.
-- `uv run python scripts/verify_install.py` passes — all three loaders.
+- `uv run python scripts/verify_install.py` passes - all three loaders.
 - `uv run python scripts/run_sorting.py --duration 30` completes and writes its outputs.
 - The menu launches, and the failing flow works end to end: with Docker Desktop running, a
   `mountainsort5` sort started from the menu finishes, reports success, and leaves no
@@ -113,7 +113,7 @@ Do not otherwise rewrite it.
 
 ## Boundaries
 
-The working tree may hold uncommitted work that is not yours — the human who set this up edits
+The working tree may hold uncommitted work that is not yours - the human who set this up edits
 this repo concurrently. Commit their changes separately, or leave them alone; never discard,
 stash away, or `git checkout --` over a file you did not write, and never force-push or reset.
 Work on a branch. Do not push.
@@ -123,13 +123,13 @@ compatibility shims, no features nobody asked for. If a bug's honest fix is a re
 module, say so and make the case rather than doing it quietly. The raw Blackrock recording in
 the repo root is irreplaceable and git-ignored: read it, never write to it.
 
-Regenerating `outputs/` is free and expected. Deleting a saved sort someone may want is not —
+Regenerating `outputs/` is free and expected. Deleting a saved sort someone may want is not -
 leave existing `outputs/<sorter>/` directories in place.
 
 ## Autonomy
 
 You are running unattended. Nobody is watching, and nobody can answer a question mid-run, so
-asking "shall I proceed?" just stops the work. Take reversible actions freely — edit, run,
+asking "shall I proceed?" just stops the work. Take reversible actions freely - edit, run,
 test, commit, revert. Pause only for something genuinely mine to decide: a destructive or
 irreversible action, a scope change big enough to change what this run is, or a fact you cannot
 discover from the repo or the machine.
@@ -139,18 +139,18 @@ what you are about to do, do that work now instead of describing it. End the tur
 task is done or when you are actually blocked on me.
 
 This is a long run. Plan for it and use the whole window, but do not let the window turn over
-with significant uncommitted work — commit and write down where you are before that happens.
+with significant uncommitted work - commit and write down where you are before that happens.
 
 ## Verification
 
 You are on the machine where the bugs live, so verify by running, not by reading. A fix is not
 done because the code looks right; it is done when the failing thing passes and the suite is
-still green. Run the full suite after each fix, not once at the end — the Textual UI breaks in
+still green. Run the full suite after each fix, not once at the end - the Textual UI breaks in
 ways only the Pilot tests catch.
 
 Fan out with subagents where the work is genuinely independent: the twelve findings verify in
 parallel, each in a fresh context that reads the code rather than the audit's conclusions about
-it. Use a fresh-context subagent to check your own fixes too — a verifier that did not write the
+it. Use a fresh-context subagent to check your own fixes too - a verifier that did not write the
 patch catches what self-review does not. Work directly on anything sequential or needing shared
 context; a subagent is not a substitute for a grep.
 

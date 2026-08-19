@@ -75,7 +75,7 @@ def test_summary_event_roundtrip():
 
 def test_reduce_done_carries_non_fatal_note():
     # A sort that saved its units but whose metrics phase failed reports ok=True with
-    # a note — so the screen shows success + caveat, never the blank "exited (1)".
+    # a note - so the screen shows success + caveat, never the blank "exited (1)".
     state = sp.new_state()
     sp.reduce(state, {"t": "done", "ok": True, "units": 7, "out": "outputs/x",
                       "note": "quality metrics failed: ValueError: boom"})

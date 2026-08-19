@@ -10,7 +10,7 @@ The workspace is onboarded via **conda** (`environment.yml`, `conda activate si_
 Conda is painful to install and get on `PATH` on Windows, which is the target
 deployment OS. The goal is to make the project **easy to run on a fresh Windows
 machine** by switching the primary toolchain to **uv** (Astral's fast Python
-package/environment manager) — which installs Python itself, resolves a committed
+package/environment manager) - which installs Python itself, resolves a committed
 lockfile, and runs scripts in one command, with **no compiler and no PATH
 wrangling**.
 
@@ -22,13 +22,13 @@ wrangling**.
 
 | # | Decision | Choice |
 |---|----------|--------|
-| 1 | Scope of switch | **uv primary, keep conda** — add `pyproject.toml` + `uv.lock`; leave `environment.yml` as a conda fallback |
+| 1 | Scope of switch | **uv primary, keep conda** - add `pyproject.toml` + `uv.lock`; leave `environment.yml` as a conda fallback |
 | 2 | Launch ergonomics | **Both** a double-click Windows launcher (`run.bat`/`run.ps1`) *and* a documented `uv run` command |
-| 3 | GUIs/notebooks | **Include everything** — Qt desktop GUIs + Jupyter must work through uv on Windows with prebuilt wheels |
+| 3 | GUIs/notebooks | **Include everything** - Qt desktop GUIs + Jupyter must work through uv on Windows with prebuilt wheels |
 | 4 | Packaging shape | **A**: `pyproject.toml` + committed `uv.lock`, run scripts as files (no `[project.scripts]`) |
 | 5 | Qt binding | **PySide6** via `spikeinterface-gui[desktop]` (resolves the env.yml-vs-requirements divergence) |
-| 6 | `requirements.txt` | **Drop it** — `pyproject.toml` + `uv.lock` is the uv source of truth; `environment.yml` stays as the non-uv (conda) fallback |
-| 7 | Windows code hardening (§3.5) | **In scope** — the 3 small robustness edits |
+| 6 | `requirements.txt` | **Drop it** - `pyproject.toml` + `uv.lock` is the uv source of truth; `environment.yml` stays as the non-uv (conda) fallback |
+| 7 | Windows code hardening (§3.5) | **In scope** - the 3 small robustness edits |
 
 ### Success criteria
 
@@ -48,14 +48,14 @@ wrangling**.
 The executable Python is already interpreter-agnostic and Windows-aware, so this
 is **predominantly a packaging + docs job, not a logic job**:
 
-- Every child process spawns via `[sys.executable, ...]` — never a bare
+- Every child process spawns via `[sys.executable, ...]` - never a bare
   `"python"`/`"sigui"`/`"jupyter"`, never `shell=True`
   (`SpikeInterface_Menu.py:128-141` `_shell`/`_self`; `make_report.py:24`). So the
   whole process tree inherits the correct interpreter **iff the top-level launcher
   is started by uv**.
 - `sigui`/`ephyviewer` are launched by **import** (`spikeinterface_gui` at
   `SpikeInterface_Menu.py:193`; `plot_traces(backend="ephyviewer")` at `:213`),
-  not by a console-script `.exe` on PATH — so the classic Windows shim/stale-PATH
+  not by a console-script `.exe` on PATH - so the classic Windows shim/stale-PATH
   problem does not apply; they only need to be installed in the uv env.
 - All paths use `pathlib`; every CLI has `if __name__=="__main__": raise
   SystemExit(main())` (correct for Windows `spawn` + `n_jobs>1`);
@@ -75,7 +75,7 @@ regressed).
 
 ### 3.1 New files
 
-**`pyproject.toml`** — single uv source of truth:
+**`pyproject.toml`** - single uv source of truth:
 
 ```toml
 [project]
@@ -110,10 +110,10 @@ package = false   # run scripts as files; do not build/install this as a package
 
 Rationale for each pin is in §4.
 
-**`.python-version`** — contains `3.12` so `uv run`/`uv sync` auto-select the
+**`.python-version`** - contains `3.12` so `uv run`/`uv sync` auto-select the
 right interpreter (uv will download it if absent).
 
-**`uv.lock`** — generated via `uv lock`, committed for reproducible installs.
+**`uv.lock`** - generated via `uv lock`, committed for reproducible installs.
 Generated on macOS; uv produces a **universal** lock (cross-platform markers,
 e.g. `cuda-python` on non-Darwin). Validate on Windows during verification.
 
@@ -130,46 +130,46 @@ uv run python "%~dp0SpikeInterface_Menu.py" %*
 cmd.exe. `cd /d "%~dp0"` + absolute path make it cwd-independent. `%*` forwards
 any action args (`run.bat report`).
 
-**`run.ps1`** — PowerShell equivalent (`$env:PYTHONUTF8=1`; `uv run python`).
+**`run.ps1`** - PowerShell equivalent (`$env:PYTHONUTF8=1`; `uv run python`).
 
 ### 3.2 Dependency reconciliation
 
 - **PySide6** is the chosen Qt binding (via `spikeinterface-gui[desktop]`).
-  Do **not** also ship PyQt5 — they can clash at import.
-- **Drop `requirements.txt`** — redundant with `pyproject.toml` + `uv.lock` (the
+  Do **not** also ship PyQt5 - they can clash at import.
+- **Drop `requirements.txt`** - redundant with `pyproject.toml` + `uv.lock` (the
   uv source of truth). Non-uv users use the conda fallback (`environment.yml`).
   (No `[build-system]` is declared and `[tool.uv] package = false`, so the project
-  installs deps only — it is not built/installed as an importable package; scripts
+  installs deps only - it is not built/installed as an importable package; scripts
   run as files.)
-- **Drop `xarray`** from `environment.yml` — zero references anywhere in the code.
+- **Drop `xarray`** from `environment.yml` - zero references anywhere in the code.
 - Promote to explicit deps (imported by name, previously transitive/conda-only):
   `numba` (run_sorting.py NumbaWarning + tqdm patch), `neo` + `probeinterface`
   (blackrock_io.py), `numpy`, `scipy`, `matplotlib`.
-- `hdbscan` stays explicit — **not** pulled by `spikeinterface[full]`; the CPU
+- `hdbscan` stays explicit - **not** pulled by `spikeinterface[full]`; the CPU
   sorters (tridesclous2/spykingcircus2) need it.
 
 ### 3.3 Doc rewrites
 
-- **README.md** — uv-first onboarding. Install uv
+- **README.md** - uv-first onboarding. Install uv
   (`winget install --id=astral-sh.uv` on Windows / `brew install uv` on macOS),
   then `uv sync`, then `uv run ...`. Demote conda to a clearly-labelled "Fallback"
   section. Keep the Python-3.12 rationale text. Specific blocks:
   `README.md:32-58` (install), `:82-101` (env create), `:103-136` (run commands),
   `:156` (notebook kernel), `:180-181`/`:263-265` (relabel pip path),
   `:240`/`:277-285` (report block + troubleshooting).
-- **CLAUDE.md** — `:25` Commands block leads with `uv run python
+- **CLAUDE.md** - `:25` Commands block leads with `uv run python
   SpikeInterface_Menu.py`; `:46` env-creation makes uv Option A / conda Option B;
   `:48`/`:115-116` Qt note → "uv installs PySide6; PyQt5 only under the conda
   fallback." Keep the zarr<3 / PySide6<6.8 / 3.12 pin rationale.
-- **7 script docstrings** — swap the `conda activate si_env` lead-in for `uv run`:
+- **7 script docstrings** - swap the `conda activate si_env` lead-in for `uv run`:
   `SpikeInterface_Menu.py:4`, `scripts/explore_data.py:3`, `run_sorting.py:3`,
   `report.py:3`, `make_report.py:3`, `compare.py:3`, `verify_install.py:5`.
-- **environment.yml** — keep as conda fallback; add a header line pointing to the
+- **environment.yml** - keep as conda fallback; add a header line pointing to the
   uv path; drop `xarray`.
 
 ### 3.4 Notebooks
 
-- Use `uv run jupyter lab notebooks/...` (venv's own kernel — no `ipykernel
+- Use `uv run jupyter lab notebooks/...` (venv's own kernel - no `ipykernel
   install` step). Fix the misleading kernel `display_name`
   (`notebooks/01...:187` `Python 3 (si_env)`, `notebooks/02...:160` `si_env`) to a
   generic `Python 3`, and the markdown cell `notebooks/01...:16` ("launched from
@@ -192,7 +192,7 @@ any action args (`run.bat report`).
 
 ### 3.6 Explicitly NOT changed (do not regress)
 
-- `_shell`/`_self`/`make_report.py` `[sys.executable, ...]` spawning — keep
+- `_shell`/`_self`/`make_report.py` `[sys.executable, ...]` spawning - keep
   exactly. Do **not** switch to bare `"python"`, `shutil.which`, or re-prefix `uv
   run` (would pick up a stale interpreter or double-spawn uv).
 - The argparse action surface (`explore|sort|report|gui|traces|compare|verify`).
@@ -203,9 +203,9 @@ any action args (`run.bat report`).
 
 | Pin | Reason |
 |-----|--------|
-| `requires-python = "==3.12.*"` | THE guarantee that every compiled dep gets a prebuilt `cp312-win_amd64` wheel — no MSVC. 3.13 risks an sdist build for whichever dep lags. |
+| `requires-python = "==3.12.*"` | THE guarantee that every compiled dep gets a prebuilt `cp312-win_amd64` wheel - no MSVC. 3.13 risks an sdist build for whichever dep lags. |
 | `spikeinterface[full,widgets]>=0.104,<0.105` | `[full]` = scientific stack (numba/sklearn/h5py/pandas); `[widgets]` = matplotlib/ipympl/ipywidgets/figpack. Cap to the tested 0.104 line; `uv.lock` pins exact. |
-| `spikeinterface-gui[desktop]>=0.13` | `[desktop]` pulls PySide6 + pyqtgraph — chosen Qt binding. |
+| `spikeinterface-gui[desktop]>=0.13` | `[desktop]` pulls PySide6 + pyqtgraph - chosen Qt binding. |
 | `zarr>=2.18,<3` | SpikeInterface does not support zarr 3.x. |
 | `plotly>=5.20,<6` | `report.py:186` relies on `plotly.offline.get_plotlyjs` to inline JS for the offline report; Plotly 6 reorganised this. |
 | `hdbscan>=0.8.33` | Not pulled by `[full]`; sorters need it. 0.8.44 ships `cp312-win_amd64`. |
@@ -215,7 +215,7 @@ any action args (`run.bat report`).
 `cp312-win_amd64` wheel (numpy, scipy, numba/llvmlite, h5py, hdbscan 0.8.44,
 numcodecs, scikit-learn); the rest are pure-Python; PySide6 ships a stable-ABI
 wheel with Qt bundled. **No compiler required at 3.12.** Note: `cuda-python` is
-pulled transitively by `spikeinterface[full]` on non-Darwin — a pure-Python
+pulled transitively by `spikeinterface[full]` on non-Darwin - a pure-Python
 metapackage, harmless but heavy; cannot be excluded without dropping `[full]`.
 
 ## 5. Entry-point mapping (current → uv)
@@ -226,25 +226,25 @@ metapackage, harmless but heavy; cannot be excluded without dropping `[full]`.
 | `python SpikeInterface_Menu.py <action> [args]` | `uv run python SpikeInterface_Menu.py <action> [args]` |
 | `python scripts/<name>.py [args]` | `uv run python scripts/<name>.py [args]` |
 | `conda activate si_env; jupyter lab notebooks/...` | `uv run jupyter lab notebooks/...` |
-| `conda env create -f environment.yml` | `uv sync` (primary) — conda still works as fallback |
+| `conda env create -f environment.yml` | `uv sync` (primary) - conda still works as fallback |
 
 ## 6. Verification plan
 
 **On macOS (now, by Claude):**
-1. `uv lock` then `uv sync` — confirm clean resolution, commit `uv.lock`.
-2. `uv run python scripts/verify_install.py` — the repo's de-facto test (lib
+1. `uv lock` then `uv sync` - confirm clean resolution, commit `uv.lock`.
+2. `uv run python scripts/verify_install.py` - the repo's de-facto test (lib
    versions + LFP + broadband + sorters summary).
-3. `uv run python SpikeInterface_Menu.py report` — confirm the in-process report
+3. `uv run python SpikeInterface_Menu.py report` - confirm the in-process report
    path works under uv (and the §3.5.2 muting).
 
 **On Windows (checklist for Ben):**
-1. Install uv (`winget install --id=astral-sh.uv`), `uv sync` — assert no MSVC /
+1. Install uv (`winget install --id=astral-sh.uv`), `uv sync` - assert no MSVC /
    compiler is invoked during install.
 2. `uv run python scripts/verify_install.py`.
 3. `run.bat` → exercise sort, report, **gui**, **traces**, compare. Validate:
    (a) `gui`/`traces` open real Qt windows via the `_self` child; (b) a re-sort
    **after closing** the GUI does not hit WinError 32 (the §3.5.1 retry).
-4. `uv run jupyter lab notebooks/01_explore_lfp_and_spikes.ipynb` — kernel
+4. `uv run jupyter lab notebooks/01_explore_lfp_and_spikes.ipynb` - kernel
    resolves and cells run.
 
 ## 7. Out of scope
@@ -255,14 +255,14 @@ references are left as an archival record.
 
 ## 8. Implementation order
 
-1. **Packaging foundation** — write `pyproject.toml`, `.python-version`; `uv lock`
+1. **Packaging foundation** - write `pyproject.toml`, `.python-version`; `uv lock`
    + `uv sync`; commit `uv.lock`. Smoke test `verify_install.py` on macOS.
-2. **Launchers** — `run.bat` + `run.ps1`.
-3. **Windows hardening** — the 3 edits in §3.5.
-4. **Docs** — README, CLAUDE.md, 7 docstrings, environment.yml (drop xarray +
+2. **Launchers** - `run.bat` + `run.ps1`.
+3. **Windows hardening** - the 3 edits in §3.5.
+4. **Docs** - README, CLAUDE.md, 7 docstrings, environment.yml (drop xarray +
    pointer), delete requirements.txt.
-5. **Notebooks** — markdown cell + display_name fixes.
-6. **Verify & finalize** — re-run `verify_install.py`; confirm report builds.
+5. **Notebooks** - markdown cell + display_name fixes.
+6. **Verify & finalize** - re-run `verify_install.py`; confirm report builds.
 
 ## 9. Open risks / notes
 
@@ -270,4 +270,4 @@ references are left as an archival record.
   universal by default, but confirm during the Windows checklist).
 - The re-sort file-lock retry is a mitigation, not a guarantee; README also keeps
   a "close the GUI before re-sorting" note as belt-and-suspenders.
-- PySide6 wheels are large (~100s of MB) — first `uv sync` will take a while.
+- PySide6 wheels are large (~100s of MB) - first `uv sync` will take a while.

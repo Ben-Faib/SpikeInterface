@@ -73,7 +73,7 @@ async def test_probe_manager_activate_changes_active():
 
 async def test_probe_is_a_labelled_row_in_get_data():
     # F2: probe geometry is a VISIBLE row in the GET DATA stage, printing its own
-    # `p` key and saying what it gives you — not a bare letter on the key line.
+    # `p` key and saying what it gives you - not a bare letter on the key line.
     import menu_app
     from textual.widgets import OptionList
 

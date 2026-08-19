@@ -1,4 +1,4 @@
-"""Sorter registry — discovery, availability, parameters, and running.
+"""Sorter registry - discovery, availability, parameters, and running.
 
 Single source of truth for which spike sorters this workspace can use. Replaces
 the old hardcoded ``SORTERS = ["tridesclous2", "spykingcircus2"]``: it reports
@@ -94,7 +94,7 @@ def installed(refresh: bool = False) -> list[str]:
     """Sorters runnable on this machine right now (deps importable), sorted.
 
     Cached per process (it re-imports/probes every sorter's deps, ~1 s, and the
-    set is fixed for the life of the process — installing a sorter mid-session
+    set is fixed for the life of the process - installing a sorter mid-session
     needs a relaunch to register everywhere else anyway). Pass ``refresh=True`` to
     re-probe. Mirrors the ``_docker_cache`` pattern.
     """
@@ -137,7 +137,7 @@ def docker_available(refresh: bool = False) -> bool:
 def start_docker() -> bool:
     """Best-effort launch of Docker Desktop. Never raises.
 
-    Returns whether a launch command was issued — NOT whether Docker finished
+    Returns whether a launch command was issued - NOT whether Docker finished
     booting (the caller polls docker_state(refresh=True) until 'running').
     """
     import os
@@ -165,7 +165,7 @@ def default_docker_image(name: str) -> "str | None":
     """The exact image (with tag) SpikeInterface pulls for ``name``, or None.
 
     Mirrors SpikeInterface's ``SORTER_DOCKER_MAP`` so we can pre-pull *precisely*
-    the image the sort will use — the names aren't always ``<name>-base`` (e.g.
+    the image the sort will use - the names aren't always ``<name>-base`` (e.g.
     spykingcircus -> spyking-circus-base, waveclus -> waveclus-compiled-base), and
     pre-pulling the wrong name would just double the download.
     """
@@ -199,18 +199,18 @@ def pull_docker_image(image: str, on_progress=None, on_status=None,
     complete") once **per layer**, and a naive sum over only the *currently*
     downloading layers gives an inflated early % (the denominator shrinks as
     layers finish). This aggregates over **all** layers across two phases so the
-    UI sees a single honest bar plus a phase+count caption — never a raw
+    UI sees a single honest bar plus a phase+count caption - never a raw
     per-layer string. Returns True on success, False on any failure (the caller
     can fall back to letting SpikeInterface pull during the run).
 
     The callbacks see the **current phase over ALL layers** (a completed layer
     never drops out of the denominator):
 
-    - ``on_progress(done, total)`` — download phase: ``done`` = Σ(layer.total if
+    - ``on_progress(done, total)`` - download phase: ``done`` = Σ(layer.total if
       that layer's download is done else its current bytes), ``total`` =
       Σ(layer.total over layers whose total is known); extract phase: same but
       over each layer's *extract* current/total. Fires whenever the bytes change.
-    - ``on_status(text)`` — only a phase+count caption, fired only when it
+    - ``on_status(text)`` - only a phase+count caption, fired only when it
       changes: ``"Downloading n/N layers"``, ``"Verifying…"`` (on "Verifying
       Checksum"), ``"Extracting n/N layers"``, ``"Done"``. Raw per-layer status
       strings are never passed through.
@@ -237,7 +237,7 @@ def pull_docker_image(image: str, on_progress=None, on_status=None,
     phase = "downloading"   # 'downloading' -> 'extracting' -> 'done'
     last_status = None
     last_progress = None
-    # Which layers actually transferred vs were reused from Docker's cache — lets
+    # Which layers actually transferred vs were reused from Docker's cache - lets
     # the caller honestly explain an instant "download" that only reused cached
     # (shared base) layers. Keyed by layer id so repeated events don't double-count.
     pulled_ids: set = set()
@@ -329,7 +329,7 @@ def pull_docker_image(image: str, on_progress=None, on_status=None,
                 # A cached layer (re-download after delete: the blob is still in
                 # Docker's store, often via a sibling SpikeInterface image's shared
                 # base layers). It carries NO byte sizes, so it can't move the
-                # byte-based bar — but it IS a completed layer. Mark it done and fall
+                # byte-based bar - but it IS a completed layer. Mark it done and fall
                 # through to the emit block, which advances the bar by layer count.
                 ly = _layer(lid)
                 ly["dl_done"] = True
@@ -394,21 +394,21 @@ def delete_docker_image(image: str) -> "tuple[bool, str]":
     layers shared with other present images (SpikeInterface sorter images share a
     base). This *deep* delete additionally prunes any now-**dangling** layers the
     removal left behind and reports the total space reclaimed, so the user sees
-    that deleting freed real space — while never touching layers a sibling sorter
+    that deleting freed real space - while never touching layers a sibling sorter
     still uses (that would force those sorters to re-download too).
     """
     try:
         import docker
 
         client = docker.from_env()
-        # Image size first (for the reclaim note) — best-effort, never fatal.
+        # Image size first (for the reclaim note) - best-effort, never fatal.
         try:
             freed = int(client.images.get(image).attrs.get("Size", 0) or 0)
         except Exception:  # noqa: BLE001 - size is only cosmetic
             freed = 0
         client.images.remove(image, force=False)
         # Deep delete: drop now-dangling (untagged) layers. Dangling-only is the
-        # SAFE filter — it never removes a layer a tagged sibling sorter still uses.
+        # SAFE filter - it never removes a layer a tagged sibling sorter still uses.
         try:
             pruned = client.images.prune(filters={"dangling": True}) or {}
             freed += int(pruned.get("SpaceReclaimed", 0) or 0)
@@ -444,7 +444,7 @@ def group_of(name: str, installed_set=None) -> str:
     'ready' (installed → runnable locally) | 'gpu' (NVIDIA GPU family, not
     installed) | 'docker' (has a CPU container image) | 'unavailable'. Unlike
     status(), this does NOT depend on the live Docker daemon, so a sorter never
-    jumps groups when Docker Desktop starts/stops — only its *selectability*
+    jumps groups when Docker Desktop starts/stops - only its *selectability*
     (runnable()) does. Installed wins first, so an installed kilosort on a GPU box
     lands in 'ready'.
     """
@@ -481,7 +481,7 @@ def uses_docker(name: str, use_docker: bool, installed_set=None) -> bool:
 
     Docker is only a **fallback** for sorters you don't have locally: an installed
     sorter always runs natively. There is no container image for the local-only
-    sorters (e.g. ``tridesclous2`` — pulling ``spikeinterface/tridesclous2-base``
+    sorters (e.g. ``tridesclous2`` - pulling ``spikeinterface/tridesclous2-base``
     404s), and containerising one you already have just adds a slow, failure-prone
     round trip. So this is True only when Docker is requested AND ``name`` is not
     installed.
@@ -596,7 +596,7 @@ def run(name, recording, folder, *, params=None, use_docker=False, verbose=False
     params = params or {}
     if params:
         merge_params(name, params)  # validate keys; raises ValueError on unknown
-    # Docker is a fallback for sorters you don't have — an installed sorter runs
+    # Docker is a fallback for sorters you don't have - an installed sorter runs
     # natively even with Docker mode on (else it would chase a nonexistent image).
     use_container = uses_docker(name, use_docker)
     if use_container and not docker_available():
@@ -607,11 +607,11 @@ def run(name, recording, folder, *, params=None, use_docker=False, verbose=False
     native_recording = recording
     if use_container:
         recording = _as_container_recording(recording, folder)
-    # SpikeInterface's run_sorter takes sorter parameters as **kwargs — there is no
+    # SpikeInterface's run_sorter takes sorter parameters as **kwargs - there is no
     # ``sorter_params=`` keyword (passing one makes it a bogus param named
     # "sorter_params"). Build the call explicitly: the control kwargs
     # (folder/remove/docker) are always ours, while a sorter param that happens to
-    # share run_sorter's own name — e.g. herdingspikes' ``verbose`` — overrides our
+    # share run_sorter's own name - e.g. herdingspikes' ``verbose`` - overrides our
     # default instead of raising "multiple values for keyword argument". ``params``
     # is already validated against the defaults above.
     call_kwargs = dict(params)
@@ -626,7 +626,7 @@ def run(name, recording, folder, *, params=None, use_docker=False, verbose=False
         # its .raw file OPEN for the object's lifetime. The registration survives
         # sorting.save(), so on Windows the open handle later blocks deleting the
         # recording_for_docker cache (WinError 32). Swap the native recording back
-        # in — same samples (the cache was written from it), no handle on the cache.
+        # in - same samples (the cache was written from it), no handle on the cache.
         sorting.register_recording(native_recording, check_spike_frames=False)
     return sorting
 

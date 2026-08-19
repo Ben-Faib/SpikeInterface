@@ -1,4 +1,4 @@
-# GOAL W0 — Quick wins  **[DISSOLVED 2026-08-18 — kept for provenance]**
+# GOAL W0 - Quick wins  **[DISSOLVED 2026-08-18 - kept for provenance]**
 
 *Ben's UI/UX overhaul (GOAL_D_UIUX.md) subsumed this brief the day it was written: the
 false-green 0-unit fix → D2, the INSPECTING clip + active-sorter persistence + keyboard
@@ -11,20 +11,20 @@ The 2026-06-27 audit (WORKBENCH_DIRECTIONS.md, "Quick wins worth doing regardles
 named seven small fixes that remove the workbench's worst dead-ends without committing to any
 direction. Two have since landed (Explore now opens its figures, 7940f96; sort stderr now goes
 to a per-run log, `4807ce0`-era work). Five remain, verified against source 2026-08-18. They
-are the cheapest trust the tool can buy, and the last one — widening the metric suite — is the
+are the cheapest trust the tool can buy, and the last one - widening the metric suite - is the
 explicit precondition for W1 and for every later path's signature feature.
 
 ## Task (the five remaining wins)
 
 1. **Kill the false-green 0-unit success.** `SortProgressScreen.action_close_if_done`
    (`scripts/menu_app.py:722`) builds its own `✓ Sorted {units} units`, so a 0-unit sort shows
-   green and the genuinely useful hint — `⚠ no units found — lower detect_threshold (Edit
-   parameters) and re-run` (`SpikeInterface_Menu.py:294`) — never reaches the in-UI flow.
+   green and the genuinely useful hint - `⚠ no units found - lower detect_threshold (Edit
+   parameters) and re-run` (`SpikeInterface_Menu.py:294`) - never reaches the in-UI flow.
    Route the in-UI done event through the same message/severity logic so 0 units reads as an
    amber result carrying the fix.
 2. **Make the INSPECTING panel readable.** `#inspect` is `max-height: 7`
    (`scripts/menu_app.py:1729`) and non-focusable (`:1799`), while `_render_sorter_explain`
-   writes ~10–12 lines — the description tail and the CTA are silently clipped. Let it scroll
+   writes ~10–12 lines - the description tail and the CTA are silently clipped. Let it scroll
    or guarantee the content fits; either way nothing is silently cut.
 3. **Persist the active sorter.** `.si_menu.json` saves `active_probe` but not the active
    sorter, which resets to the recommended default every launch
@@ -37,7 +37,7 @@ explicit precondition for W1 and for every later path's signature feature.
    `["firing_rate", "snr", "isi_violation"]` while `principal_components` is already computed
    and discarded. Add presence_ratio, amplitude_cutoff/amplitude_median, and the cheap
    PCA-based isolation metrics (isolation_distance, l_ratio, d_prime, nn_hit_rate). The
-   report's metrics table shows what the analyzer has — confirm it degrades gracefully for
+   report's metrics table shows what the analyzer has - confirm it degrades gracefully for
    old saved analyzers that lack the new columns.
 
 ## Definition of done
@@ -52,11 +52,11 @@ Fresh-context Fable review of the diff before sealing.
 
 ## Boundaries and known traps
 
-- Each fix at its stated scope — no adjacent refactors, no curation features (that's W1).
+- Each fix at its stated scope - no adjacent refactors, no curation features (that's W1).
 - The µV double-scaling gate and the aux-drop ordering are untouchable (CLAUDE.md invariants).
 - `--progress json` stdout purity: any new sort-path output goes to stderr in that mode.
 - Widening metrics must not make metrics fatal: the Sorting saves before metrics run, and a
-  metrics crash degrades to success-with-note — preserve that, including the cleanup of
+  metrics crash degrades to success-with-note - preserve that, including the cleanup of
   half-built derived files.
-- The SNR≥5 "high-quality" headline rule stays as-is for now — replacing it with defensible
+- The SNR≥5 "high-quality" headline rule stays as-is for now - replacing it with defensible
   thresholds is W1's job; don't half-do it here.

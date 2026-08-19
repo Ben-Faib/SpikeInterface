@@ -38,15 +38,15 @@ PRIMARY, SECONDARY = "", "#9aa0a6"
 # is (glyph+label, rich style): cached/ready image, an in-flight pull, and a
 # not-yet-downloaded "get it" affordance. The ⬇ arrow + words are the NO_COLOR-safe
 # shape cue. DL_GET_COLOUR matches the amber DOCKER group tier.
-DL_GET_COLOUR = "#d29922"          # amber — "downloadable, ~1 GB"
-DL_READY = ("  ✓ ready", "dim #3fb950")   # green — image is cached locally
-DL_GET = ("  ⬇ get", DL_GET_COLOUR)       # amber — not downloaded yet
+DL_GET_COLOUR = "#d29922"          # amber - "downloadable, ~1 GB"
+DL_READY = ("  ✓ ready", "dim #3fb950")   # green - image is cached locally
+DL_GET = ("  ⬇ get", DL_GET_COLOUR)       # amber - not downloaded yet
 
 # Shared, plain-language Help content (single source for the Textual HelpScreen
 # AND the typed-fallback help). Each entry is (topic_key, title, body_lines).
 #
-# F2 (2026-08-19): help is built around the REAL workflow — which question, which
-# surface, which key — and teaches it in the same plain words as docs/WORKFLOW.md,
+# F2 (2026-08-19): help is built around the REAL workflow - which question, which
+# surface, which key - and teaches it in the same plain words as docs/WORKFLOW.md,
 # which is the canonical version. Two documents, one vocabulary: if you change a
 # word here, change it there. Every key named below is a key that works.
 HELP_TOPICS = [
@@ -90,7 +90,7 @@ HELP_TOPICS = [
       "  Upstream software we do not restyle, and",
       "  deliberately not opinionated. If you want a",
       "  CONCLUSION, read the report or judge the units",
-      "  — do not go to the Qt window for it.",
+      "  - do not go to the Qt window for it.",
       "",
       "Which sorts do I have? Which am I looking at?",
       "  uv run python scripts/runs.py list",
@@ -98,73 +98,73 @@ HELP_TOPICS = [
       "Is my install healthy?   v → check the install",
       "Where is my recording?   d → data files"]),
     ("getdata", "1 · Get data",
-     ["d — Data files. Which recording files were found",
+     ["d - Data files. Which recording files were found",
       "    and where they live. Press f to point the",
       "    workbench at a different folder.",
       "",
-      "p — Probe geometry. The Blackrock files carry no",
+      "p - Probe geometry. The Blackrock files carry no",
       "    electrode map, so the geometry is YOUR",
       "    choice. It decides which sorters fit best; it",
       "    never blocks a sort. Pick a built-in profile,",
       "    edit one, or import a probeinterface file.",
       "",
-      "1 — Explore the recording. Static figures from",
+      "1 - Explore the recording. Static figures from",
       "    the raw data: LFP, events, detection rates.",
       "    No sort needed. → outputs/explore.html",
       "",
-      "6 — Watch the traces. Scroll the raw broadband",
+      "6 - Watch the traces. Scroll the raw broadband",
       "    signal in a desktop window.",
       "",
-      "v — Check the install. Library versions and all",
+      "v - Check the install. Library versions and all",
       "    three loaders (.ns2 / .ns5 / .nev)."]),
     ("sortcurate", "2 · Sort & curate",
-     ["t — Choose the sorter: the algorithm that finds",
+     ["t - Choose the sorter: the algorithm that finds",
       "    the units, grouped by what this computer can",
       "    run right now. Type to filter.",
       "",
-      "e — Sorter settings. The parameters the NEXT",
+      "e - Sorter settings. The parameters the NEXT",
       "    sort will use, saved per sorter.",
       "",
-      "2 — Sort the recording. Full, or a quick 30 s",
+      "2 - Sort the recording. Full, or a quick 30 s",
       "    test. A quick run is never promoted to the",
       "    current sort, and runs never overwrite each",
-      "    other — each lands in its own directory with",
+      "    other - each lands in its own directory with",
       "    its own id. Check the noise floor on the",
       "    result card: it should read about 4 µV.",
       "",
-      "u — Judge the units. Strongest first, one key",
+      "u - Judge the units. Strongest first, one key",
       "    each: g good · m MUA · n noise · u unsure.",
       "    Esc goes back. Verdicts are RECORDED, not",
-      "    applied — nothing about the sort changes",
+      "    applied - nothing about the sort changes",
       "    until you run, in a terminal:",
       "      curation.py apply --sorter <name>",
       "    After that every surface shows the curated",
       "    result, and says that it is curated.",
       "",
-      "y — Export to Phy: the hard cases, to curate by",
+      "y - Export to Phy: the hard cases, to curate by",
       "    hand elsewhere. Labels you already recorded",
       "    are seeded in. Verdicts come back with:",
       "      curation.py import-phy --sorter <name>"]),
     ("lookshare", "3 · Look & share",
-     ["3 — Build the report. One self-contained HTML",
+     ["3 - Build the report. One self-contained HTML",
       "    page: the strong units and the contacts they",
       "    sit on, quality metrics, the array, the",
       "    probe, and the provenance of the run.",
       "    → outputs/report.html",
       "",
-      "4 — Inspect in the GUI. spikeinterface-gui:",
+      "4 - Inspect in the GUI. spikeinterface-gui:",
       "    waveforms and correlograms, in a window.",
       "",
-      "5 — Compare two sorts. An agreement matrix",
+      "5 - Compare two sorts. An agreement matrix",
       "    between two saved sorts.",
       "    → outputs/comparison.html",
       "",
-      "r — Reopen last result: the page the last action",
+      "r - Reopen last result: the page the last action",
       "    made. The LAST line says which one."]),
     ("words", "The words",
      ["channel  one wire off the headstage. This",
       "         recording has 22, but only 16 are",
-      "         neural — the other 6 are sync/aux and",
+      "         neural - the other 6 are sync/aux and",
       "         are dropped before anything else.",
       "contact  the pad on the probe a channel is wired",
       "         to. 'ch 5' and 'contact 5' are the same",
@@ -174,7 +174,7 @@ HELP_TOPICS = [
       "         came from one neuron. A HYPOTHESIS",
       "         about a neuron, not the neuron itself.",
       "peak     the contact where a unit's spike is",
-      "contact  biggest — the answer to 'where is it?'.",
+      "contact  biggest - the answer to 'where is it?'.",
       "curation a human's decisions about units: this",
       "         one is noise, these two are one neuron.",
       "strong   passed the quality rule ON ENOUGH",
@@ -196,7 +196,7 @@ HELP_TOPICS = [
      ["noise floor near 1 µV",
       "  The µV gain got applied twice; every",
       "  amplitude is about 4x too small. It should",
-      "  read ~4 µV for every sorter — it is a",
+      "  read ~4 µV for every sorter - it is a",
       "  property of the recording, not of the sorter.",
       "",
       "0 units",
@@ -237,20 +237,20 @@ HELP_TOPICS = [
       "or an NVIDIA GPU, which this machine lacks.",
       "",
       "Docker is only a FALLBACK for sorters you do",
-      "not have — an installed sorter runs natively",
+      "not have - an installed sorter runs natively",
       "even with Docker on.",
       "",
       "m manages images and saved sorts; x manages the",
       "ACTIVE sorter alone; w re-opens a download."]),
     ("probe", "Probe geometry",
      ["The Blackrock files carry no electrode map, so",
-      "the geometry is a choice you make — press p.",
+      "the geometry is a choice you make - press p.",
       "",
       "Choose a placeholder (independent channels), a",
       "standard layout, a lab preset, your own, or a",
       "file imported with scripts/probes.py import.",
       "",
-      "Geometry only re-ranks the sorters — the fit",
+      "Geometry only re-ranks the sorters - the fit",
       "note shows in the t picker. It never blocks a",
       "sort.",
       "",
@@ -262,7 +262,7 @@ HELP_TOPICS = [
      []),   # filled at render time from the live data report (present/missing checklist)
     ("keys", "Keyboard",
      ["Every workflow key is printed on the row it",
-      "runs — you never have to remember one. Arrows",
+      "runs - you never have to remember one. Arrows",
       "(or j/k) move, Enter runs the highlighted row.",
       "",
       "GET DATA      d data files · f data folder",
@@ -283,7 +283,7 @@ HELP_TOPICS = [
       "",
       "In unit triage: g good · m MUA · n noise ·",
       "u unsure. Esc closes a dialog. On the dashboard",
-      "Esc does nothing — a reflexive back-press must",
+      "Esc does nothing - a reflexive back-press must",
       "never quit the app and lose your place."]),
     ("about", "About",
      ["University of Pittsburgh · SpikeInterface.",
@@ -302,28 +302,28 @@ _BADGE = {"PASS": ("bold green", "✓"), "SKIP": ("dim", "–"), "FAIL": ("bold 
 # Same, as prompt_toolkit style-class names (used by the full-screen dashboard).
 _BADGE_PT = {"PASS": ("class:pass", "✓"), "SKIP": ("class:skip", "–"), "FAIL": ("class:fail", "✗")}
 
-# University of Pittsburgh shield — authentic blue + gold (the rest of the UI keeps
+# University of Pittsburgh shield - authentic blue + gold (the rest of the UI keeps
 # its accent). Drawn on a fixed grid of ONLY the full block █ and spaces, so every
-# row is exactly the same width in any monospace font/terminal — no ambiguous-width
+# row is exactly the same width in any monospace font/terminal - no ambiguous-width
 # glyphs (●, quadrant blocks) that misalign across machines. The empty interior reads
 # as the white field; the heraldry sits in negative space, matching the real crest:
 # three crenellated turrets, a centre keystone notch, two roundels in the upper field,
 # a blue/gold checky band, one roundel below, tapering to the base point.
 # B = blue pixel, G = gold pixel, '.'/space = empty.  Each grid is internally square
 # (all rows equal width); three sizes feed the responsive ladder (pick_logo) so the
-# shield shrinks — full → compact → mini → none — to fit small terminal windows.
+# shield shrinks - full → compact → mini → none - to fit small terminal windows.
 _LOGO_BLUE, _LOGO_GOLD = "#1f6feb", "#ffb81c"
-_LOGO_ART = [                  # full crest — 21 columns
+_LOGO_ART = [                  # full crest - 21 columns
     ".B.B.B..B.B.B..B.B.B.",   # three crenellated turrets
     ".BBBBB..BBBBB..BBBBB.",   # turret bodies
     "BBBBBBBBBB.BBBBBBBBBB",   # shield top edge + centre keystone notch
     "B...................B",   # upper white field
     "B....BBB.....BBB....B",   # two roundels
     "B...................B",   # upper white field
-    "BGGGGGGGGGGGGGGGGGGGB",   # gold band — top margin
+    "BGGGGGGGGGGGGGGGGGGGB",   # gold band - top margin
     "BGBBGGBBGGBBGGBBGGBGB",   # checky band, row A
     "BGGGBBGGBBGGBBGGBBGGB",   # checky band, row B (offset)
-    "BGGGGGGGGGGGGGGGGGGGB",   # gold band — bottom margin
+    "BGGGGGGGGGGGGGGGGGGGB",   # gold band - bottom margin
     "B...................B",   # lower white field
     "B........BBB........B",   # one roundel
     ".BB...............BB.",   # taper
@@ -332,7 +332,7 @@ _LOGO_ART = [                  # full crest — 21 columns
     ".......BB...BB.......",   # taper
     ".........BBB.........",   # base point
 ]
-_LOGO_ART_COMPACT = [          # medium crest — 15 columns
+_LOGO_ART_COMPACT = [          # medium crest - 15 columns
     ".B.B..B.B..B.B.",         # turrets
     ".BBB..BBB..BBB.",         # bodies
     "BBBBBBB.BBBBBBB",         # top edge + notch
@@ -345,7 +345,7 @@ _LOGO_ART_COMPACT = [          # medium crest — 15 columns
     ".....BB.BB.....",         # taper
     "......BBB......",         # base point
 ]
-_LOGO_ART_MINI = [             # small crest — 11 columns
+_LOGO_ART_MINI = [             # small crest - 11 columns
     ".B...B...B.",             # turret nubs
     "BBBBB.BBBBB",             # top edge + notch
     "B..B...B..B",             # two roundels
@@ -389,11 +389,11 @@ _LOGO_INDENT = 2  # leading "  " before every shield row
 
 # Public aliases: the built shield rows, by size, for screens that render the
 # Pitt crest at a fixed spot (the v2 Welcome screen + Help "About" topic) now
-# that the wordmark — not the shield — is the dashboard's top crest.
+# that the wordmark - not the shield - is the dashboard's top crest.
 SHIELD_FULL, SHIELD_COMPACT, SHIELD_MINI = _LOGO, _LOGO_COMPACT, _LOGO_MINI
 
 # --------------------------------------------------------------------------- #
-# Block-letter "SPIKE" wordmark — the v2 dashboard's static top crest. Block
+# Block-letter "SPIKE" wordmark - the v2 dashboard's static top crest. Block
 # letters in width-safe glyphs ONLY (full block █ + spaces, same discipline as
 # the shield). Two responsive tiers; below compact the crest hides and the
 # always-present title rule carries the branding. Unlike the shield (fixed
@@ -401,14 +401,14 @@ SHIELD_FULL, SHIELD_COMPACT, SHIELD_MINI = _LOGO, _LOGO_COMPACT, _LOGO_MINI
 # RENDER time from the live accent (wordmark_rows), so it follows the theme.
 # Preview with `uv run python scripts/_wordmark_preview.py`.
 # --------------------------------------------------------------------------- #
-_WORDMARK_FULL = [                    # 19 cols x 5 rows — block "SPIKE"
+_WORDMARK_FULL = [                    # 19 cols x 5 rows - block "SPIKE"
     "███ ███ ███ █ █ ███",
     "█   █ █  █  ██  █  ",
     "███ ███  █  █   ███",
     "  █ █    █  ██  █  ",
     "███ █   ███ █ █ ███",
 ]
-_WORDMARK_COMPACT = ["S P I K E"]     # 9 cols x 1 row — letter-spaced caps fallback
+_WORDMARK_COMPACT = ["S P I K E"]     # 9 cols x 1 row - letter-spaced caps fallback
 
 _WORDMARKS = [
     (len(_WORDMARK_FULL[0]), len(_WORDMARK_FULL), _WORDMARK_FULL),
@@ -418,7 +418,7 @@ _WORDMARKS = [
 
 def _encode_wordmark_row(line, accent):
     """Run-length-merge a row into (style, segment) fragments: non-space runs get
-    ``accent``, space runs are unstyled — the same row shape _build_logo produces,
+    ``accent``, space runs are unstyled - the same row shape _build_logo produces,
     so menu_app._crest_text renders the wordmark unchanged."""
     frags, i, n = [], 0, len(line)
     while i < n:
@@ -437,7 +437,7 @@ def wordmark_rows(tier, accent):
 
 
 def pick_wordmark(cols, rows=None, reserve=0):
-    """Largest wordmark tier (full -> compact -> none) that fits — same fit rules
+    """Largest wordmark tier (full -> compact -> none) that fits - same fit rules
     as pick_logo. Returns the tier (list[str], truthy) or [] when none fits."""
     return _pick(_WORDMARKS, cols, rows, reserve)
 
@@ -447,7 +447,7 @@ def _term_size():
     the dashboard tracks live resizes); otherwise use the real terminal via shutil.
 
     NB: ``get_app()`` returns a *DummyApplication* (fixed 80x40) when no app is running,
-    which would mask the true terminal — so use ``get_app_or_none()`` and fall through."""
+    which would mask the true terminal - so use ``get_app_or_none()`` and fall through."""
     try:
         from prompt_toolkit.application import get_app_or_none
 
@@ -622,7 +622,7 @@ def print_catalog(catalog) -> None:
         say(f"\n[bold {ACCENT}]{_CATALOG_LABEL[group]}[/]")
         for info in members:
             star = "★ " if info.get("recommended") else "  "
-            units = f"{info['units']}u" if info.get("present") else "—"
+            units = f"{info['units']}u" if info.get("present") else "-"
             dim = "" if info.get("runnable") else f"[{MUTED}]"
             dimend = "" if info.get("runnable") else "[/]"
             say(f"  {dim}{star}{info['name']:18} {units:>5}   "
@@ -656,9 +656,9 @@ def docker_confirm_text(state: str) -> str:
     return {
         "running": "Docker is running. Enable extra sorters?",
         "installed_not_running":
-            "Docker is installed but not started — start Docker Desktop, then retry.",
+            "Docker is installed but not started - start Docker Desktop, then retry.",
         "not_installed":
-            "You don't have Docker — download Docker Desktop (docker.com), then retry.",
+            "You don't have Docker - download Docker Desktop (docker.com), then retry.",
     }.get(state, "Enable Docker sorters?")
 
 
@@ -766,7 +766,7 @@ def dashboard_menu(header, pipeline, infos, active: int = 0, actions=(), default
 
     The high-level info stays at the top and updates in place; choosing an action
     exits the app (so the action's own output prints below in the normal terminal),
-    then the caller re-enters with refreshed data — so there is never more than one
+    then the caller re-enters with refreshed data - so there is never more than one
     dashboard on screen. Keys: ←/→ (or Tab/Shift-Tab) switch the sorter tab, ↑/↓
     (or j/k) move the action list, Enter runs it, a number jumps, q/Ctrl-C quits.
     Returns ``(action_key_or_None, active_tab_index)``. Without prompt_toolkit or
@@ -832,7 +832,7 @@ def dashboard_menu(header, pipeline, infos, active: int = 0, actions=(), default
     detail_w = min(max([len("detail")] + [len(r["detail"]) for r in pipeline]), 64)
     W = min(max(tabbar_w, 2 + stage_w + 3 + detail_w, len(header) + 10), 92)
     pipe_uline = "  " + "─" * (stage_w + 3 + detail_w)
-    # Lines the body() control emits — so the responsive shield can yield enough rows
+    # Lines the body() control emits - so the responsive shield can yield enough rows
     # to keep the whole menu visible on a short terminal. 12 fixed newline-blocks +
     # the variable rows + 1 line of safety so the last action is never clipped.
     body_rows = 13 + (2 if last else 0) + len(pipeline) + len(actions)
@@ -844,7 +844,7 @@ def dashboard_menu(header, pipeline, infos, active: int = 0, actions=(), default
         f = [("", "\n")]
         if last:
             f += [("class:last", f"  {last}"), ("", "\n\n")]
-        # Sorters — a horizontal tab bar; ←/→ (or Tab) switches the active tab.
+        # Sorters - a horizontal tab bar; ←/→ (or Tab) switches the active tab.
         f += [("class:section", "  Sorters"),
               ("class:tabhint", "    ‹ ← / → ›"), ("class:hint", " switch"), ("", "\n\n")]
         f.append(("", "  "))
@@ -856,7 +856,7 @@ def dashboard_menu(header, pipeline, infos, active: int = 0, actions=(), default
         f += [("", "\n\n")]
         # The active sorter's full saved-sort detail, below the bar.
         f += [("class:hint", "  " + _saved(infos[tab[0]])), ("", "\n\n")]
-        # Pipeline — a table
+        # Pipeline - a table
         f += [("class:section", "  Pipeline"), ("", "\n")]
         f += [("class:colhead", "  " + "stage".ljust(stage_w) + "   detail"), ("", "\n")]
         f += [("class:rule", pipe_uline), ("", "\n")]
@@ -865,7 +865,7 @@ def dashboard_menu(header, pipeline, infos, active: int = 0, actions=(), default
             f += [(st, glyph + " "), ("class:stage", r["stage"].ljust(stage_w)),
                   ("class:hint", "   " + _trunc(r["detail"], detail_w)), ("", "\n")]
         f += [("", "\n")]
-        # Actions — the navigable menu (↑/↓ move, Enter runs)
+        # Actions - the navigable menu (↑/↓ move, Enter runs)
         f += [("class:section", "  Actions"), ("", "\n")]
         for n, (_key, title, hint) in enumerate(actions):
             sel = n == cur[0]
@@ -896,7 +896,7 @@ def dashboard_menu(header, pipeline, infos, active: int = 0, actions=(), default
         return f
 
     # Re-evaluated every render (incl. on resize), so the banner height tracks the
-    # chosen shield — full → compact → mini → none — as the window grows or shrinks.
+    # chosen shield - full → compact → mini → none - as the window grows or shrinks.
     banner_win = Window(FormattedTextControl(banner_ft), height=lambda: len(_fit_logo()[1]) + 2)
     body_win = Window(FormattedTextControl(body, focusable=True, show_cursor=False))
     footer_win = Window(

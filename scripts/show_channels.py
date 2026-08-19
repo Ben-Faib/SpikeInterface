@@ -8,12 +8,12 @@
 
 Writes two headless figures to ./outputs/ (git-ignored) and prints a site→channel
 table:
-    * probe_map.png  — the COLLECTION SITES: each electrode contact drawn at its
+    * probe_map.png  - the COLLECTION SITES: each electrode contact drawn at its
                        physical (x, y) position in µm, labelled by channel id.
                        Active electrodes (the peak channel of >=1 sorted unit, from
                        the sort's summary.json) are filled; sites are colour-graded
                        by per-channel noise floor when a sort is available.
-    * channels.png   — the CHANNELS: a short band-passed window of each selected
+    * channels.png   - the CHANNELS: a short band-passed window of each selected
                        channel, stacked in physical depth order so the trace stack
                        mirrors the probe.
 
@@ -96,7 +96,7 @@ def plot_probe_map(rec, out_path: Path, *, active=None, noise=None, label="") ->
     ax.set_xlabel("x (µm)")
     ax.set_ylabel("depth y (µm)")
     n_active = sum(1 for c in chan_ids if c in active)
-    title = f"Collection sites — {label or 'probe'}\n{len(chan_ids)} contacts"
+    title = f"Collection sites - {label or 'probe'}\n{len(chan_ids)} contacts"
     if active:
         title += f" · {n_active} active (filled/ringed)"
     ax.set_title(title, fontsize=10)
@@ -138,7 +138,7 @@ def plot_channels(rec, out_path: Path, *, channel_ids=None, window_s: float = 2.
     ax.set_yticklabels([f"ch {c}" + ("  ●" if c in active else "") for c in sel], fontsize=8)
     ax.set_xlabel("time (s)")
     ax.set_ylabel("channel (shallow → deep)")
-    ax.set_title(f"Broadband (300–6000 Hz) — first {min(window_s, filt.get_total_duration()):g}s · "
+    ax.set_title(f"Broadband (300–6000 Hz) - first {min(window_s, filt.get_total_duration()):g}s · "
                  f"{len(sel)} channels" + ("  (● = active electrode)" if active else ""))
     fig.tight_layout()
     fig.savefig(out_path, dpi=120)
@@ -185,7 +185,7 @@ def main() -> int:
             print(f"Highlighting {len(active)} active electrode(s) from the {args.sorter} sort "
                   f"({summary.get('n_units')} units).")
         else:
-            print(f"(no saved summary for {args.sorter} — showing geometry without activity)")
+            print(f"(no saved summary for {args.sorter} - showing geometry without activity)")
 
     channel_ids = None
     if args.channels:
@@ -203,8 +203,8 @@ def main() -> int:
                    label=profile.get("label", profile.get("name")))
     plot_channels(rec, OUTPUT_DIR / "channels.png", channel_ids=channel_ids,
                   window_s=args.window, active=active)
-    print("  probe_map.png  — collection sites (electrode geometry)")
-    print("  channels.png   — per-channel band-passed traces")
+    print("  probe_map.png  - collection sites (electrode geometry)")
+    print("  channels.png   - per-channel band-passed traces")
     print("Done. ✓")
     return 0
 
