@@ -76,7 +76,7 @@ async def test_probe_reachable_from_manage_line():
     app = _app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        assert "p probe" in app.query_one("#managebar").render().plain
+        assert "p probe" in app.query_one("#footer").render().plain  # D6: merged key line
         await pilot.press("p")
         await pilot.pause()
         import menu_app

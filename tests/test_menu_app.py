@@ -1387,8 +1387,9 @@ async def _pick(pilot, app, row_id):
 
 # --- boot + layout --------------------------------------------------------- #
 async def test_boots_actions_first(make_app):
-    # D5: the actions ARE the screen — full-width panel focused on launch, the
-    # MANAGE keys as one dim line, no sorters pane, no INSPECTING.
+    # D5/D6: the actions ARE the screen — borderless full-width section focused
+    # on launch, no sorters pane, no INSPECTING, and the MANAGE keys merged into
+    # the ONE bottom key line (D6 — the separate managebar row became air).
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
@@ -1396,17 +1397,138 @@ async def test_boots_actions_first(make_app):
         assert app.focused is actions
         assert actions.option_count == 6     # the six WORKFLOW actions only (D5)
         assert not app.query("#sorters") and not app.query("#inspect")
-        manage = app.query_one("#managebar").render().plain
-        for key in ("e params", "m sorters", "p probe", "v verify"):
-            assert key in manage
+        assert not app.query("#managebar")
+        footer = app.query_one("#footer").render().plain
+        for key in ("e params", "m sorters", "p probe", "v verify", "? help"):
+            assert key in footer
+
+
+async def test_d6_sections_are_hairlines_not_boxes(make_app):
+    # D6: whitespace + hairline language — the ACTIONS/RESULTS labels live on
+    # rule lines, and no widget carries the old rounded-box chrome. Asserted at
+    # the PAINT level (render_line), not the renderable: a rule sized past the
+    # content width word-wraps out of the 1-row clip and vanishes while
+    # render().plain still contains it (D6 review #1).
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        head_paint = app.query_one("#actionshead").render_line(0).text
+        assert head_paint.startswith("ACTIONS") and "─" in head_paint
+        assert app.query_one("#actionpane").styles.border_top[0] in ("", "none")
+        results_paint = app.query_one("#results").render_line(0).text
+        assert results_paint.startswith("RESULTS") and "─" in results_paint
+
+
+async def test_d6_section_rules_track_resize(make_app):
+    # The RESULTS rule is repainted by _relayout, so a width change never leaves
+    # a stale over-length rule wrapping into stolen body rows (D6 review #3).
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.resize_terminal(80, 40)
+        await pilot.pause()
+        panel = app.query_one("#results")
+        assert panel.region.height == 3            # head + name + metrics, no wrap
+        assert "─" in panel.render_line(0).text
+
+
+async def test_d6_resize_under_modal_keeps_dashboard_honest(make_app):
+    # A resize while a modal is up must retier the DASHBOARD, not the modal —
+    # the stale-air bug clipped the sixth action after Esc (D6 review #2).
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("t")                     # sorter picker up
+        await pilot.pause()
+        await pilot.resize_terminal(110, 15)       # dense while the modal is up
+        await pilot.pause()
+        await pilot.press("escape")
+        await pilot.pause()
+        assert app.query_one("#actionpane").region.height >= 6
+        assert app.query_one("#contextbar").has_class("collapsed")
+
+
+async def test_d6_crest_only_on_tall_terminals(make_app):
+    # The crest is a tall-terminal luxury: hidden at the default 80×24 (and any
+    # mid-size window), shown again when the window is genuinely tall.
+    app = make_app(present=True)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        assert app.query_one("#crest").display is False
+    app2 = make_app(present=True)
+    async with app2.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        assert app2.query_one("#crest").display is True
+
+
+async def test_d6_databar_probe_stated_once(make_app):
+    # One fact, one home (§1.1): the probe label carries ch/pitch; the old
+    # second summary ("16 contacts · linear · …") is gone from the DATA line.
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        bar = app.query_one("#databar").render().plain
+        assert "PROBE" in bar and "A1x16" in bar
+        assert "contacts" not in bar             # the summary's word, not the label's
+
+
+async def test_d6_context_sentence_under_sort(make_app):
+    # One dim context sentence: active sorter description + probe fit. Dim only —
+    # §1.5 reserves green for verified results, and this is description.
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        ctx = app.query_one("#contextbar")
+        plain = ctx.render().plain
+        assert "tridesclous2 description" in plain and "tridesclous2 fit" in plain
+        styles = {str(s.style) for s in ctx.render().spans}
+        assert not any("#3fb950" in s or "green" in s for s in styles)
+
+
+async def test_d6_sortbar_click_opens_picker(make_app):
+    # The "change" control is genuinely pressable: a mouse click on the SORT row
+    # opens the picker; the visible `t` chip is the keyboard degradation.
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        assert "t " in app.query_one("#sortbar").render().plain  # the chip shows
+        await pilot.click("#sortbar")
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.SorterPickerScreen)
+
+
+async def test_d6_action_rows_carry_key_chips(make_app):
+    # Inverse-video key chips on the action rows — pressable-looking keys.
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        a = app.c.actions[0]
+        t = app._action_text(a, disabled=False, index=0)
+        assert any("reverse" in str(sp.style) for sp in t.spans)
+        assert t.plain.startswith(" 1 ")
+
+
+async def test_d6_air_collapses_before_content(make_app):
+    # The yield law: at 80×24 the air/context chrome is gone but every action row
+    # is painted; nothing content-bearing was sacrificed for whitespace.
+    app = make_app(present=True)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        assert app.query_one("#contextbar").has_class("collapsed")
+        assert app.query_one("#actionshead").has_class("collapsed")
+        actions = app.query_one("#actions", OptionList)
+        assert app.query_one("#actionpane").region.height >= 6
+        assert actions.option_count == 6
 
 
 async def test_sortbar_names_active_with_change_hint(make_app):
+    # The affordance, not the spacing: the SORT row names the active sorter and
+    # carries a visible `t`+change control (D6 renders it as a key chip).
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
         bar = app.query_one("#sortbar").render().plain
-        assert "tridesclous2" in bar and "t change" in bar
+        assert "tridesclous2" in bar and "change" in bar and " t " in bar
 
 
 async def test_results_section_only_with_saved_sort(make_app):

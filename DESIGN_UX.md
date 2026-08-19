@@ -42,77 +42,61 @@ provides **timely updates and results**.
 7. **Every dead-end names its next step.** Empty, zero, and error states say what happened
    and the one action that helps ("0 units — lower detect_threshold in Edit parameters").
 
-## §2 The dashboard (screenshot: SPIKE crest + SORTERS/ACTIONS/INSPECTING)
+## §2 The dashboard (D6, the airy dashboard — current spec of record)
 
-> **SUPERSEDED 2026-08-18 (late) by D5** — Ben's actions-first directive (NORTHSTAR
-> decision of record): the SORTERS panel and INSPECTING are gone; the sorter list
-> lives behind the `t` picker (filter input, grouped list, one-line description
-> footer), the numbered actions are the primary full-width panel, MANAGE is one dim
-> line, and a RESULTS section appears when a saved sort exists. §1's language still
-> binds; the mock below is historical.
-
-**Findings.** Strong bones (responsive yield, grouped catalog, shape-marked ACTIVE) buried
-under noise: quadruple-stated active sorter; five-signal rows; 13 equal-weight action lines
-mixing the scientific workflow with housekeeping; three dense banner rows plus a footer
-restating them; INSPECTING clipped at 7 lines and unscrollable.
-
-**Redesign.**
+*History: D1 built the three-panel spec below-in-git; D5 (Ben, actions-first) put the
+sorter list behind the `t` picker and made the actions the screen; D6 (Ben, night —
+two reference mocks, synthesis approved) replaced D5's boxed-panel chrome with a
+whitespace + hairline language. §1 binds throughout.*
 
 ```
-  SPIKE · University of Pittsburgh                                (crest yields as today)
+                       █ SPIKE █            (crest: TALL terminals only, ≥34 rows)
+  ──────────────── University of Pittsburgh · SpikeInterface ────────────────
 
-  DATA   ✓ all 3 streams          PROBE  nnx-a1x16 · 16ch @ 100µm ✓
-  SORT   tridesclous2 · 13 units · 30 s window · ready to re-run
+  DATA  ✓ all 3 streams      PROBE  NeuroNexus A1x16-3mm-100-703 · 16 ch @ 100 µm ✓
+  SORT  ★ tridesclous2 · 18 units · 132 s saved · Ready to run    [t] change
+  Fast, reliable, CPU-only. Good default — general-purpose, robust at low counts.
 
-  WORKFLOW ──────────────────────────   SORTERS ──────────────────────────
-  1  Explore   figures: LFP + events    READY
-  2  Sort      run tridesclous2      ▌ tridesclous2   13u        ● 
-  3  Report    build + open HTML        spykingcircus2  8u        ●
-  4  Inspect   GUI on the saved sort    lupin          11u        ●
-  5  Compare   two saved sorts          simple          5u        ●
-  6  Traces    scroll raw (window)      DOCKER (on)
-                                        mountainsort4  16u        ◌
-  MANAGE (dim) ────────────────────     mountainsort5   5u        ◌
-  p probe · e params · m sorters        …
-  t theme · v verify · ? help · q quit  GPU — needs the lab box   (folded)
-                                        ● ready · ◌ needs download · – unavailable
+  ACTIONS ────────────────────────────────────────────────────────────────────
+   [1]  Explore    figures: LFP + events
+   [2]  Sort       full or quick
+   [3]  Report     build + open HTML
+   [4]  Inspect    GUI on the saved sort
+   [5]  Compare    two saved sorts
+   [6]  Traces     scroll raw signal
 
-  INSPECTING · tridesclous2 ────────────────────────────────────────────
-  Fast, reliable, CPU-only — the recommended default for this probe.
-  Fit: good for low-density linear geometry. Saved: 13u · 30 s · today 14:12.
-  ↵ activate · 2 sort · e params
+  RESULTS ────────────────────────────────────────────────────────────────────
+  tridesclous2 · 18 units · 132 s sorted
+  V_pp 33.4 µV · SNR 5.3 · noise 3.98 µV · yield 88%
 
-  LAST RESULT  ✓ report built 14:18 → outputs/report.html   (r reopen)
+  LAST  ✓ report · 14:18 → outputs/report.html   r reopen
+  1-6 run · t sorter · e params · m sorters · p probe · v verify · r reopen · ? help · q quit
 ```
 
-- **Two banner lines, not three**, and the footer carries keys only. DATA and PROBE share a
-  line (both are "inputs, verified"); SORT gets its own line — it is the workbench's state.
-- **WORKFLOW panel leads** with the five scientific actions, numbered, each with a dim
-  one-phrase explainer. Housekeeping drops into a dim MANAGE block with letter keys —
-  present, discoverable, visually silent. (Help text becomes accurate as part of this —
-  the advertised-but-nonexistent `m animation` binding goes, `x`/`w` become discoverable.)
-- **Sorter rows per the signal budget**: availability is one glyph (● runnable · ◌ needs a
-  pull · – unavailable), saved-units one number, ACTIVE marked by the left-bar + bold shape
-  (unchanged NO_COLOR affordance). `fits/weak/ready` badges move to INSPECTING. The GPU
-  group collapses to one line on this machine ("needs the lab box") instead of listing
-  five unrunnable kilosorts.
-- **INSPECTING auto-sizes and scrolls** (kills the 7-line clip), and closes with the
-  actions valid for the inspected row. It never re-states the ACTIVE chip.
-- **A persistent LAST RESULT line** — the newest run's outcome glyph, time, artifact path,
-  and a reopen key (`r`, free at dashboard level today). Results stop evaporating on the
-  next keystroke (§1.6). **Persistence decision (critique #3):** both the active sorter and
-  LAST RESULT persist to `.si_menu.json` as new keys `active_sorter` and `last_result`
-  ({action, ok, when, path}) — D1 updates CLAUDE.md's exactly-these-keys list in the same
-  slice.
-- **Traces stays a workflow action** (critique #5): `6 Traces — scroll raw signal (desktop
-  window)` joins WORKFLOW rather than being absorbed into Explore (which stays static
-  figures) or demoted to MANAGE; its explainer names the window-launch honestly.
-- **The glyph legend is the text neighbor** (critique #6): a dim one-liner under the
-  SORTERS panel — `● ready · ◌ needs download · – unavailable` — satisfies §8 for the
-  availability column; the cached-vs-not download detail lives in INSPECTING.
-- **Renumbering moves as one commit** (critique #10): the action table, its
-  `tests/conftest.py` mirror, help/hint text, and the Pilot journeys change together in
-  D1 — the suite is never half-renumbered.
+- **No boxes.** Sections are a dim label + hairline rule (`ACTIONS ────`) over
+  borderless content, separated by blank-line air. Focus lives on the highlighted
+  row, never on chrome.
+- **Crest is a tall-terminal luxury** (≥34 rows), never a mid-size squeeze; at the
+  default 80×24 it is simply absent.
+- **DATA line states the probe ONCE** — the label carries ch/pitch; no second
+  summary (§1.1).
+- **SORT keeps its one home and gains a pressable "change" control**: an
+  inverse-video `t` chip + verb; a mouse click anywhere on the row opens the
+  picker, the visible chip is the keyboard degradation.
+- **One dim context sentence** under SORT: active sorter description + probe fit.
+  Dim only — §1.5 reserves green for verified results, and this is description.
+- **Action rows carry inverse-video key chips** (` 1 `…` 6 `) — visibly pressable
+  affordances, per Ben's standing intent ("less annoying to deal with").
+- **One bottom key line**: the old MANAGE row merged into the footer's key line
+  (width-adaptive); the saved row became air.
+- **Air collapses BEFORE content** (the yield law): below 30 rows the blank-line
+  margins, context sentence, and section heads yield; below 14 everything but the
+  actions + footer; the never-clip and painted-rows tests pin 80×24 as fully
+  usable. RESULTS still yields before the action list when the budget is tight.
+- The `t` picker (filter input, grouped list, description footer), RESULTS
+  gating (only with a saved sort), and LAST RESULT semantics are unchanged from
+  D5. The RESULTS yield cell carries an "excluded as bad" suffix when PRE1's
+  bad-channel exclusion is active (absent on this recording).
 
 ## §3 The sort experience (screenshots: SORTING modal ×2, "Sort how much?")
 

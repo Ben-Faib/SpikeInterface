@@ -2419,32 +2419,34 @@ class SpikeMenuApp(App):
     CSS = """
     Screen { background: $background; }
 
+    /* D6 (the airy dashboard): NO boxed panels — sections are whitespace +
+       hairline rules. The blank-line air lives in these margins and collapses
+       (the Screen-level .dense class) BEFORE any content yields. */
     #crest { height: auto; content-align: center top; padding: 1 0 0 0; }
     #titlebar { height: 1; content-align: left middle; }
 
-    /* Always-on two-line banner (DESIGN_UX §2): one row for the INPUTS (DATA +
-       PROBE — both "verified inputs", sharing a line; a loud ✗ problem takes the
-       whole row) and one row for the workbench STATE (the active sorter). Fixed at
+    /* Always-on banner: one row for the INPUTS (DATA + PROBE), one for the
+       workbench STATE (the active sorter), one dim context sentence. Fixed at
        one row each so the crest reserve never shifts between quiet/loud text. */
     #databar { height: 1; margin: 1 2 0 2; }
-    #sortbar { height: 1; margin: 0 2 1 2; }
-    /* On an extreme-short window the banner + title yield their rows to the lists
-       (the DATA/SORT info still lives in the d Help topic). */
-    #databar.collapsed, #sortbar.collapsed, #titlebar.collapsed { display: none; }
+    #sortbar { height: 1; margin: 0 2 0 2; }
+    #contextbar { height: 1; margin: 0 2 1 2; color: $text-muted; }
+    #databar.collapsed, #sortbar.collapsed, #titlebar.collapsed,
+    #contextbar.collapsed { display: none; }
+    .dense #databar { margin: 0 2 0 2; }
 
     /* In-UI download indicator: a one-row banner-area line shown only while a
        download is live (or just finished, briefly). Hidden otherwise. */
     #dlbar { height: 1; margin: 0 2 0 2; color: $accentcolor; }
     #dlbar.hidden { display: none; }
 
-    #body { height: 1fr; padding: 1 2 0 2; layout: vertical; }
+    #body { height: 1fr; padding: 0 2 0 2; layout: vertical; }
 
-    /* ACTIONS is THE panel (D5): full-width, rounded, always focused — a
-       first-time user lands here and sees exactly what they can do. */
-    #actionpane { width: 1fr; height: 1fr; min-height: 3;
-        border: round $accentcolor 60%; padding: 0 2; }
-    #actionpane:focus-within { border: round $accentcolor; }
-    #body.tiny #actionpane { border: none; padding: 0 1; }
+    /* ACTIONS: the primary section — a hairline-ruled label over a borderless
+       full-width list. Focus shows on the highlighted row, not on chrome. */
+    #actionshead { height: 1; margin: 0 0 1 0; }
+    #actionshead.collapsed { display: none; }
+    #actionpane { width: 1fr; height: 1fr; min-height: 3; border: none; padding: 0 1; }
     #actions { height: 1fr; border: none; }
     OptionList:focus { border: none; }
 
@@ -2455,22 +2457,19 @@ class SpikeMenuApp(App):
         background: transparent; text-style: underline;
     }
 
-    /* The MANAGE keys: one dim line under the actions. */
-    #managebar { height: 1; margin: 0 3; color: $text-muted; }
-    #managebar.collapsed { display: none; }
-
-    /* RESULTS — present only when the active sorter has a saved sort: a label
-       line + one metrics line (V_pp · SNR · noise · yield). */
-    #results { height: auto; border: round #3a3f47; padding: 0 2; margin: 1 2 0 2; }
+    /* RESULTS — present only when the active sorter has a saved sort: a hairline
+       label + name line + one metrics line. Borderless; air above. */
+    #results { height: auto; padding: 0 0; margin: 1 2 0 2; }
     #results.hidden, #results.collapsed { display: none; }
+    .dense #results { margin: 0 2 0 2; }
 
     /* LAST RESULT — the newest action outcome, persistent until the next one
        (results must not evaporate on a keystroke, DESIGN_UX §1). */
     #resultbar { height: 1; margin: 0 2; }
     #resultbar.hidden, #resultbar.collapsed { display: none; }
 
-    /* Pinned to the bottom at a fixed 2 rows (transient status + key hints) so a
-       long line can never wrap and steal body rows from the lists. */
+    /* Pinned to the bottom at a fixed 2 rows (transient status + the merged
+       manage/help key line) so a long line can never wrap and steal body rows. */
     #footer { dock: bottom; height: 2; padding: 0 2; }
     """
 
@@ -2523,11 +2522,12 @@ class SpikeMenuApp(App):
         yield Static(id="titlebar")
         yield Static(id="databar")
         yield Static(id="sortbar")
+        yield Static(id="contextbar")
         yield Static(id="dlbar")
         with Vertical(id="body"):
+            yield Static(id="actionshead")
             with Vertical(id="actionpane"):
                 yield NavList(id="actions")
-            yield Static(id="managebar")
         yield Static(id="results")
         yield Static(id="resultbar")
         yield Static(id="footer")
@@ -2535,7 +2535,6 @@ class SpikeMenuApp(App):
     def on_mount(self) -> None:
         self._refresh_action_title()
         self._rebuild_actions()
-        self._render_managebar()
         self._render_results()
         # The actions ARE the screen (D5) — first-time users land on what to do.
         self.query_one("#actions", OptionList).focus()
@@ -2567,47 +2566,67 @@ class SpikeMenuApp(App):
         w, h = size.width, size.height
         self._render_databar(w)
         self._render_sortbar(w)
+        self._render_contextbar(w)
         self._render_dlbar(w)
-        self._refresh_action_title()
-        # On an extreme-short window collapse the title + banner + RESULTS +
-        # LAST RESULT + manage line so the action list keeps its rows (the d Help
-        # topic still carries the DATA/SORT info). Yield order (§1): crest first,
+        self._render_actionshead(w)
+        self._render_results_text(w)   # the RESULTS rule tracks the live width
+        # Yield order (§1, D6): the blank-line AIR and the context/section chrome
+        # collapse first (dense), then the crest (tall terminals only anyway),
         # then RESULTS, then (tiny) everything but the actions + footer.
         tiny = h < self.TINY_ROWS
-        for wid in ("#titlebar", "#databar", "#sortbar", "#resultbar",
-                    "#results", "#managebar"):
+        dense = h < self.AIR_ROWS
+        for wid in ("#titlebar", "#databar", "#sortbar", "#resultbar", "#results"):
             self.query_one(wid).set_class(tiny, "collapsed")
+        # air-adjacent chrome yields at dense, BEFORE any content shrinks
+        for wid in ("#contextbar", "#actionshead"):
+            self.query_one(wid).set_class(tiny or dense, "collapsed")
+        # The DASHBOARD's screen, never self.screen: a resize under a modal must
+        # not stamp the air tier onto the modal and leave the base screen stale
+        # (D6 review #2 — that clipped the sixth action after Esc).
+        self.query_one("#body").screen.set_class(dense and not tiny, "dense")
         self.query_one("#body").set_class(tiny, "tiny")
         # ---- the yield budget (arithmetic, never hand-tuned) --------------------
+        # non-tiny fixed rows: footer 2 · title 1 · databar 1(+1 air) · sortbar 1
+        # · contextbar 1+1 (air tier only) · actionshead 1+1 (air tier only)
         dl_rows = 1 if getattr(self, "_download", None) is not None else 0
         result_rows = 0 if tiny else (1 if getattr(self.c, "last_result", None) else 0)
         has_results = (not tiny) and bool(
             self.c.infos[self.c.active_idx].get("present"))
-        results_rows = 5 if has_results else 0     # border 2 + 2 content + margin 1
+        if tiny:
+            fixed, body_min = 2 + dl_rows, 3
+        elif dense:
+            fixed, body_min = 5 + dl_rows + result_rows, 7
+        else:
+            fixed, body_min = 10 + dl_rows + result_rows, 7
+        results_rows = (3 if dense else 4) if has_results else 0  # head+2 content(+air)
         # RESULTS yields before the action list: hide it when the budget is tight.
-        manage_rows = 0 if tiny else 1
-        fixed = 2 + dl_rows + result_rows + manage_rows + (0 if tiny else 5)
-        body_min = 3 if tiny else 9                # actions: border 2 + 7 content
         if has_results and h - fixed - results_rows < body_min:
             has_results = False
             results_rows = 0
         self.query_one("#results").set_class(not has_results, "hidden")
         reserve = fixed + results_rows + body_min
-        self.query_one("#crest", CrestWidget).fit(w, h, reserve)
+        # D6: the crest is a tall-terminal luxury, never a mid-size squeeze.
+        tall = h >= self.TALL_ROWS
+        self.query_one("#crest", CrestWidget).fit(w, h if tall else 0, reserve)
         self.query_one("#titlebar", Static).update(self._render_titlerule(w))
         self._refresh_footer(w)
 
     STACK_COLS = STACK_COLS
-        # Below this the title + banner + results collapse so the actions still fit.
+        # Below TINY the title + banner + results collapse so the actions still fit;
+        # below AIR the blank-line air + context/section chrome collapse (before any
+        # content); at/above TALL the crest is allowed back (D6: tall terminals only).
     TINY_ROWS = 14
+    AIR_ROWS = 30
+    TALL_ROWS = 34
 
     # -- the always-on DATA / SORT banner ------------------------------------- #
     def _render_databar(self, width: int) -> None:
         """The INPUTS row — DATA and PROBE share one line (DESIGN_UX §2: both are
         verified inputs; the workbench state gets its own row). The quiet path is
-        'DATA ✓ all 3 streams · PROBE <label> · <summary> ✓'; a loud data problem
-        (missing / incomplete / unreadable broadband) takes the whole row — the
-        probe half yields to the thing that needs attention."""
+        'DATA ✓ all 3 streams · PROBE <label> ✓' — the label carries ch/pitch, so
+        the probe is stated ONCE (D6, §1.1); a loud data problem (missing /
+        incomplete / unreadable broadband) takes the whole row — the probe half
+        yields to the thing that needs attention."""
         dr = self.c.data_report
         files = dr.get("files", [])
         complete = bool(files) and all(f.get("present") for f in files)
@@ -2631,11 +2650,10 @@ class SpikeMenuApp(App):
                 t.append(" — p to fix", style="#f0883e")
             else:
                 t.append("      PROBE  ", style=ui.SECONDARY)
+                # ONE probe summary (D6, §1.1): the label already says what it is
+                # (ch/pitch live in it) — never restated by a second summary here.
                 t.append(pinfo.get("label", pinfo.get("name", "unknown probe")),
                          style=f"bold {self._accent}")
-                summary = pinfo.get("summary", "")
-                if summary:
-                    t.append(f" · {summary}", style=ui.PRIMARY)
                 if match in ("fits", "auto"):
                     t.append(" ✓", style="#3fb950")
         elif not dr.get("present"):
@@ -2682,9 +2700,60 @@ class SpikeMenuApp(App):
         n = info.get("overrides", 0)
         if n:
             t.append(f" · {n} custom params", style="dim")
-        t.append("   t change", style="dim")
+        # The pressable "change" control (D6): a key chip + verb. Clicking the
+        # SORT row opens the picker (on_click); the visible `t` chip IS the
+        # degradation path on mouse-less terminals.
+        t.append("   ")
+        t.append(" t ", style="reverse dim")
+        t.append(" change", style="dim")
         t.truncate(max(1, width - 2), overflow="ellipsis")
         self.query_one("#sortbar", Static).update(t)
+
+    def _render_contextbar(self, width: int) -> None:
+        """One dim context sentence under SORT (D6): what the active sorter is +
+        how it fits the active probe. Never green — §1.5 reserves green for
+        verified results, and this is description, not verification."""
+        info = self.c.infos[self.c.active_idx]
+        desc = (info.get("description") or "").strip().rstrip(".")
+        fit = (info.get("fit") or {}).get("reason", "").strip().rstrip(".")
+        t = Text()
+        if desc:
+            t.append(desc, style="dim")
+        if desc and fit:
+            t.append("  —  ", style="dim")
+        if fit:
+            t.append(fit, style="dim")
+        t.truncate(max(1, width - 2), overflow="ellipsis")
+        self.query_one("#contextbar", Static).update(t)
+
+    def _section_rule(self, label: str, avail: int) -> Text:
+        """The D6 section language: a small dim-bold label with a hairline rule
+        filling exactly ``avail`` content columns — whitespace + hairline, never
+        a box, and never a wrapped-away rule (D6 review #1)."""
+        # no_wrap: a Rich Text renderable wraps by Rich's rules (Textual's
+        # text-wrap doesn't reach it) — any residual overlength must CLIP, never
+        # wrap the rule out of a 1-row widget.
+        t = Text(no_wrap=True)
+        t.append(label + " ", style=f"bold {ui.SECONDARY}")
+        t.append("─" * max(0, avail - len(label) - 1), style=_BORDER_DIM)
+        return t
+
+    # Rule widths: the widget's content_region is the truth once laid out, but it
+    # is STALE mid-resize (relayout runs on the event, before the layout pass) —
+    # so the live event width caps it (#actionshead paints at width-8 in the
+    # current CSS, #results at width-4). A rule capped a frame short self-heals
+    # on the next relayout; a rule a frame long would wrap out of the 1-row clip.
+    def _render_actionshead(self, width: int) -> None:
+        head = self.query_one("#actionshead", Static)
+        avail = head.content_region.width or max(10, width - 8)
+        avail = min(avail, max(10, width - 8))
+        head.update(self._section_rule("ACTIONS", avail))
+
+    def on_click(self, event) -> None:
+        # The SORT row (and its context sentence) is a pressable control: a click
+        # anywhere on it opens the sorter picker — same action as the `t` chip.
+        if getattr(event.widget, "id", None) in ("sortbar", "contextbar"):
+            self.action_pick_sorter()
 
     def _render_dlbar(self, width: int) -> None:
         """The collapsed download indicator. Hidden when no session; while live shows
@@ -2725,26 +2794,29 @@ class SpikeMenuApp(App):
             t.append("   [w expand]", style="#6e7681")
         bar.update(t)
 
-    def _render_managebar(self) -> None:
-        """The MANAGE keys as one dim line under the actions (D5 spec item 3)."""
-        t = Text()
-        t.append("e params · m sorters · p probe · v verify · ? help · q quit",
-                 style="dim")
-        self.query_one("#managebar", Static).update(t)
-
     def _render_results(self) -> None:
-        """RESULTS (D5 spec item 4): shown only when the active sorter has a saved
-        sort — a label line + one metrics line. No prose."""
+        """State-change entry point: repaint RESULTS, then re-run the layout
+        budget (the text itself is also repainted by _relayout on every resize,
+        via _render_results_text, so the hairline rule tracks the live width)."""
+        self._render_results_text()
+        self._relayout()
+
+    def _render_results_text(self, width: int | None = None) -> None:
+        """RESULTS: shown only when the active sorter has a saved sort — a
+        hairline label + name line + one metrics line. No prose, no recursion."""
         panel = self.query_one("#results", Static)
         info = self.c.infos[self.c.active_idx]
         if not info.get("present"):
             panel.add_class("hidden")
             panel.update("")
-            self._relayout()
             return
         panel.remove_class("hidden")
-        panel.border_title = "RESULTS"
-        t = Text()
+        width = width if width is not None else self.size.width
+        # The live width wins over content_region (stale mid-resize): margin 2+2,
+        # zero padding -> width-4.
+        avail = min(panel.content_region.width or 10_000, max(10, width - 4))
+        t = self._section_rule("RESULTS", avail)
+        t.append("\n")
         t.append(info["name"], style=f"bold {self._accent}")
         t.append(f" · {info['units']} units · {info['duration']:.0f} s sorted\n",
                  style=ui.PRIMARY)
@@ -2758,12 +2830,11 @@ class SpikeMenuApp(App):
         else:
             t.append("metrics not computed for this sort", style="dim")
         panel.update(t)
-        self._relayout()
 
     def _refresh_action_title(self) -> None:
-        # Plain "ACTIONS" — the active sorter's one at-rest home is the SORT banner
-        # (§1.1; the old "— on <sorter>" suffix was a second home, D1 review #5).
-        self.query_one("#actionpane").border_title = "ACTIONS"
+        # D6: the section head (hairline rule) carries the plain "ACTIONS" label —
+        # the active sorter's one at-rest home stays the SORT banner (§1.1).
+        self._render_actionshead(self.size.width)
 
     # -- rendering helpers ---------------------------------------------------- #
     def _render_titlerule(self, width: int) -> Text:
@@ -2790,8 +2861,8 @@ class SpikeMenuApp(App):
 
     def _rebuild_actions(self) -> None:
         """The six WORKFLOW actions, full width, each with its one-line description
-        (D5). The MANAGE housekeeping is NOT in the list — it renders as one dim
-        line below (#managebar) and runs by letter key."""
+        (D5). The MANAGE housekeeping is NOT in the list — it runs by letter key,
+        shown on the footer's merged key line (D6)."""
         ol = self.query_one("#actions", OptionList)
         keep = ol.highlighted
         ol.clear_options()
@@ -2807,9 +2878,10 @@ class SpikeMenuApp(App):
 
     def _action_text(self, a: dict, disabled: bool, index: int) -> Text:
         t = Text()
-        # Prefix each workflow row with its jump-key so 1-6 is self-documenting at
-        # every width (the footer hint is dropped on narrow terminals).
-        t.append(f"{index + 1}  ", style="dim")
+        # D6: the jump-key is an inverse-video chip — a visibly pressable
+        # affordance at every width (the footer hint drops on narrow terminals).
+        t.append(f" {index + 1} ", style="reverse dim" if disabled else "reverse")
+        t.append("  ")
         t.append(a["title"], style="dim" if disabled else "bold")
         if a.get("hint"):
             t.append(f"   {a['hint']}", style="dim")
@@ -2859,13 +2931,19 @@ class SpikeMenuApp(App):
         bar.update(t)
 
     def _footer_hint(self, width: int, focus: str | None = None) -> str:
-        """Width-adaptive key hint for the single actions screen (D5)."""
-        if width >= 92:
-            return ("↑/↓ choose · Enter run · 1-6 jump · t sorter · "
-                    "r reopen · d data · ? help · q quit")
-        if width >= 60:
-            return "↑/↓ choose · Enter run · 1-6 · t sorter · r · ? · q quit"
-        return "↑↓ run · t sorter · ? · q quit"
+        """Width-adaptive key line — D6 merges the MANAGE keys and help into this
+        ONE bottom line (the old separate managebar row became air)."""
+        if width >= 110:
+            return ("↑/↓ ↵ · 1-6 run · t sorter · e params · m sorters · p probe · "
+                    "v verify · r reopen · d data · ? help · q quit")
+        if width >= 100:
+            return ("↑/↓ ↵ · 1-6 run · t sorter · e params · m sorters · p probe · "
+                    "r reopen · ? help · q quit")
+        if width >= 72:
+            return "↵ run · 1-6 · t sorter · e params · m sorters · p probe · ? help · q quit"
+        if width >= 48:
+            return "↵ · 1-6 · t sorter · m · p · ? help · q quit"
+        return "↑↓ run · t · ? · q"
 
     def action_manage_active(self) -> None:
         """``x``: manage the ACTIVE sorter — a small confirm offering only the
