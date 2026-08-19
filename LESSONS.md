@@ -8,6 +8,16 @@ process lessons.*
 
 ---
 
+**S6 (2026-08-18) — a layout re-plumb can turn tests into silent skips, and the suite gets
+*greener*.** W2's run-store re-plumb moved `outputs/<sorter>/analyzer`; `test_report_golden`'s
+fixture and `test_report_resolution`'s guard globbed the old path and, finding nothing,
+**skipped** — 14 report tests stopped running on a machine full of saved sorts, and the
+only symptom was a higher skip count. Lesson: a fixture/guard that skips when its expected
+layout is absent converts any layout change into silent test disablement — resolve fixtures
+through the owning module (the tests now ask `runs.saved_sorters()`), and after any
+re-plumb compare the suite's **skip count** before/after, not just the failure count.
+Encoded: the restored tests in the W2 lane (`ce4ab94`); this entry.
+
 **S5 (2026-08-18) — agent worktrees can be created on a stale base.** Two conductor-run
 builder worktrees started 62 files behind main (`84d3bc0`); both builders caught it and
 reset onto main before working, but one that didn't would have built on sealed history and
