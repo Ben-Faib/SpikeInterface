@@ -17,21 +17,25 @@ box) runs alongside everything.
 
 ---
 
-## ▶ NOW — updated 2026-08-18 late night: **CONDUCTOR v2 RUN LIVE — landing the parked lanes**
+## ▶ NOW — updated 2026-08-19: **CONDUCTOR v2 RUN LIVE — s2+s3 landed; s4 building; W2 folding its review**
 
-- **Landed so far this run:** W1 s2 on main (`cddd677`, rebased + validated
-  fresh: 488-green suite, 19-unit anchor sort, record → apply → curated canary
-  3.993 µV, honest compare pages; CLAUDE.md curation row added).
-- **In lanes:** W1 s3 (`lane-w1s3`) — the never-made handoff commit was
-  recovered from the scratchpad worktree (`c441ad1`), rebased onto s2's folded
-  tip with the schema reconciled (508 green incl. 21 phy round-trip tests);
-  live export/import validation + Fable review still to run. W2
-  (`worktree-agent-a660e788ee8453c5b`) — builder lane running the handoff's
-  next-steps list (first-run regenerate, calibrate tolerances, write the
-  missing tests, slice-4 decision); review + integration LAST.
-- **Then:** s4 gate opens (peer if present, else a builder lane), W2 integrates
-  with the sort_paths() re-plumb, final suite + launch check, close the run.
-  Gated OPEN: P3 (adapter map), WD (lab box), W3 (face pick), W4 (lab data).
+- **Landed so far this run:** W1 s2 (`cddd677`, validated fresh end-to-end) and
+  W1 s3 (`96a53cb`, Fable review fix-first: rmtree guard, blank-anchor refusals,
+  stale-curated refusal — all folded; suite 514 at the fold). Peer commit
+  `ff518fd` (Ben's .nev flag): the compare page now states the reference's
+  per-electrode-slot structure (7 sorted units on 4 electrodes); suite 516.
+- **In lanes:** s4 in-TUI triage — building on `ff518fd` in
+  `.claude/worktrees/lane-w1s4` (the first dispatch produced nothing; branch was
+  reset to main and re-dispatched). W2 — build + Fable review done (verdict
+  fix-first; store core verified sound); the lane is folding findings 1–8
+  (params criterion, phy path keys, utf8 stdout, empty-vs-empty, docker config,
+  recording-identity criterion, skip-guard, containment validity note).
+- **Then, in order:** s4 review + land → W2 integrates LAST (collision map is in
+  the review: compare.py hard, menu moderate-hard; fix the menu re-sort-both
+  compare flow with `--make-current` there; re-point curation.sort_paths through
+  the store; decide the legacy-curated-visibility question) → final suite +
+  launch check → close. Gated OPEN: P3 (adapter map), WD (lab box), W3 (face
+  pick), W4 (lab data).
 
 ## The dependency graph
 
@@ -65,7 +69,7 @@ box) runs alongside everything.
 | 7 | D4 flow modals | `goals/GOAL_D_UIUX.md` | **SEALED 2026-08-18** (`f115015`) |
 | 8 | T2/T3 journey + honesty tests | `goals/GOAL_T_TESTING.md` | **SEALED 2026-08-18** (peer, `7e6938d`) |
 | 9 | P2 multi-shank · P3 wiring | `goals/GOAL_P_PROBES.md` | **P2 SEALED 2026-08-18** (peer, `8af8111`: ProbeGroup imports as probes-as-shanks, wiring pinned verbatim, physical density classing; suite 388 green, canary 3.993 µV, review ship). P3 needs adapter map; three new recorded items in the brief |
-| 10 | W1 curation | `goals/GOAL_W1_CURATION.md` | **slices 1+2 SEALED 2026-08-18** (s2 on main `cddd677`: record → apply → re-score, review folded, validated fresh — 19-unit anchor sort, curated canary 3.993 µV, honest compare; follow-ups recorded in the brief); **slice 3 IN FLIGHT** (`lane-w1s3` rebased onto s2, suite 508 green, review pending); **slice 4 gated on s3** |
+| 10 | W1 curation | `goals/GOAL_W1_CURATION.md` | **slices 1–3 SEALED** (s1 rule owner; s2 lifecycle `cddd677` 2026-08-18; s3 Phy round-trip `96a53cb` 2026-08-19 — review fix-first, rmtree guard + blank-anchor + stale-curated refusals folded, follow-ups F4–F8/F10 in the brief); **slice 4 IN LANE** (`lane-w1s4`, building on `ff518fd`) |
 | 11 | W2 reproducibility | `goals/GOAL_W2_REPRO.md` | next after PRE1 lands (run_sorting freed) |
 | PRE1 | bad channels out of the reference (E1's finding; conductor prompt item 1) | prompt below | **SEALED 2026-08-18** (`c823f55`) — **premise re-scoped with evidence**: zero channels flagged; ch1's pathology is sub-300 Hz (bandpass removes it pre-CMR; in-band it's the QUIETEST channel and carries a unit); feature kept as insurance + measured tdc2 non-determinism (14/16/18 units) now drives W1 anchoring + W2 tolerances |
 | D6 | the airy dashboard (Ben's two mocks, approved in-session) | NORTHSTAR decision 2026-08-18 night | **SEALED 2026-08-18** (peer, `98f2645`) — hairline sections, crest ≥34 rows, pressable t-chip, key chips, air-yields-first; review fix-first (hairline never painted; resize-under-modal), all folded; suite 441, deliberate double re-baseline |

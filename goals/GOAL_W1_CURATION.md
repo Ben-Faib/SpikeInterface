@@ -60,3 +60,24 @@ per slice.
 - **Seeded 3-way GMM split method**: the slice-2 review measured it as an
   incremental gain over the shipped k-means on the merged pairs (residue still
   swamps within-unit splits — leverage is upstream); optional, not implemented.
+
+## Recorded follow-ups (from the slice-3 review, 2026-08-18)
+
+- **Seeded-quality echo (F4)**: the export seeds current labels into
+  cluster_quality.tsv; if Ben relabels a unit by hand after export, an untouched
+  cluster's stale seeded value imports back as a fake "phy" verdict (loud, but
+  misattributed). Fix shape: record seeded labels in the manifest; import treats
+  a quality value identical to its seed as "no verdict" (a group edit always wins).
+- **Seeding skips the identity check (F5)**: a stale record beside a fresh sort
+  seeds old labels onto same-numbered new units (import is refused later, but the
+  curation session was already poisoned). Skip seeding + say why when the record's
+  anchor doesn't match disk.
+- **`--out` re-import hint (F6)**: after `export-phy --out <dir>`, the printed
+  next step omits `--from <dir>` and would read the default folder.
+- **rc 0 on all-rejected import (F7)**: "imported 0, rejected N" exits 0;
+  scripted callers see success.
+- **Verify Phy's label snippet (F8)**: the docstring's `:quality unsure` is
+  likely `:l quality unsure` — verify once on a machine with Phy installed.
+- **Anchor `probe` field null on bare CLI sorts (F10, pre-existing)**:
+  run_sorting records `probe` from the flag only, so one of the anchor's seven
+  fields never binds for bare CLI runs; created+n_units carry it.

@@ -71,7 +71,9 @@ uv run python scripts/run_sorting.py --duration 30   # quick sort smoke test (fi
 uv run python scripts/curation.py show --sorter tridesclous2   # curation record + curated state (label/merge/split/apply)
 ```
 
-Menu actions: `explore | sort | report | gui | traces | compare | verify`.
+Menu actions: `explore | sort | report | gui | traces | compare | verify | phy`
+(`phy` exports the saved sort — curated when one exists — for manual curation in Phy;
+verdicts return via `curation.py import-phy`).
 `verify_install.py` is the loader smoke test — run it after changing `blackrock_io.py`.
 
 Scripts document their own flags in their module docstrings (kept current — read those

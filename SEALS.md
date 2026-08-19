@@ -13,21 +13,26 @@ A need left only in a chat summary is a need Ben never sees.*
 - **The pipeline works end to end on the one recording**: load → sort (4 local sorters,
   Docker fallback) → analyzer + six array/yield metrics on four surfaces → report/compare;
   noise-floor canary steady at ~4 µV across all saved sorts.
-- **The curation loop is live** (W1 s2, `cddd677`): merge/split/label decisions persist in
-  an anchored record beside the sort, replay onto a curated Sorting with re-scored metrics,
-  and every surface states curated-vs-raw honestly; records refuse a sort they weren't
-  written against (tdc2 non-determinism makes that refusal load-bearing). Remaining science
-  gaps: Phy export round-trip (s3, in flight), in-TUI triage (s4), and versioned runs with
-  complete provenance (W2, in lane) — this run closes them.
+- **The curation loop is live** (W1 s2 `cddd677` + s3 `96a53cb`): merge/split/label
+  decisions persist in an anchored record beside the sort, replay onto a curated Sorting
+  with re-scored metrics, every surface states curated-vs-raw honestly, and the hard cases
+  round-trip through Phy (`phy` menu action / `export-phy` → curate → `import-phy`, verdicts
+  landing back in the same record with source="phy"); records and manifests refuse a sort
+  they weren't written against (tdc2 non-determinism makes that refusal load-bearing).
+  Remaining science gaps: in-TUI triage (s4, in lane) and versioned runs with complete
+  provenance (W2, review folded, integration pending) — this run closes them.
 - **Probe geometry is real** (`nnx-a1x16-3mm-100` default) with channel→site wiring a
   user-accepted identity mapping — true depth order still waits on the lab's adapter map.
 - **Deployment target is the UPitt lab's Windows+GPU box**; Windows Docker-sort cleanup
   crash fixed 2026-08-18 (`7940f96`); GPU-sorter enablement (kilosort4) not yet started (WD).
-- **Current focus: CONDUCTOR v2 RUN LIVE (2026-08-18 late night)** — W1 s2 landed on main
-  (`cddd677`); W1 s3 recovered (the close-time handoff commit was never made — the work sat
-  uncommitted in a temp worktree) and rebased onto s2; W2 builder lane running its handoff's
-  next-steps list. Then: s4, W2 integration, close. Facts of record binding design: E1's
-  premise FALSE in-band (PRE1), tdc2 non-deterministic (14/16/17/18/19 units now observed).
+- **Current focus: CONDUCTOR v2 RUN LIVE (2026-08-19)** — landed: W1 s2 (`cddd677`), W1 s3
+  (`96a53cb`), Ben's .nev-structure honesty commit (peer, `ff518fd`). In lanes: W2 (build +
+  Fable review done, findings folding; integrates last with the curation sort_paths
+  re-point), s4 in-TUI triage (building on `ff518fd`). Then: final suite + launch + close.
+  Facts of record binding design: E1's premise FALSE in-band (PRE1), tdc2 non-deterministic
+  (14/16/17/18/19 units now observed), and .nev unit ids are PER-ELECTRODE SLOTS — the
+  manual reference carries 7 sorted electrode×slot units on 4 electrodes, stated on the
+  compare page (`ff518fd`), and cross-electrode same-slot coincidence is chance-level.
   Product facts on record: built by Benjamin Faibussowitsch with Aleece Al-Olimat for
   UPitt researchers on industry-standard SpikeInterface.
 
@@ -47,6 +52,27 @@ A need left only in a chat summary is a need Ben never sees.*
 ---
 
 ## The ledger (newest first)
+
+**2026-08-19 — W1 s3: the Phy round trip, recovered, reviewed fix-first, landed (`96a53cb`)**
+- Did: recovered the lane's never-committed work from the temp worktree, rebased it onto
+  s2's folded schema, ran its Fable review (fix-first), folded all three must-fixes —
+  the `--out` rmtree guard (an explicit target could have deleted the raw sort wholesale),
+  blank-anchor refusals on BOTH sides of the trip (the reviewer reproduced labels landing
+  on the wrong sort through an anchorless manifest), and the stale-curated export refusal —
+  and landed it: `phy` menu action, export with identity manifest + id map + seeded labels,
+  import keyed by the map with source="phy" provenance and named refusals.
+- Means: the measured dead-end (tdc2's merges unsplittable by any modest method — residue
+  3.6–5.4×) now has its human path: the hard cases go out to Phy and the verdicts come back
+  into the same record every surface reads, with wrong-sort/wrong-sorter/stale/anchorless
+  folders refused by name rather than quietly mis-imported.
+- Moved: suite 514 at the fold (516 on main with the peer's `ff518fd`); raw + curated
+  exports exercised live and the shipped artifact regenerated post-fix; six review
+  follow-ups (F4–F8, F10) recorded in the W1 brief; CLAUDE.md's actions line + brief
+  updated.
+- Needs Ben: nothing — F8 (Phy's exact label-snippet syntax) waits on any machine with Phy
+  installed.
+- Next: s4 (in-TUI triage) builds in its lane; W2's review findings fold in parallel;
+  W2 integrates last, re-pointing curation's sort_paths through the run store.
 
 **2026-08-18 — W1 s2: the curation lifecycle, landed and validated fresh (`cddd677`)**
 - Did: rebased the review-folded lane onto main (one semantic conflict: PRE1's bad-channel
