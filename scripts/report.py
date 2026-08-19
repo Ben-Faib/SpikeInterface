@@ -123,17 +123,22 @@ def _curation_facts(analyzer_dir) -> dict:
     "record"} — a pure read (curation imports no SpikeInterface).
     """
     raw_dir = Path(analyzer_dir)
-    sorter_dir = raw_dir.parent
-    curated_dir = sorter_dir / curation.CURATED_DIRNAME / "analyzer"
-    is_curated = raw_dir.name == "analyzer" and \
-        sorter_dir.name != curation.CURATED_DIRNAME and curated_dir.is_dir()
+    # A caller can also hand us the curated analyzer directly; then it IS the
+    # curated result and must be named as one.
+    if raw_dir.parent.name == curation.CURATED_DIRNAME:
+        sorter_dir = raw_dir.parent.parent
+        show_dir, is_curated = raw_dir, True
+    else:
+        sorter_dir = raw_dir.parent
+        # "Curated wins when it exists" is decided in ONE place (curation.py).
+        show_dir, is_curated = curation.preferred_analyzer_dir(raw_dir)
     record = curation.load_record(path=sorter_dir / curation.RECORD_NAME)
-    show_dir = curated_dir if is_curated else raw_dir
-    stale = (curation.stale_reason(_run_info(curated_dir), record, _run_info(raw_dir))
+    stale = (curation.stale_reason(_run_info(show_dir), record,
+                                   _run_info(sorter_dir / "analyzer"))
              if is_curated else "")
     return {"dir": show_dir, "curated": is_curated, "record": record, "stale": stale,
             "line": curation.provenance_line(record, curated=is_curated,
-                                             has_curated=curated_dir.is_dir())}
+                                             has_curated=is_curated)}
 
 
 def _curation_html(cur, sorter_label) -> str:
@@ -1112,6 +1117,13 @@ def _render_context(lfp, nev, events) -> str:
 def _curation_provenance(cur) -> str:
     """The curation record's own provenance block: the decisions and where they live."""
     if not cur or not cur.get("record"):
+        if cur and cur.get("curated"):
+            # Curated data with no record: say the decisions are unknown. Claiming
+            # "nothing was curated" here would describe the raw sort, not this one.
+            return ('<div class="caveat">This is a curated result, but its curation '
+                    'record is missing — nothing on disk says which merges, splits or '
+                    'labels produced these units, so they cannot be audited. Re-apply '
+                    'from a record, or treat the raw sort as the result.</div>')
         return ('<p class="note">No curation record for this sort — nothing has been '
                 'merged, split or labelled; these are the sorter\'s own units.</p>')
     record = cur["record"]

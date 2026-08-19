@@ -193,6 +193,8 @@ def _catalog(active: str, use_docker: bool, profile: dict | None = None) -> list
         # RESULTS numbers come from it too — and the fact rides along so the view
         # can say "curated" instead of implying raw sorter output.
         cur = curation.state(name)
+        # "Curated wins when it exists" comes from curation.preferred_analyzer
+        # (one rule, one home) — state() reports it as has_curated.
         show_curated = present and cur["has_curated"]
         if show_curated:
             c_present, c_units, c_duration = _saved_summary(name, curated=True)

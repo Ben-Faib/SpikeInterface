@@ -9,9 +9,10 @@
 built by ``curation.py apply``) instead of the raw sorter output — the point of
 the curation lifecycle is that decisions can be measured against a reference.
 Every page states which of the two it is showing, in both modes; without the flag
-a sorter with a curated result is still shown raw, and says so. Asking for
-``--curated`` where nothing has been applied is a hard error, not a silent
-fallback to raw.
+a sorter with a curated result is still shown raw, and says so. In the pair mode
+each side shows its curated result where it has one and the per-sort note says
+which. Asking for ``--curated`` when NO side has one is a hard error, not a
+silent fallback to a raw-vs-raw page under a curated flag.
 
 The pair mode writes outputs/comparison.html; the online mode writes
 outputs/comparison_online.html — separate files, so building one never silently
@@ -93,7 +94,7 @@ def _load(sorter: str, curated: bool = False):
 
     paths = curation.sort_paths(sorter)
     analyzer_dir = paths["curated_analyzer"] if curated else paths["analyzer"]
-    if not analyzer_dir.exists():
+    if not analyzer_dir.is_dir():
         return None, None
     a = si.load_sorting_analyzer(analyzer_dir)
     return a.sorting, float(a.get_total_duration())
@@ -175,7 +176,8 @@ def _metrics_section(curated: bool = False) -> dict:
     cards = []
     for n in names:
         paths = curation.sort_paths(n)
-        use_curated = curated and paths["curated_analyzer"].is_dir()
+        _dir, has_curated = curation.preferred_analyzer(n)
+        use_curated = curated and has_curated
         card = sort_summary.load_summary(paths["curated"] if use_curated else paths["out"])
         cards.append((n + " (curated)" if use_curated else n, card))
     cards = [(n, c) for n, c in cards if c is not None]
@@ -206,18 +208,25 @@ def _metrics_section(curated: bool = False) -> dict:
     return {"id": "metrics", "title": "Array / yield metrics by sorter", "html": note + table}
 
 
+def _pair_names() -> tuple:
+    """The two sorters the flagless pair page compares (first two saved sorts)."""
+    found = saved_sorters()
+    return tuple(found[:2]) if len(found) >= 2 else DEFAULT_SORTERS
+
+
 def build_comparison(data_dir=None, sorters=None, out_path=None, curated=False) -> Path:
     out_path = Path(out_path) if out_path else (OUTPUT_DIR / "comparison.html")
     OUTPUT_DIR.mkdir(exist_ok=True)
     if sorters is None:
-        found = saved_sorters()
-        sorters = tuple(found[:2]) if len(found) >= 2 else DEFAULT_SORTERS
+        sorters = _pair_names()
     s1_name, s2_name = sorters
 
     # With --curated each side shows its curated result where one exists; the
-    # per-sort note below says which, so a mixed page is still honest.
+    # per-sort note below says which, so a mixed page is still honest. Whether one
+    # exists is the one rule in curation.preferred_analyzer.
     def _side(name):
-        use = curated and curation.sort_paths(name)["curated_analyzer"].is_dir()
+        _dir, has_curated = curation.preferred_analyzer(name)
+        use = curated and has_curated
         return _load(name, curated=use), use
 
     (s1, d1), c1 = _side(s1_name)
@@ -591,12 +600,18 @@ def main(argv=None) -> int:
     if args.nev and not args.online:
         parser.error("--nev requires --online SORTER")
     # An explicit --curated with nothing applied fails hard rather than quietly
-    # comparing the raw sort (the repo's explicit-fails-hard asymmetry).
-    if args.curated and args.online:
-        if not curation.sort_paths(args.online)["curated_analyzer"].is_dir():
+    # comparing the raw sort (the repo's explicit-fails-hard asymmetry). In the
+    # pair mode each side may or may not have a curated result — but if NEITHER
+    # does, the page would be raw-vs-raw under a --curated flag, so that errors too.
+    if args.curated:
+        wanted = [args.online] if args.online else list(_pair_names())
+        curated_now = [n for n in wanted if curation.preferred_analyzer(n)[1]]
+        if not curated_now:
+            names = ", ".join(str(n) for n in wanted)
             parser.error(
-                f"--curated: no curated result for {args.online} — record decisions "
-                f"and run: uv run python scripts/curation.py apply --sorter {args.online}")
+                f"--curated: no curated result for {names} — record decisions and run: "
+                "uv run python scripts/curation.py apply --sorter "
+                f"{wanted[0] if wanted else '<sorter>'}")
     print(build_online_comparison(args.online, nev_path=args.nev,
                                   delta_ms=args.delta_ms, curated=args.curated)
           if args.online else build_comparison(curated=args.curated))

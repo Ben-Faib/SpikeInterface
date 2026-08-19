@@ -1596,7 +1596,7 @@ async def test_results_names_a_curated_result(make_app):
         assert "curated" not in app.query_one("#results").render().plain
         # The controller ships curation.state() alongside the other per-sorter facts.
         app.c.infos[app.c.active_idx]["curated"] = {
-            "has_curated": True, "stale": False,
+            "has_curated": True, "has_record": True, "stale": False,
             "counts": {"splits": 3, "merges": 0, "labels": 1, "removed": 0, "total": 4},
             "line": "curated from the tridesclous2 run (sorted 2026-08-18 21:15), "
                     "4 decisions (3 splits, 0 merges, 1 label), 2026-08-18 21:27"}
@@ -1605,6 +1605,23 @@ async def test_results_names_a_curated_result(make_app):
         text = app.query_one("#results").render().plain
         assert "curated (4 decisions)" in text
         assert "12 units" in text          # the rest of the line is unchanged
+
+        # A curated result the record has outrun says so rather than looking fine.
+        app.c.infos[app.c.active_idx]["curated"]["stale"] = True
+        app._render_results()
+        await pilot.pause()
+        assert "stale" in app.query_one("#results").render().plain
+
+        # Curated data with no record must not read as "0 decisions" (= nothing done).
+        app.c.infos[app.c.active_idx]["curated"] = {
+            "has_curated": True, "has_record": False, "stale": True,
+            "counts": {"splits": 0, "merges": 0, "labels": 0, "removed": 0, "total": 0},
+            "line": "curated result — its curation record is missing; provenance unknown"}
+        app._render_results()
+        await pilot.pause()
+        text = app.query_one("#results").render().plain
+        assert "curated (record missing)" in text
+        assert "0 decisions" not in text
 
 
 async def test_actions_keep_rows_at_common_sizes(make_app):

@@ -247,6 +247,18 @@ def test_cli_curated_without_a_curated_result_fails_hard(monkeypatch, capsys):
     assert "no curated result" in capsys.readouterr().err
 
 
+def test_cli_curated_pair_mode_fails_hard_when_neither_side_is_curated(
+        monkeypatch, capsys):
+    """Bare --curated used to render a raw-vs-raw page under a curated flag."""
+    monkeypatch.setattr(compare, "_pair_names", lambda: ("sorterA", "sorterB"))
+    monkeypatch.setattr(compare, "build_comparison",
+                        lambda **kw: pytest.fail("built a raw page under --curated"))
+    with pytest.raises(SystemExit):
+        compare.main(["--curated"])
+    err = capsys.readouterr().err
+    assert "no curated result" in err and "sorterA, sorterB" in err
+
+
 def test_cli_online_flag_selects_the_nev_mode(monkeypatch, capsys):
     seen = []
     monkeypatch.setattr(compare, "build_comparison",

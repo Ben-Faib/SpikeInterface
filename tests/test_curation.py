@@ -118,7 +118,10 @@ def test_structural_errors_catch_a_foreign_unit_and_a_repeated_index(tmp_path):
 
 def test_provenance_line_says_which_result(tmp_path):
     record, _paths = _record(tmp_path)
-    assert curation.provenance_line(None) == "raw sorter output — no curation applied"
+    assert (curation.provenance_line(None, curated=False)
+            == "raw sorter output — no curation applied")
+    # No record while SHOWING curated data is a different, louder statement.
+    assert "curation record is missing" in curation.provenance_line(None, curated=True)
     assert "no curation applied" in curation.provenance_line(record, curated=False)
     curation.add_split(record, 1, [[0], [1]], "kmeans", {})
     curation.add_label(record, 2, "MUA")
@@ -157,6 +160,33 @@ def test_state_reports_raw_curated_and_stale(tmp_path):
     curation.save_record(record, paths["record"])
     st = curation.state(SORTER, tmp_path)
     assert st["stale"] and "new decisions" in st["stale_reason"]
+
+
+def test_curated_on_disk_without_a_record_is_never_called_raw(tmp_path):
+    """Deleting curation.json must not turn curated numbers into "raw sorter
+    output — no curation applied" on any surface."""
+    _rec, paths = _record(tmp_path)          # run_info on disk, no curation.json
+    paths["curated_analyzer"].mkdir(parents=True)
+    paths["curated_run_info"].write_text(json.dumps({"curated": True, "n_units": 4}),
+                                         encoding="utf-8")
+    line = curation.provenance_line(None, curated=True)
+    assert line == ("curated result — its curation record is missing; "
+                    "provenance unknown")
+    st = curation.state(SORTER, tmp_path)
+    assert st["has_curated"] and not st["has_record"]
+    assert "raw" not in st["line"]
+    assert st["stale"] and "record is missing" in st["stale_reason"]
+
+    paths["analyzer"].mkdir(parents=True, exist_ok=True)
+    cur = report._curation_facts(paths["analyzer"])
+    assert cur["curated"] is True and cur["record"] is None
+    html = report._curation_html(cur, SORTER)
+    assert "no curation applied" not in html
+    assert "curation record is missing" in html
+    # The provenance block must not claim nothing was curated either.
+    prov = report._curation_provenance(cur)
+    assert "nothing has been merged" not in prov
+    assert "cannot be audited" in prov
 
 
 def test_state_flags_a_re_sort_under_a_curated_result(tmp_path):
@@ -327,6 +357,45 @@ def test_apply_merges_splits_labels_and_never_touches_the_raw_sort(synthetic):
     assert st["has_curated"] and not st["stale"]
 
 
+def test_apply_refuses_to_write_into_the_raw_sort(synthetic):
+    """--out outputs/<sorter> would delete the raw sorting/ + analyzer/ it curates."""
+    root, paths, unit_ids = synthetic["root"], synthetic["paths"], synthetic["unit_ids"]
+    record = curation.new_record(SORTER, unit_ids, root=root)
+    curation.add_label(record, unit_ids[0], "good")
+    for target in (paths["out"], paths["sorting"], paths["analyzer"],
+                   paths["out"] / "." / "sub" / ".."):     # a path that resolves back
+        with pytest.raises(RuntimeError) as e:
+            curation.apply_record(record, root, out_dir=target, verbose=False)
+        assert "refusing to write the curated result" in str(e.value)
+    # ...and the raw sort is still there afterwards.
+    assert (paths["sorting"] / "provenance.json").exists() or paths["sorting"].is_dir()
+    assert paths["analyzer"].is_dir()
+
+
+def test_apply_refuses_when_the_sort_cannot_be_identified(synthetic, tmp_path):
+    """A missing/corrupt run_info.json unbinds the anchor — that must refuse, not
+    pass: an all-None identity would otherwise "match" any sort."""
+    root, paths, unit_ids = synthetic["root"], synthetic["paths"], synthetic["unit_ids"]
+    record = curation.new_record(SORTER, unit_ids, root=root)
+    curation.add_label(record, unit_ids[0], "good")
+    saved = paths["run_info"].read_text(encoding="utf-8")
+    paths["run_info"].unlink()
+    try:
+        with pytest.raises(RuntimeError) as e:
+            curation.apply_record(record, root, verbose=False)
+        assert "cannot identify the saved" in str(e.value)
+        assert "run_info.json" in str(e.value)
+    finally:
+        paths["run_info"].write_text(saved, encoding="utf-8")
+
+    # The mirror case: a record whose own anchor is blank binds to nothing.
+    blank = curation.new_record(SORTER, unit_ids, run={}, root=root)
+    curation.add_label(blank, unit_ids[0], "good")
+    with pytest.raises(RuntimeError) as e:
+        curation.apply_record(blank, root, verbose=False)
+    assert "no usable anchor" in str(e.value)
+
+
 def test_apply_refuses_a_record_written_against_another_sort(synthetic):
     root, paths, unit_ids = synthetic["root"], synthetic["paths"], synthetic["unit_ids"]
     record = curation.new_record(SORTER, unit_ids, root=root)
@@ -339,6 +408,99 @@ def test_apply_refuses_a_record_written_against_another_sort(synthetic):
     assert "written against a different" in msg
     assert "sorted at" in msg and "units" in msg
     assert "write a fresh record" in msg          # the message names the next step
+
+
+def test_curated_run_info_carries_the_raw_to_curated_unit_map(synthetic, tmp_path):
+    """The Phy round-trip (and any later import) needs to know which sorter unit a
+    curated unit came from."""
+    root, paths, unit_ids = synthetic["root"], synthetic["paths"], synthetic["unit_ids"]
+    a, b, c = (str(u) for u in unit_ids)
+    record = curation.new_record(SORTER, unit_ids, root=root)
+    curation.add_merge(record, [unit_ids[0], unit_ids[1]])
+    n_c = _spike_counts(paths["sorting"])[c]
+    curation.add_split(record, unit_ids[2],
+                       [list(range(0, n_c, 2)), list(range(1, n_c, 2))], "kmeans", {})
+    out = tmp_path / "mapped"
+    curation.apply_record(record, root, out_dir=out, verbose=False)
+    info = json.loads((out / "run_info.json").read_text(encoding="utf-8"))
+    m = info["unit_id_map"]
+    # The merged pair points at ONE curated unit, and that unit names both sources.
+    merged = m["raw_to_curated"][a]
+    assert len(merged) == 1 and m["raw_to_curated"][b] == merged
+    sources = {s["unit"] for s in m["curated_to_raw"][merged[0]]}
+    assert sources == {a, b}
+    # The split unit points at TWO curated units, each sourced from it alone.
+    children = m["raw_to_curated"][c]
+    assert len(children) == 2
+    for child in children:
+        assert [s["unit"] for s in m["curated_to_raw"][child]] == [c]
+    # Spike counts add up to the raw unit's train.
+    assert sum(m["curated_to_raw"][child][0]["n_spikes"] for child in children) == n_c
+    # It is a repo-relative POSIX path, not an absolute one (merge-back + Windows).
+    assert info["curation_record"] == f"outputs/{SORTER}/curation.json"
+
+
+def test_label_records_where_the_decision_came_from(tmp_path):
+    """Phy-origin labels must be distinguishable from a person's own call."""
+    record, _paths = _record(tmp_path)
+    curation.add_label(record, 1, "good")
+    curation.add_label(record, 2, "noise", source="phy")
+    methods = [d["method"] for d in record["decisions"]]
+    assert methods == ["manual", "phy"]
+
+
+def test_a_summary_failure_keeps_the_curated_analyzer(synthetic, monkeypatch, tmp_path):
+    """run_sorting's semantics: the array/yield summary is best-effort on its own —
+    a summary hiccup must not delete a good analyzer + metrics."""
+    root, unit_ids = synthetic["root"], synthetic["unit_ids"]
+    record = curation.new_record(SORTER, unit_ids, root=root)
+    curation.add_label(record, unit_ids[0], "good")
+
+    def boom(*a, **kw):
+        raise RuntimeError("summary exploded")
+
+    monkeypatch.setattr(curation._summary, "compute_summary", boom)
+    out = tmp_path / "curated_out"
+    result = curation.apply_record(record, root, out_dir=out, verbose=False)
+    assert result["summary"] is None
+    assert result["metrics_note"] is None          # the METRICS did not fail
+    assert (out / "analyzer").is_dir()
+    assert (out / "quality_metrics.csv").exists()
+    assert not (out / "summary.json").exists()
+
+
+def test_a_metrics_failure_keeps_the_units_and_clears_the_derived_data(
+        synthetic, monkeypatch, tmp_path):
+    """The sort pipeline's contract, carried over: units saved first, half-built
+    derived data removed so no surface reads it as this result."""
+    import spikeinterface.full as si
+
+    root, unit_ids = synthetic["root"], synthetic["unit_ids"]
+    record = curation.new_record(SORTER, unit_ids, root=root)
+    curation.add_label(record, unit_ids[0], "good")
+
+    out = tmp_path / "curated_fail"
+    out.mkdir()
+    (out / "analyzer").mkdir()                     # stale leftovers from a past run
+    (out / "quality_metrics.csv").write_text("stale", encoding="utf-8")
+    (out / "summary.json").write_text("{}", encoding="utf-8")
+    (out / "summary.csv").write_text("stale", encoding="utf-8")
+
+    def boom(*a, **kw):
+        raise RuntimeError("analyzer exploded")
+
+    monkeypatch.setattr(si, "create_sorting_analyzer", boom)
+    result = curation.apply_record(record, root, out_dir=out, verbose=False)
+    assert "analyzer exploded" in result["metrics_note"]
+    assert (out / "sorting").is_dir()              # the units survive
+    assert result["n_units"] == len(unit_ids)
+    assert not (out / "analyzer").exists()
+    for stale in ("quality_metrics.csv", "summary.json", "summary.csv"):
+        assert not (out / stale).exists()
+    # The run_info still gets written, carrying the note.
+    info = json.loads((out / "run_info.json").read_text(encoding="utf-8"))
+    assert "analyzer exploded" in info["metrics_note"]
+    assert info["unit_id_map"]["raw_to_curated"]
 
 
 def test_propose_splits_partitions_every_spike_and_repeats(synthetic):

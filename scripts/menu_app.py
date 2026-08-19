@@ -2829,12 +2829,19 @@ class SpikeMenuApp(App):
         t.append(f" · {info['units']} units · {info['duration']:.0f} s sorted",
                  style=ui.PRIMARY)
         # A curated result is what the report shows, so this line must name it as
-        # curated rather than let the numbers read as raw sorter output.
+        # curated rather than let the numbers read as raw sorter output — and say
+        # when its record is missing (0 decisions would read as "nothing was done")
+        # or when it no longer matches what is on disk.
         curated = info.get("curated")
         if curated:
             n = curated.get("counts", {}).get("total", 0)
-            t.append(f" · curated ({n} decision{'' if n == 1 else 's'})",
-                     style=ui.SECONDARY)
+            if curated.get("has_record"):
+                mark = f" · curated ({n} decision{'' if n == 1 else 's'})"
+            else:
+                mark = " · curated (record missing)"
+            if curated.get("stale"):
+                mark += " · stale"
+            t.append(mark, style=ui.SECONDARY)
         t.append("\n", style=ui.PRIMARY)
         summary = info.get("summary")
         if summary:
