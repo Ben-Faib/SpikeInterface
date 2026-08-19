@@ -81,3 +81,22 @@ per slice.
 - **Anchor `probe` field null on bare CLI sorts (F10, pre-existing)**:
   run_sorting records `probe` from the flag only, so one of the anchor's seven
   fields never binds for bare CLI runs; created+n_units carry it.
+
+## Recorded follow-ups (from the slice-4 review, 2026-08-19 — verdict ship, all hardening)
+
+- **TOCTOU on the no-record first label**: triage open → concurrent CLI re-sort →
+  first keypress anchors a fresh record to the NEW run_info while the screen shows
+  the old sort's units. Fix shape: triage_state returns the run identity it
+  rendered; label_unit verifies it before writing. (Revisit after W2's store —
+  run dirs change the shape.)
+- **Corrupt record silently replaced** (pre-existing): load_record returns None
+  for malformed JSON, indistinguishable from absent → first write overwrites the
+  corrupt audit trail. Distinguish unparseable from absent; refuse via anchor_error.
+- **Empty-state wording after a metrics crash**: triage says "no saved sort —
+  press 2 to sort" when sorting/ exists and only derived data was cleaned;
+  rebuilding metrics is the honest next step.
+- **_TRIAGE_KEYS vocabulary unpinned**: duplicates QUALITY_OPTIONS with only a
+  comment; one test asserting the sets match would pin it.
+- **Scope note**: the controller's spike counts read the loose sorting/ folder
+  (best SI-free-adjacent source; run_sorting rewrites it every run). CLAUDE.md's
+  "leftovers — ignore" line is scoped to report.py and stays true.

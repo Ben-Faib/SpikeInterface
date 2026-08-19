@@ -53,6 +53,24 @@ A need left only in a chat summary is a need Ben never sees.*
 
 ## The ledger (newest first)
 
+**2026-08-19 — W1 s4: in-TUI unit triage, reviewed ship, landed (`f594a31`)**
+- Did: landed the triage screen — unit list + NaN-honest per-unit evidence card off
+  disk, g/m/n/u writing through curation.py's API (source="tui") behind a live
+  anchor re-check via the new pure `anchor_error()`, reviewed n/N, stale/refused
+  states verbatim with named next steps, a pressable "u triage" chip on RESULTS —
+  with the Fable review's verdict ship, all four judgment calls accepted, and its
+  four hardening minors recorded in the W1 brief.
+- Means: a researcher can triage a sort without leaving the terminal, and every
+  label lands in the same anchored record the CLI, report, and Phy round trip
+  read — the W1 curation track is now feature-complete (rule → lifecycle → Phy →
+  TUI).
+- Moved: suite 534 green on main (11 snapshots; the three dashboard re-baselines
+  verified text-identical except the chip); the reviewer replicated the write
+  path live and the byte-unchanged-record refusal; W1's remaining work is
+  follow-up hardening only.
+- Needs Ben: nothing — press u on a sorted result when curious.
+- Next: W2 integration lands last (in lane now), then the run close.
+
 **2026-08-19 — W1 s3: the Phy round trip, recovered, reviewed fix-first, landed (`96a53cb`)**
 - Did: recovered the lane's never-committed work from the temp worktree, rebased it onto
   s2's folded schema, ran its Fable review (fix-first), folded all three must-fixes —

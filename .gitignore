@@ -17,6 +17,9 @@ ENV/
 # it would break a push. Track raw data with git-lfs / DVC or out-of-band instead.
 *.ns[1-6]
 *.nev
+# Trellis-derived per-recording exports Ben drops beside the data (e.g. the
+# unit-summary CSV) — recording data stays out of git like the raw files.
+PFCM*_unit_summary.csv
 
 # --- SpikeInterface / analysis outputs ---
 outputs/
