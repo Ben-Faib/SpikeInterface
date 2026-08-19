@@ -51,3 +51,21 @@ cannot displace a full run. Fresh-context Fable review per slice.
 - `--progress json` stdout purity holds through any new run-store output.
 - Keep `outputs/` gitignored; provenance records are data about runs, and run data stays
   local. The committable artifact is the config file, never the outputs.
+
+## Recorded follow-ups (from the integration, 2026-08-19)
+
+- **run_info `probe` records the raw --probe arg** (None on bare CLI sorts), not the
+  resolved probe_id — so a bare-CLI sort that applied real geometry gets the
+  placeholder-geometry caveat on its report. Fix shape: record the resolved
+  probe_id + fallback flag; surfaces read those.
+- **A full run whose metrics crashed still takes the pointer** (sorting/ but no
+  analyzer/): report then hard-errors while a complete previous run sits one back.
+  Design choice recorded at review; revisit if the lab hits it.
+- **Menu "clear saved sorts" deletes every run + curated + pointer in one click**;
+  the confirm copy doesn't say "all N runs". Per-run delete does not exist; store
+  growth is unbounded (each quick sort adds a permanent run dir).
+- **Stray `current.json.<pid>.tmp`** left forever on a crash between tmp-write and
+  os.replace (harmless, never read).
+- **Config export carries `--probe <name>`** which may not exist in another
+  machine's library (geometry hash catches collisions); embedding geometry in the
+  config is a design call not taken.
