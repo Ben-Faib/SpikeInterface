@@ -375,3 +375,125 @@ def test_thin_reason_is_the_one_home_for_the_hedge():
     assert ss.thin_reason(True, None) == "unknown"
     # Only a PASS is ever hedged; a failure and a non-judgement are not "thin".
     assert ss.thin_reason(False, 30) == "" and ss.thin_reason(None, 30) == ""
+
+
+# --------------------------------------------------------------------------- #
+# The merge advisory: "do I need to split this unit?" (GOAL_PRESENT item 2)
+# --------------------------------------------------------------------------- #
+# The calibration is this recording's measured tridesclous2 sort: four dense
+# merged units at ISI 1.06 to 1.36 on thousands of spikes, and a tail of thin
+# units whose ratios run far higher on a handful of spikes precisely because the
+# statistic divides by the count squared.
+_MERGED = [
+    dict(unit=4, contact="5", n_spikes=7557, snr=7.64, isi=1.358),
+    dict(unit=8, contact="9", n_spikes=7004, snr=7.36, isi=1.233),
+    dict(unit=10, contact="11", n_spikes=5843, snr=6.56, isi=1.339),
+    dict(unit=16, contact="7", n_spikes=2668, snr=11.78, isi=1.057),
+]
+_THIN = [
+    dict(unit=11, contact="12", n_spikes=35, snr=5.33, isi=107.77),
+    dict(unit=14, contact="15", n_spikes=270, snr=5.07, isi=24.75),
+    dict(unit=13, contact="14", n_spikes=118, snr=5.28, isi=9.48),
+    dict(unit=12, contact="13", n_spikes=432, snr=5.13, isi=4.72),
+    dict(unit=19, contact="7", n_spikes=31, snr=4.52, isi=0.0),
+]
+
+
+def _measured_rollup(**kw):
+    rows = _MERGED + _THIN
+    summary = _summary(n_units=len(rows), per_unit=[
+        {"unit": r["unit"], "v_pp_uV": 50.0, "snr": r["snr"],
+         "best_channel": r["contact"]} for r in rows])
+    metrics = {str(r["unit"]): dict(snr=r["snr"], isi_violations_ratio=r["isi"],
+                                    presence_ratio=1.0) for r in rows}
+    counts = {str(r["unit"]): r["n_spikes"] for r in rows}
+    return ss.unit_rollup(summary, metrics, spike_counts=counts, **kw)
+
+
+def test_the_advisory_fires_on_the_measured_merges_and_never_on_thin_evidence():
+    r = _measured_rollup()
+    advised = {u["unit"] for u in r["units"] if u["split_advice"]}
+    assert advised == {4, 8, 10, 16}          # every merged unit, and only those
+    assert r["n_split_candidates"] == 4
+    # Ranked strongest first, like every other list the rollup returns.
+    assert r["split_contacts"] == ["7", "5", "9", "11"]
+    assert r["split_line"] == ("4 units fire at impossible intervals (ch 7·5·9·11): each "
+                               "likely two cells under one label · consider splitting "
+                               "(export to Phy)")
+    assert all(u["split_advice"] == ss.SPLIT_PHRASE
+               for u in r["units"] if u["split_advice"])
+    # A unit scoring 108 on 35 spikes is the loudest ratio in the sort and still
+    # says nothing: the floor is what keeps the advisory pointed at real merges.
+    assert next(u for u in r["units"] if u["unit"] == 11)["split_advice"] == ""
+
+
+def test_the_advisory_is_advisory_it_changes_no_verdict_and_no_count():
+    r = _measured_rollup()
+    # Every advised unit failed the rule's own ISI criterion (the advisory's
+    # threshold is a multiple of it), so the advisory explains a sub-threshold
+    # verdict rather than contradicting a pass.
+    for u in r["units"]:
+        if u["split_advice"]:
+            assert u["verdict"] is False and "ISI ratio" in u["why"]
+    # ...and no unit the rule accepted is ever advised to split.
+    assert not any(u["split_advice"] for u in r["units"] if u["verdict"])
+    assert r["n_accepted"] == 1 and r["n_strong"] == 0   # unit 19, on thin evidence
+    # And it is stated in the rollup's own words, wherever it is shown.
+    assert r["split_rule_text"] == ss.split_rule_text(ss.DEFAULT_QUALITY_RULE)
+
+
+def test_a_nan_or_uncounted_unit_gets_no_advisory_rather_than_a_negative_one():
+    dense = dict(snr=9.0, isi_violations_ratio=float("nan"), presence_ratio=1.0)
+    assert ss.split_advice(dense, n_spikes=5000) == ""
+    # Counted, dense, high ISI, but no SNR to say it is a real unit at all.
+    assert ss.split_advice(dict(isi_violations_ratio=3.0), n_spikes=5000) == ""
+    # Dense and impossible, but nobody counted the spikes: never guessed.
+    assert ss.split_advice(dict(snr=9.0, isi_violations_ratio=3.0)) == ""
+    # A noise cluster firing at impossible intervals is noise, not a merge.
+    assert ss.split_advice(dict(snr=1.0, isi_violations_ratio=3.0), n_spikes=5000) == ""
+
+
+def test_the_advisory_thresholds_follow_the_quality_rule():
+    assert ss.split_isi_threshold() == ss.SPLIT_ISI_FACTOR * 0.5
+    loose = dict(ss.DEFAULT_QUALITY_RULE, isi_violations_ratio_max=1.0, snr_min=8.0)
+    assert ss.split_isi_threshold(loose) == 2.0
+    row = dict(snr=7.0, isi_violations_ratio=1.5)
+    assert ss.split_advice(row, n_spikes=5000)                       # fires by default
+    assert ss.split_advice(row, n_spikes=5000, rule=loose) == ""      # both gates move
+    assert "ISI ratio ≥ 2" in ss.split_rule_text(loose)
+    assert "SNR ≥ 8" in ss.split_rule_text(loose)
+    # The floor is the isolation floor's order of magnitude, never a loose number.
+    assert ss.SPLIT_MIN_SPIKES == 10 * ss.ISOLATION_MIN_SPIKES
+    assert ss.split_advice(row, n_spikes=ss.SPLIT_MIN_SPIKES - 1) == ""
+    assert ss.split_advice(row, n_spikes=ss.SPLIT_MIN_SPIKES)
+
+
+def test_bimodal_amplitudes_corroborate_the_advisory_and_never_fire_it_alone():
+    r = _measured_rollup(bimodality={"16": 0.5835, "4": 0.4092, "11": 0.99})
+    by = {u["unit"]: u for u in r["units"]}
+    assert by[16]["split_advice"] == ss.SPLIT_PHRASE_BIMODAL
+    assert "amplitudes look bimodal" in by[16]["split_advice"]
+    assert by[4]["split_advice"] == ss.SPLIT_PHRASE       # unimodal: no extra claim
+    # The thin unit is bimodal by accident on 35 spikes and stays silent: the
+    # amplitude signal only ever corroborates an advisory the ISI already fired.
+    assert by[11]["split_advice"] == ""
+
+
+def test_the_bimodality_coefficient_reads_two_humps_and_refuses_the_meaningless():
+    two_humps = [-20.0] * 40 + [-60.0] * 40
+    assert ss._bimodality_coefficient(two_humps) > ss.SPLIT_BIMODALITY_MIN
+    one_hump = [-50.0 + (i % 9) - 4 for i in range(200)]
+    assert ss._bimodality_coefficient(one_hump) < ss.SPLIT_BIMODALITY_MIN
+    assert ss._bimodality_coefficient([1.0, 2.0, 3.0]) is None      # n < 4
+    assert ss._bimodality_coefficient([5.0] * 50) is None           # no spread at all
+
+
+def test_split_line_is_empty_when_nothing_fires():
+    assert ss.split_line(0, []) == ""
+    assert ss.split_line(1, ["5"]) == ("1 unit fires at impossible intervals (ch 5): "
+                                       "likely two cells under one label · consider "
+                                       "splitting (export to Phy)")
+    r = ss.unit_rollup(_rollup_summary(), {"0": dict(snr=4.5, isi_violations_ratio=0.0)},
+                       spike_counts={"0": 5000})
+    assert r["n_split_candidates"] == 0 and r["split_line"] == ""
+    assert all(u["split_advice"] == "" for u in r["units"])

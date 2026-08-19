@@ -563,6 +563,8 @@ h3 { font-size: 16px; margin: 32px 0 6px; }
 .takeaway .rollup { font-size: 15px; margin: 14px 0 6px; line-height: 1.75; }
 .takeaway .rollup strong { font-weight: 600; }
 td .why { color: var(--muted); font-size: 12.5px; display: block; }
+/* The merge advisory: amber, because it needs attention and has a next step (§1.5). */
+td .advice { color: var(--amber); font-size: 12.5px; display: block; }
 td .yes { color: var(--green); font-weight: 600; }
 td .no { color: var(--muted); }
 
@@ -793,6 +795,10 @@ def _unit_rows(units, with_match: bool) -> list:
         cell = f'<span class="{cls}">{verdict}</span>'
         if u["why"]:
             cell += f'<span class="why">{html.escape(u["why"])}</span>'
+        # The merge advisory sits with the verdict it explains, in the rollup's
+        # own words (sort_summary owns them; this only escapes them).
+        if u.get("split_advice"):
+            cell += f'<span class="advice">{html.escape(u["split_advice"])}</span>'
         row = [f'<code>{html.escape(str(u["unit"]))}</code>',
                html.escape(str(u["contact"])),
                _num(u["snr"], ".3g"),
@@ -832,6 +838,20 @@ def _render_strong_units(rollup, stamp_html, matches_meta) -> str:
                  'the isolation metrics cannot be computed at all. Isolation phrases come '
                  'from the PCA metrics (nearest-neighbour hit rate, L-ratio, isolation '
                  'distance).</p>')
+    if rollup.get("n_split_candidates"):
+        rule_note += (
+            '<p class="note"><strong>The split advisory is advisory:</strong> it changes '
+            'no verdict, no count and no threshold. It fires on a unit with enough spikes '
+            'to mean it whose refractory violations are as dense as a second neuron firing '
+            'at the unit\'s own rate, which is what one cluster holding two cells looks '
+            f'like ({html.escape(rollup.get("split_rule_text", ""))}). The ISI line is '
+            f'{sort_summary.SPLIT_ISI_FACTOR:g}× the quality rule\'s own ceiling, so '
+            'retuning the rule moves both together. The spike floor is what stops the '
+            'advisory firing hardest on the units that mean least: the ratio divides by '
+            'the spike count squared, so a 30-spike unit with three violations outscores '
+            'a real merge many times over. Where the sort saved spike amplitudes, a '
+            'histogram more two-humped than flat is named as corroboration; its absence '
+            'is not evidence against.</p>')
     if with_match:
         m = matches_meta or {}
         rule_note += (
@@ -849,9 +869,18 @@ def _render_strong_units(rollup, stamp_html, matches_meta) -> str:
         return body + ('<div class="caveat"><strong>No units in this sort.</strong> '
                        'Lower <code>detect_threshold</code> in Edit parameters and '
                        're-run the sort.</div>')
+    # "Do I need Phy?": the one question the block could not answer before, in
+    # the rollup's words. Amber: it needs attention and has a next step (§1.5).
+    split_html = ""
+    if rollup.get("split_line"):
+        split_html = ('<div class="caveat"><strong>Do I need Phy?</strong> '
+                      + html.escape(rollup["split_line"])
+                      + '. Each is flagged in the verdict column, and press '
+                      '<code>y</code> in the menu to export this sort for Phy.</div>')
     if accepted:
         body += ('<p class="rollup"><strong>' + html.escape(rollup["headline"])
                  + '</strong><br>' + html.escape(rollup["contact_line"]) + '</p>')
+        body += split_html
         body += _table(headers, _unit_rows(accepted, with_match))
     else:
         body += ('<div class="caveat"><strong>No unit passes the quality rule</strong> ('
@@ -862,6 +891,7 @@ def _render_strong_units(rollup, stamp_html, matches_meta) -> str:
                  'SpikeInterface_Menu.py</code>, then <code>u</code> for triage — or '
                  'loosen <code>quality_rule</code> in <code>.si_menu.json</code> if the '
                  'thresholds are wrong for this preparation.</div>')
+        body += split_html
     if tail:
         n_un = rollup["n_unjudged"]
         unjudged = (f" ({n_un} of them could not be judged at all)" if n_un else "")
@@ -906,7 +936,8 @@ def _render_verdict(analyzer, analyzer_dir, info, sorter_label, status, data_dir
             summary or {}, _quality_metric_rows(analyzer),
             rule=sort_summary.load_quality_rule(bio.REPO_ROOT / ".si_menu.json"),
             spike_counts=_spike_counts(analyzer),
-            matches=(matches or {}).get("by_unit") if matches else None)
+            matches=(matches or {}).get("by_unit") if matches else None,
+            bimodality=sort_summary.amplitude_bimodality(analyzer))
         shown = (f"{sorter_label} · curated" if (cur or {}).get("curated")
                  else sorter_label)
         lead += _render_strong_units(

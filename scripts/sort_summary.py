@@ -53,6 +53,13 @@ surface shows), but the WORD is hedged below ``ISOLATION_MIN_SPIKES``: those uni
 are ``thin``, and the headline says so — *"1 strong unit (ch 7) · 5 more pass the
 rule on thin evidence"* — rather than flattering thin evidence into a headline
 number.
+
+The rollup also answers **"do I need to split this unit?"** (``split_advice``, the
+per-unit field and the ``split_line`` summary). It runs on the sort's own quality
+metrics, so novel data with no hand-sorted reference beside it gets the same
+answer. It is advisory only: it changes no verdict, no count and no threshold, and
+its criteria are derived from the quality rule rather than invented beside it. See
+the block above ``split_advice`` for the reasoning and the measured calibration.
 """
 from __future__ import annotations
 
@@ -299,6 +306,123 @@ def isolation_phrase(metrics, *, n_spikes=None, shares_contact_with=0,
     return "clean" if clean == len(usable) else "mostly separate"
 
 
+# --------------------------------------------------------------------------- #
+# THE MERGE ADVISORY (GOAL_PRESENT item 2): "do I need to split this unit?"
+#
+# Answered from the sort's OWN metrics, so a novel recording with no hand-sorted
+# .nev beside it gets the same answer. It is advisory: it changes no verdict, no
+# count and no threshold, it never blocks anything, and it is never a
+# certification. It says one thing, in plain words: this unit looks like two cells.
+#
+# THE SIGNAL. SpikeInterface's isi_violations_ratio is Hill et al.'s contamination
+# estimate: the firing rate of the hypothetical extra neuron that would produce
+# the refractory violations observed, over the unit's own rate. At 1.0 the
+# violations are as dense as a second neuron firing at this unit's own rate, which
+# is what one cluster holding two cells looks like. The quality rule's
+# isi_violations_ratio_max (0.5 by default) is the "is this unit clean" line;
+# SPLIT_ISI_FACTOR times that line is the "this is not contamination, this is a
+# second cell" line. Retuning the rule moves both together, and no fresh magic
+# number enters. At the defaults the advisory fires at ratio >= 1.0.
+#
+# THE EVIDENCE FLOOR, which is the whole difficulty. The ratio divides by the
+# spike count SQUARED, so a 35-spike junk unit with three violations scores 108
+# while a real merge with 7557 spikes scores 1.36: read without a floor the
+# advisory would fire hardest on the units that mean the least. A unit therefore
+# has to carry SPLIT_MIN_SPIKES before its ratio is treated as a property of the
+# spike train rather than of the count. ISOLATION_MIN_SPIKES (100) is the floor
+# below which a PCA cluster means nothing; an inverse-square statistic needs an
+# order of magnitude more, hence ten times it. Measured on this recording: the
+# four dense merged units (ISI 1.06 to 1.36, 2668 to 7557 spikes) all fire, and
+# every unit below 500 spikes, including the ones scoring 4.7 to 108, does not.
+#
+# Solid SNR (the rule's own snr_min) is the third gate: a noise cluster firing at
+# impossible intervals is not a merge, it is noise, and the rule already says so.
+#
+# NaN never masquerades as a verdict here either. A unit whose ISI ratio, SNR or
+# spike count is absent gets NO advisory, never a negative one.
+#
+# THE SECOND SIGNAL, when the caller has spike amplitudes. Two cells under one
+# label often leave two humps in the amplitude histogram. ``amplitude_bimodality``
+# (compute half, below) scores that with the bimodality coefficient
+# ((skew^2 + 1) / kurtosis, sample-corrected), whose 5/9 reference value is the
+# score of a uniform distribution: above it, a sample is more two-humped than
+# flat. It only CORROBORATES an advisory the ISI already fired, because a merge of
+# two similar cells is unimodal in amplitude (three of this recording's four are)
+# and a 30-spike histogram is bimodal by accident. Being a shape statistic it is
+# scale-free, so the µV question above cannot reach it.
+SPLIT_ISI_FACTOR = 2.0
+SPLIT_MIN_SPIKES = 10 * ISOLATION_MIN_SPIKES
+SPLIT_BIMODALITY_MIN = 5.0 / 9.0
+SPLIT_PHRASE = ("fires at impossible intervals: likely two cells sharing this "
+                "contact. Consider splitting (export to Phy)")
+SPLIT_PHRASE_BIMODAL = ("fires at impossible intervals and its spike amplitudes "
+                        "look bimodal: likely two cells sharing this contact. "
+                        "Consider splitting (export to Phy)")
+
+
+def split_isi_threshold(rule=None) -> float:
+    """The ISI ratio at which the advisory fires: the rule's own line, scaled."""
+    rule = rule or DEFAULT_QUALITY_RULE
+    base = rule.get("isi_violations_ratio_max",
+                    DEFAULT_QUALITY_RULE["isi_violations_ratio_max"])
+    return SPLIT_ISI_FACTOR * float(base)
+
+
+def split_rule_text(rule=None) -> str:
+    """The effective advisory criteria, human-readable. Stated wherever it fires."""
+    rule = rule or DEFAULT_QUALITY_RULE
+    snr_min = rule.get("snr_min", DEFAULT_QUALITY_RULE["snr_min"])
+    return (f"ISI ratio ≥ {split_isi_threshold(rule):g} "
+            f"({SPLIT_ISI_FACTOR:g}× the rule's own ceiling) · "
+            f"≥ {SPLIT_MIN_SPIKES:,} spikes · SNR ≥ {float(snr_min):g}")
+
+
+def split_advice(metrics, *, n_spikes=None, snr=None, rule=None,
+                 bimodality=None) -> str:
+    """Plain words when a unit looks like two cells, or "" when it does not.
+
+    ONE home for the wording, as ``isolation_phrase`` is for isolation: the
+    report, the dashboard and triage quote this string rather than each deciding
+    what "needs splitting" means. ``metrics`` is one unit's quality-metrics row;
+    ``snr`` overrides the row's own column when the caller already resolved it;
+    ``bimodality`` is that unit's ``amplitude_bimodality`` score when computed.
+    """
+    rule = rule or DEFAULT_QUALITY_RULE
+    metrics = metrics or {}
+    if n_spikes is None or n_spikes < SPLIT_MIN_SPIKES:
+        return ""                       # too little evidence, or none counted
+    s = _f(snr if snr is not None else metrics.get("snr"))
+    if s is None or s < float(rule.get("snr_min", DEFAULT_QUALITY_RULE["snr_min"])):
+        return ""                       # noise, or unjudgeable: not a merge
+    isi = _f(metrics.get("isi_violations_ratio"))
+    if isi is None or isi < split_isi_threshold(rule):
+        return ""
+    b = _f(bimodality)
+    return (SPLIT_PHRASE_BIMODAL if b is not None and b >= SPLIT_BIMODALITY_MIN
+            else SPLIT_PHRASE)
+
+
+def _chan_list(contacts, max_contacts: int = 8) -> str:
+    """Contacts as "5·9·11", elided past ``max_contacts``. One home for the form."""
+    shown = [str(c) for c in contacts[:max_contacts]]
+    return "·".join(shown) + ("…" if len(contacts) > max_contacts else "")
+
+
+def split_line(n_split, split_contacts, max_contacts: int = 8) -> str:
+    """The advisory in one line, or "" when nothing fires.
+
+        2 units fire at impossible intervals (ch 5·9): each likely two cells
+        under one label · consider splitting (export to Phy)
+    """
+    n_split = int(n_split)
+    if not n_split:
+        return ""
+    who = "1 unit fires" if n_split == 1 else f"{n_split} units fire"
+    each = "likely two cells" if n_split == 1 else "each likely two cells"
+    return (f"{who} at impossible intervals (ch {_chan_list(split_contacts, max_contacts)}): "
+            f"{each} under one label · consider splitting (export to Phy)")
+
+
 def _contact_of(row) -> str:
     """The contact a unit peaks on, as a string. '?' when the sort saved none."""
     c = row.get("best_channel")
@@ -354,7 +478,7 @@ def contact_line(contacts, *, max_named=8) -> str:
 
 
 def unit_rollup(summary, metrics=None, *, rule=None, spike_counts=None,
-                matches=None) -> dict:
+                matches=None, bimodality=None) -> dict:
     """The takeaway for one sort: which units look real, and at which contact.
 
     Pure — json/csv-level inputs, no SpikeInterface, no NumPy — so the menu's
@@ -376,6 +500,10 @@ def unit_rollup(summary, metrics=None, *, rule=None, spike_counts=None,
                        ``compare.match_manual``. None = no manual reference was
                        available, and ``has_matches`` says so, so a surface can
                        drop the column instead of guessing.
+        bimodality     {unit: bimodality coefficient} from
+                       ``amplitude_bimodality(analyzer)``, when the caller has the
+                       analyzer open. Absent only costs the merge advisory its
+                       corroborating clause; it never changes who is advised.
 
     Units are RANKED: accepted (the rule passed) first by SNR descending, then
     everything else by SNR descending — a unit with no SNR ranks last inside its
@@ -386,6 +514,7 @@ def unit_rollup(summary, metrics=None, *, rule=None, spike_counts=None,
     per_unit = (summary or {}).get("per_unit") or []
     counts = {str(k): v for k, v in (spike_counts or {}).items()}
     match_by = {str(k): v for k, v in (matches or {}).items()}
+    bimodal_by = {str(k): v for k, v in (bimodality or {}).items()}
 
     # How many units peak on each contact — what lets a poor isolation score name
     # the neighbour it is overlapping.
@@ -402,11 +531,14 @@ def unit_rollup(summary, metrics=None, *, rule=None, spike_counts=None,
         contact = _contact_of(row)
         n_spikes = counts.get(key)
         thin = thin_reason(detail["flag"], n_spikes)
+        snr = _f(row.get("snr"))
+        if snr is None:
+            snr = _f(qm.get("snr"))
         units.append({
             "unit": uid,
             "contact": contact,
             "n_spikes": n_spikes,
-            "snr": _f(row.get("snr")) if _f(row.get("snr")) is not None else _f(qm.get("snr")),
+            "snr": snr,
             "v_pp_uV": _f(row.get("v_pp_uV")),
             "verdict": detail["flag"],
             # The rule's PASS is untouched above; only the WORD is hedged, and
@@ -422,6 +554,12 @@ def unit_rollup(summary, metrics=None, *, rule=None, spike_counts=None,
             "isolation": isolation_phrase(
                 qm, n_spikes=n_spikes, contact=contact,
                 shares_contact_with=on_contact.get(contact, 1) - 1),
+            # Advisory only: it neither sets nor softens ``verdict`` above. A unit
+            # this fires on has already failed the rule's ISI criterion (the
+            # threshold is a multiple of it), so it explains a sub-threshold
+            # verdict rather than contradicting a pass.
+            "split_advice": split_advice(qm, n_spikes=n_spikes, snr=snr, rule=rule,
+                                         bimodality=bimodal_by.get(key)),
             "match": match_by.get(key),
         })
 
@@ -434,6 +572,7 @@ def unit_rollup(summary, metrics=None, *, rule=None, spike_counts=None,
     accepted = [u for u in units if u["verdict"]]
     strong = [u for u in units if u["strong"]]
     thin = [u for u in accepted if u["thin"]]
+    splits = [u for u in units if u["split_advice"]]
     contacts = []
     for c in sorted(on_contact, key=_contact_sort_key):
         contacts.append({
@@ -465,6 +604,12 @@ def unit_rollup(summary, metrics=None, *, rule=None, spike_counts=None,
         "n_unjudged": sum(1 for u in units if u["verdict"] is None),
         "strong_contacts": [u["contact"] for u in strong],
         "thin_contacts": [u["contact"] for u in thin],
+        # The merge advisory, in the same ranked order as ``units``. Advisory: it
+        # is quoted beside the verdicts, never folded into them.
+        "n_split_candidates": len(splits),
+        "split_contacts": [u["contact"] for u in splits],
+        "split_line": split_line(len(splits), [u["contact"] for u in splits]),
+        "split_rule_text": split_rule_text(rule),
         "contact_line": contact_line(contacts),
         "headline": lines["headline"],
         "site_line": lines["site_line"],
@@ -489,9 +634,7 @@ def takeaway_lines(n_strong, strong_contacts, n_thin, thin_contacts,
     share a contact.
     """
     def _chans(contacts):
-        shown = [str(c) for c in contacts[:max_contacts]]
-        more = "…" if len(contacts) > max_contacts else ""
-        return "·".join(shown) + more
+        return _chan_list(contacts, max_contacts)
 
     n_strong, n_thin = int(n_strong), int(n_thin)
     thin_clause = ""
@@ -743,6 +886,66 @@ def _empty_summary(sorter, n_channels: int, units_in_uV: bool, duration_s=None,
         "yield_pct": 0.0, "units_per_channel": 0.0, "units_per_active_channel": 0.0,
         "active_channels": [], "per_unit": [],
     }
+
+
+def _bimodality_coefficient(values):
+    """Sarle's bimodality coefficient of a 1-D sample, or None when meaningless.
+
+    ``(skew^2 + 1) / kurtosis``, both sample-corrected. The reference value is
+    5/9 (``SPLIT_BIMODALITY_MIN``), the score of a uniform distribution: above it
+    a sample is more two-humped than flat. A shape statistic, so it is scale-free
+    and the µV question cannot reach it.
+    """
+    import numpy as np
+
+    x = np.asarray(values, dtype=float)
+    x = x[np.isfinite(x)]
+    n = int(x.size)
+    if n < 4:                      # the sample corrections need n > 3
+        return None
+    sd = float(x.std(ddof=1))
+    if sd == 0.0:                  # every spike the same amplitude: no shape at all
+        return None
+    z = (x - float(x.mean())) / sd
+    g1 = n / ((n - 1) * (n - 2)) * float(np.sum(z ** 3))
+    correction = 3.0 * (n - 1) ** 2 / ((n - 2) * (n - 3))
+    g2 = (n * (n + 1) / ((n - 1) * (n - 2) * (n - 3)) * float(np.sum(z ** 4)) - correction)
+    denom = g2 + correction
+    if denom <= 0:
+        return None
+    return round(float((g1 ** 2 + 1.0) / denom), 4)
+
+
+def amplitude_bimodality(analyzer) -> dict:
+    """{unit id (str): bimodality coefficient} from the ``spike_amplitudes`` extension.
+
+    The merge advisory's corroborating signal (see the block above
+    ``split_advice``): two cells under one label often leave two humps in the
+    amplitude histogram. ``{}`` when the extension is absent, and a unit whose
+    sample cannot carry the statistic is simply omitted. A gap costs the advisory
+    a clause, never a verdict, so nothing here is fatal.
+    """
+    import numpy as np
+
+    try:
+        by_unit = analyzer.get_extension("spike_amplitudes").get_data(outputs="by_unit")
+    except Exception:  # noqa: BLE001 - optional extension -> no corroborating signal
+        return {}
+    # SpikeInterface returns {segment index: {unit: amplitudes}}. Segments are
+    # concatenated: they are the same unit either way.
+    chunks: dict = {}
+    for seg in (by_unit.values() if isinstance(by_unit, dict) else by_unit):
+        if not isinstance(seg, dict):
+            continue
+        for u, amps in seg.items():
+            chunks.setdefault(str(u), []).append(np.asarray(amps, dtype=float))
+    out = {}
+    for u, parts in chunks.items():
+        score = _bimodality_coefficient(np.concatenate(parts) if len(parts) > 1
+                                        else parts[0])
+        if score is not None:
+            out[u] = score
+    return out
 
 
 # --------------------------------------------------------------------------- #

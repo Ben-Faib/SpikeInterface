@@ -179,3 +179,39 @@ def test_run_stamp_on_a_legacy_curated_result_never_prints_the_sorter_as_a_run()
     stamp = report._run_stamp(info, "outputs/tridesclous2/curated/analyzer",
                               "tridesclous2 · curated")
     assert "run <code>tridesclous2</code>" not in stamp
+
+
+def _merge_rollup():
+    """One merged unit (dense, impossible ISI) and one thin junk unit beside it."""
+    summary = {"per_unit": [
+        {"unit": 4, "v_pp_uV": 87.4, "snr": 7.64, "best_channel": "5"},
+        {"unit": 11, "v_pp_uV": 26.6, "snr": 5.33, "best_channel": "12"},
+    ]}
+    metrics = {
+        "4": dict(snr=7.64, isi_violations_ratio=1.358, presence_ratio=1.0),
+        "11": dict(snr=5.33, isi_violations_ratio=107.77, presence_ratio=1.0),
+    }
+    return ss.unit_rollup(summary, metrics, spike_counts={"4": 7557, "11": 35})
+
+
+def test_the_split_advisory_is_quoted_where_units_are_shown():
+    html = report._render_strong_units(_merge_rollup(), "", None)
+    # The block answers "do I need Phy?" up front, in the rollup's own words...
+    assert "Do I need Phy?" in html
+    assert ss.split_line(1, ["5"]) in html
+    # ...and against the unit itself, beside the verdict it explains.
+    assert 'class="advice"' in html
+    assert html.count(ss.SPLIT_PHRASE) == 1        # the merged unit only
+    # The criteria are stated wherever the advisory fires, never left implicit
+    # (escaped: the rule text carries an apostrophe).
+    import html as stdlib_html
+    assert stdlib_html.escape(ss.split_rule_text()) in html
+
+
+def test_a_sort_with_nothing_to_split_says_nothing_about_phy():
+    summary = {"per_unit": [{"unit": 1, "v_pp_uV": 80.0, "snr": 9.0, "best_channel": "7"}]}
+    rollup = ss.unit_rollup(summary, {"1": dict(snr=9.0, isi_violations_ratio=0.0,
+                                                presence_ratio=1.0)},
+                            spike_counts={"1": 5000})
+    html = report._render_strong_units(rollup, "", None)
+    assert "Do I need Phy?" not in html and 'class="advice"' not in html
