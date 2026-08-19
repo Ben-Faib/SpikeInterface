@@ -25,7 +25,7 @@ menu: `uv run python SpikeInterface_Menu.py` (on Windows, double-click
 | **peak contact** | the contact where a unit's spike is biggest. That is the workbench's answer to "where is this neuron?". |
 | **sorting** | the act of grouping spikes into units. **Online** sorting happened live on the rig and lives in the `.nev`. **Offline** sorting is what we run here. **Manual/curated** sorting is a human's version. |
 | **curation** | the decisions a human makes about units — this one is noise, these two are one neuron, this one should be split. |
-| **strong** | this workbench's word for "passed the quality rule" (see below). A rule of thumb for orientation. It is never a claim that a unit is definitely one neuron. |
+| **strong** | this workbench's word for "passed the quality rule *on enough spikes to mean it*" (see below). A rule of thumb for orientation. It is never a claim that a unit is definitely one neuron. |
 | **run** | one sort, with its own directory and its own id (`20260819-014531-7cc755`). Runs never overwrite each other; a pointer says which one is current. |
 
 **The quality rule.** A unit is called *strong* when it passes every criterion
@@ -41,6 +41,21 @@ sort, and `amp cutoff` needs 500 spikes. A unit no criterion could be measured o
 is reported as **not judged**, never as a failure. The thresholds are yours to
 change: put a `quality_rule` block in `.si_menu.json` and every surface will
 state the rule you actually used.
+
+**Passing and being called strong are not the same claim.** A unit with thirty
+spikes can satisfy every criterion — the ISI and amplitude criteria are counting
+almost nothing at that size, and the isolation metrics cannot be computed at all.
+Those units still *pass* (they are in the pass-quality count), but the surfaces
+say **"passes the rule · too few spikes to judge"** rather than calling them
+strong, and the headline splits the two:
+
+```
+1 strong unit (ch 7) · 5 more pass the rule on thin evidence
+```
+
+That is deliberate. A dense, well-isolated unit that missed one threshold by a
+hair is a more interesting object than a four-spike unit that cleared them all,
+and the headline should not say otherwise.
 
 ---
 
@@ -111,9 +126,9 @@ many neurons do we think we found, and where":
 - one per-contact line — *"contact 2: 1 accepted · contact 7: 1 accepted + 1
   sub-threshold candidate …"*;
 - the sub-threshold candidates folded below, same columns, same ranking;
-- and, when a manually sorted `.nev` sits beside the recording, a column naming
-  each unit's best match in it. If that file is absent the column is absent — it
-  is never guessed at.
+- and, when a manually sorted `.nev` sits beside the recording, a column matching
+  each unit against it. If that file is absent the column is absent — it is never
+  guessed at.
 
 The **isolation phrase** comes from the PCA metrics and says one of: *clean*,
 *mostly separate*, *not clearly separate from the other units*, *overlaps another
@@ -121,12 +136,22 @@ unit on ch N*, or *too few spikes to judge*. That last one is common and honest:
 below about 100 spikes those metrics cannot mean anything, so the workbench says
 so rather than scoring the unit well by accident.
 
+**Reading the manual column.** It says **"carries 100% of ch7#1"** — meaning this
+unit holds every spike of that human-sorted unit. That is the direction that
+answers *did we find the neuron the human found*, and it is the one to read
+first. The small grey number under it is the other direction — how much of *our*
+unit the human's accounts for — and it is usually small, because an offline
+sorter fires five to ten times the events a careful manual selection keeps. A low
+number there is not a disagreement; it is the two methods having different jobs.
+When no reference unit is well recovered, the cell says *"closest: …"* and makes
+no claim at all.
+
 The dashboard says the same thing in one line, so you can see it without opening
 a browser:
 
 ```
-tridesclous2 · 5 strong units of 14 · 30 s sorted
-strong at ch 2·9·12·14·7    u  triage
+tridesclous2 · 1 strong unit of 15 · 132 s sorted
+strong at ch 7 · 4 more pass the rule on thin evidence    u  triage
 ```
 
 ## 3. Triage the units yourself
@@ -283,7 +308,8 @@ it is how you hand a sort to someone else.
 |---|---|
 | noise floor near **1 µV** | the µV gain was applied twice; every amplitude is ~4× too small. Do not trust any number until it reads ~4 µV again. |
 | **0 units** | the detect threshold is too high. Lower `detect_threshold` in the menu's Edit parameters (`e`) and re-sort. |
-| **0 strong units** | the sort found candidates but none passed the rule. Judge them by hand with `u`, or loosen `quality_rule` in `.si_menu.json` if the thresholds are wrong for this preparation. |
+| **0 strong units**, but some "pass the rule on thin evidence" | every unit that passed did so on too few spikes to mean it. Sort the full recording if you were on `--duration`; otherwise judge by hand with `u`. |
+| **0 strong units** and nothing passing at all | no unit cleared the rule. Judge them by hand with `u`, or loosen `quality_rule` in `.si_menu.json` if the thresholds are wrong for this preparation — check the manual column first: a unit that carries ~100% of a human-sorted unit and misses one threshold narrowly is telling you about the threshold, not about itself. |
 | every isolation phrase says **too few spikes to judge** | normal on a short `--duration` run. Sort the full recording. |
 | the unit count **changed** between two identical sorts | expected — `tridesclous2` is non-deterministic on this recording. Compare spikes, not unit counts. |
 | a metric reads **–** | it could not be computed for that unit, which is not the same as zero. The surfaces never print a number they do not have. |
