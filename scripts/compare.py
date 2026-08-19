@@ -5,7 +5,7 @@
     uv run python scripts/compare.py --online tridesclous2 --curated \
         --nev PFCM7_d0ephys_Block2_manuallySorted.nev       # the CURATED sort vs a manual .nev
 
-``--curated`` compares the curated sorting (outputs/<sorter>/curated/analyzer,
+``--curated`` compares the curated sorting (the current run's ``curated/analyzer``,
 built by ``curation.py apply``) instead of the raw sorter output — the point of
 the curation lifecycle is that decisions can be measured against a reference.
 Every page states which of the two it is showing, in both modes; without the flag
@@ -25,9 +25,9 @@ matched/unmatched unit table.
 IMPORTANT: the comparison is only meaningful if both sorts cover the SAME
 recording window. Each sorter's CURRENT run is resolved through the run store
 (runs.py) and read from its analyzer — the single source of truth, same as
-report.py. If the two durations differ, the page shows
-a clear caveat instead of a misleading matrix; re-sort both over a common window
-first (the SpikeInterface_Menu.py 'compare' action offers to do this).
+report.py. If the two durations differ, the page shows a clear caveat instead of
+a misleading matrix; re-sort both over a common window first (the
+SpikeInterface_Menu.py 'compare' action offers to do this).
 
 ``--online <sorter>`` compares that sorter's saved sort against the units the rig
 sorted **online**, read from the .nev. Those units are a *reference, not ground
@@ -211,8 +211,8 @@ def _metrics_section(curated: bool = False) -> dict:
     # Which saved run each column is. A sorter can have many runs now, so a
     # column without its run id is a number nobody can trace back.
     body_rows += ("<tr><td>run</td>" + "".join(
-        f'<td>{html.escape(str(runs.sort_paths(n, outputs=OUTPUT_DIR)["id"] or "—"))}</td>'
-        for n, _ in cards) + "</tr>")
+        f'<td>{html.escape(str(_paths(n)["id"] or "—"))}</td>'
+        for _l, _c, n in cards) + "</tr>")
     for label in metric_labels:
         body_rows += _row(label, lambda c, _l=label: sort_summary.headline_row(c)[_l])
 
