@@ -6,7 +6,7 @@
         --nev PFCM7_d0ephys_Block2_manuallySorted.nev       # the CURATED sort vs a manual .nev
 
 ``--curated`` compares the curated sorting (the current run's ``curated/analyzer``,
-built by ``curation.py apply``) instead of the raw sorter output — the point of
+built by ``curation.py apply``) instead of the raw sorter output - the point of
 the curation lifecycle is that decisions can be measured against a reference.
 Every page states which of the two it is showing, in both modes; without the flag
 a sorter with a curated result is still shown raw, and says so. In the pair mode
@@ -15,7 +15,7 @@ which. Asking for ``--curated`` when NO side has one is a hard error, not a
 silent fallback to a raw-vs-raw page under a curated flag.
 
 The pair mode writes outputs/comparison.html; the online mode writes
-outputs/comparison_online.html — separate files, so building one never silently
+outputs/comparison_online.html - separate files, so building one never silently
 replaces the other.
 
 Sorter-vs-sorter (no flags) compares the saved tridesclous2 and spykingcircus2
@@ -24,7 +24,7 @@ matched/unmatched unit table.
 
 IMPORTANT: the comparison is only meaningful if both sorts cover the SAME
 recording window. Each sorter's CURRENT run is resolved through the run store
-(runs.py) and read from its analyzer — the single source of truth, same as
+(runs.py) and read from its analyzer - the single source of truth, same as
 report.py. If the two durations differ, the page shows a clear caveat instead of
 a misleading matrix; re-sort both over a common window first (the
 SpikeInterface_Menu.py 'compare' action offers to do this).
@@ -33,14 +33,14 @@ SpikeInterface_Menu.py 'compare' action offers to do this).
 sorted **online**, read from the .nev. Those units are a *reference, not ground
 truth*: online sorting is per-channel threshold + template matching, so it
 typically undercounts units an offline sorter separates across channels. Only the
-online-*sorted* class is used — Blackrock encodes the class in the unit id, and
+online-*sorted* class is used - Blackrock encodes the class in the unit id, and
 0 (unsorted threshold crossings) and 255 (noise/invalidated) are dropped with
 their spike counts stated on the page. The .nev always spans the whole recording,
 so unlike the sorter-vs-sorter mode (which refuses a window mismatch) this mode
 crops the reference to the saved sort's window and says so loudly.
 
 ``match_manual(sorter, ...)`` is that same machinery returned as DATA rather than
-a page — per unit of *our* sort, the reference unit it best matches and how much
+a page - per unit of *our* sort, the reference unit it best matches and how much
 of our unit that match accounts for. The report's strong-units block reads it, so
 there is still exactly one matcher in this repo. It returns ``None`` whenever the
 reference is absent or unusable, so a surface drops the column instead of
@@ -72,7 +72,7 @@ OUTPUT_DIR = bio.REPO_ROOT / "outputs"
 DEFAULT_SORTERS = ("tridesclous2", "spykingcircus2")
 DELTA_TIME_MS = 0.4   # coincidence window for a "match" (offline vs offline)
 # Online/manual .nev references are THRESHOLD-CROSSING timestamped, while offline
-# sorters are peak-aligned — a systematic ~0.6 ms lead measured on this recording
+# sorters are peak-aligned - a systematic ~0.6 ms lead measured on this recording
 # (manual re-export vs tridesclous2: median signed Δt −0.60…−0.67 ms on every real
 # pairing). 0.4 ms would score genuine matches as zero agreement, so the online
 # mode defaults wider; override with --delta-ms.
@@ -108,7 +108,7 @@ ONLINE_NAME = "online (.nev)"
 
 
 def _paths(sorter: str, run=None) -> dict:
-    """Every path for ``sorter``'s CURRENT run — the run store is the resolver.
+    """Every path for ``sorter``'s CURRENT run - the run store is the resolver.
 
     ``run`` pins a specific run instead: the menu's re-sort-then-compare flow makes
     two ``--duration`` smoke runs, which by design do NOT become current, so the
@@ -119,7 +119,7 @@ def _paths(sorter: str, run=None) -> dict:
 
 
 def _analyzer_dir(sorter: str) -> Path:
-    """The analyzer of ``sorter``'s CURRENT run — resolved by the run store."""
+    """The analyzer of ``sorter``'s CURRENT run - resolved by the run store."""
     return _paths(sorter)["analyzer"]
 
 
@@ -207,7 +207,7 @@ def _unmatched(value) -> bool:
     """True when a best-match cell means "no partner reached chance level".
 
     The sentinel varies by direction and dtype: "" (the 2->1 case in 0.104.3),
-    -1, None, or NaN. Everything else IS a partner id — and in the 2->1 direction
+    -1, None, or NaN. Everything else IS a partner id - and in the 2->1 direction
     those ids are the REFERENCE's own labels (``ch7#1``), not integers, so they
     must not be int()-parsed away the way :func:`_partner_id` does for 1->2.
     """
@@ -229,7 +229,7 @@ def _match_table(cmp) -> str:
     for u1, u2 in hm.items():
         p = _partner_id(u2)
         if p is None:
-            partner, frac = "—", 0.0
+            partner, frac = "-", 0.0
         else:
             partner, frac = str(p), cmp.get_agreement_fraction(u1, u2)
             n_matched += 1
@@ -249,10 +249,10 @@ def _metrics_section(curated: bool = False, pinned=None) -> dict:
     """Cross-sorter array/yield table: the six headline metrics for EVERY saved sort.
 
     Unlike the agreement matrix this is per-sort, so it stays valid even when the
-    sorts cover different windows — but unit-count-derived figures (yield, units/ch)
+    sorts cover different windows - but unit-count-derived figures (yield, units/ch)
     do scale with window length, so each sort's window is shown for honesty. With
     ``curated`` the curated result's metrics are shown where one exists, and the
-    column says so — a curated column must never pass as raw sorter output.
+    column says so - a curated column must never pass as raw sorter output.
     ``pinned`` maps a sorter to a run other than the current one, so a page built
     against explicit runs does not show the pointer's metrics beside their matrix.
     """
@@ -268,7 +268,7 @@ def _metrics_section(curated: bool = False, pinned=None) -> dict:
         cards.append((n + " (curated)" if use_curated else n, card, n, run))
     cards = [c for c in cards if c[1] is not None]
     if not cards:
-        body = ('<div class="caveat">No saved array/yield summaries yet — run a sort '
+        body = ('<div class="caveat">No saved array/yield summaries yet - run a sort '
                 '(each writes summary.json) to populate this table.</div>')
         return {"id": "metrics", "title": "Array / yield metrics by sorter", "html": body}
 
@@ -281,12 +281,12 @@ def _metrics_section(curated: bool = False, pinned=None) -> dict:
         return f"<tr><td>{html.escape(label)}</td>{cells}</tr>"
 
     body_rows = _row("units", lambda c: c.get("n_units", 0))
-    body_rows += _row("window (s)", lambda c: "—" if c.get("duration_s") is None
+    body_rows += _row("window (s)", lambda c: "-" if c.get("duration_s") is None
                       else f"{c['duration_s']:.0f}")
     # Which saved run each column is. A sorter can have many runs now, so a
     # column without its run id is a number nobody can trace back.
     body_rows += ("<tr><td>run</td>" + "".join(
-        f'<td>{html.escape(str(_paths(n, r)["id"] or "—"))}</td>'
+        f'<td>{html.escape(str(_paths(n, r)["id"] or "-"))}</td>'
         for _l, _c, n, r in cards) + "</tr>")
     for label in metric_labels:
         body_rows += _row(label, lambda c, _l=label: sort_summary.headline_row(c)[_l])
@@ -309,7 +309,7 @@ def _pair_names() -> tuple:
 def build_comparison(data_dir=None, sorters=None, out_path=None, curated=False,
                      runs_by_sorter=None) -> Path:
     """The two-sorter page. ``runs_by_sorter`` pins one side (or both) to a run
-    other than the current one — the menu's re-sort-then-compare flow makes two
+    other than the current one - the menu's re-sort-then-compare flow makes two
     ``--duration`` smoke runs, and a smoke run deliberately never becomes current,
     so the only way to compare what the user just asked for is to name those runs.
     """
@@ -335,13 +335,13 @@ def build_comparison(data_dir=None, sorters=None, out_path=None, curated=False,
              + _result_note(s2_name, c2, pinned.get(s2_name)))
     if pinned:
         which = ('<p class="note">This page compares runs named explicitly, not '
-                 'whichever run each sorter currently points at — a <code>--duration'
+                 'whichever run each sorter currently points at - a <code>--duration'
                  '</code> run never displaces a full sort, so the runs just made are '
                  'not current and are named per sorter above.</p>') + which
 
     if s1 is None or s2 is None:
         missing = [n for n, s in [(s1_name, s1), (s2_name, s2)] if s is None]
-        body = ('<div class="caveat">Cannot compare — no saved sort for: '
+        body = ('<div class="caveat">Cannot compare - no saved sort for: '
                 f'{", ".join(missing)}. Run a sort for each sorter first.</div>')
     elif abs(d1 - d2) > DURATION_TOLERANCE_S:
         body = ('<div class="caveat">The two sorts cover different windows '
@@ -377,8 +377,8 @@ def split_online_units(sorting, labels):
 
     Returns ``(sorting_of_sorted_units_or_None, accounting)``. The kept units are
     renamed to their ``ch<n>#<unit>`` labels so every table names the channel the
-    online unit came from. ``accounting`` is one row per unit-id class present —
-    units, spikes, kept or dropped — so the page can state what it left out
+    online unit came from. ``accounting`` is one row per unit-id class present -
+    units, spikes, kept or dropped - so the page can state what it left out
     instead of quietly shrinking n.
     """
     ids = list(sorting.get_unit_ids())
@@ -404,7 +404,7 @@ def split_online_units(sorting, labels):
 def electrode_breakdown(sorting, labels):
     """One row per .nev spike channel: which electrode, which per-electrode slot.
 
-    A .nev unit id is a per-electrode SLOT, not a global identity — Trellis
+    A .nev unit id is a per-electrode SLOT, not a global identity - Trellis
     labels each electrode's units independently, so "unit 1" on e5 and "unit 1"
     on e7 are different neurons sharing a slot number. This table is what lets
     the page state the actual number of distinct sorted units (electrode × slot
@@ -426,7 +426,7 @@ def electrode_breakdown(sorting, labels):
 
 def _span_frames(sorting) -> int:
     """Last spike frame + 1. A bare .nev Sorting has no recording registered, so
-    get_total_duration() is unavailable — the spikes themselves are the span."""
+    get_total_duration() is unavailable - the spikes themselves are the span."""
     last = 0
     for u in sorting.get_unit_ids():
         train = sorting.get_unit_spike_train(u)
@@ -440,7 +440,7 @@ def crop_online(sorting, window_s):
 
     The .nev covers the whole recording while a sort may cover only its first
     seconds, so refusing the mismatch (the sorter-vs-sorter rule) would refuse
-    every quick sort. Cropping is the honest move — and the crop is stated on the
+    every quick sort. Cropping is the honest move - and the crop is stated on the
     page, never silent. Returns ``(sorting, info)``.
     """
     fs = float(sorting.get_sampling_frequency())
@@ -466,7 +466,7 @@ def _crop_note(info) -> str:
                 f'{info["n_spikes_before"]} to {info["n_spikes_after"]} spikes. Everything '
                 'below is that window only.</div>')
     else:
-        note = (f'<p class="note">No crop needed — the online units span '
+        note = (f'<p class="note">No crop needed - the online units span '
                 f'{info["online_span_s"]:.0f} s, inside the sort\'s '
                 f'{info["window_s"]:.0f} s window.</p>')
     if info["n_empty"]:
@@ -488,7 +488,7 @@ def _reference_section(accounting, crop_note="", breakdown=None) -> dict:
             f'<p><strong>This .nev carries {len(kept_rows)} sorted '
             f'unit{"s" if len(kept_rows) != 1 else ""} on {len(electrodes)} '
             f'electrode{"s" if len(electrodes) != 1 else ""}</strong> ({per_e}). '
-            'A .nev unit number is a per-electrode slot — Trellis labels each '
+            'A .nev unit number is a per-electrode slot - Trellis labels each '
             'electrode independently, so "unit 1" on one electrode and "unit 1" '
             'on another are different neurons. The unit count above counts '
             'electrode × slot combinations, which is why it can exceed the '
@@ -518,8 +518,8 @@ def _reference_section(accounting, crop_note="", breakdown=None) -> dict:
              '</tbody></table>')
     note = ('<p class="note">The .nev carries the rig\'s own sorting, done live during the '
             'recording: per channel, threshold crossings assigned to units by template. '
-            'Blackrock puts the class in the unit id — 0 = unsorted threshold crossings, '
-            '1–254 = online-sorted, 255 = noise/invalidated — so only the 1–254 class is a '
+            'Blackrock puts the class in the unit id - 0 = unsorted threshold crossings, '
+            '1–254 = online-sorted, 255 = noise/invalidated - so only the 1–254 class is a '
             'sort at all. The other classes are counted below and left out.</p>')
     n_kept = sum(c["n_units"] for c in accounting if c["kept"])
     return {"id": "online", "title": "The online (.nev) reference",
@@ -543,7 +543,7 @@ def _online_match_table(cmp, online, offline, sorter, delta_ms=ONLINE_DELTA_TIME
     for u1, u2 in cmp.best_match_12.items():
         partner = _partner_id(u2)
         if partner is None:
-            # Below SI's chance cutoff — but "no partner" hides a real structure
+            # Below SI's chance cutoff - but "no partner" hides a real structure
             # when the reference unit sits INSIDE a much larger merged unit (the
             # agreement dilution above). Show the best-anything match with its
             # containment, marked below-chance, instead of a shrug.
@@ -563,7 +563,7 @@ def _online_match_table(cmp, online, offline, sorter, delta_ms=ONLINE_DELTA_TIME
                          f"<td>{contain}</td>"
                          f"<td>{n_off.get(str(best_p), 0)}</td>")
             else:
-                cells = "<td>—</td><td>—</td><td>—</td><td>—</td>"
+                cells = "<td>-</td><td>-</td><td>-</td><td>-</td>"
         else:
             frac = cmp.get_agreement_fraction(u1, u2)
             n_any += 1
@@ -571,7 +571,7 @@ def _online_match_table(cmp, online, offline, sorter, delta_ms=ONLINE_DELTA_TIME
             # Containment: what fraction of THIS reference unit's spikes the best
             # match accounts for. Symmetric agreement is diluted whenever the
             # offline unit is a MERGE holding many more events (753 fully-matched
-            # spikes inside a 5877-spike unit score only 0.13 agreement) — the
+            # spikes inside a 5877-spike unit score only 0.13 agreement) - the
             # containment column is what actually answers "did the sorter see
             # this unit's spikes?".
             try:
@@ -593,7 +593,7 @@ def _online_match_table(cmp, online, offline, sorter, delta_ms=ONLINE_DELTA_TIME
                f'match at agreement ≥ {MATCH_SCORE}, {n_any} above chance ({chance:g}); '
                f'a dash means no {html.escape(sorter)} unit reached even chance level. '
                f'delta_time={delta_ms:g} ms (wide on purpose for a crossing-stamped '
-               f'reference vs a peak-aligned sort; containment is capped at 100% — '
+               f'reference vs a peak-aligned sort; containment is capped at 100% - '
                f'wide-window multi-coincidences can over-count). '
                f'{report.SORT_HINT}</p>')
     ths = (report._sort_th("online unit (ch#unit)", 0)
@@ -610,12 +610,12 @@ def _online_match_table(cmp, online, offline, sorter, delta_ms=ONLINE_DELTA_TIME
 def _online_compare_html(cmp, online, offline, sorter,
                          delta_ms=ONLINE_DELTA_TIME_MS) -> str:
     n_on, n_off = len(online.get_unit_ids()), len(offline.get_unit_ids())
-    framing = (f'<p class="note">Agreement between two sorts of the same window — n = {n_on} '
+    framing = (f'<p class="note">Agreement between two sorts of the same window - n = {n_on} '
                f'online-sorted unit(s) against {n_off} {html.escape(sorter)} unit(s). The '
                'online units are a <strong>reference, not ground truth</strong>: the rig sorts '
                'one channel at a time from threshold crossings and a template, so it typically '
                'undercounts units an offline sorter separates across channels. Read a low score '
-               'as two methods disagreeing, not as an error rate for either — nothing on this '
+               'as two methods disagreeing, not as an error rate for either - nothing on this '
                'page is accuracy or precision.</p>')
     table, n_strong, n_any = _online_match_table(cmp, online, offline, sorter,
                                                  delta_ms=delta_ms)
@@ -630,14 +630,14 @@ def _online_compare_html(cmp, online, offline, sorter,
                   f'and offline peak-aligned spikes (larger than delta_time = {delta_ms:g} '
                   "ms), or one online unit's spikes spread thin across several offline "
                   'units, so no single pair clears chance even where spikes do coincide. '
-                  'The per-unit table below can hint at the last case — an online unit whose '
-                  "spike count is far from every offline unit's is consistent with it — but "
+                  'The per-unit table below can hint at the last case - an online unit whose '
+                  "spike count is far from every offline unit's is consistent with it - but "
                   'similar counts with zero agreement suggest the timing-offset case '
                   'instead.</div>')
     elif n_strong == 0:
         caveat = ('<div class="caveat"><strong>Every best match is below the '
                   f'{MATCH_SCORE} match threshold.</strong> The two sorts overlap but agree on '
-                  'no unit. Worth a look at the raw traces before trusting either — start with '
+                  'no unit. Worth a look at the raw traces before trusting either - start with '
                   'the channels of the online units listed below.</div>')
     return framing + caveat + report._fig_html(_heatmap(cmp)) + table
 
@@ -679,9 +679,9 @@ def match_manual(sorter, data_dir=None, nev_path=None, delta_ms=ONLINE_DELTA_TIM
                  curated=False, run=None) -> "dict | None":
     """Match a saved sort against a manually sorted ``.nev``, as DATA not HTML.
 
-    The same machinery ``build_online_comparison`` renders — ``split_online_units``
+    The same machinery ``build_online_comparison`` renders - ``split_online_units``
     to keep only the online-*sorted* class, ``crop_online`` to put both sides on
-    the same window, and SpikeInterface's ``compare_two_sorters`` — harvested for
+    the same window, and SpikeInterface's ``compare_two_sorters`` - harvested for
     the OTHER direction: for each unit of *our* sort, the reference unit it best
     matches. That is what a per-unit takeaway table needs, and it is why this
     exists instead of a second matcher (there is one matcher, here).
@@ -689,7 +689,7 @@ def match_manual(sorter, data_dir=None, nev_path=None, delta_ms=ONLINE_DELTA_TIM
     ``nev_path`` names the reference explicitly; without it the first derived
     ``.nev`` export beside the recording is used (``bio.find_reference_nevs``).
 
-    Returns ``None`` — never a guess — when there is no reference file, no saved
+    Returns ``None`` - never a guess - when there is no reference file, no saved
     sort, no readable unit-class labels, or no online-sorted units in the .nev to
     match against. Otherwise::
 
@@ -704,7 +704,7 @@ def match_manual(sorter, data_dir=None, nev_path=None, delta_ms=ONLINE_DELTA_TIM
     on this recording:
 
       ``recovered``    the fraction of the **reference** unit's spikes our unit
-                       carries — *did we find the neuron the human found?* This
+                       carries - *did we find the neuron the human found?* This
                        is the headline fact, and ``recovers`` is it against
                        :data:`MATCH_RECOVERY`.
       ``containment``  the fraction of **our** unit's spikes the reference
@@ -713,7 +713,7 @@ def match_manual(sorter, data_dir=None, nev_path=None, delta_ms=ONLINE_DELTA_TIM
 
     Both are capped at 1.0: a wide coincidence window lets several spikes on one
     side coincide with one on the other and over-count. ``below_chance`` is
-    SpikeInterface's own symmetric verdict, kept as provenance — it is union
+    SpikeInterface's own symmetric verdict, kept as provenance - it is union
     agreement, which the density asymmetry defeats, so no surface should word a
     match from it.
     """
@@ -760,10 +760,10 @@ def match_manual(sorter, data_dir=None, nev_path=None, delta_ms=ONLINE_DELTA_TIM
         by_unit[str(u2)] = {
             "unit": str(partner),
             # BOTH directions, because they answer different questions and this
-            # recording makes them disagree wildly. `recovered` — how much of the
-            # REFERENCE unit we carry — is the one that answers "did we find the
-            # human's neuron"; `containment` — how much of OUR unit the reference
-            # accounts for — is small whenever our unit is the denser of the two.
+            # recording makes them disagree wildly. `recovered` - how much of the
+            # REFERENCE unit we carry - is the one that answers "did we find the
+            # human's neuron"; `containment` - how much of OUR unit the reference
+            # accounts for - is small whenever our unit is the denser of the two.
             "recovered": recovered,
             "containment": None if n_matched is None else min(1.0, n_matched / mine),
             "recovers": recovered is not None and recovered >= MATCH_RECOVERY,
@@ -920,12 +920,12 @@ def _caveat_section(sorter, body) -> dict:
 
 def build_online_comparison(sorter, data_dir=None, out_path=None, nev_path=None,
                             delta_ms=ONLINE_DELTA_TIME_MS, curated=False) -> Path:
-    """outputs/comparison_online.html — one saved sort vs a .nev sorted reference.
+    """outputs/comparison_online.html - one saved sort vs a .nev sorted reference.
 
     Default reference: the recording's own .nev (the rig's LIVE sorting).
-    ``nev_path`` compares against an explicit re-exported .nev instead — e.g. a
+    ``nev_path`` compares against an explicit re-exported .nev instead - e.g. a
     MANUALLY sorted export for the same recording; the page names the file.
-    ``curated`` compares the curated sorting instead of the raw one — this is how
+    ``curated`` compares the curated sorting instead of the raw one - this is how
     a curation decision is measured against a reference. Which of the two is
     shown is always stated on the page.
     Its OWN file (not the pair page's comparison.html): the two modes must never
@@ -938,12 +938,12 @@ def build_online_comparison(sorter, data_dir=None, out_path=None, nev_path=None,
 
     def _write(sections, run_id=None):
         # This page has no array/yield table, so it has no `run` row to carry the
-        # id the way the pair page does — it goes in the subtitle instead. Only
+        # id the way the pair page does - it goes in the subtitle instead. Only
         # once a sort is actually loaded: before that there is no run to name.
         where = f" · run {html.escape(str(run_id))}" if run_id else ""
         out_path.write_text(
             report._html_document(f"{sorter} vs sorted .nev units", sections,
-                                  subtitle=f"{ref_note}{where} — "
+                                  subtitle=f"{ref_note}{where} - "
                                            "not ground truth. Self-contained, works offline."),
             encoding="utf-8")
         return out_path
@@ -951,8 +951,8 @@ def build_online_comparison(sorter, data_dir=None, out_path=None, nev_path=None,
     offline, window_s = _load(sorter, curated=curated)
     # From here on a sort IS loaded, so every exit names which one and repeats the
     # curated-vs-raw sentence. `which` used to be built here and then reach only
-    # the fully-compared page: on this recording — which has no online-sorted
-    # units — that is the one branch that never runs, so the page said nothing at
+    # the fully-compared page: on this recording - which has no online-sorted
+    # units - that is the one branch that never runs, so the page said nothing at
     # all about what it had loaded.
     run_id = _paths(sorter)["id"] if offline is not None else None
     if offline is None and curated:
@@ -971,14 +971,14 @@ def build_online_comparison(sorter, data_dir=None, out_path=None, nev_path=None,
     try:
         online = bio.read_spikes(data_dir, nev_path=nev_path)
     except FileNotFoundError as e:
-        # The loader refuses for two different reasons — nothing to read, or SEVERAL
-        # candidate file sets — and only it knows which files it saw. Its own words
+        # The loader refuses for two different reasons - nothing to read, or SEVERAL
+        # candidate file sets - and only it knows which files it saw. Its own words
         # carry the actionable detail (the candidates by name), so they go on the
         # page verbatim under the general next step.
         return _write([_caveat_section(sorter, (
             which +
             '<strong>No .nev file found.</strong> The online units live in the recording\'s '
-            '.nev — put one Blackrock file set (.nev + .ns5) in the repo root and rebuild. '
+            '.nev - put one Blackrock file set (.nev + .ns5) in the repo root and rebuild. '
             'Without it, compare two offline sorters instead: '
             '<code>uv run python scripts/compare.py</code>.'
             f'<p class="note">Loader: {html.escape(str(e))}</p>'))], run_id=run_id)
@@ -1037,7 +1037,7 @@ def main(argv=None) -> int:
              "(e.g. a manually sorted re-export) instead of the recording's own")
     parser.add_argument(
         "--delta-ms", type=float, default=ONLINE_DELTA_TIME_MS,
-        help="with --online: the coincidence window (default %(default)s ms — wide "
+        help="with --online: the coincidence window (default %(default)s ms - wide "
              "because crossing timestamps lead peak-aligned ones by ~0.6 ms here)")
     parser.add_argument(
         "--curated", action="store_true",
@@ -1048,7 +1048,7 @@ def main(argv=None) -> int:
         parser.error("--nev requires --online SORTER")
     # An explicit --curated with nothing applied fails hard rather than quietly
     # comparing the raw sort (the repo's explicit-fails-hard asymmetry). In the
-    # pair mode each side may or may not have a curated result — but if NEITHER
+    # pair mode each side may or may not have a curated result - but if NEITHER
     # does, the page would be raw-vs-raw under a --curated flag, so that errors too.
     if args.curated:
         wanted = [args.online] if args.online else list(_pair_names())
@@ -1056,7 +1056,7 @@ def main(argv=None) -> int:
         if not curated_now:
             names = ", ".join(str(n) for n in wanted)
             parser.error(
-                f"--curated: no curated result for {names} — record decisions and run: "
+                f"--curated: no curated result for {names} - record decisions and run: "
                 "uv run python scripts/curation.py apply --sorter "
                 f"{wanted[0] if wanted else '<sorter>'}")
     print(build_online_comparison(args.online, nev_path=args.nev,

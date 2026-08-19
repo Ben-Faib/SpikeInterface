@@ -26,7 +26,7 @@ FS = 30_000.0
 
 
 def _sorting(trains: dict):
-    """A NumpySorting from {unit id: [frames]} — no recording needed."""
+    """A NumpySorting from {unit id: [frames]} - no recording needed."""
     import numpy as np
     import spikeinterface.full as si
 
@@ -47,7 +47,7 @@ def _text(path) -> str:
 
 def test_saved_sorters_finds_a_resolvable_run(tmp_path, monkeypatch):
     """A sorter counts as saved when the run store resolves a run with an analyzer
-    — in the store layout or the pre-store one. A sorter directory with neither is
+    - in the store layout or the pre-store one. A sorter directory with neither is
     not a saved sort."""
     out = tmp_path / "outputs"
     # mountainsort5 in the store; tridesclous2 in the pre-store layout.
@@ -73,7 +73,7 @@ def _run_dir(out, sorter, run_id, *, smoke=False, units=3, seconds=132.0):
 
 def test_build_comparison_compares_the_runs_it_is_given(tmp_path, monkeypatch):
     """The menu's re-sort-then-compare makes two --duration runs, and a smoke run
-    never displaces a full sort — so the page has to be built against those runs
+    never displaces a full sort - so the page has to be built against those runs
     BY NAME, or it would silently re-compare the two sorts the user just replaced.
     """
     out = tmp_path / "outputs"
@@ -106,7 +106,7 @@ def test_build_comparison_compares_the_runs_it_is_given(tmp_path, monkeypatch):
 
 
 # --------------------------------------------------------------------------- #
-# Blackrock unit-id classes (the classifier itself lives in blackrock_io — see
+# Blackrock unit-id classes (the classifier itself lives in blackrock_io - see
 # tests/test_blackrock_io.py; here it is only consumed)
 # --------------------------------------------------------------------------- #
 def test_split_keeps_only_online_sorted_units_and_counts_what_it_dropped():
@@ -137,7 +137,7 @@ def test_split_returns_none_when_every_unit_is_unsorted():
 
 
 def test_electrode_breakdown_preserves_per_electrode_slots():
-    # Two sorted units on the SAME electrode must stay two rows — the exact
+    # Two sorted units on the SAME electrode must stay two rows - the exact
     # structure a reader needs to reconcile Trellis's per-electrode labels
     # with the page's unit count.
     sorting = _sorting({0: [1, 2, 3], 1: [10, 20], 2: [30], 3: [40, 50]})
@@ -287,7 +287,7 @@ def test_online_page_without_a_nev_names_the_next_step(online_page):
 def test_online_page_carries_the_loaders_own_reason(online_page):
     # The loader refuses for two different reasons and only IT knows which files it
     # saw. An ambiguous folder (two .nev sets) must reach the page naming the
-    # candidates — not be flattened into the generic "put a .nev in the repo root".
+    # candidates - not be flattened into the generic "put a .nev in the repo root".
     _out, text = online_page(offline=_sorting({0: [1]}), exc=FileNotFoundError(
         "More than one Blackrock .nev file set in '/data': manual, online. "
         "Pass data_dir=... pointing at a folder with a single recording"))
@@ -361,7 +361,7 @@ def test_cli_online_flag_selects_the_nev_mode(monkeypatch, capsys):
 
 
 # --------------------------------------------------------------------------- #
-# Integration — real recording + real saved sort, skipped when absent
+# Integration - real recording + real saved sort, skipped when absent
 # --------------------------------------------------------------------------- #
 def test_online_comparison_against_this_repo(tmp_path):
     import blackrock_io as bio
@@ -372,7 +372,7 @@ def test_online_comparison_against_this_repo(tmp_path):
         pytest.skip("no Blackrock recording on this machine")
     saved = compare.saved_sorters()
     if not saved:
-        pytest.skip("no saved sort (outputs/<sorter>/analyzer) — run a sort first")
+        pytest.skip("no saved sort (outputs/<sorter>/analyzer) - run a sort first")
 
     out = compare.build_online_comparison(saved[0], out_path=tmp_path / "comparison.html")
     raw = out.read_text(encoding="utf-8")
@@ -381,7 +381,7 @@ def test_online_comparison_against_this_repo(tmp_path):
     assert "Traceback" not in raw
     assert "The online (.nev) reference" in text
     assert "unsorted threshold crossings (unit id 0)" in text
-    # Either a matrix or a named next step — never an empty page.
+    # Either a matrix or a named next step - never an empty page.
     assert ("online-sorted unit(s)" in text) or ("nothing to compare against" in text)
 
 
@@ -432,7 +432,7 @@ def test_match_manual_containment_is_capped_and_marks_below_chance(manual_match)
     m0 = got["by_unit"]["0"]
     assert 0.0 < m0["containment"] <= 1.0
     # Unit 1 shares nothing with the reference: no entry, or an explicit
-    # below-chance one — never a fabricated match.
+    # below-chance one - never a fabricated match.
     assert got["by_unit"].get("1", {"below_chance": True})["below_chance"] is True
 
 
@@ -466,7 +466,7 @@ def test_match_manual_reports_recovery_when_our_unit_is_far_denser(manual_match)
     """Review F1: the density asymmetry that inverts the answer.
 
     The reference unit has 4 spikes and ours has 40, all 4 of which we carry. SI's
-    symmetric agreement is ~0.1 — at or below chance — but we recovered 100% of
+    symmetric agreement is ~0.1 - at or below chance - but we recovered 100% of
     the human's unit. `recovered`/`recovers` must say so; `containment` (our side)
     stays small, and both are reported so neither direction can be mistaken for
     the other.
@@ -485,7 +485,7 @@ def test_match_manual_reports_recovery_when_our_unit_is_far_denser(manual_match)
 
 
 def test_match_manual_recovers_is_independent_of_sis_chance_sentinel(manual_match):
-    """`recovers` must never be driven by `below_chance` — that is the inversion."""
+    """`recovers` must never be driven by `below_chance` - that is the inversion."""
     reference = _sorting({0: [1000, 2000, 3000, 4000]})
     offline = _sorting({0: [1000, 2000, 3000, 4000] + [10_000 + 500 * i for i in range(96)]})
     got = manual_match(offline=offline, reference=reference, labels=["ch1#1"])
