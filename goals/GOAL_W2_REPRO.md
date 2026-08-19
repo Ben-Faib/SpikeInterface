@@ -42,7 +42,12 @@ cannot displace a full run. Fresh-context Fable review per slice.
 - Quality-metrics-are-non-fatal stands, including the cleanup contract for half-built
   derived data.
 - Don't invent determinism: sorters with stochastic clustering get tolerance-based
-  verification with the tolerance stated in the record.
+  verification with the tolerance stated in the record. **Measured evidence (PRE1,
+  2026-08-18): tridesclous2 on this recording gave 14, 16, and 18 units across three
+  identical full-pipeline runs (RNG state ruled out — the spread exists between runs
+  making zero extra RNG calls), and one run split a unit pair another run merged.**
+  Unit counts and ids are not reproduction criteria here; design the match report
+  around what is stable (channels, containment against a reference, metric ranges).
 - `--progress json` stdout purity holds through any new run-store output.
 - Keep `outputs/` gitignored; provenance records are data about runs, and run data stays
   local. The committable artifact is the config file, never the outputs.
