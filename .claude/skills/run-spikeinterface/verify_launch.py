@@ -82,8 +82,6 @@ async def drive(data_dir: "str | None") -> bool:
             buf.append(_text(app.query_one(sel, Static)))
         buf.append("=== ACTIONS ===")
         buf.append(_optionlist_text(app.query_one("#actions", OptionList)))
-        buf.append("=== MANAGEBAR ===")
-        buf.append(_text(app.query_one("#managebar", Static)))
         buf.append("=== RESULTS ===")
         buf.append(_text(app.query_one("#results", Static)))
 

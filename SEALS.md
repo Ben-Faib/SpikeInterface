@@ -19,39 +19,84 @@ A need left only in a chat summary is a need Ben never sees.*
   round-trip through Phy (`phy` menu action / `export-phy` → curate → `import-phy`, verdicts
   landing back in the same record with source="phy"); records and manifests refuse a sort
   they weren't written against (tdc2 non-determinism makes that refusal load-bearing).
-  Remaining science gaps: in-TUI triage (s4, in lane) and versioned runs with complete
-  provenance (W2, review folded, integration pending) — this run closes them.
+  In-TUI triage (`f594a31`) labels the same record from the dashboard (u), and the
+  W1 science arc is complete.
+- **Runs are versioned and regenerable** (W2, `482d68d`): every sort lands in its own
+  run dir with complete provenance; the current run is an atomically-replaced pointer
+  a smoke run can never take; records/curated/phy ride inside their run; regeneration
+  from a record prints an honest match report with measured tolerances (no unit-count
+  criteria — tdc2 non-determinism is design law).
 - **Probe geometry is real** (`nnx-a1x16-3mm-100` default) with channel→site wiring a
   user-accepted identity mapping — true depth order still waits on the lab's adapter map.
 - **Deployment target is the UPitt lab's Windows+GPU box**; Windows Docker-sort cleanup
   crash fixed 2026-08-18 (`7940f96`); GPU-sorter enablement (kilosort4) not yet started (WD).
-- **Current focus: CONDUCTOR v2 RUN LIVE (2026-08-19)** — landed: W1 s2 (`cddd677`), W1 s3
-  (`96a53cb`), Ben's .nev-structure honesty commit (peer, `ff518fd`). In lanes: W2 (build +
-  Fable review done, findings folding; integrates last with the curation sort_paths
-  re-point), s4 in-TUI triage (building on `ff518fd`). Then: final suite + launch + close.
+- **Current focus: post-conductor — the face track opened by Ben's directive (2026-08-19
+  night)**: the takeaway surface (per-contact strong-units view + workflow guide) builds
+  in lane-face1; the conductor v2 queue itself is CLOSED (all lanes landed, gates green).
   Facts of record binding design: E1's premise FALSE in-band (PRE1), tdc2 non-deterministic
-  (14/16/17/18/19 units now observed), and .nev unit ids are PER-ELECTRODE SLOTS — the
-  manual reference carries 7 sorted electrode×slot units on 4 electrodes, stated on the
-  compare page (`ff518fd`), and cross-electrode same-slot coincidence is chance-level.
+  (14/16/17/18/19 and now 16/17 more, units across identical runs), .nev unit ids are
+  PER-ELECTRODE SLOTS (7 sorted electrode×slot units on 4 electrodes; CSV reconciled
+  row-for-row; cross-electrode same-slot coincidence chance-level), and the recording's
+  accepted-unit picture is 4 strong cells (ch 5·7·7·11) recovered at 93-100%.
   Product facts on record: built by Benjamin Faibussowitsch with Aleece Al-Olimat for
   UPitt researchers on industry-standard SpikeInterface.
 
 ## OPEN — needs Ben
 
-- ~~The D0 veto~~ — **CLOSED 2026-08-18: APPROVED by Ben** ("the dashboard needs overhaul
-  for sure"), dashboard first, build authorized to run autonomously. The arc-ratification
-  item closes with it (continuing the graph was the ratification).
-- **Lab requirements pass** — what Tracy's lab needs first (users, fluency, recordings,
-  curation-vs-batch pain); shapes the W3 face pick and could reorder W1/W4.
-  *(opened 2026-08-18)*
-- **Lab-box access for WD** — the deployment track can't start without a session on the
-  Windows+GPU machine. *(opened 2026-08-18)*
-- **The adapter map** — channel→site wiring to make depth order physical; also gates W4's
-  cross-session unit tracking. *(opened 2026-08-18, long-standing)*
+- **P3 — the adapter map**: channel→site wiring to make depth order physical; P3 starts
+  the day the lab's map arrives. *(long-standing)*
+- **WD — lab-box access**: the Windows+GPU deployment track starts with one session on
+  that machine. *(opened 2026-08-18)*
+- **W3 — the face pick**: Ben directed the first slice 2026-08-19 (the takeaway surface,
+  in lane); the fuller direction — and the lab-requirements pass that shapes it (users,
+  fluency, curation-vs-batch pain) — is still his call. *(narrowed 2026-08-19)*
+- **W4 — lab recordings**: multi-recording work starts when real lab data arrives (also
+  wants the adapter map for cross-session tracking). *(opened 2026-08-18)*
 
 ---
 
 ## The ledger (newest first)
+
+**2026-08-19 — CONDUCTOR v2 RUN CLOSED: the queue is done (`482d68d` + seals)**
+- Did: landed all three parked lanes plus the gate they opened — W1 s2 (curation
+  lifecycle), s3 (Phy round trip, recovered from an uncommitted worktree), s4 (in-TUI
+  triage), and W2 (versioned run store + provenance + regenerate) — each with a Fable
+  review folded, and closed with the full gate set on main: suite 624+1 loud-skip →
+  625-equivalent, smoke canary 4.058 µV with the store's smoke-refusal proven live,
+  real launch check OK (verify_launch's stale managebar selector fixed in passing).
+- Means: the workbench now takes raw Blackrock files to curated, defensible single
+  units — anchored records, TUI triage, Phy round trip, versioned never-clobbering
+  runs, and regeneration with honest measured criteria — the product promise of the
+  W1+W2 arc, on main.
+- Moved: mid-run, Ben's .nev semantics questions were answered with measurements
+  (per-electrode slots; the CSV reconciled row-for-row; chance-level cross-electrode
+  coincidence) and his "where is the takeaway" directive became the face track's
+  first slice (lane-face1, building now: per-contact strong-units view + workflow
+  guide).
+- Needs Ben: nothing for the close — relaunch the menu to get the store + triage,
+  then one clean full sort → u triage → apply on a run that can never be clobbered.
+- Next: face1 lands with its review; then the four gated items (P3/WD/W3/W4) are
+  the whole remaining board.
+
+**2026-08-19 — W2: the reproducibility engine, integrated last as planned (`482d68d`)**
+- Did: landed the versioned run store (per-run dirs + atomic current pointer, smoke
+  runs refused as current with the incumbent pinned, legacy layouts readable),
+  complete provenance (effective params, seed, probe + geometry hash, preprocessing
+  chain, versions, git sha, recording identity), regenerate-from-record with
+  tolerances calibrated on seven measured run pairs (containment floor 0.85 against
+  worst honest 0.903; params and recording identity now exact-compared), config-as-
+  code export, and the curation re-point — records and curated results ride inside
+  the run they describe.
+- Means: a result the lab publishes is now regenerable from its own record with an
+  honest match report, a quick smoke can never displace a full sort, and the exact
+  22:21-vs-01:09 clobber that burned Ben tonight is impossible.
+- Moved: the two Fable passes (lane + integration) folded eleven findings and the
+  integration caught two latent bugs (bare report resolving a run id as a sorter on
+  fresh clones; the online compare page never naming its run); tdc2 non-determinism
+  observation extended (16 units at 01:09, 17 at 01:18); five follow-ups recorded in
+  the brief.
+- Needs Ben: nothing.
+- Next: run close above.
 
 **2026-08-19 — W1 s4: in-TUI unit triage, reviewed ship, landed (`f594a31`)**
 - Did: landed the triage screen — unit list + NaN-honest per-unit evidence card off

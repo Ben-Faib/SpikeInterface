@@ -17,25 +17,28 @@ box) runs alongside everything.
 
 ---
 
-## ▶ NOW — updated 2026-08-19: **CONDUCTOR v2 RUN LIVE — s2+s3 landed; s4 building; W2 folding its review**
+## ▶ NOW — updated 2026-08-19 night: **CONDUCTOR v2 CLOSED (queue complete) — the face track is live on Ben's directive**
 
-- **Landed so far this run:** W1 s2 (`cddd677`, validated fresh end-to-end) and
-  W1 s3 (`96a53cb`, Fable review fix-first: rmtree guard, blank-anchor refusals,
-  stale-curated refusal — all folded; suite 514 at the fold). Peer commit
-  `ff518fd` (Ben's .nev flag): the compare page now states the reference's
-  per-electrode-slot structure (7 sorted units on 4 electrodes); suite 516.
-- **In lanes:** s4 in-TUI triage — building on `ff518fd` in
-  `.claude/worktrees/lane-w1s4` (the first dispatch produced nothing; branch was
-  reset to main and re-dispatched). W2 — build + Fable review done (verdict
-  fix-first; store core verified sound); the lane is folding findings 1–8
-  (params criterion, phy path keys, utf8 stdout, empty-vs-empty, docker config,
-  recording-identity criterion, skip-guard, containment validity note).
-- **Then, in order:** s4 review + land → W2 integrates LAST (collision map is in
-  the review: compare.py hard, menu moderate-hard; fix the menu re-sort-both
-  compare flow with `--make-current` there; re-point curation.sort_paths through
-  the store; decide the legacy-curated-visibility question) → final suite +
-  launch check → close. Gated OPEN: P3 (adapter map), WD (lab box), W3 (face
-  pick), W4 (lab data).
+- **The run closed with everything landed:** W1 s2/s3/s4 + W2 all on main
+  (`482d68d`), per-slice Fable reviews folded, final gates green (suite 625-
+  equivalent, canary 4.058 µV with the store's smoke-refusal proven live, real
+  launch check OK). The W1+W2 arc — raw files → anchored curation → Phy round
+  trip → TUI triage → versioned regenerable runs — is the product, on main.
+- **In lane now:** `lane-face1` — Ben's 2026-08-19 directive ("at contact 5, how
+  many neurons did we find? where is the takeaway?"): the per-contact
+  strong-units view leading the report, the RESULTS takeaway line, triage
+  strong-first ordering, and docs/WORKFLOW.md (the plain-language guide).
+  Fable review on completion.
+- **Queued next (face2, starts when face1 lands — same files):** Ben's second
+  directive tonight: "help page is broken… idk what to do… make bins."
+  Confirmed defect: HELP_TOPICS (ui.py) still teaches the June three-step app —
+  no triage/curation/phy/runs. face2 = help rewritten around the real loop
+  (which question → which surface → which key), and the dashboard actions
+  grouped into workflow stages (get data → sort & curate → look & share) with
+  each row saying what it produces and what naturally follows.
+- **Gated OPEN (the whole remaining board):** P3 (adapter map) · WD (lab-box
+  access) · W3 (fuller face pick — first slice already directed) · W4 (lab
+  recordings).
 
 ## The dependency graph
 
@@ -70,7 +73,7 @@ box) runs alongside everything.
 | 8 | T2/T3 journey + honesty tests | `goals/GOAL_T_TESTING.md` | **SEALED 2026-08-18** (peer, `7e6938d`) |
 | 9 | P2 multi-shank · P3 wiring | `goals/GOAL_P_PROBES.md` | **P2 SEALED 2026-08-18** (peer, `8af8111`: ProbeGroup imports as probes-as-shanks, wiring pinned verbatim, physical density classing; suite 388 green, canary 3.993 µV, review ship). P3 needs adapter map; three new recorded items in the brief |
 | 10 | W1 curation | `goals/GOAL_W1_CURATION.md` | **COMPLETE — all four slices SEALED** (s1 rule owner; s2 lifecycle `cddd677`; s3 Phy round-trip `96a53cb`; s4 in-TUI triage `f594a31` 2026-08-19, review ship, suite 534 — hardening follow-ups recorded in the brief) |
-| 11 | W2 reproducibility | `goals/GOAL_W2_REPRO.md` | next after PRE1 lands (run_sorting freed) |
+| 11 | W2 reproducibility | `goals/GOAL_W2_REPRO.md` | **SEALED 2026-08-19** (`482d68d`) — versioned run store + provenance + regenerate (tolerances calibrated on 7 measured pairs, no unit-count criteria) + config export; two Fable passes folded; curation re-pointed through the store; follow-ups in the brief |
 | PRE1 | bad channels out of the reference (E1's finding; conductor prompt item 1) | prompt below | **SEALED 2026-08-18** (`c823f55`) — **premise re-scoped with evidence**: zero channels flagged; ch1's pathology is sub-300 Hz (bandpass removes it pre-CMR; in-band it's the QUIETEST channel and carries a unit); feature kept as insurance + measured tdc2 non-determinism (14/16/18 units) now drives W1 anchoring + W2 tolerances |
 | D6 | the airy dashboard (Ben's two mocks, approved in-session) | NORTHSTAR decision 2026-08-18 night | **SEALED 2026-08-18** (peer, `98f2645`) — hairline sections, crest ≥34 rows, pressable t-chip, key chips, air-yields-first; review fix-first (hairline never painted; resize-under-modal), all folded; suite 441, deliberate double re-baseline |
 | DEBT | recorded-debt bundle: report headers · D2b manifest · label home · dead code · extra-.nev | conductor prompt item 6 | **SEALED 2026-08-18** (`0127dac`) — all five closed; extra-.nev was a REAL latent bug (discovery by sort-order luck → now prefers-data + honest ambiguity refusal, one sealed test deliberately flipped); review ship, findings 1-4 folded; recorded: th-padding dead-click cosmetic |

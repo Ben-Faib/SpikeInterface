@@ -69,6 +69,7 @@ uv run python -m pytest tests/              # Textual Pilot tests for the menu +
 uv run python scripts/verify_install.py     # smoke test: versions + all three loaders
 uv run python scripts/run_sorting.py --duration 30   # quick sort smoke test (first 30 s)
 uv run python scripts/curation.py show --sorter tridesclous2   # curation record + curated state (label/merge/split/apply)
+uv run python scripts/runs.py list                  # the run store: every saved run + the current pointer (export/regenerate/compare)
 ```
 
 Menu actions: `explore | sort | report | gui | traces | compare | verify | phy`
@@ -97,6 +98,7 @@ sync with the code, which is why this file does not restate them.
 | `probes.py` | electrode geometry (profiles, active probe, sorter fit) | build a `Probe` inline |
 | `sort_summary.py` | the six array/yield metrics | recompute amplitudes ad hoc |
 | `curation.py` | the curation record (merge/split/label decisions), applying it to a curated Sorting, and curated-vs-raw state — `preferred_analyzer()` is the one home for "curated wins when it exists" | test for `curated/` folders directly, or re-decide which analyzer a surface shows |
+| `runs.py` | the versioned run store: where runs live, which is current, provenance, regenerate-from-record — `runs.sort_paths()` is the one path resolver (curation.py delegates to it) | build `outputs/<sorter>/...` paths by hand, or read a run dir without the pointer |
 | `sort_progress.py` | the JSON event protocol between `run_sorting` and the TUI | print status for the UI to scrape |
 | `run_sorting.py` | the sort pipeline + its terminal presentation | |
 | `report.py` | self-contained `outputs/report.html` (Plotly inlined) | |
@@ -136,6 +138,13 @@ read_broadband(attach_probe=False) → drop non-neural aux channels → set_prob
   unit counts/ids as stable across re-sorts.
 - **The sort passes `attach_probe=False`** and applies geometry from the probes layer
   (`probes.build()` → `set_probe()`), *not* `attach_dummy_probe()`.
+- **Runs are versioned and never clobber** (W2, 2026-08-19): each sort lands in
+  `outputs/<sorter>/runs/<run_id>/`; `current.json` is an atomically-replaced pointer every
+  surface resolves through `runs.sort_paths()`; a `--duration` smoke run is refused as
+  current and the incumbent full run is pinned (`--make-current` overrides); legacy
+  `outputs/<sorter>/` layouts resolve read-only. The curation record, `curated/`, and
+  `phy/` ride inside the run they describe. No reproduction criterion may use unit
+  counts/ids (tdc2 non-determinism is measured law).
 - **Quality metrics are non-fatal.** The Sorting is saved *before* metrics run, so a metrics
   crash degrades to success-with-note (rc 0) rather than discarding units — and the handler
   deletes the half-built `analyzer/`, `quality_metrics.csv`, `summary.*` so downstream
