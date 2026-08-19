@@ -141,6 +141,16 @@ class Reporter:
         terminal event closes the checklist visually)."""
         self._open = None
 
+    def plan(self, titles) -> None:
+        """Announce the whole phase checklist UP FRONT (D2b).
+
+        Sent once, before the first phase, so the consumer can show what is still
+        pending instead of discovering the pipeline one phase at a time. It is a
+        statement of intent only: ``phase`` still marks what actually started.
+        """
+        self._emit({"t": "plan", "n": self.total,
+                    "phases": [{"i": i, "title": t} for i, t in enumerate(titles, 1)]})
+
     def phase(self, title: str, sub: str = "") -> None:
         self._close_phase()
         self.i += 1
@@ -1086,6 +1096,9 @@ def main() -> int:
         os.dup2(2, 1)                              # fd 1 -> stderr
         sys.stdout = os.fdopen(os.dup(1), "w", buffering=1)
     rep = Reporter(enabled=json_mode, stream=event_stream, total_phases=total_phases)
+    # The checklist before the work: the SI import alone takes seconds, and the
+    # modal should show all of it as pending from the first frame (D2b).
+    rep.plan(PHASES[:total_phases])
 
     # Configure output BEFORE importing spikeinterface so env vars / the tqdm
     # patch land before OpenMP/Numba/the sorters initialise. In JSON mode the

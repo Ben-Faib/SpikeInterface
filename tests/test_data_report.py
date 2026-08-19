@@ -2,7 +2,9 @@
 
 Guards the base-scoped presence check: the present/missing checklist must reflect
 the *resolved* recording's files, not a folder-wide glob — otherwise a second
-recording sharing the folder would make an incomplete set look complete.
+recording sharing the folder would make an incomplete set look complete. Which
+recording resolves is blackrock_io's call (see tests/test_blackrock_io.py); this
+module pins what the dashboard then says about it.
 """
 from __future__ import annotations
 
@@ -48,15 +50,29 @@ def test_incomplete_missing_ns5(tmp_path):
     assert _by_ext(r)[".ns5"] is False
 
 
-def test_two_recordings_one_folder_is_base_scoped(tmp_path):
-    # recA owns the .nev/.ns2; the .ns5 belongs to recB. The resolved base is recA
-    # (first .nev), so recA's checklist must report .ns5 MISSING — not borrow recB's.
+def test_two_recordings_one_folder_refuses_to_guess(tmp_path):
+    # recA owns the .nev/.ns2; the .ns5 belongs to recB — two recordings sharing a
+    # folder. This USED to resolve to recA (whichever .nev sorted first) and report
+    # its .ns5 missing. Since the extra-.nev pass, two stems that both carry analog
+    # data are genuinely ambiguous: discovery refuses and names both, rather than
+    # sorting whichever came first alphabetically.
     _touch(tmp_path, "recA.ns2", "recB.ns5", "recA.nev")
     r = M._data_report(str(tmp_path))
-    assert r["base"] == "recA"
-    by = _by_ext(r)
-    assert by[".ns2"] is True and by[".nev"] is True
-    assert by[".ns5"] is False, "folder-wide glob leaked recB.ns5 into recA's set"
+    assert r["present"] is False and r["base"] is None
+    assert "recA" in r["error"] and "recB" in r["error"]
+    # ...and NOTHING is ticked: files exist in the folder, but the loader refused to
+    # use them, so a checklist of green ✓s above that error would contradict it.
+    assert _by_ext(r) == {".ns2": False, ".ns5": False, ".nev": False}
+
+
+def test_an_extra_nev_beside_the_set_leaves_the_checklist_complete(tmp_path):
+    # This repo's real folder: the recording plus Ben's manually sorted re-export.
+    # The export is its own (analog-less) file set, so the recording still resolves
+    # and its checklist is complete.
+    _touch(tmp_path, "rec.ns2", "rec.ns5", "rec.nev", "rec_manuallySorted.nev")
+    r = M._data_report(str(tmp_path))
+    assert r["base"] == "rec" and r["complete"] is True
+    assert _by_ext(r) == {".ns2": True, ".ns5": True, ".nev": True}
 
 
 def test_stream_detail_merges_pipeline_into_files():

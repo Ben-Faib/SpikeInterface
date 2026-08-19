@@ -193,10 +193,6 @@ class FakeController:
         self._mark_active()
         return True
 
-    def cycle_active(self) -> None:
-        i = (self.sorters.index(self.active_sorter) + 1) % len(self.sorters)
-        self.set_active_by_name(self.sorters[i])
-
     def set_theme(self, name: str) -> str:
         self.theme_name = name
         self.accent = self.themes[name]
@@ -268,16 +264,6 @@ class FakeController:
 
     def mark_probe_setup_seen(self) -> None:
         self.want_probe_setup = False
-
-    def sorter_fit(self, name: str) -> dict:
-        return {"rank": "good" if name == "tridesclous2" else "ok",
-                "reason": f"{name} fit."}
-
-    def catalog_manufacturers(self) -> list[str]:
-        return ["NeuroNexus", "Cambridge NeuroTech"]
-
-    def catalog_models(self, manufacturer: str) -> list[str]:
-        return [f"{manufacturer} model A", f"{manufacturer} model B"]
 
     def default_params(self, sorter: str) -> dict:
         return {"detect_threshold": 5.0, "freq_min": 300.0, "apply_preprocessing": True}
@@ -375,17 +361,6 @@ class FakeController:
         return None
 
     # -- Docker image management (Stage 4: in-UI download / state) ------------- #
-    def _docker_info(self, name: str) -> dict | None:
-        return next((i for i in self.infos
-                     if i["name"] == name and i.get("group") == "docker"), None)
-
-    def image_state(self, name: str) -> dict:
-        info = self._docker_info(name)
-        present = name in self._cached_images
-        return {"image": (info or {}).get("image"),
-                "present": present,
-                "size": 1_100_000_000 if present else None}
-
     def download_image(self, name, on_progress=None, on_status=None, should_cancel=None):
         # Stepped fake pull: emit a scripted sequence, polling should_cancel between
         # steps and pausing on a threading.Event the test can release. With no gate

@@ -26,6 +26,7 @@ Everything uses :mod:`pathlib`, so it runs unchanged on macOS, Windows and Linux
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 # Blackrock/Ripple stores .nev spike timestamps at the system clock resolution.
@@ -103,15 +104,40 @@ def find_blackrock_base(data_dir: "Path | str | None" = None) -> Path:
     neo treats the filename *without* extension as a set of files that share a
     base name (``foo.nev`` + ``foo.ns2`` + ...). This scans ``data_dir`` for any
     ``.nev`` or ``.ns1``..``.ns6`` file and returns its stem path.
+
+    **A second .nev beside the recording is its own set, not part of it.** This
+    repo's folder carries a manually re-exported ``…_manuallySorted.nev``
+    alongside the recording; because neo keys on the stem, that export is a
+    separate (analog-less) file set. Discovery therefore prefers the stem that
+    actually has analog ``.nsX`` data — a stem with only a ``.nev`` is a derived
+    export, never the recording — and falls back to a lone ``.nev`` stem when the
+    folder holds no analog data at all (spikes/events still load). Two stems that
+    both carry analog data are genuinely ambiguous: that raises, naming both,
+    rather than picking whichever sorts first.
     """
     data_dir = Path(data_dir) if data_dir is not None else REPO_ROOT
-    candidates = sorted(data_dir.glob("*.nev")) + sorted(data_dir.glob("*.ns[1-6]"))
-    if not candidates:
+    nev = sorted(data_dir.glob("*.nev"))
+    nsx = sorted(data_dir.glob("*.ns[1-6]"))
+    if not nev and not nsx:
         raise FileNotFoundError(
             f"No Blackrock .nev/.nsX files found in '{data_dir}'. "
             "Pass data_dir=... pointing at the folder that holds your recording."
         )
-    return candidates[0].with_suffix("")
+
+    def _one(bases: "list[Path]", what: str) -> Path:
+        if len(bases) > 1:
+            raise FileNotFoundError(
+                f"More than one Blackrock {what} in '{data_dir}': "
+                + ", ".join(b.name for b in bases)
+                + ". Pass data_dir=... pointing at a folder with a single "
+                "recording, or move the others aside."
+            )
+        return bases[0]
+
+    with_analog = sorted({p.with_suffix("") for p in nsx})
+    if with_analog:
+        return _one(with_analog, "recording set (.nsX)")
+    return _one(sorted({p.with_suffix("") for p in nev}), ".nev file set")
 
 
 def list_streams(data_dir: "Path | str | None" = None):
@@ -309,7 +335,10 @@ def read_spikes(
     hard error (the explicit-fails-hard convention).
 
     Blackrock unit-id convention: ``0`` = unsorted threshold crossings,
-    ``1..n`` = online-sorted units, ``255`` = noise / invalidated.
+    ``1..n`` = online-sorted units, ``255`` = noise / invalidated. SI renumbers
+    the units positionally and drops that id, so the class is recovered from the
+    neo names — :func:`online_unit_labels` + :func:`unit_class`, the one home for
+    it (compare.py and explore_data.py both read it from here).
     """
     import spikeinterface.extractors as se
 
@@ -351,3 +380,50 @@ def read_events(data_dir: "Path | str | None" = None):
         )
         events.append({"name": channel["name"], "times": times, "labels": labels})
     return events
+
+
+# --------------------------------------------------------------------------- #
+# .nev unit classes — this dataset's semantics, so they live with the loader
+# --------------------------------------------------------------------------- #
+# The Blackrock unit id encodes the CLASS of a .nev unit (see read_spikes). Every
+# surface that reads the .nev — compare.py's --online reference, explore_data's
+# detection labels — asks here rather than re-deriving the convention.
+UNSORTED_UNIT_ID = 0
+NOISE_UNIT_ID = 255
+UNIT_CLASS_LABELS = {
+    "sorted": "online-sorted (unit ids 1–254)",
+    "unsorted": "unsorted threshold crossings (unit id 0)",
+    "noise": "noise / invalidated (unit id 255)",
+    "other": "unrecognised label",
+}
+# neo names a .nev spike channel "ch<channel>#<blackrock unit id>".
+_UNIT_LABEL_RE = re.compile(r"^ch(\d+)#(\d+)$")
+
+
+def online_unit_labels(sorting) -> "list[str] | None":
+    """The ``ch<channel>#<unit>`` names of a .nev Sorting's units, in unit order.
+
+    SpikeInterface numbers .nev units positionally (0..n-1), which throws away the
+    Blackrock unit id — and with it the class (unsorted / sorted / noise) that
+    decides what may be compared. The names neo parsed are still on the extractor
+    and in the same order as the unit ids, so the class is recoverable there.
+    Returns None when the sorting did not come from neo: the caller says so
+    rather than guessing a class it cannot know.
+    """
+    header = getattr(getattr(sorting, "neo_reader", None), "header", None)
+    if header is None:
+        return None
+    return [str(n) for n in header["spike_channels"]["name"]]
+
+
+def unit_class(label: str) -> str:
+    """One of "sorted" / "unsorted" / "noise" / "other" for a ch<n>#<unit> label."""
+    m = _UNIT_LABEL_RE.match(label)
+    if m is None:
+        return "other"
+    unit = int(m.group(2))
+    if unit == UNSORTED_UNIT_ID:
+        return "unsorted"
+    if unit == NOISE_UNIT_ID:
+        return "noise"
+    return "sorted"

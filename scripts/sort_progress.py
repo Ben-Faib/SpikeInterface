@@ -3,6 +3,7 @@ in a subprocess) and the Textual ``SortProgressScreen`` (consumer).
 
 Events are newline-delimited JSON objects, each with a ``t`` (type) field:
 
+    plan       {t,n,phases:[{i,title,sub?}]}  the whole checklist, announced UP FRONT
     phase      {t,i,n,title,sub?,elapsed?}  a numbered pipeline phase started
     phase_done {t,i,title,secs}       the phase that was running finished, with its duration
     detail     {t,text}               a dim sub-step line (also: a mirrored sorter step print)
@@ -21,6 +22,12 @@ event log replays with the run's real timing and no consumer-side clock skew.
 ``result`` rides ALONGSIDE ``done`` and never replaces it: ``done`` is the
 terminal event a consumer can also synthesise from a silent rc-0 exit.
 
+``plan`` is the pipeline's *intent*: it lets a consumer show what is still
+pending from the first second instead of learning the checklist one phase at a
+time. It is advisory — ``phase`` remains the only claim that work has started,
+and an emitter that sends no ``plan`` simply has no pending rows to show. Use
+:func:`phase_rows` to render the two together.
+
 No SpikeInterface / Textual imports here so it is trivially unit-testable and
 importable from both sides.
 """
@@ -31,8 +38,8 @@ import sys
 from typing import Any
 
 EVENT_TYPES = frozenset(
-    {"phase", "phase_done", "detail", "substep", "bar", "heartbeat", "metrics", "summary",
-     "result", "done", "error"}
+    {"plan", "phase", "phase_done", "detail", "substep", "bar", "heartbeat", "metrics",
+     "summary", "result", "done", "error"}
 )
 
 
@@ -67,7 +74,9 @@ def new_state() -> dict:
         "phase_i": 0,
         "phase_n": 0,
         "phase_title": "",
-        "phases": [],          # [{i,title,sub,done,secs}]  secs filled in by phase_done
+        "planned": [],         # [{i,title,sub}] the announced checklist (plan), if any
+        "phases": [],          # [{i,title,sub,done,secs}]  phases that STARTED; secs
+                               # filled in by phase_done
         "elapsed": 0.0,        # emitter-side seconds since run start (latest phase/result)
         "detail": "",
         "substep_name": "",    # named sub-step within the current phase
@@ -86,7 +95,16 @@ def new_state() -> dict:
 def reduce(state: dict, ev: dict) -> dict:
     """Fold one event into ``state`` (mutates and returns it)."""
     t = ev.get("t")
-    if t == "phase":
+    if t == "plan":
+        # The manifest states what the run INTENDS to do; it never marks work as
+        # started or done — only `phase` does that.
+        state["planned"] = [
+            {"i": p.get("i"), "title": p.get("title", ""), "sub": p.get("sub", "")}
+            for p in (ev.get("phases") or []) if isinstance(p, dict)
+        ]
+        if ev.get("n") is not None:
+            state["phase_n"] = ev["n"]
+    elif t == "phase":
         # mark the previous phase done when a new one starts
         for p in state["phases"]:
             p["done"] = True
@@ -145,3 +163,24 @@ def reduce(state: dict, ev: dict) -> dict:
             p["done"] = True
         state["done"] = {k: v for k, v in ev.items() if k != "t"}
     return state
+
+
+def phase_rows(state: dict) -> list:
+    """The checklist to render: the phases that ran, then the ones still pending.
+
+    Each row is ``{i, title, sub, secs, state}`` with ``state`` one of ``done`` /
+    ``running`` / ``pending``. Pending rows come from the ``plan`` manifest and
+    exist only while the run is alive — once it is over (``done`` or ``error``)
+    the phases that never started are not "pending", they are never happening, so
+    they are dropped rather than left looking queued.
+    """
+    rows = [{"i": p.get("i"), "title": p.get("title", ""), "sub": p.get("sub", ""),
+             "secs": p.get("secs"), "state": "done" if p.get("done") else "running"}
+            for p in state.get("phases", [])]
+    if state.get("done") is not None:
+        return rows
+    started = {r["i"] for r in rows}
+    rows += [{"i": p.get("i"), "title": p.get("title", ""), "sub": p.get("sub", ""),
+              "secs": None, "state": "pending"}
+             for p in state.get("planned", []) if p.get("i") not in started]
+    return rows

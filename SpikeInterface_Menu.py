@@ -239,18 +239,17 @@ def _data_report(data_dir) -> dict:
     present = True
     try:
         base = bio.find_blackrock_base(d)
-    except FileNotFoundError as e:  # no .nev/.nsX at all
+    except FileNotFoundError as e:  # no file set here — or several, and ambiguous
         present = False
         err = str(e)
 
     def has(ext: str) -> bool:
         # Scoped to the resolved base so the checklist matches the exact files the
         # loader would open — a folder-wide glob could falsely mark a *different*
-        # recording's file as part of this set (e.g. recA.nev + recB.ns5). Fall
-        # back to a folder-wide glob only when no base resolved.
-        if base is not None:
-            return base.with_suffix(ext).exists()
-        return any(d.glob("*" + ext))
+        # recording's file as part of this set (e.g. recA.nev + recB.ns5). With no
+        # base resolved there is no set to describe: nothing is ticked, because
+        # ticking files the loader just refused to use would contradict ``error``.
+        return base is not None and base.with_suffix(ext).exists()
 
     files = [
         {"ext": ".ns2", "label": "LFP — analog @ 1 kHz", "present": has(".ns2")},
@@ -872,14 +871,6 @@ class MenuController:
         _open_in_browser(target.resolve().as_uri())
         return True, f"Reopened {path}"
 
-    def cycle_active(self) -> None:
-        """`t` key: advance to the next *runnable* sorter (skips non-runnable rows)."""
-        if self.active_sorter in self.sorters:
-            i = (self.sorters.index(self.active_sorter) + 1) % len(self.sorters)
-        else:
-            i = 0
-        self.set_active_by_name(self.sorters[i])
-
     def _mark_active(self) -> None:
         for n, info in enumerate(self.infos):
             info["active"] = (info["name"] == self.active_sorter)
@@ -1076,15 +1067,6 @@ class MenuController:
         self.cfg["seen_probe_setup"] = True
         _save_config(self.cfg)
 
-    def sorter_fit(self, name: str) -> dict:
-        return probes.fit(name, probes.get(self.active_probe) or probes.get(probes.DEFAULT_PROBE))
-
-    def catalog_manufacturers(self) -> list[str]:
-        return probes.catalog_manufacturers()
-
-    def catalog_models(self, manufacturer: str) -> list[str]:
-        return probes.catalog_models(manufacturer)
-
     def saved_sorters(self) -> list[str]:
         """Sorters that currently have a saved analyzer (for the compare picker)."""
         return [i["name"] for i in self.infos if i.get("present")]
@@ -1154,15 +1136,6 @@ class MenuController:
         return {"span": span,
                 "eff_seconds": float(eff) if isinstance(eff, (int, float)) else None,
                 "wall_seconds": float(ws) if isinstance(ws, (int, float)) else None}
-
-    def image_state(self, name: str) -> dict:
-        """{image, present, size} for a sorter's Docker image (best-effort)."""
-        img = sorter_registry.default_docker_image(name)
-        if not img:
-            return {"image": None, "present": False, "size": None}
-        present = sorter_registry.docker_image_present(img)
-        size = sorter_registry.image_size(img) if present else None
-        return {"image": img, "present": present, "size": size}
 
     def download_image(self, name: str, on_progress=None, on_status=None,
                        should_cancel=None) -> tuple[bool, str]:

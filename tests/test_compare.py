@@ -18,6 +18,7 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import blackrock_io as bio  # noqa: E402
 import compare  # noqa: E402
 
 FS = 30_000.0
@@ -54,16 +55,9 @@ def test_saved_sorters_finds_analyzer_dirs(tmp_path, monkeypatch):
 
 
 # --------------------------------------------------------------------------- #
-# Blackrock unit-id classes
+# Blackrock unit-id classes (the classifier itself lives in blackrock_io — see
+# tests/test_blackrock_io.py; here it is only consumed)
 # --------------------------------------------------------------------------- #
-def test_classify_covers_the_three_blackrock_classes():
-    assert compare._classify("ch3#0") == "unsorted"
-    assert compare._classify("ch3#1") == "sorted"
-    assert compare._classify("ch12#254") == "sorted"
-    assert compare._classify("ch3#255") == "noise"
-    assert compare._classify("weird-name") == "other"
-
-
 def test_split_keeps_only_online_sorted_units_and_counts_what_it_dropped():
     sorting = _sorting({0: [1, 2, 3], 1: [10, 20], 2: [30], 3: [40, 50, 60, 70]})
     labels = ["ch1#0", "ch1#1", "ch2#255", "ch2#2"]
@@ -73,7 +67,7 @@ def test_split_keeps_only_online_sorted_units_and_counts_what_it_dropped():
     assert list(kept.get_unit_ids()) == ["ch1#1", "ch2#2"]      # renamed to ch#unit
     assert len(kept.get_unit_spike_train("ch2#2")) == 4
     by_key = {c["key"]: c for c in accounting}
-    assert by_key["sorted"] == {"key": "sorted", "label": compare.CLASS_LABELS["sorted"],
+    assert by_key["sorted"] == {"key": "sorted", "label": bio.UNIT_CLASS_LABELS["sorted"],
                                 "n_units": 2, "n_spikes": 6, "kept": True}
     assert (by_key["unsorted"]["n_units"], by_key["unsorted"]["n_spikes"]) == (1, 3)
     assert (by_key["noise"]["n_units"], by_key["noise"]["n_spikes"]) == (1, 1)
@@ -89,20 +83,6 @@ def test_split_returns_none_when_every_unit_is_unsorted():
     by_key = {c["key"]: c for c in accounting}
     assert by_key["sorted"]["n_units"] == 0                     # stated, not omitted
     assert (by_key["unsorted"]["n_units"], by_key["unsorted"]["n_spikes"]) == (2, 3)
-
-
-def test_online_unit_labels_needs_a_neo_backed_sorting():
-    assert compare.online_unit_labels(_sorting({0: [1]})) is None
-
-
-def test_online_unit_labels_reads_the_neo_spike_channel_names():
-    class _Reader:
-        header = {"spike_channels": {"name": ["ch3#0", "ch5#1"]}}
-
-    class _Sorting:
-        neo_reader = _Reader()
-
-    assert compare.online_unit_labels(_Sorting()) == ["ch3#0", "ch5#1"]
 
 
 # --------------------------------------------------------------------------- #
@@ -154,7 +134,7 @@ def online_page(tmp_path, monkeypatch):
             return online
 
         monkeypatch.setattr(compare.bio, "read_spikes", _read_spikes)
-        monkeypatch.setattr(compare, "online_unit_labels", lambda s: labels)
+        monkeypatch.setattr(compare.bio, "online_unit_labels", lambda s: labels)
         out = compare.build_online_comparison("tridesclous2",
                                               out_path=tmp_path / "comparison.html")
         return out, _text(out)
@@ -218,6 +198,18 @@ def test_online_page_without_a_nev_names_the_next_step(online_page):
 
     assert "No .nev file found" in text
     assert "repo root" in text
+
+
+def test_online_page_carries_the_loaders_own_reason(online_page):
+    # The loader refuses for two different reasons and only IT knows which files it
+    # saw. An ambiguous folder (two .nev sets) must reach the page naming the
+    # candidates — not be flattened into the generic "put a .nev in the repo root".
+    _out, text = online_page(offline=_sorting({0: [1]}), exc=FileNotFoundError(
+        "More than one Blackrock .nev file set in '/data': manual, online. "
+        "Pass data_dir=... pointing at a folder with a single recording"))
+
+    assert "More than one Blackrock .nev file set" in text
+    assert "manual, online" in text
 
 
 def test_online_page_refuses_to_guess_when_labels_are_unreadable(online_page):

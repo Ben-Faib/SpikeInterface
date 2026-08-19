@@ -83,10 +83,10 @@ def plot_lfp(recording, out_path: Path, window_s: float = 5.0):
 def _detection_labels(sorting):
     """Honest per-row labels for the .nev rows: 'ch5#1'-style channel#class names
     when the neo header carries them (SpikeInterface renumbers positionally),
-    else the bare renumbered ids."""
+    else the bare renumbered ids. The recovery itself belongs to the loader
+    (bio.online_unit_labels) — this only decides what to do without it."""
     try:
-        import compare as _cmp
-        labels = _cmp.online_unit_labels(sorting)
+        labels = bio.online_unit_labels(sorting)
         if labels and len(labels) == len(sorting.get_unit_ids()):
             return labels
     except Exception:  # noqa: BLE001 - labels are best-effort

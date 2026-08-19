@@ -585,23 +585,6 @@ def build(profile, n_channels):
     return probe
 
 
-def catalog_manufacturers() -> list[str]:
-    """probeinterface library manufacturers (network); [] on any failure."""
-    try:
-        from probeinterface.library import probe_dict  # type: ignore
-        return sorted(probe_dict().keys())
-    except Exception:  # noqa: BLE001 - older/newer layout or offline
-        return ["neuronexus", "cambridgeneurotech"]
-
-
-def catalog_models(manufacturer) -> list[str]:
-    try:
-        from probeinterface.library import probe_dict  # type: ignore
-        return sorted(probe_dict().get(manufacturer, {}).keys())
-    except Exception:  # noqa: BLE001
-        return []
-
-
 # --------------------------------------------------------------------------- #
 # Sorter fit (geometry -> which sorters suit it). Backs the soft re-rank.
 # Classes: independent | tetrode | sparse | dense (see the design's fit table).

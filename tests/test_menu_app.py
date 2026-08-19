@@ -271,6 +271,45 @@ async def test_sort_progress_screen_renders_events(make_app):
         assert "Enter" in foot
 
 
+class _LiveSortScreen(menu_app.SortProgressScreen):
+    """SortProgressScreen with no subprocess, so the run stays RUNNING until the
+    test says otherwise (the ``["true"]`` child exits at once and the reader
+    synthesises `done`, which would end the run mid-assertion)."""
+
+    async def _run(self) -> None:
+        pass
+
+
+async def test_sort_progress_shows_the_pending_phases_up_front(make_app):
+    # D2b: the run announces its whole checklist before doing anything, so the
+    # modal shows what is still coming instead of growing one line at a time —
+    # and the phases that never ran vanish when the run ends, rather than sitting
+    # there looking queued.
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        screen = _LiveSortScreen(["true"], app._accent)
+        await app.push_screen(screen)
+        await pilot.pause()
+        screen.handle_event({"t": "plan", "n": 3, "phases": [
+            {"i": 1, "title": "Read broadband"}, {"i": 2, "title": "Preprocess"},
+            {"i": 3, "title": "Sort"}]})
+        await pilot.pause()
+        body = screen.query_one("#sortbody").render().plain
+        # every phase named before any work started, none of them claimed as running
+        assert all(t in body for t in ("Read broadband", "Preprocess", "Sort"))
+        assert "▶" not in body and "✓" not in body
+
+        screen.handle_event({"t": "phase", "i": 1, "n": 3, "title": "Read broadband"})
+        await pilot.pause()
+        body = screen.query_one("#sortbody").render().plain
+        assert "▶ Read broadband" in body and "· Preprocess" in body
+
+        screen.handle_event({"t": "error", "ok": False, "message": "boom"})
+        await pilot.pause()
+        body = screen.query_one("#sortbody").render().plain
+        assert "Read broadband" in body and "Preprocess" not in body
+
+
 async def test_sort_progress_renders_summary_card_and_note(make_app):
     # The array/yield headline card shows on the final screen, and a non-fatal
     # metrics caveat (done.note) renders as a ⚠ line alongside the ✓ success — so a

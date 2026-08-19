@@ -3,7 +3,8 @@
 ``scripts/sort_progress.py`` is the wire protocol between ``run_sorting.py``
 (emitter subprocess) and the TUI's ``SortProgressScreen`` (consumer). D2
 EXTENDED it (emitter-side ``elapsed``, ``phase_done``, a terminal ``result``
-riding alongside ``done``) — these tests pin the whole surface:
+riding alongside ``done``) and D2b added the up-front ``plan`` manifest — these
+tests pin the whole surface:
 
 - the event vocabulary and each event's required keys (``SHAPES``),
 - extension safety: unknown event types are ignored by consumers, unknown
@@ -39,6 +40,7 @@ ROOT = Path(__file__).resolve().parent.parent
 # phase.elapsed, bar.n/total/elapsed/remaining, result.elapsed, done.good/note —
 # are deliberately absent: consumers must not require them.
 SHAPES = {
+    "plan":       {"n", "phases"},
     "phase":      {"i", "n", "title"},
     "phase_done": {"i", "title", "secs"},
     "detail":     {"text"},
@@ -55,6 +57,12 @@ SHAPES = {
 
 # One canonical, fully-populated example of every event type.
 EXAMPLES = {
+    "plan":       {"t": "plan", "n": 5,
+                   "phases": [{"i": 1, "title": "Read broadband"},
+                              {"i": 2, "title": "Preprocess"},
+                              {"i": 3, "title": "Sort"},
+                              {"i": 4, "title": "Save sorting"},
+                              {"i": 5, "title": "Analyze + metrics"}]},
     "phase":      {"t": "phase", "i": 2, "n": 5, "title": "Preprocess",
                    "sub": "bandpass + CMR", "elapsed": 3.24},
     "phase_done": {"t": "phase_done", "i": 2, "title": "Preprocess", "secs": 4.11},
@@ -150,6 +158,43 @@ def test_phase_progression_and_transient_reset():
     assert state["detail"] == ""
 
 
+def test_plan_announces_without_starting_anything():
+    # The manifest is INTENT: it may not mark work as started or finished, so a
+    # consumer can never show a phase as run because the emitter merely planned it.
+    state = sp.new_state()
+    sp.reduce(state, EXAMPLES["plan"])
+    assert state["phases"] == [] and state["phase_i"] == 0
+    assert state["phase_n"] == 5                       # the total IS known up front
+    rows = sp.phase_rows(state)
+    assert [r["state"] for r in rows] == ["pending"] * 5
+    # ...and a started phase leaves the manifest's row list, never duplicating it
+    sp.reduce(state, {"t": "phase", "i": 1, "n": 5, "title": "Read broadband"})
+    rows = sp.phase_rows(state)
+    assert [r["state"] for r in rows] == ["running"] + ["pending"] * 4
+    assert [r["title"] for r in rows][0] == "Read broadband"
+
+
+def test_phase_rows_without_a_plan_are_exactly_the_started_phases():
+    # Extension safety in the other direction: an emitter that sends no manifest
+    # (report.py's build path) must render exactly as it did before D2b.
+    state = sp.new_state()
+    sp.reduce(state, {"t": "phase", "i": 1, "n": 3, "title": "A"})
+    sp.reduce(state, {"t": "phase_done", "i": 1, "title": "A", "secs": 1.5})
+    sp.reduce(state, {"t": "phase", "i": 2, "n": 3, "title": "B"})
+    assert [(r["title"], r["state"]) for r in sp.phase_rows(state)] == [
+        ("A", "done"), ("B", "running")]
+
+
+def test_pending_rows_disappear_when_the_run_ends():
+    # A phase that never ran is not "pending" after an error — it is never
+    # happening (§1.7: no queued-looking rows under a dead run).
+    state = sp.new_state()
+    sp.reduce(state, EXAMPLES["plan"])
+    sp.reduce(state, {"t": "phase", "i": 1, "n": 5, "title": "Read broadband"})
+    sp.reduce(state, {"t": "error", "ok": False, "message": "boom"})
+    assert [r["state"] for r in sp.phase_rows(state)] == ["done"]
+
+
 def test_phase_done_closes_that_phase_with_its_duration():
     state = sp.new_state()
     sp.reduce(state, {"t": "phase", "i": 1, "n": 5, "title": "Read broadband", "elapsed": 0.01})
@@ -208,6 +253,7 @@ def test_reporter_emits_exactly_this_protocol():
 
     buf = io.StringIO()
     rep = rs.Reporter(enabled=True, stream=buf, total_phases=4)
+    rep.plan(["Read broadband", "Preprocess", "Sort", "Save sorting"])
     rep.phase("Read broadband", "(.ns5)")
     rep.phase("Preprocess", "bandpass + CMR")
     rep.detail("detect_peaks: 562 peaks found")
@@ -239,6 +285,10 @@ def test_reporter_emits_exactly_this_protocol():
     # the rich result rides alongside done, before it — never instead of it
     types = [ev["t"] for ev in events]
     assert types.index("result") < types.index("done")
+    # the manifest is UP FRONT: it precedes every phase it announces
+    assert types.index("plan") < types.index("phase")
+    plan = events[types.index("plan")]
+    assert [p["i"] for p in plan["phases"]] == [1, 2, 3, 4] and plan["n"] == 4
 
 
 def test_error_does_not_close_the_running_phase():

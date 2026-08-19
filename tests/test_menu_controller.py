@@ -72,18 +72,6 @@ def test_set_active_by_name_guards_non_runnable(monkeypatch, tmp_path):
     assert c.active_sorter == "spykingcircus2"
 
 
-def test_cycle_active_skips_non_runnable(monkeypatch, tmp_path):
-    import sorters as reg
-    monkeypatch.setattr(reg, "installed", lambda: ["tridesclous2", "spykingcircus2"])
-    monkeypatch.setattr(reg, "available", lambda: sorted(
-        ["tridesclous2", "spykingcircus2", "kilosort4"]))
-    monkeypatch.setattr(reg, "docker_available", lambda *a, **k: False)
-    c = _controller(monkeypatch, tmp_path, use_docker=False)
-    start = c.active_sorter
-    c.cycle_active()
-    assert c.active_sorter != start and c.active_sorter in ("tridesclous2", "spykingcircus2")
-
-
 def test_docker_status_text_per_state(monkeypatch, tmp_path):
     import sorters as reg
     monkeypatch.setattr(reg, "installed", lambda: ["tridesclous2"])

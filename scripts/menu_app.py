@@ -122,7 +122,6 @@ class Controller(Protocol):
     probe_info: dict                    # {name,label,summary,layout,density_class,match,match_detail}
 
     def set_active_by_name(self, name: str) -> bool: ...
-    def cycle_active(self) -> None: ...
     def set_theme(self, name: str) -> str: ...      # returns the new accent hex
     def reload(self) -> None: ...                   # refresh pipeline/infos/data_report
     def set_data_dir(self, path: str | None) -> bool: ...   # repoint + reload; found?
@@ -138,9 +137,6 @@ class Controller(Protocol):
     def delete_probe(self, name: str) -> tuple[bool, str]: ...
     def duplicate_probe(self, name, new_name, new_label=None) -> dict: ...
     def mark_probe_setup_seen(self) -> None: ...
-    def sorter_fit(self, name: str) -> dict: ...
-    def catalog_manufacturers(self) -> list[str]: ...
-    def catalog_models(self, manufacturer: str) -> list[str]: ...
     def run(self, key: str, span: str | None) -> tuple[bool, str, bool]: ...
     def sort_command(self, span: str | None) -> list: ...
     def report_command(self) -> list: ...
@@ -1057,16 +1053,20 @@ class SortProgressScreen(ModalScreen):
         self.query_one("#sorttitle", Static).update(head)
         t = Text()
         # The phase checklist — finished phases carry their real (emitter-side)
-        # durations; the running one carries the live detail below it.
-        for p in s["phases"]:
-            done = p["done"]
-            t.append("✓ " if done else "▶ ",
-                     style="#3fb950" if done else f"bold {self._accent}")
-            t.append(f"{p['title']}", style="" if done else "bold")
-            if done and p.get("secs") is not None:
+        # durations; the running one carries the live detail below it; the ones the
+        # run announced but has not reached yet sit dim below it (DESIGN_UX §3), so
+        # the pipeline's shape is visible from the first frame.
+        for p in _sp.phase_rows(s):
+            kind = p["state"]
+            t.append({"done": "✓ ", "running": "▶ ", "pending": "· "}[kind],
+                     style={"done": "#3fb950", "running": f"bold {self._accent}",
+                            "pending": "dim"}[kind])
+            t.append(f"{p['title']}",
+                     style={"done": "", "running": "bold", "pending": "dim"}[kind])
+            if kind == "done" and p.get("secs") is not None:
                 t.append(f"   {p['secs']:.1f} s", style="dim")
             t.append("\n")
-        if running and s.get("phase_n"):
+        if running and s.get("phase_n") and s["phases"]:
             i = s.get("phase_i") or len(s["phases"])
             t.append(f"  phase {i} of {s['phase_n']}\n", style="dim")
         # Live detail for the current phase — substep, latest (translated) sorter

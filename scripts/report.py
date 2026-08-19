@@ -325,18 +325,41 @@ def _num(value, spec=".3g", unit="") -> str:
     return f"{v:{spec}}{unit}"
 
 
+# The one-line hint a page prints beside a sortable table. It names BOTH ways in,
+# so the keyboard path is discoverable rather than merely possible.
+SORT_HINT = "Sort any column: click a header, or Tab to it and press Enter."
+
+
+def _sort_th(label, col, numeric=False) -> str:
+    """One sortable header cell — the single home for the sort control's markup.
+
+    The control is a real ``<button>``, not a click handler on the ``<th>``: that
+    is what makes the column order reachable by keyboard (Tab to it, Enter or
+    Space to sort) and announced as a control by a screen reader, with the live
+    order carried on the header's ``aria-sort``. ``label`` is already escaped /
+    intentional HTML by the caller. Shared with compare.py's tables.
+    """
+    cls_attr = ' class="num"' if numeric else ""
+    return (f'<th{cls_attr} aria-sort="none">'
+            f'<button type="button" class="sortbtn" '
+            f'onclick="sortTable(this,{col},{"true" if numeric else "false"})">'
+            f'{label}<span class="arrow" aria-hidden="true"></span></button></th>')
+
+
 def _table(headers, rows, sortable=True, cls="tbl") -> str:
     """A styled table. headers = [(label, numeric?)]; rows = [[cell html, ...]].
 
     Numeric columns are right-aligned and sort numerically; "–" gap cells sink
-    to the bottom either way (see sortTable).
+    to the bottom either way (see sortTable). Sortable headers are keyboard
+    controls (:func:`_sort_th`); ``sortable=False`` renders plain, inert headers.
     """
     ths = []
     for j, (label, numeric) in enumerate(headers):
-        cls_attr = ' class="num"' if numeric else ""
-        onclick = (f' onclick="sortTable(this.closest(\'table\'),{j},{"true" if numeric else "false"})"'
-                   if sortable else "")
-        ths.append(f'<th{cls_attr}{onclick}>{label}</th>')
+        if sortable:
+            ths.append(_sort_th(label, j, numeric))
+        else:
+            cls_attr = ' class="num"' if numeric else ""
+            ths.append(f'<th{cls_attr}>{label}</th>')
     body = "".join(
         "<tr>" + "".join(
             ('<td class="num">' if headers[j][1] else "<td>") + f"{cell}</td>"
@@ -384,7 +407,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helveti
 .sr-only { position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden;
            clip:rect(0,0,0,0); white-space:nowrap; border:0; }
 a { color: var(--accent); }
-a:focus-visible, summary:focus-visible, th:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+a:focus-visible, summary:focus-visible, th .sortbtn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* --- table of contents: top bar by default, left rail from 1100px --------- */
 .page { max-width: 1440px; margin: 0 auto; }
@@ -451,6 +474,14 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 th { position: sticky; top: 0; z-index: 1; background: var(--panel); cursor: pointer; user-select: none;
      font-weight: 600; white-space: nowrap; border-bottom: 1px solid var(--line); }
 table.static th { cursor: default; }
+/* The sort control is a real button so the column order is keyboard-reachable;
+   it inherits the header's type so the table still reads as a table. */
+th .sortbtn { all: unset; display: flex; align-items: baseline; gap: 5px; width: 100%;
+              cursor: pointer; font: inherit; color: inherit; }
+th.num .sortbtn { justify-content: flex-end; }
+th .arrow { font-size: 9px; color: var(--muted); }
+th[aria-sort="ascending"] .arrow::after { content: "▲"; }
+th[aria-sort="descending"] .arrow::after { content: "▼"; }
 tbody tr:last-child td { border-bottom: none; }
 tbody tr:hover { background: #fafbfc; }
 details { margin: 14px 0 22px; }
@@ -472,7 +503,8 @@ code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; fo
 """
 
 _SORT_JS = """
-function sortTable(table, col, numeric) {
+function sortTable(btn, col, numeric) {
+  var table = btn.closest('table');
   var tbody = table.tBodies[0];
   var rows = Array.prototype.slice.call(tbody.rows);
   var asc = !(table.getAttribute('data-col') == col && table.getAttribute('data-dir') == 'asc');
@@ -490,6 +522,11 @@ function sortTable(table, col, numeric) {
   rows.forEach(function(r) { tbody.appendChild(r); });
   table.setAttribute('data-col', col);
   table.setAttribute('data-dir', asc ? 'asc' : 'desc');
+  // The current order is state, so it is announced (aria-sort) and drawn (the
+  // arrow is CSS on the same attribute) — one source, never a colour-only cue.
+  var ths = table.tHead.rows[0].cells;
+  for (var k = 0; k < ths.length; k++) { ths[k].setAttribute('aria-sort', 'none'); }
+  ths[col].setAttribute('aria-sort', asc ? 'ascending' : 'descending');
 }
 """
 
@@ -765,8 +802,10 @@ def _render_qc(analyzer) -> str:
     n_pass, _n, _u = _pass_quality(analyzer)
     pass_line = ("" if n_pass is None else
                  f' — {n_pass} pass the quality rule (stated on the verdict tile)')
+    # The report's FIRST sortable table, so this is where the sort affordance is
+    # stated — for the mouse and the keyboard both (SORT_HINT is the one wording).
     fold_summary = (f'Per-unit quality metrics — {len(qm)} units × {len(cols)} metrics{pass_line}. '
-                    'Click a column header to sort; "–" = not computable for that unit.')
+                    f'{SORT_HINT} "–" = not computable for that unit.')
     table = _fold(fold_summary, _table(headers, rows), open_when=len(qm) <= FOLD_ROWS)
     if "isolation_distance" in qm.columns:
         table += ('<p class="note">PCA isolation metrics are unreliable for units with '
@@ -821,9 +860,10 @@ def _render_summary(analyzer, analyzer_dir) -> str:
     per_unit = summary.get("per_unit", [])
     pu_rows = [[f"{p['unit']}", _num(p.get("v_pp_uV"), ".1f"), _num(p.get("snr"), ".2f"),
                 html.escape(str(p.get("best_channel", "")))] for p in per_unit]
+    # No sort hint repeated here: SORT_HINT is stated once, at the report's first
+    # sortable table (§1.1 — one fact, one home).
     pu_table = _fold(
-        f"Per-unit amplitude &amp; SNR — {len(pu_rows)} units, peak-to-peak on the best channel. "
-        "Click a column header to sort.",
+        f"Per-unit amplitude &amp; SNR — {len(pu_rows)} units, peak-to-peak on the best channel.",
         _table([("unit", True), (f"V_pp ({amp})", True), ("SNR", True), ("best ch", False)], pu_rows),
         open_when=len(pu_rows) <= FOLD_ROWS)
 

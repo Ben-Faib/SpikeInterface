@@ -31,7 +31,6 @@ from __future__ import annotations
 
 import argparse
 import html
-import re
 import sys
 from pathlib import Path
 
@@ -56,20 +55,10 @@ MATCH_SCORE = 0.5     # min agreement to call two units matched
 # non-commensurate: comparing them would just measure the window mismatch.
 DURATION_TOLERANCE_S = 1.0
 
-# --online mode. The Blackrock unit-id classes are a property of the *data*
-# (see blackrock_io.read_spikes): 0 = unsorted threshold crossings,
-# 1..254 = online-sorted units, 255 = noise/invalidated.
+# --online mode. The Blackrock unit-id classes are a property of the *data*, so
+# the class recovery (labels + 0/1..254/255 meaning) lives with the loader:
+# bio.online_unit_labels / bio.unit_class / bio.UNIT_CLASS_LABELS.
 ONLINE_NAME = "online (.nev)"
-UNSORTED_UNIT_ID = 0
-NOISE_UNIT_ID = 255
-CLASS_LABELS = {
-    "sorted": "online-sorted (unit ids 1–254)",
-    "unsorted": "unsorted threshold crossings (unit id 0)",
-    "noise": "noise / invalidated (unit id 255)",
-    "other": "unrecognised label",
-}
-# neo names a .nev spike channel "ch<channel>#<blackrock unit id>".
-_LABEL_RE = re.compile(r"^ch(\d+)#(\d+)$")
 
 
 def saved_sorters() -> list[str]:
@@ -135,12 +124,12 @@ def _match_table(cmp) -> str:
     n_unmatched = len(hm) - n_matched
     summary = (f'<p class="note">{n_matched} matched · {n_unmatched} unmatched '
                f'{cmp.sorting1_name} units · delta_time={DELTA_TIME_MS} ms · '
-               f'match_score={MATCH_SCORE}. Click a header to sort.</p>')
-    return (summary + '<table class="qc"><thead><tr>'
-            f'<th onclick="sortTable(this.closest(\'table\'),0,true)">{cmp.sorting1_name} unit</th>'
-            f'<th onclick="sortTable(this.closest(\'table\'),1,false)">{cmp.sorting2_name} match</th>'
-            f'<th onclick="sortTable(this.closest(\'table\'),2,true)">agreement</th>'
-            f'</tr></thead><tbody>' + rows + '</tbody></table>')
+               f'match_score={MATCH_SCORE}. {report.SORT_HINT}</p>')
+    ths = (report._sort_th(f"{cmp.sorting1_name} unit", 0, True)
+           + report._sort_th(f"{cmp.sorting2_name} match", 1)
+           + report._sort_th("agreement", 2, True))
+    return (summary + '<table class="qc"><thead><tr>' + ths
+            + '</tr></thead><tbody>' + rows + '</tbody></table>')
 
 
 def _metrics_section() -> dict:
@@ -219,35 +208,6 @@ def build_comparison(data_dir=None, sorters=None, out_path=None) -> Path:
 # --------------------------------------------------------------------------- #
 # --online mode: a saved sort vs the units the rig sorted online (.nev)
 # --------------------------------------------------------------------------- #
-def online_unit_labels(sorting) -> "list[str] | None":
-    """The ``ch<channel>#<unit>`` names of a .nev Sorting's units, in unit order.
-
-    SpikeInterface numbers .nev units positionally (0..n-1), which throws away the
-    Blackrock unit id — and with it the class (unsorted / sorted / noise) that
-    decides what may be compared. The names neo parsed are still on the extractor
-    and in the same order as the unit ids, so the class is recoverable there.
-    Returns None when the sorting did not come from neo: the caller says so
-    rather than guessing a class it cannot know.
-    """
-    header = getattr(getattr(sorting, "neo_reader", None), "header", None)
-    if header is None:
-        return None
-    return [str(n) for n in header["spike_channels"]["name"]]
-
-
-def _classify(label: str) -> str:
-    """One of "sorted" / "unsorted" / "noise" / "other" for a ch<n>#<unit> label."""
-    m = _LABEL_RE.match(label)
-    if m is None:
-        return "other"
-    unit = int(m.group(2))
-    if unit == UNSORTED_UNIT_ID:
-        return "unsorted"
-    if unit == NOISE_UNIT_ID:
-        return "noise"
-    return "sorted"
-
-
 def _n_spikes(sorting) -> int:
     return sum(len(sorting.get_unit_spike_train(u)) for u in sorting.get_unit_ids())
 
@@ -263,14 +223,14 @@ def split_online_units(sorting, labels):
     """
     ids = list(sorting.get_unit_ids())
     counts = [len(sorting.get_unit_spike_train(u)) for u in ids]
-    classes = [_classify(label) for label in labels]
+    classes = [bio.unit_class(label) for label in labels]
 
     accounting = []
     for key in ("sorted", "unsorted", "noise", "other"):
         idx = [i for i, c in enumerate(classes) if c == key]
         if not idx and key != "sorted":
             continue
-        accounting.append({"key": key, "label": CLASS_LABELS[key], "n_units": len(idx),
+        accounting.append({"key": key, "label": bio.UNIT_CLASS_LABELS[key], "n_units": len(idx),
                            "n_spikes": sum(counts[i] for i in idx), "kept": key == "sorted"})
 
     keep = [i for i, c in enumerate(classes) if c == "sorted"]
@@ -420,16 +380,15 @@ def _online_match_table(cmp, online, offline, sorter, delta_ms=ONLINE_DELTA_TIME
                f'delta_time={delta_ms:g} ms (wide on purpose for a crossing-stamped '
                f'reference vs a peak-aligned sort; containment is capped at 100% — '
                f'wide-window multi-coincidences can over-count). '
-               f'Click a header to sort.</p>')
-    table = (summary + '<table class="qc"><thead><tr>'
-             '<th onclick="sortTable(this.closest(\'table\'),0,false)">online unit (ch#unit)</th>'
-             '<th onclick="sortTable(this.closest(\'table\'),1,true)">online spikes</th>'
-             f'<th onclick="sortTable(this.closest(\'table\'),2,false)">best match in '
-             f'{html.escape(sorter)}</th>'
-             '<th onclick="sortTable(this.closest(\'table\'),3,true)">agreement</th>'
-             '<th onclick="sortTable(this.closest(\'table\'),4,true)">of its spikes matched</th>'
-             '<th onclick="sortTable(this.closest(\'table\'),5,true)">matched unit spikes</th>'
-             '</tr></thead><tbody>' + rows + '</tbody></table>')
+               f'{report.SORT_HINT}</p>')
+    ths = (report._sort_th("online unit (ch#unit)", 0)
+           + report._sort_th("online spikes", 1, True)
+           + report._sort_th(f"best match in {html.escape(sorter)}", 2)
+           + report._sort_th("agreement", 3, True)
+           + report._sort_th("of its spikes matched", 4, True)
+           + report._sort_th("matched unit spikes", 5, True))
+    table = (summary + '<table class="qc"><thead><tr>' + ths
+             + '</tr></thead><tbody>' + rows + '</tbody></table>')
     return table, n_strong, n_any
 
 
@@ -506,14 +465,19 @@ def build_online_comparison(sorter, data_dir=None, out_path=None, nev_path=None,
 
     try:
         online = bio.read_spikes(data_dir, nev_path=nev_path)
-    except FileNotFoundError:
+    except FileNotFoundError as e:
+        # The loader refuses for two different reasons — nothing to read, or SEVERAL
+        # candidate file sets — and only it knows which files it saw. Its own words
+        # carry the actionable detail (the candidates by name), so they go on the
+        # page verbatim under the general next step.
         return _write([_caveat_section(sorter, (
             '<strong>No .nev file found.</strong> The online units live in the recording\'s '
-            '.nev — put the Blackrock file set (.nev + .ns5) in the repo root and rebuild. '
+            '.nev — put one Blackrock file set (.nev + .ns5) in the repo root and rebuild. '
             'Without it, compare two offline sorters instead: '
-            '<code>uv run python scripts/compare.py</code>.'))])
+            '<code>uv run python scripts/compare.py</code>.'
+            f'<p class="note">Loader: {html.escape(str(e))}</p>'))])
 
-    labels = online_unit_labels(online)
+    labels = bio.online_unit_labels(online)
     if labels is None:
         return _write([_caveat_section(sorter, (
             '<strong>Could not read the .nev unit-class labels</strong>, so the unsorted '
