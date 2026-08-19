@@ -17,18 +17,20 @@ box) runs alongside everything.
 
 ---
 
-## ▶ NOW - updated 2026-08-19 morning: **CONDUCTOR v4 RUNNING (this session): items 1-4 sealed, page + facelift + deck in flight**
+## ▶ NOW - updated 2026-08-19: **CONDUCTOR v4 CLOSED - the presentation arc delivered, main pushed**
 
-- Sealed so far: em-dash purge + repo pin (item 1), merge advisory reviewed +
-  folded (item 2), parameter round trip verified, two real fixes (item 3), the
-  five-sorter sweep - all six full runs, canary 4.00-4.09 uV, ZERO splits in 18
-  pair verdicts (item 4). Palette built + validated (scripts/viz_palette.py).
-- In flight: sweep-page Fable review, report facelift + content audit builder.
-- Then: comparison-page palette check, the .pptx deck from finished pieces,
-  board close, push. The v4 prompt below remains the re-entry pattern if this
-  session stops short.
+- All eight GOAL_PRESENT items sealed with three Fable reviews folded: em-dash
+  purge + repo-wide pin · merge advisory (one home, every surface) · parameter
+  round trip verified (two real fixes) · the five-sorter sweep (18 pair
+  verdicts, ZERO splits, canary 4.00-4.09 uV on all six sorters) ·
+  outputs/sweep.html · report facelift with the advisory's evidence drawn ·
+  the validated periwinkle palette on every HTML surface · the deck
+  (outputs/lab_meeting_deck.pptx, 12 slides + appendix, script in notes).
+- **For Ben: the DECK dry-read item in SEALS OPEN** (with its two
+  need-to-knows). Everything else on the board: WD (lab box) · W3 (fuller
+  face pick) · W4 (lab recordings).
 
-## Previous NOW (kept until the v4 close): **paste THE CONDUCTOR v4 (below) into ONE fresh session: the presentation arc**
+## Previous NOW (v4, kept for provenance): **paste THE CONDUCTOR v4 (below) into ONE fresh session: the presentation arc**
 
 - **Ben's interview happened (2026-08-19)**: decisions of record and the full spec
   live in `goals/GOAL_PRESENT.md`. Headlines: split path chosen for the merges
@@ -101,6 +103,7 @@ box) runs alongside everything.
 | 12 | W3 face | `goals/GOAL_W3_FACE.md` | **face1 (takeaway) LANDED** (`8f651f2`, two reviews folded) + **face2 (binned-rows dashboard) LANDED 2026-08-19** (`dd90687`, review ship, findings folded); the fuller direction stays Ben's pick |
 | 13 | W4 multi-recording | `goals/GOAL_W4_MULTI.md` | gated: W1+W2+lab data |
 | - | WD lab deployment items 1–4 | `goals/GOAL_WD_DEPLOY.md` | gated: lab-box access |
+| P8 | GOAL_PRESENT: the presentation arc (all eight items) | `goals/GOAL_PRESENT.md` | **SEALED 2026-08-19** (CONDUCTOR v4, this session): purge+pin `3b699cb` · advisory `5a106ea`+`11462fa`+fold `4917b7c` · params `c46773d`+`cb98780` · sweep judgment/page `98ff77b`+folds `a90edf0`/`288b48e` · facelift `07e5815`+fold `cb4735a` · palette `46a04d7` · deck `d748381`; three Fable reviews folded; suite 723 green |
 | B1 | BUG: bare `report` action crashes | prompt below | **SEALED 2026-08-18** (peer, `b43869e`) |
 | E1 | Explore overhaul: same-clock view + honest labels (Ben flag, 2026-08-19) | **SEALED** - and it surfaced: **channel 1 is pathological** (pure oscillation, inside the CMR) → first target for the queued bad-channel/preprocessing slice | **SEALED 2026-08-19** |
 | C1 | NEV online-vs-sorted comparison (Ben, 2026-08-18 eve) | engine **SEALED** (`39ca919`) - FINDING: the original .nev has ZERO online-sorted units | **SEALED** |

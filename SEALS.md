@@ -48,8 +48,21 @@ A need left only in a chat summary is a need Ben never sees.*
   at 97.5–100%; 8 unsure; 4 noise - three evidence-keyed rules, every decision
   audit-trailed with source=tui) → applied (curated re-score, canary 4.03 µV) → report,
   dashboard and compare all reading that one run id, curated-stated.
+- **The presentation arc is delivered** (CONDUCTOR v4, 2026-08-19): the em-dash purge is
+  total and pinned (`tests/test_no_em_dashes.py`); the merge advisory answers "do I need
+  to split?" on novel data from ONE home (sort_summary: >= 1000 spikes + solid SNR + ISI
+  >= 2x the rule's ceiling, bimodality corroborating) and is quoted by report, triage and
+  dashboard; the parameter round trip is verified with two real defects fixed; the
+  five-sorter sweep is MEASURED LAW: 18 pair verdicts, ZERO splits (no swept sorter
+  separates the merged pairs; canary 4.00-4.09 uV across all six), told honestly on
+  `outputs/sweep.html`; the report leads its advisory with the evidence (per-unit ISI +
+  amplitude histograms); every HTML surface reads the one validated periwinkle palette
+  (`scripts/viz_palette.py`); and the ~10 min lab-meeting deck exists
+  (`outputs/lab_meeting_deck.pptx`, regenerable via `docs/presentation/make_deck.js`:
+  12 slides + 4-screenshot appendix, full speaker script with the real numbers in the
+  notes, no credits).
 - **The repo is unified**: one branch (main), pushed; every side branch deleted after
-  merge verification; conductor v3 closed 2026-08-19.
+  merge verification; conductor v3 closed 2026-08-19; conductor v4 closed 2026-08-19.
   Facts of record binding design: E1's premise FALSE in-band (PRE1), tdc2 non-deterministic
   (14–19 units across identical runs), .nev unit ids are PER-ELECTRODE SLOTS (7 sorted
   electrode×slot units on 4 electrodes; CSV reconciled row-for-row), and the recording's
@@ -60,6 +73,13 @@ A need left only in a chat summary is a need Ben never sees.*
 
 ## OPEN - needs Ben
 
+- **DECK - the dry read**: open `outputs/lab_meeting_deck.pptx` in PowerPoint and read
+  the notes script aloud once (the file passes the validator and renders cleanly in
+  LibreOffice, but a headless session cannot click through PowerPoint itself); two
+  things to know while reading: the advisory fires on 6 units, the 4 known merges plus
+  units 17 and 2 which genuinely meet the criteria, and `.si_menu.json` now pins
+  `active_sorter: tridesclous2` so a bare `report` stays on the demo run despite the
+  sweep's new sorts. *(opened 2026-08-19)*
 - **WD - lab-box access**: the Windows+GPU deployment track starts with one session on
   that machine. *(opened 2026-08-18)*
 - **W3 - the face pick**: the takeaway surface and the binned-rows dashboard are landed;
@@ -77,6 +97,29 @@ accepted; reopen only if a map ever arrives. Both feed THE CONDUCTOR v4 / GOAL_P
 ---
 
 ## The ledger (newest first)
+
+**2026-08-19 - CONDUCTOR v4 CLOSED: the presentation arc, all eight items sealed, pushed**
+- Did: closed the run: the sweep page (review: ship, seven findings folded including the
+  split-verdict exclusivity guard and the honest partial-coverage headline), the report
+  facelift + content audit (review: fix-first, all nine findings folded: the log-axis ISI
+  label now lands on its line, captions derive from data, ghost panels hidden), the
+  comparison pages on the palette with the pre-existing dead agreement heatmap fixed
+  (category axes), and the deck built LAST from the finished pieces (16 slides with the
+  full spoken script and real numbers in notes, validator clean, LibreOffice-rendered
+  and eyeballed slide by slide).
+- Means: Aleece can walk into Tracy's lab meeting with a deck whose every number traces
+  to a surface a skeptic can open: found (97-100% recovery), honestly flagged (the ISI
+  advisory on exactly the merged units, evidence drawn in the report), no free lunch
+  (18 pair verdicts, zero splits), and named ways out (Phy round trip, Kilosort4 on the
+  lab box).
+- Moved: final gates all green on main: suite 723 + 2 documented skips, 11 snapshots,
+  launch check OK, smoke canaries 3.966-4.054 uV this run, em-dash pin green, push set
+  verified free of data and large blobs; CLAUDE.md gained viz_palette + sweep_page
+  ownership rows and the no-em-dash convention; LESSONS S9 filed.
+- Needs Ben: the DECK dry-read item in OPEN (batched there with its two need-to-knows);
+  nothing else.
+- Next: the deck is presented from `outputs/lab_meeting_deck.pptx`; the remaining board
+  is WD (lab box) · W3 (fuller face) · W4 (lab recordings).
 
 **2026-08-19 - CONDUCTOR v4 mid-run: purge sealed, advisory + params reviewed, sweep measured**
 - Did: sealed GOAL_PRESENT items 1-4 - the em-dash purge (4 waves, ~3160
