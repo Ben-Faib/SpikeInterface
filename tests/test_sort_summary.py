@@ -194,8 +194,10 @@ def test_rollup_ranks_accepted_first_by_snr_then_the_tail():
                        spike_counts={"0": 900, "1": 5000, "2": 4000, "3": 800})
     assert [u["unit"] for u in r["units"]] == [2, 0, 1, 3]   # accepted 6.0,4.5 then 9.0,5.0
     assert r["n_accepted"] == 2 and r["n_units"] == 4 and r["n_unjudged"] == 0
-    assert r["accepted_contacts"] == ["7", "5"]
+    assert r["n_strong"] == 2 and r["n_thin"] == 0
+    assert r["strong_contacts"] == ["7", "5"]
     assert r["headline"] == "2 strong units (ch 7·5)"
+    assert r["site_line"] == "strong at ch 7·5"
     # The rule is stated verbatim wherever the count is.
     assert r["rule_text"] == ss.rule_text(ss.DEFAULT_QUALITY_RULE)
 
@@ -250,8 +252,10 @@ def test_isolation_phrase_thresholds_and_honesty_gates():
     # Poor but alone on its contact: no neighbour is named, because none is known.
     assert ss.isolation_phrase(_POOR, n_spikes=5000, contact="7") == \
         "not clearly separate from the other units"
-    # Unknown spike count must not fabricate the too-few gate.
-    assert ss.isolation_phrase(_CLEAN) == "clean"
+    # An UNCOUNTED unit gets its own phrase: without the count the too-few gate
+    # cannot fire, and scoring the metrics anyway would let the same unit read
+    # "clean" here and "too few spikes to judge" on a surface that counted (F4).
+    assert ss.isolation_phrase(_CLEAN) == ss.UNKNOWN_SPIKES_PHRASE
 
 
 def test_rollup_match_column_is_absent_not_guessed():
@@ -267,8 +271,9 @@ def test_rollup_match_column_is_absent_not_guessed():
 
 def test_rollup_on_a_sort_with_no_units():
     r = ss.unit_rollup(_summary(n_units=0, per_unit=[]), {})
-    assert r["units"] == [] and r["n_accepted"] == 0
+    assert r["units"] == [] and r["n_accepted"] == 0 and r["n_strong"] == 0
     assert r["headline"] == "0 strong units"
+    assert r["site_line"].startswith("no unit passes SNR")
     assert r["contact_line"] == "no units on any contact"
 
 
@@ -280,3 +285,68 @@ def test_rule_detail_and_quality_pass_agree():
     assert (n, flags) == (1, [True, False, None])
     assert [ss.rule_detail(r)["flag"] for r in rows] == flags
     assert ss.rule_detail(rows[1])["failed"][0][0] == "SNR ≥ 4"
+
+
+# --------------------------------------------------------------------------- #
+# Review F2/F4 — "strong" must not flatter thin evidence, and an uncounted unit
+# must not borrow the too-few phrase.
+# --------------------------------------------------------------------------- #
+def _thin_case(counts):
+    """Unit 1 (SNR 9) dense and failing ISI; the rest pass on `counts` spikes."""
+    metrics = {
+        "0": dict(snr=4.5, isi_violations_ratio=0.0, presence_ratio=1.0),
+        "1": dict(snr=9.0, isi_violations_ratio=0.6, presence_ratio=1.0),
+        "2": dict(snr=6.0, isi_violations_ratio=0.0, presence_ratio=1.0),
+        "3": dict(snr=5.0, isi_violations_ratio=0.0, presence_ratio=1.0),
+    }
+    return ss.unit_rollup(_rollup_summary(), metrics, spike_counts=counts)
+
+
+def test_a_pass_on_too_few_spikes_is_hedged_not_called_strong():
+    # 2 and 3 pass on 30 spikes; 0 passes on 5000.
+    r = _thin_case({"0": 5000, "1": 6000, "2": 30, "3": 30})
+    by = {u["unit"]: u for u in r["units"]}
+    # The RULE's verdict is untouched — the pass-quality count must not move.
+    assert [by[u]["verdict"] for u in (0, 2, 3)] == [True, True, True]
+    assert r["n_accepted"] == 3
+    # ...but only the unit whose evidence carries it is called strong.
+    assert r["n_strong"] == 1 and r["n_thin"] == 2
+    assert by[0]["strong"] is True and by[0]["verdict_word"] == "strong"
+    assert by[2]["strong"] is False and by[2]["thin"] == "few"
+    assert by[2]["verdict_word"] == "passes the rule · too few spikes to judge"
+    # The headline splits, and the dashboard's line comes from the same fields.
+    assert r["headline"] == "1 strong unit (ch 5) · 2 more pass the rule on thin evidence"
+    assert r["site_line"] == "strong at ch 5 · 2 more pass the rule on thin evidence"
+    # A thin pass never outranks a unit whose evidence could carry the claim.
+    assert [u["unit"] for u in r["units"]][:1] == [0]
+    assert [u["strong"] for u in r["units"]] == [True, False, False, False]
+
+
+def test_when_every_pass_is_thin_the_headline_says_so_first():
+    r = _thin_case({"0": 30, "1": 6000, "2": 30, "3": 30})
+    assert r["n_accepted"] == 3 and r["n_strong"] == 0 and r["n_thin"] == 3
+    assert r["headline"].startswith("no unit passes the rule on solid evidence · 3 pass it "
+                                    "on thin evidence")
+    assert r["site_line"].startswith("3 units pass the rule only on thin evidence")
+
+
+def test_an_uncounted_pass_is_hedged_as_uncounted_not_as_too_few():
+    # No spike_counts at all: the surfaces without a Sorting open must say what
+    # they do not know, and must not call the unit strong on that basis (F4).
+    r = ss.unit_rollup(_rollup_summary(),
+                       {"0": dict(snr=4.5, isi_violations_ratio=0.0, presence_ratio=1.0,
+                                  **_CLEAN)})
+    u0 = next(u for u in r["units"] if u["unit"] == 0)
+    assert u0["verdict"] is True and u0["strong"] is False
+    assert u0["thin"] == "unknown"
+    assert u0["verdict_word"] == "passes the rule · spike count unknown"
+    assert u0["isolation"] == ss.UNKNOWN_SPIKES_PHRASE
+    assert r["n_strong"] == 0 and r["n_thin"] == 1
+
+
+def test_thin_reason_is_the_one_home_for_the_hedge():
+    assert ss.thin_reason(True, 5000) == ""
+    assert ss.thin_reason(True, 30) == "few"
+    assert ss.thin_reason(True, None) == "unknown"
+    # Only a PASS is ever hedged; a failure and a non-judgement are not "thin".
+    assert ss.thin_reason(False, 30) == "" and ss.thin_reason(None, 30) == ""

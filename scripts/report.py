@@ -690,7 +690,11 @@ def _pass_quality(analyzer) -> "tuple[int | None, int]":
             return None, n_units, 0       # nothing judgeable -> honest unknown
         return n_pass, len(qm), sum(1 for f in flags if f is None)
     except Exception:  # noqa: BLE001 - metric columns vary; degrade to "unknown"
-        return None, n_units
+        # THREE values on every path (face1 review F3): both callers 3-unpack, so
+        # a 2-tuple here would raise inside _render_verdict and _safe_section
+        # would replace the whole verdict section — tiles, takeaway and all —
+        # with an error box, on the one path that exists to degrade gracefully.
+        return None, n_units, 0
 
 
 def _quality_metric_rows(analyzer) -> dict:
@@ -744,29 +748,42 @@ def _run_stamp(info, analyzer_dir, display_label) -> str:
 
 
 def _match_cell(match) -> str:
-    """One "matches <reference unit> · <containment>" cell, or an honest gap.
+    """One manual-reference cell, or an honest gap.
 
-    A best-anything pairing that never reached SpikeInterface's chance level is
-    NOT a match and must not be worded as one — it is reported as the closest
-    thing found, so the number is visible without the claim.
+    The PRIMARY fact is recovery — how much of the human's unit this unit carries
+    ("carries 99% of ch9#2") — because that is what answers "did we find the
+    neuron the human found". Symmetric agreement cannot answer it here: our units
+    fire far denser than the manual selection, so a unit holding 947 of a
+    reference unit's 959 spikes scores ~0.13 and falls below SpikeInterface's
+    chance cutoff. Wording a cell from that sentinel inverted the block's best
+    news (face1 review F1), so nothing here reads it.
+
+    The other direction is kept as the sub-line, because a unit that carries the
+    whole reference unit inside five times as many spikes has said something real
+    about itself too.
     """
     if not match:
         return "–"
     who = html.escape(str(match.get("unit")))
-    pct = match.get("containment")
-    share = f" · {100.0 * float(pct):.0f}%" if pct is not None else ""
-    if match.get("below_chance"):
-        return (f'no match above chance<span class="why">closest: '
-                f'{who}{share}</span>')
-    return f"matches <code>{who}</code>{share}"
+    rec, mine = match.get("recovered"), match.get("containment")
+    detail = (f'{100.0 * float(mine):.0f}% of this unit\'s own spikes'
+              if mine is not None else "")
+    if match.get("recovers"):
+        return (f'carries {100.0 * float(rec):.0f}% of <code>{who}</code>'
+                + (f'<span class="why">{detail}</span>' if detail else ""))
+    share = f" · {100.0 * float(rec):.0f}% of it" if rec is not None else ""
+    return (f'closest: <code>{who}</code>{share}'
+            + (f'<span class="why">{detail}</span>' if detail else ""))
 
 
 def _unit_rows(units, with_match: bool) -> list:
     """Table rows for the strong-units block, in the rollup's ranked order."""
     rows = []
     for u in units:
-        verdict = html.escape(sort_summary.VERDICT_WORDS[u["verdict"]])
-        cls = "yes" if u["verdict"] else "no"
+        verdict = html.escape(u["verdict_word"])
+        # Green is reserved for a claim the evidence can carry (§1.5): a pass on
+        # thirty spikes is stated, not celebrated.
+        cls = "yes" if u["strong"] else "no"
         cell = f'<span class="{cls}">{verdict}</span>'
         if u["why"]:
             cell += f'<span class="why">{html.escape(u["why"])}</span>'
@@ -793,26 +810,33 @@ def _render_strong_units(rollup, stamp_html, matches_meta) -> str:
     headers = [("unit", False), ("contact", False), ("SNR", True), ("spikes", True),
                ("isolation", False), ("verdict", False)]
     if with_match:
-        headers.append(("best manual match", False))
+        headers.append(("manual reference", False))
     accepted = [u for u in rollup["units"] if u["verdict"]]
     tail = [u for u in rollup["units"] if not u["verdict"]]
 
-    rule_note = (f'<p class="note"><strong>“Strong” means the quality rule passed:</strong> '
+    rule_note = (f'<p class="note"><strong>“Strong” means the quality rule passed '
+                 f'on enough spikes to mean it:</strong> '
                  f'{html.escape(rollup["rule_text"])}. A rule of thumb for orientation, '
                  'tunable through <code>quality_rule</code> in <code>.si_menu.json</code> — '
-                 'never a certification that a unit is one neuron. Isolation phrases come '
+                 'never a certification that a unit is one neuron. A unit that satisfies '
+                 f'every criterion on fewer than {sort_summary.ISOLATION_MIN_SPIKES} spikes '
+                 'still <em>passes</em> — it is counted in the pass-quality tile — but it is '
+                 'listed as passing <em>on thin evidence</em> rather than called strong: at '
+                 'that count the ISI and amplitude criteria are counting almost nothing and '
+                 'the isolation metrics cannot be computed at all. Isolation phrases come '
                  'from the PCA metrics (nearest-neighbour hit rate, L-ratio, isolation '
-                 'distance); a unit with too few spikes for those to mean anything says so '
-                 'rather than scoring well by accident.</p>')
+                 'distance).</p>')
     if with_match:
         m = matches_meta or {}
         rule_note += (
             f'<p class="note">The manual column matches each unit against '
             f'<code>{html.escape(str(m.get("reference", "")))}</code> '
             f'({m.get("n_reference_units", 0)} sorted reference units, coincidence window '
-            f'{m.get("delta_ms", 0):g} ms). The percentage is how much of <em>our</em> '
-            'unit the matched reference unit also carries — a reference, not ground '
-            'truth.</p>')
+            f'{m.get("delta_ms", 0):g} ms). <strong>“carries 99% of ch9#2” means this unit '
+            'holds 99% of that human-sorted unit\'s spikes</strong> — the direction that '
+            'answers whether we found the neuron the human found. The grey sub-line gives '
+            'the other direction, which is small whenever our unit fires far denser than '
+            'the manual selection (it usually does). A reference, not ground truth.</p>')
 
     body = stamp_html
     if not rollup["n_units"]:
@@ -820,9 +844,7 @@ def _render_strong_units(rollup, stamp_html, matches_meta) -> str:
                        'Lower <code>detect_threshold</code> in Edit parameters and '
                        're-run the sort.</div>')
     if accepted:
-        body += ('<p class="rollup"><strong>'
-                 + html.escape(sort_summary.headline_takeaway(
-                     len(accepted), rollup["accepted_contacts"], max_contacts=len(accepted)))
+        body += ('<p class="rollup"><strong>' + html.escape(rollup["headline"])
                  + '</strong><br>' + html.escape(rollup["contact_line"]) + '</p>')
         body += _table(headers, _unit_rows(accepted, with_match))
     else:

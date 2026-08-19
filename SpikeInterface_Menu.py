@@ -176,16 +176,18 @@ def _saved_summary(sorter: str, curated: bool = False):
         return False, 0, 0.0
 
 
-def _rollup_for(out_dir, spike_counts=None):
+def _rollup_for(out_dir, spike_counts=None, summary=None):
     """The takeaway rollup for one saved sort, or None if it has no summary.
 
     Pure file reads (summary.json + quality_metrics.csv) judged by the rule's one
     owner — no SpikeInterface, so this stays cheap enough to run for every saved
     sorter on every dashboard refresh. ``spike_counts`` is passed only where the
     caller already has the Sorting open (triage); without it a unit's spike count
-    is honestly unknown rather than estimated.
+    is honestly unknown rather than estimated, and the rollup hedges the verdict
+    it would otherwise have called strong. ``summary`` lets a caller that already
+    read summary.json hand it over instead of paying for a second read.
     """
-    summary = sort_summary.load_summary(out_dir)
+    summary = summary if summary is not None else sort_summary.load_summary(out_dir)
     if not summary:
         return None
     return sort_summary.unit_rollup(
@@ -1249,8 +1251,10 @@ class MenuController:
         counts = self._spike_counts(paths["sorting"])
         # Strong-first is the DEFAULT order, and it is the same ranking the report's
         # strong-units block uses because it is the same rollup — a triage pass
-        # should meet the units most likely to be real before the tail.
-        rollup = _rollup_for(paths["out"], spike_counts=counts) or {"units": []}
+        # should meet the units most likely to be real before the tail. summary is
+        # handed over rather than re-read: it was loaded three lines above.
+        rollup = _rollup_for(paths["out"], spike_counts=counts,
+                             summary=summary) or {"units": []}
         units = [{
             "unit": row["unit"],
             "label": None if blocked else curation.label_of(record, row["unit"]),
@@ -1263,6 +1267,7 @@ class MenuController:
             # so the card states the synthesis, not just the raw evidence.
             "verdict": row["verdict"],
             "verdict_word": row["verdict_word"],
+            "strong": row["strong"],
             "why": row["why"],
             "isolation": row["isolation"],
             "metrics": metrics.get(str(row["unit"]), {}),
@@ -1272,8 +1277,10 @@ class MenuController:
         out["columns"] = list(next(iter(metrics.values()), {}))
         out["total"] = len(units)
         out["reviewed"] = sum(1 for u in units if u["label"])
+        # The rule VERBATIM: the screen prints a verdict word per unit, so it has
+        # to say which rule produced it. (There was a `headline` here too — the
+        # view never rendered it, so it was payload nobody read; it is gone.)
         out["rule_text"] = rollup.get("rule_text", "")
-        out["headline"] = rollup.get("headline", "")
         return out
 
     def label_unit(self, unit_id, label: str) -> tuple[bool, str]:

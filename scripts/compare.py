@@ -72,6 +72,13 @@ DELTA_TIME_MS = 0.4   # coincidence window for a "match" (offline vs offline)
 # mode defaults wider; override with --delta-ms.
 ONLINE_DELTA_TIME_MS = 2.0
 MATCH_SCORE = 0.5     # min agreement to call two units matched
+# Fraction of a REFERENCE unit's spikes our unit must carry before the surfaces
+# say it matched it. Symmetric agreement cannot answer that question here: an
+# offline sorter routinely fires 5-10x the events of a conservative manual
+# selection, so a unit carrying 947 of a reference unit's 959 spikes still scores
+# ~0.13 agreement and falls under SI's chance cutoff. Recovery is the direction
+# that answers "did we find the neuron the human found?" (face1 review F1).
+MATCH_RECOVERY = 0.5
 # Two sorts whose durations differ by more than this (seconds) are treated as
 # non-commensurate: comparing them would just measure the window mismatch.
 DURATION_TOLERANCE_S = 1.0
@@ -637,14 +644,27 @@ def match_manual(sorter, data_dir=None, nev_path=None, delta_ms=ONLINE_DELTA_TIM
 
         {"reference": "PFCM7…_manuallySorted.nev", "delta_ms": 2.0,
          "n_reference_units": 7, "window_s": 132.0, "cropped": False,
-         "by_unit": {"4": {"unit": "ch5#1", "containment": 0.97,
-                           "agreement": 0.61, "n_matched": 5701,
-                           "n_spikes": 5863, "below_chance": False}}}
+         "by_unit": {"4": {"unit": "ch5#2", "recovered": 0.996, "recovers": True,
+                           "containment": 0.13, "agreement": 0.13,
+                           "n_matched": 750, "n_spikes": 5863,
+                           "n_reference_spikes": 753, "below_chance": True}}}
 
-    ``containment`` is the fraction of **our** unit's spikes that the matched
-    reference unit also carries — "did a human find these spikes too?" — capped
-    at 1.0, because a wide coincidence window lets several reference spikes
-    coincide with one of ours and over-count.
+    TWO containments, because they answer different questions and disagree hard
+    on this recording:
+
+      ``recovered``    the fraction of the **reference** unit's spikes our unit
+                       carries — *did we find the neuron the human found?* This
+                       is the headline fact, and ``recovers`` is it against
+                       :data:`MATCH_RECOVERY`.
+      ``containment``  the fraction of **our** unit's spikes the reference
+                       accounts for. Small whenever our unit is the denser of the
+                       two, which it usually is.
+
+    Both are capped at 1.0: a wide coincidence window lets several spikes on one
+    side coincide with one on the other and over-count. ``below_chance`` is
+    SpikeInterface's own symmetric verdict, kept as provenance — it is union
+    agreement, which the density asymmetry defeats, so no surface should word a
+    match from it.
     """
     if nev_path is None:
         found = bio.find_reference_nevs(data_dir)
@@ -672,6 +692,7 @@ def match_manual(sorter, data_dir=None, nev_path=None, delta_ms=ONLINE_DELTA_TIM
                                  sorting2_name=sorter, delta_time=delta_ms,
                                  match_score=MATCH_SCORE)
     n_ours = {str(u): len(offline.get_unit_spike_train(u)) for u in offline.get_unit_ids()}
+    n_ref = {str(u): len(cropped.get_unit_spike_train(u)) for u in cropped.get_unit_ids()}
     by_unit = {}
     # best_match_21: OUR unit -> the reference unit it best matches. Below SI's
     # chance cutoff it reports no partner; the best-anything row is still the
@@ -697,18 +718,31 @@ def match_manual(sorter, data_dir=None, nev_path=None, delta_ms=ONLINE_DELTA_TIM
         except Exception:  # noqa: BLE001
             n_matched = None
         mine = n_ours.get(str(u2), 0) or 1
+        theirs = n_ref.get(str(partner), 0) or 1
+        recovered = None if n_matched is None else min(1.0, n_matched / theirs)
         by_unit[str(u2)] = {
             "unit": str(partner),
+            # BOTH directions, because they answer different questions and this
+            # recording makes them disagree wildly. `recovered` — how much of the
+            # REFERENCE unit we carry — is the one that answers "did we find the
+            # human's neuron"; `containment` — how much of OUR unit the reference
+            # accounts for — is small whenever our unit is the denser of the two.
+            "recovered": recovered,
             "containment": None if n_matched is None else min(1.0, n_matched / mine),
+            "recovers": recovered is not None and recovered >= MATCH_RECOVERY,
             "agreement": agreement,
             "n_matched": None if n_matched is None else int(n_matched),
             "n_spikes": n_ours.get(str(u2), 0),
+            "n_reference_spikes": n_ref.get(str(partner), 0),
+            # SI's own verdict, kept as provenance only. NOTHING should word a
+            # cell from it: it is union-agreement, which this asymmetry defeats.
             "below_chance": below,
         }
     return {"reference": Path(nev_path).name, "delta_ms": float(delta_ms),
             "n_reference_units": len(cropped.get_unit_ids()),
             "window_s": window_s, "cropped": bool(crop_info["cropped"]),
-            "match_score": MATCH_SCORE, "by_unit": by_unit}
+            "match_score": MATCH_SCORE, "match_recovery": MATCH_RECOVERY,
+            "by_unit": by_unit}
 
 
 def _caveat_section(sorter, body) -> dict:

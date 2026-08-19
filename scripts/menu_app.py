@@ -170,10 +170,12 @@ class Controller(Protocol):
     def sort_expectations(self) -> dict: ...   # {"span","wall_seconds"} of the last run
     # Unit triage (W1 slice 4). ``triage_state`` is the active sorter's saved units
     # + the curation state that makes them honest ({units, columns, reviewed, total,
-    # line, stale, stale_reason, apply_hint, blocked, empty, rule_text}). Its units
-    # arrive in the rollup's STRONG-FIRST order, each carrying peak_channel,
-    # verdict_word, why and isolation — the same synthesis the report shows, so a
-    # triage pass and the report can never rank or judge differently.
+    # line, stale, stale_reason, apply_hint, blocked, empty, rule_text — the rule
+    # verbatim, which the screen prints because it prints that rule's verdicts).
+    # Its units arrive in the rollup's STRONG-FIRST order, each carrying
+    # peak_channel, verdict_word, strong, why and isolation — the same synthesis
+    # the report shows, so a triage pass and the report can never rank or judge
+    # differently.
     # ``label_unit`` writes
     # ONE verdict through curation.py and returns (ok, message) — a refusal (the
     # record is not anchored to the sort on disk) writes nothing and says why.
@@ -1855,9 +1857,16 @@ class UnitTriageScreen(ModalScreen):
         self.query_one("#triagestate", Static).update(line)
         # curation.state()'s sentence, verbatim: the ONE source for curated-vs-raw.
         # With no sort there is nothing for it to describe, so it stays silent
-        # rather than calling an absent result "raw sorter output".
-        self.query_one("#triageprov", Static).update(
-            Text("" if st.get("empty") else st.get("line", ""), style=ui.SECONDARY))
+        # rather than calling an absent result "raw sorter output". Under it, the
+        # quality rule VERBATIM — every row's verdict word is that rule's, so the
+        # screen states which rule it is judging by rather than expecting the
+        # reader to remember it from the report.
+        prov = Text(style=ui.SECONDARY)
+        if not st.get("empty"):
+            prov.append(st.get("line", ""))
+            if st.get("rule_text"):
+                prov.append("\nstrong = " + st["rule_text"])
+        self.query_one("#triageprov", Static).update(prov)
         hint = Text()
         if st.get("empty"):
             hint.append(st["empty"], style="#f0883e")
@@ -1914,7 +1923,10 @@ class UnitTriageScreen(ModalScreen):
         word = unit.get("verdict_word")
         if word:
             t.append(f"{'quality rule':<22}", style=ui.SECONDARY)
-            t.append(word, style=("#3fb950" if unit.get("verdict") else
+            # Green only for a pass the evidence can carry: a thin pass is stated
+            # in full ("passes the rule · too few spikes to judge"), not coloured
+            # as a verified result (§1.5).
+            t.append(word, style=("#3fb950" if unit.get("strong") else
                                   "#f0883e" if unit.get("verdict") is None else "dim"))
             if unit.get("why"):
                 t.append(f"   {unit['why']}", style="dim")
@@ -2962,8 +2974,13 @@ class SpikeMenuApp(App):
         else:
             fixed, body_min = 10 + dl_rows + result_rows, 7
         # head + 3 content (+air): the takeaway line, the strong-at-ch site line,
-        # and the metrics line. RESULTS still yields whole, before the action list.
-        results_rows = (4 if dense else 5) if has_results else 0
+        # and the metrics line — plus a 4th content row on the rare sort whose
+        # curated result sits on a run that is no longer current, which RESULTS
+        # paints and therefore must be reserved (review F6: the arithmetic has to
+        # match what is painted, or the yield law is guessing).
+        # RESULTS still yields whole, before the action list.
+        extra = 1 if self.c.infos[self.c.active_idx].get("curated_elsewhere") else 0
+        results_rows = ((4 if dense else 5) + extra) if has_results else 0
         # RESULTS yields before the action list: hide it when the budget is tight.
         if has_results and h - fixed - results_rows < body_min:
             has_results = False
@@ -3195,7 +3212,9 @@ class SpikeMenuApp(App):
         # a count can never read as the whole sort.
         rollup = info.get("rollup")
         if rollup:
-            n = rollup["n_accepted"]
+            # n_strong, not n_accepted: a unit that passed the rule on thirty
+            # spikes is counted below, in words, never in this headline number.
+            n = rollup["n_strong"]
             head.append(f" · {n} strong unit{'' if n == 1 else 's'} "
                         f"of {rollup['n_units']}", style=ui.PRIMARY)
         else:
@@ -3216,17 +3235,15 @@ class SpikeMenuApp(App):
                 mark += " · stale"
             head.append(mark, style=ui.SECONDARY)
 
-        # WHERE the strong units are — the site view, in one line. A zero names
-        # its next step (§1.7) instead of leaving an empty bracket.
+        # WHERE the strong units are — the site view, in one line, WORDED BY
+        # sort_summary from the same strong/thin split the report's headline uses,
+        # so the two surfaces can never tell different stories (review F2). A
+        # sort with nothing strong says so in amber: it has a next step (§1.7).
         site = None
         if rollup:
             site = line()
-            if rollup["n_accepted"]:
-                site.append("strong at ch " + "·".join(rollup["accepted_contacts"]),
-                            style=ui.PRIMARY)
-            else:
-                site.append("no unit passes " + rollup["rule_text"].split(" (NaN")[0],
-                            style="#f0883e")
+            site.append(rollup["site_line"],
+                        style=ui.PRIMARY if rollup["n_strong"] else "#f0883e")
         # The pressable triage control, in D6's `t change` shape: an inverse-video
         # key chip + verb, with a click anywhere on RESULTS as the mouse path. It
         # lives HERE and not on the footer's key line because triage acts on the

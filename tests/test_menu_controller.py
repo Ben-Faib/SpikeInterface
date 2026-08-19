@@ -580,11 +580,15 @@ def test_triage_state_reads_the_evidence_off_disk(monkeypatch, tmp_path):
     assert by_unit[0]["metrics"]["amplitude_cutoff"] is None      # blank on disk
     assert by_unit[1]["metrics"]["amplitude_cutoff"] == 0.031
     # The rollup's synthesis rides along, so the card states it without deciding.
-    assert by_unit[0]["verdict"] is True and by_unit[0]["verdict_word"] == "strong"
-    assert by_unit[0]["why"] == "" and by_unit[0]["isolation"]
+    assert by_unit[0]["verdict"] is True and by_unit[0]["why"] == ""
     assert st["rule_text"]
-    # No saved Sorting here -> an honest unknown, never an invented count.
+    # No saved Sorting here -> an honest unknown, never an invented count. And an
+    # uncounted pass is HEDGED rather than called strong: the surfaces must not
+    # promote a unit on evidence they never looked at.
     assert by_unit[0]["n_spikes"] is None
+    assert by_unit[0]["strong"] is False
+    assert by_unit[0]["verdict_word"] == "passes the rule · spike count unknown"
+    assert by_unit[0]["isolation"] == "spike count unknown — isolation not judged"
     # curation.state() is the one source for what is being shown.
     assert st["line"] == "raw sorter output — no curation applied"
     assert st["stale"] is False and st["stale_reason"] == ""

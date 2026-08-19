@@ -33,12 +33,21 @@ excluded ids to ``compute_summary(excluded_channels=...)`` and they are persiste
 as ``excluded_channels`` and stated in the yield cell that every surface renders.
 
 ``unit_rollup(summary, metrics, ...)`` is the module's other half: the **takeaway**
-— which units pass the quality rule ("strong"), at which contact each one peaks,
-how separate it looks in plain words, and how many accepted units live on each
-contact — ranked strongest first. It is pure (no SpikeInterface, no NumPy) and it
-is the ONE home for that synthesis: the report's strong-units block, the
-dashboard's RESULTS line and the in-TUI triage order all read it rather than
-each deciding for itself which units are real.
+— which units pass the quality rule, at which contact each one peaks, how separate
+it looks in plain words, and how many accepted units live on each contact — ranked
+strongest first. It is pure (no SpikeInterface, no NumPy) and it is the ONE home
+for that synthesis: the report's strong-units block, the dashboard's RESULTS line
+and the in-TUI triage order all read it rather than each deciding for itself which
+units are real.
+
+**Passing the rule and being called "strong" are not the same claim.** A unit can
+satisfy every criterion on thirty spikes, where the ISI and amplitude criteria are
+counting almost nothing and the isolation metrics are already meaningless. The
+rule's verdict is left exactly as it is (``verdict``, and the pass count every
+surface shows), but the WORD is hedged below ``ISOLATION_MIN_SPIKES``: those units
+are ``thin``, and the headline says so — *"1 strong unit (ch 7) · 5 more pass the
+rule on thin evidence"* — rather than flattering thin evidence into a headline
+number.
 """
 from __future__ import annotations
 
@@ -202,9 +211,41 @@ ISOLATION_POOR = {"nn_hit_rate": 0.5, "l_ratio": 0.3, "isolation_distance": 10.0
 # "min" = bigger is better.
 _ISOLATION_DIRECTION = {"nn_hit_rate": "min", "l_ratio": "max", "isolation_distance": "min"}
 
-# The verdict WORD each surface prints. "strong" is the rule's pass; nothing here
-# ever prints a bare boolean, and "not judged" never reads as a failure.
+# THIN EVIDENCE (face1 review F2). A unit can pass every criterion on a handful of
+# spikes: the ISI and amplitude criteria are then counting almost nothing, and the
+# isolation metrics are already unusable below ISOLATION_MIN_SPIKES. Calling that
+# "strong" — beside a dense, well-matched unit that failed ISI by 0.1 — flatters
+# the thin one and buries the real one, which is exactly the flattery the surfaces
+# must not commit.
+#
+# So the rule's PASS is left alone (``verdict`` stays True, and the pass-quality
+# count every surface shows is unchanged) and the WORDING is hedged: a passing
+# unit is only called "strong" unhedged when its evidence could carry the claim.
+# The same floor does both jobs, because it is the same question — are there
+# enough spikes here to mean anything?
+#
+# A unit whose spike count is UNKNOWN (a caller with no Sorting open) is hedged
+# too, and says that rather than borrowing the too-few phrase: "we did not count"
+# and "we counted, and there are few" are different facts (review F4).
 VERDICT_WORDS = {True: "strong", False: "sub-threshold", None: "not judged"}
+THIN_WORDS = {
+    "few": "passes the rule · too few spikes to judge",
+    "unknown": "passes the rule · spike count unknown",
+}
+UNKNOWN_SPIKES_PHRASE = "spike count unknown — isolation not judged"
+
+
+def thin_reason(verdict, n_spikes) -> str:
+    """Why a PASSING unit's verdict is hedged: "few", "unknown", or "" (not thin).
+
+    One home, so the report table, the dashboard headline and the triage card
+    hedge the same units for the same stated reason.
+    """
+    if verdict is not True:
+        return ""
+    if n_spikes is None:
+        return "unknown"
+    return "few" if n_spikes < ISOLATION_MIN_SPIKES else ""
 
 
 def isolation_phrase(metrics, *, n_spikes=None, shares_contact_with=0,
@@ -226,7 +267,13 @@ def isolation_phrase(metrics, *, n_spikes=None, shares_contact_with=0,
         if key == "isolation_distance" and v >= ISOLATION_DEGENERATE_DISTANCE:
             continue                      # numerical artefact, not a measurement
         usable[key] = v
-    if n_spikes is not None and n_spikes < ISOLATION_MIN_SPIKES:
+    # An UNCOUNTED unit is not a well-isolated one. Without the count the too-few
+    # gate cannot fire, so scoring the metrics anyway would let the same unit read
+    # "clean" on a surface that skipped the counts and "too few spikes to judge"
+    # on one that did them — the one-home promise broken by omission (review F4).
+    if n_spikes is None:
+        return UNKNOWN_SPIKES_PHRASE
+    if n_spikes < ISOLATION_MIN_SPIKES:
         return "too few spikes to judge"
     if not usable:
         return "no isolation metrics — cannot judge"
@@ -340,6 +387,7 @@ def unit_rollup(summary, metrics=None, *, rule=None, spike_counts=None,
         detail = rule_detail(qm, rule)
         contact = _contact_of(row)
         n_spikes = counts.get(key)
+        thin = thin_reason(detail["flag"], n_spikes)
         units.append({
             "unit": uid,
             "contact": contact,
@@ -347,7 +395,11 @@ def unit_rollup(summary, metrics=None, *, rule=None, spike_counts=None,
             "snr": _f(row.get("snr")) if _f(row.get("snr")) is not None else _f(qm.get("snr")),
             "v_pp_uV": _f(row.get("v_pp_uV")),
             "verdict": detail["flag"],
-            "verdict_word": VERDICT_WORDS[detail["flag"]],
+            # The rule's PASS is untouched above; only the WORD is hedged, and
+            # ``strong`` is what a surface should count when it says "strong".
+            "thin": thin,
+            "strong": detail["flag"] is True and not thin,
+            "verdict_word": THIN_WORDS[thin] if thin else VERDICT_WORDS[detail["flag"]],
             # Why it is not strong, in the rule's own words. Empty for a pass.
             "why": ("" if detail["flag"] else
                     ("no criterion could be evaluated for this unit"
@@ -359,11 +411,15 @@ def unit_rollup(summary, metrics=None, *, rule=None, spike_counts=None,
             "match": match_by.get(key),
         })
 
-    # Accepted first, then by SNR descending; a missing SNR sinks inside its group.
-    units.sort(key=lambda u: (0 if u["verdict"] else 1,
+    # Strong first, then the passes-on-thin-evidence, then the tail — each by SNR
+    # descending; a missing SNR sinks inside its group. A thin pass must not
+    # outrank a unit whose evidence could actually carry the claim (review F2).
+    units.sort(key=lambda u: (0 if u["strong"] else 1 if u["verdict"] else 2,
                               -(u["snr"] if u["snr"] is not None else float("-inf"))))
 
     accepted = [u for u in units if u["verdict"]]
+    strong = [u for u in units if u["strong"]]
+    thin = [u for u in accepted if u["thin"]]
     contacts = []
     for c in sorted(on_contact, key=_contact_sort_key):
         contacts.append({
@@ -372,36 +428,74 @@ def unit_rollup(summary, metrics=None, *, rule=None, spike_counts=None,
             "n_other": sum(1 for u in units if u["contact"] == c and not u["verdict"]),
         })
     contacts.sort(key=lambda c: (-c["n_accepted"], _contact_sort_key(c["contact"])))
-    chans = [u["contact"] for u in accepted]
+    lines = takeaway_lines(len(strong), [u["contact"] for u in strong],
+                           len(thin), [u["contact"] for u in thin], rule_text(rule))
     return {
         "rule": dict(rule),
         "rule_text": rule_text(rule),
         "units": units,
         "contacts": contacts,
         "n_units": len(units),
+        # n_accepted is every unit the RULE passed — the pass-quality count every
+        # surface already shows. n_strong is the subset whose evidence carries it.
         "n_accepted": len(accepted),
+        "n_strong": len(strong),
+        "n_thin": len(thin),
         "n_unjudged": sum(1 for u in units if u["verdict"] is None),
-        "accepted_contacts": chans,
+        "strong_contacts": [u["contact"] for u in strong],
+        "thin_contacts": [u["contact"] for u in thin],
         "contact_line": contact_line(contacts),
-        "headline": headline_takeaway(len(accepted), chans),
+        "headline": lines["headline"],
+        "site_line": lines["site_line"],
         "has_matches": matches is not None,
     }
 
 
-def headline_takeaway(n_accepted: int, contacts, max_contacts: int = 8) -> str:
-    """``6 strong units (ch 2·8·1·6·10·7)`` — the takeaway in one phrase.
+def takeaway_lines(n_strong, strong_contacts, n_thin, thin_contacts,
+                   rule_sentence="", max_contacts: int = 8) -> dict:
+    """The takeaway in words: ``{"headline", "site_line"}``.
 
-    Contacts are in the ranked order of the units they belong to (strongest
-    first), so a repeat means two accepted units share a contact. ``0`` says so
-    plainly rather than printing an empty bracket.
+    Both come from the SAME split — strong vs passes-the-rule-on-thin-evidence —
+    so the report's block and the dashboard's site line can never tell different
+    stories about the same sort. ``headline`` leads the report block; ``site_line``
+    is the dashboard's one line under the name.
+
+        1 strong unit (ch 7) · 5 more pass the rule on thin evidence
+        strong at ch 7 · 5 more pass the rule on thin evidence
+
+    Contacts are in ranked order (strongest first), so a repeat means two units
+    share a contact.
     """
-    n = int(n_accepted)
-    word = "strong unit" if n == 1 else "strong units"
-    if not n or not contacts:
-        return f"{n} {word}"
-    shown = [str(c) for c in contacts[:max_contacts]]
-    more = "…" if len(contacts) > max_contacts else ""
-    return f"{n} {word} (ch {'·'.join(shown)}{more})"
+    def _chans(contacts):
+        shown = [str(c) for c in contacts[:max_contacts]]
+        more = "…" if len(contacts) > max_contacts else ""
+        return "·".join(shown) + more
+
+    n_strong, n_thin = int(n_strong), int(n_thin)
+    thin_clause = ""
+    if n_thin:
+        verb = "passes" if n_thin == 1 else "pass"
+        thin_clause = f" · {n_thin} more {verb} the rule on thin evidence"
+    if n_strong:
+        word = "strong unit" if n_strong == 1 else "strong units"
+        return {
+            "headline": f"{n_strong} {word} (ch {_chans(strong_contacts)}){thin_clause}",
+            "site_line": f"strong at ch {_chans(strong_contacts)}{thin_clause}",
+        }
+    if n_thin:
+        # Nothing passed on evidence that could carry it. That is the headline —
+        # not a count of zero with the thin passes quietly filed underneath.
+        verb = "passes" if n_thin == 1 else "pass"
+        where = f" (ch {_chans(thin_contacts)})"
+        return {
+            "headline": (f"no unit passes the rule on solid evidence · {n_thin} "
+                         f"{verb} it on thin evidence{where}"),
+            "site_line": (f"{n_thin} unit{'' if n_thin == 1 else 's'} {verb} the rule "
+                          f"only on thin evidence{where}"),
+        }
+    return {"headline": "0 strong units",
+            "site_line": ("no unit passes " + rule_sentence.split(" (NaN")[0]
+                          if rule_sentence else "no unit passes the quality rule")}
 
 
 # Stable order + display labels for the six headline metrics. Used by the report,

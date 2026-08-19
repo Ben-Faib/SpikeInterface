@@ -460,3 +460,36 @@ def test_find_reference_nevs_skips_the_recordings_own_nev(tmp_path):
     assert [p.name for p in found] == ["rec_manuallySorted.nev"]
     # A folder with no .nev at all is an empty list, never an exception.
     assert bio.find_reference_nevs(tmp_path / "nothing-here") == []
+
+
+def test_match_manual_reports_recovery_when_our_unit_is_far_denser(manual_match):
+    """Review F1: the density asymmetry that inverts the answer.
+
+    The reference unit has 4 spikes and ours has 40, all 4 of which we carry. SI's
+    symmetric agreement is ~0.1 — at or below chance — but we recovered 100% of
+    the human's unit. `recovered`/`recovers` must say so; `containment` (our side)
+    stays small, and both are reported so neither direction can be mistaken for
+    the other.
+    """
+    reference = _sorting({0: [1000, 2000, 3000, 4000]})
+    offline = _sorting({0: [1000, 2000, 3000, 4000] + [10_000 + 500 * i for i in range(36)]})
+    got = manual_match(offline=offline, reference=reference, labels=["ch1#1"])
+
+    m0 = got["by_unit"]["0"]
+    assert m0["unit"] == "ch1#1"
+    assert m0["recovered"] == 1.0 and m0["recovers"] is True
+    assert m0["n_reference_spikes"] == 4 and m0["n_spikes"] == 40
+    assert m0["containment"] == 0.1                 # our side: honestly small
+    assert m0["agreement"] < compare.MATCH_RECOVERY  # and SI's symmetric score is low
+    assert got["match_recovery"] == compare.MATCH_RECOVERY
+
+
+def test_match_manual_recovers_is_independent_of_sis_chance_sentinel(manual_match):
+    """`recovers` must never be driven by `below_chance` — that is the inversion."""
+    reference = _sorting({0: [1000, 2000, 3000, 4000]})
+    offline = _sorting({0: [1000, 2000, 3000, 4000] + [10_000 + 500 * i for i in range(96)]})
+    got = manual_match(offline=offline, reference=reference, labels=["ch1#1"])
+    m0 = got["by_unit"]["0"]
+    # Diluted far below chance, yet every spike of the human's unit is in ours.
+    assert m0["below_chance"] is True
+    assert m0["recovered"] == 1.0 and m0["recovers"] is True

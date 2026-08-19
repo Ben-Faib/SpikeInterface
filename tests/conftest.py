@@ -202,12 +202,17 @@ class FakeController:
         return [u for u in range(n_units) if u % 3 == 0]
 
     def _rollup(self, n_units: int) -> dict:
+        # Every fake unit has 1000+ spikes, so all its passes are STRONG (none
+        # thin) — the thin-evidence split is pinned against real numbers in
+        # test_sort_summary.py, not simulated here.
         accepted = self._accepted(n_units)
         contacts = [str(u % 16 + 1) for u in accepted]
         return {"n_units": n_units, "n_accepted": len(accepted),
-                "n_unjudged": 0, "accepted_contacts": contacts,
+                "n_strong": len(accepted), "n_thin": 0,
+                "n_unjudged": 0, "strong_contacts": contacts, "thin_contacts": [],
                 "rule_text": self._RULE_TEXT,
                 "headline": f"{len(accepted)} strong units (ch {'·'.join(contacts)})",
+                "site_line": f"strong at ch {'·'.join(contacts)}",
                 "contact_line": " · ".join(f"contact {c}: 1 accepted" for c in contacts),
                 "has_matches": False, "contacts": [], "units": []}
 
@@ -372,7 +377,8 @@ class FakeController:
                 "label_method": "tui" if u in labels else None,
                 "peak_channel": str(u % 16 + 1), "n_spikes": 1000 + u,
                 "v_pp_uV": 30.0 + u,
-                "verdict": ok, "verdict_word": "strong" if ok else "sub-threshold",
+                "verdict": ok, "strong": ok,
+                "verdict_word": "strong" if ok else "sub-threshold",
                 "why": "" if ok else "ISI ratio ≤ 0.5 — is 1.2",
                 "isolation": "clean" if ok else "mostly separate",
                 # amplitude_cutoff is None: NaN on disk must render as "–", never 0.

@@ -1994,8 +1994,12 @@ async def test_journey_takeaway_ranks_triage_strong_first_and_shows_the_contact(
         await pilot.pause()
         results = app.query_one("#results").render().plain
         rollup = app.c.infos[app.c.active_idx]["rollup"]
-        assert f"{rollup['n_accepted']} strong units of {rollup['n_units']}" in results
-        assert "strong at ch " + "·".join(rollup["accepted_contacts"]) in results
+        # The head counts STRONG units (not every rule pass), and the site line is
+        # sort_summary's own sentence — the report's headline comes from the same
+        # split fields, so the two surfaces cannot diverge.
+        assert f"{rollup['n_strong']} strong units of {rollup['n_units']}" in results
+        assert rollup["site_line"] in results
+        assert "strong at ch " + "·".join(rollup["strong_contacts"]) in results
 
         screen = await _open_triage(pilot, app)
         rows = screen.query_one("#triagelist", OptionList)
