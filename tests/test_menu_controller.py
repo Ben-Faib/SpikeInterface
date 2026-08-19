@@ -666,3 +666,44 @@ def test_triage_with_no_saved_sort_names_the_next_step(monkeypatch, tmp_path):
     st = c.triage_state()
     assert st["units"] == [] and st["total"] == 0
     assert "No saved" in st["empty"] and "sort" in st["empty"]
+
+
+# --- F2: the printed key IS the bound key ---------------------------------- #
+def test_every_row_key_is_bound_to_that_row():
+    """The dashboard's promise is that the key printed on a row runs that row.
+
+    The row's key lives in the controller's action table and the binding lives in
+    the view's BINDINGS — two lists that must agree, or the screen lies. This
+    pins them together (and the workflow-key set against the stage bins).
+    """
+    import menu_app
+
+    bindings = {b.key: b.action for b in menu_app.SpikeMenuApp.BINDINGS}
+    keyname = {"?": "question_mark"}
+    for key, _title, _hint, _needs, stage, hotkey in M._ACTIONS:
+        if stage == "chrome" and key in ("help", "quit"):
+            continue                       # handled by their own app-level actions
+        bkey = keyname.get(hotkey, hotkey)
+        assert bkey in bindings, f"{key} prints {hotkey!r} but nothing is bound to it"
+        assert f"'{key}'" in bindings[bkey], (
+            f"{hotkey!r} runs {bindings[bkey]!r}, not {key!r}")
+    # `f` is the second door on the Data files row; it must stay bound too.
+    assert bindings.get("f") == "choose_folder"
+    # The historical number keys keep their meanings — docs/WORKFLOW.md, the help
+    # and every in-app hint name them, so a remap is a silent lie everywhere.
+    numbers = {hk: k for k, _t, _h, _n, _s, hk in M._ACTIONS if hk.isdigit()}
+    assert numbers == {"1": "explore", "2": "sort", "3": "report",
+                       "4": "gui", "5": "compare", "6": "traces"}
+
+
+def test_actions_bin_into_the_three_workflow_stages():
+    stages = {}
+    for key, _t, _h, _n, stage, _hk in M._ACTIONS:
+        stages.setdefault(stage, []).append(key)
+    assert stages["data"] == ["data", "probe", "explore", "traces", "verify"]
+    assert stages["sort"] == ["picker", "params", "sort", "triage", "phy"]
+    assert stages["share"] == ["report", "gui", "compare", "reopen"]
+    assert stages["chrome"] == ["manage", "theme", "help", "quit"]
+    # Every hotkey is unique — two rows claiming one key is a lie on one of them.
+    hotkeys = [hk for _k, _t, _h, _n, _s, hk in M._ACTIONS]
+    assert len(hotkeys) == len(set(hotkeys))

@@ -71,13 +71,22 @@ async def test_probe_manager_activate_changes_active():
         assert c.active_probe == "linear-16-50um"
 
 
-async def test_probe_reachable_from_manage_line():
-    # D5: probe is a MANAGE action — on the dim line and the p key, not a list row.
+async def test_probe_is_a_labelled_row_in_get_data():
+    # F2: probe geometry is a VISIBLE row in the GET DATA stage, printing its own
+    # `p` key and saying what it gives you — not a bare letter on the key line.
+    import menu_app
+    from textual.widgets import OptionList
+
     app = _app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        assert "p probe" in app.query_one("#footer").render().plain  # D6: merged key line
+        ol = app.query_one("#actions", OptionList)
+        row = next(ol.get_option_at_index(i).prompt.plain
+                   for i in range(ol.option_count)
+                   if ol.get_option_at_index(i).id == "probe")
+        assert row.startswith(" p ") and "Probe geometry" in row
+        assert "the electrode map every sort uses" in row
+        assert "p probe" not in app.query_one("#footer").render().plain
         await pilot.press("p")
         await pilot.pause()
-        import menu_app
         assert isinstance(app.screen, menu_app.ProbeManagerScreen)

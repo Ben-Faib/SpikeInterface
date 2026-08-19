@@ -7,47 +7,56 @@ in ``SpikeInterface_Menu.py``) that this app calls back into. That keeps the app
 import-light (no SpikeInterface at import time) and unit-testable with Textual's
 ``run_test`` / ``Pilot`` harness.
 
-The dashboard is **actions-first** (D5, Ben's 2026-08-18 decision of record —
-supersedes the DESIGN_UX §2 two-pane layout; §1 language still binds). The
-numbered WORKFLOW actions are the primary full-width panel — a first-time user
-lands on exactly what they can do — with the MANAGE keys as one dim line below.
-The sorter list lives behind the ``t`` picker (SorterPickerScreen: live filter
-input focused on open, grouped list with GPU/not-available collapsed, a one-line
-description footer). A RESULTS section (label + V_pp/SNR/noise/yield) appears
-only when the active sorter has a saved sort. An always-on two-line banner sits
-above: the INPUTS line (#databar — DATA + PROBE, or a loud ✗ problem) and the
-SORT line (#sortbar — the active sorter's ONE home, with a dim "t change" hint).
-The persistent LAST RESULT line (#resultbar) keeps the newest action outcome.
+The dashboard is the **researcher dashboard** (F2, Ben's 2026-08-19 decision of
+record; DESIGN_UX §2 was rewritten from what landed here). It has three zones:
+
+* **State** — where you are. The INPUTS line (#databar: DATA + PROBE, or a loud ✗
+  problem), the SORT line (#sortbar: the active sorter's one home), and RESULTS
+  (#results: the takeaway from the saved sort — how many units pass the quality
+  rule and at which contacts, from ``sort_summary``'s rollup as plain data).
+* **The workflow list** — what you can do. EVERY function the workbench has, as a
+  labelled row carrying its own key and a phrase saying what it produces, grouped
+  into the three stages: GET DATA · SORT & CURATE · LOOK & SHARE. Nothing hides
+  behind a bare letter on a footer line; ↑/↓ + Enter is the whole model, and each
+  row's key is an accelerator for the same thing.
+* **Memory** — the LAST RESULT line (#resultbar) and a two-row footer whose key
+  line carries only the housekeeping that has no row (m sorters, c colour, ?, q).
 
 Layout (responsive):
 
-    ┌ wordmark crest (collapses full→compact→hidden as height shrinks)     ┐
-    │ ── University of Pittsburgh · SpikeInterface ── (#titlebar)           │
+    ┌ wordmark crest (tall terminals only)                                  ┐
+    │ ── University of Pittsburgh · SpikeInterface ── (#titlebar)            │
     │ DATA  ✓ all 3 streams    PROBE  nnx-a1x16 · 16 ch @ 100 µm ✓ (#databar)│
     │ SORT  ★ tridesclous2 · 13u · 30 s · Ready to run   t change (#sortbar) │
-    │ ╭ ACTIONS ────────────────────────────────────────────────────────╮   │
-    │ │ 1  Explore   figures: LFP + events, no sort needed              │   │
-    │ │ … (2 Sort · 3 Report · 4 Inspect · 5 Compare · 6 Traces)        │   │
-    │ ╰─────────────────────────────────────────────────────────────────╯   │
-    │   e params · m sorters · p probe · v verify · ? help · q quit         │
-    │ ╭ RESULTS ─ tridesclous2 · 13 units · 30 s sorted ─────────────────╮  │
-    │ │ V_pp 34.2 µV · SNR 5.0 · noise 4.1 µV · yield 75% (12/16)        │  │
-    │ ╰──────────────────────────────────────────────────────────────────╯  │
-    │ LAST  ✓ report · 14:18 → outputs/report.html   r reopen  (#resultbar) │
-    │ ↑/↓ choose · Enter run · 1-6 jump · t sorter · r · ? · q    (footer)  │
-    └───────────────────────────────────────────────────────────────────────┘
+    │ RESULTS ────────────────────────────────────────────────  (#results)   │
+    │ tridesclous2 · 1 strong unit of 15 · 132 s sorted                      │
+    │ strong at ch 7 · 4 more pass on thin evidence     u  triage            │
+    │ V_pp 34.2 µV · SNR 5.0 · noise 4.1 µV · yield 75%                      │
+    │ GET DATA ───────────────────────────────────────────────  (#actions)   │
+    │  d  Data files      which files loaded, and where     f  folder        │
+    │  p  Probe geometry · 1 Explore · 6 Traces · v Check the install        │
+    │ SORT & CURATE ─────────────────────────────────────────────────────    │
+    │  t  Choose the sorter · e Settings · 2 Sort · u Judge units · y Phy    │
+    │ LOOK & SHARE ──────────────────────────────────────────────────────    │
+    │  3  Build the report · 4 Inspect in the GUI · 5 Compare · r Reopen     │
+    │ LAST  ✓ report · 14:18 → outputs/report.html   r reopen  (#resultbar)  │
+    │ ↑/↓ move · ↵ run · or press the key shown on the row · m · c · ? · q   │
+    └────────────────────────────────────────────────────────────────────────┘
 
-``t`` opens the picker; Enter there routes the choice through the normal
-activate / download / enable-Docker flows. ``x`` manages the ACTIVE sorter.
-``u`` (the ` u  triage` chip on RESULTS, or a click on that section) opens
-``UnitTriageScreen``: the saved sort's units with their per-unit evidence and
-g/m/n/u to label each good/MUA/noise/unsure, written through the controller into
-the curation record. Yield order on small windows: crest → RESULTS → (tiny)
-banner/manage/LAST — the action list and footer never clip.
+``t`` (or its row) opens the picker; Enter there routes the choice through the
+normal activate / download / enable-Docker flows. ``x`` manages the ACTIVE
+sorter, ``w`` re-opens a running download — both documented in Help, not on the
+key line. ``u`` (its row, the ` u  triage` chip on RESULTS, or a click on that
+section) opens ``UnitTriageScreen``.
+
+Yield ladder on small windows (``_LADDER``, walked by ``_plan``): group air →
+section air → title → RESULTS compact → LAST → RESULTS → banner → stage
+headings. The fourteen workflow rows never yield, and the budget counts the rows
+its own painters produce, so it cannot drift from what is on screen.
 
 The accent colour is themeable (driven into the ``$accentcolor`` CSS variable);
-the Pitt blue+gold shield is fixed. Both lists scroll, so the active sorter and
-the actions are always reachable even when the body is taller than the screen.
+the Pitt blue+gold shield is fixed. The list scrolls, so every function stays
+reachable even when the window is shorter than the list.
 """
 from __future__ import annotations
 
@@ -123,7 +132,13 @@ class Controller(Protocol):
     header: str
     sorters: list[str]                  # sorter names, in tab order
     themes: dict[str, str]              # name -> accent hex
-    actions: list[dict]                 # {key,title,hint,needs_data,section}
+    actions: list[dict]                 # {key,title,hint,needs_data,stage,hotkey}
+                                        # ``stage`` bins the row into the workflow
+                                        # list (data / sort / share); ``chrome`` is
+                                        # housekeeping and never becomes a row.
+                                        # ``hotkey`` is what the row PRINTS and what
+                                        # the dashboard binds — one source, so a key
+                                        # and its label can never disagree.
     last_result: "dict | None"          # {key,ok,when,path} — newest action outcome
     active_idx: int
     accent: str                         # current accent hex
@@ -2357,13 +2372,19 @@ class HelpScreen(ModalScreen):
     DEFAULT_CSS = """
     HelpScreen { align: center middle; }
     HelpScreen > #dialog {
-        width: 90; max-width: 96%; height: 90%; max-height: 34;
+        width: 100; max-width: 98%; height: 90%; max-height: 34;
         border: round $accentcolor; background: $surface; padding: 1 2;
     }
     HelpScreen #htitle { text-style: bold; color: $accentcolor; height: 1; }
     HelpScreen #hrow { height: 1fr; }
-    HelpScreen #htopics { width: 24; height: 1fr; border: round #3a3f47; }
-    HelpScreen #hscroll { width: 1fr; height: 1fr; padding: 0 1; }
+    /* A 20-column topic list, no body padding and a 1-column scrollbar: at the
+       default 80-col terminal that leaves the body 50 usable columns, which is
+       exactly what HELP_TOPICS' lines are written to. Help is LAID OUT (question
+       over answer over key), not free prose — a wrapped line breaks the columns,
+       so the width is a contract, pinned by test_help_lines_fit_the_help_pane. */
+    HelpScreen #htopics { width: 20; height: 1fr; border: round #3a3f47; }
+    HelpScreen #hscroll { width: 1fr; height: 1fr; padding: 0;
+                          scrollbar-size-vertical: 1; }
     HelpScreen #helpbody { height: auto; }
     HelpScreen #hfoot { color: $text-muted; height: 1; padding: 1 0 0 0; }
     HelpScreen.stacked #hrow { layout: vertical; }
@@ -2784,28 +2805,37 @@ class SorterPickerScreen(ModalScreen):
         self.dismiss(None)
 
 
+# The three workflow stages of the dashboard list, in the order a researcher moves
+# through them. The stage KEY is controller data (SpikeInterface_Menu._ACTIONS);
+# the heading is this view's wording.
+_STAGES = (("data", "GET DATA"),
+           ("sort", "SORT & CURATE"),
+           ("share", "LOOK & SHARE"))
+
+
 class SpikeMenuApp(App):
-    """The resident dashboard (D5, actions-first). One instance per session; the
-    numbered actions are the primary panel, the sorter list lives behind the
-    ``t`` picker, and a results section appears once a saved sort exists."""
+    """The resident dashboard (F2, the researcher dashboard). One instance per
+    session: a STATE block (DATA/PROBE, SORT, RESULTS) over ONE list holding every
+    function the workbench has, grouped into the three stages of the workflow —
+    GET DATA · SORT & CURATE · LOOK & SHARE. Every row prints its own key and says
+    what it produces; nothing lives behind a bare letter on a footer line."""
 
     CSS = """
     Screen { background: $background; }
 
-    /* D6 (the airy dashboard): NO boxed panels — sections are whitespace +
-       hairline rules. The blank-line air lives in these margins and collapses
-       (the Screen-level .dense class) BEFORE any content yields. */
+    /* F2 keeps D6's language — NO boxed panels; sections are a dim label + a
+       hairline rule over borderless content, separated by blank-line air. The
+       air lives in these margins and collapses (the Screen-level .dense class)
+       before any content yields; the group air inside the list goes first. */
     #crest { height: auto; content-align: center top; padding: 1 0 0 0; }
     #titlebar { height: 1; content-align: left middle; }
 
-    /* Always-on banner: one row for the INPUTS (DATA + PROBE), one for the
-       workbench STATE (the active sorter), one dim context sentence. Fixed at
-       one row each so the crest reserve never shifts between quiet/loud text. */
+    /* The STATE block: one row for the INPUTS (DATA + PROBE), one for the
+       workbench state (the active sorter). Fixed at one row each so the crest
+       reserve never shifts between quiet and loud text. */
     #databar { height: 1; margin: 1 2 0 2; }
     #sortbar { height: 1; margin: 0 2 0 2; }
-    #contextbar { height: 1; margin: 0 2 1 2; color: $text-muted; }
-    #databar.collapsed, #sortbar.collapsed, #titlebar.collapsed,
-    #contextbar.collapsed { display: none; }
+    #databar.collapsed, #sortbar.collapsed, #titlebar.collapsed { display: none; }
     .dense #databar { margin: 0 2 0 2; }
 
     /* In-UI download indicator: a one-row banner-area line shown only while a
@@ -2813,14 +2843,25 @@ class SpikeMenuApp(App):
     #dlbar { height: 1; margin: 0 2 0 2; color: $accentcolor; }
     #dlbar.hidden { display: none; }
 
-    #body { height: 1fr; padding: 0 2 0 2; layout: vertical; }
+    /* RESULTS — the findings, third line of the state block: present only when
+       the active sorter has a saved sort. Borderless; air above. */
+    #results { height: auto; padding: 0 0; margin: 1 2 0 2; }
+    #results.hidden, #results.collapsed { display: none; }
+    .dense #results { margin: 0 2 0 2; }
 
-    /* ACTIONS: the primary section — a hairline-ruled label over a borderless
-       full-width list. Focus shows on the highlighted row, not on chrome. */
-    #actionshead { height: 1; margin: 0 0 1 0; }
-    #actionshead.collapsed { display: none; }
-    #actionpane { width: 1fr; height: 1fr; min-height: 3; border: none; padding: 0 1; }
-    #actions { height: 1fr; border: none; }
+    /* THE WORKFLOW LIST: three stage groups in one borderless full-width list.
+       Focus shows on the highlighted row, never on chrome. */
+    /* width:100% is load-bearing — without it Textual's vertical layout hands a
+       1fr child the width MINUS a sibling's horizontal margin, and the list would
+       sit 4 columns narrower than the state block above it (the stage rules and
+       the RESULTS rule have to end in the same column). Zero padding on the pane
+       and the list puts the row content at the same x=2 gutter as everything
+       else; the rules are drawn one column short so the scrollbar, when the list
+       has to scroll, never pushes a row into a second painted line. */
+    #body { width: 100%; height: 1fr; padding: 0 2 0 2; margin: 1 0 0 0; layout: vertical; }
+    .dense #body { margin: 0; }
+    #actionpane { width: 1fr; height: 1fr; min-height: 3; border: none; padding: 0; }
+    #actions { height: 1fr; border: none; padding: 0; scrollbar-size-vertical: 1; }
     OptionList:focus { border: none; }
 
     OptionList:focus > .option-list--option-highlighted {
@@ -2829,51 +2870,55 @@ class SpikeMenuApp(App):
     OptionList > .option-list--option-highlighted {
         background: transparent; text-style: underline;
     }
-
-    /* RESULTS — present only when the active sorter has a saved sort: a hairline
-       label + name line + one metrics line. Borderless; air above. */
-    #results { height: auto; padding: 0 0; margin: 1 2 0 2; }
-    #results.hidden, #results.collapsed { display: none; }
-    .dense #results { margin: 0 2 0 2; }
+    /* The stage headings and the needs-data rows are disabled options; their
+       styling is carried by the row Text itself, so the component class must not
+       repaint them a second, flatter colour. */
+    #actions > .option-list--option-disabled { color: $foreground; }
 
     /* LAST RESULT — the newest action outcome, persistent until the next one
        (results must not evaporate on a keystroke, DESIGN_UX §1). */
     #resultbar { height: 1; margin: 0 2; }
     #resultbar.hidden, #resultbar.collapsed { display: none; }
 
-    /* Pinned to the bottom at a fixed 2 rows (transient status + the merged
-       manage/help key line) so a long line can never wrap and steal body rows. */
+    /* Pinned to the bottom at a fixed 2 rows (transient status + the key line)
+       so a long line can never wrap and steal body rows. */
     #footer { dock: bottom; height: 2; padding: 0 2; }
     """
 
     BINDINGS = [
-        # D5: the sorter list lives behind the picker — `t` opens it (the SORT
-        # banner carries the dim "t change" hint).
-        Binding("t", "pick_sorter", "Change sorter", show=False),
-        Binding("w", "watch_download", "Download", show=False),
-        # x manages the ACTIVE sorter (delete image / clear saved sort) — there is
-        # no highlighted sorter row on the main screen any more.
-        Binding("x", "manage_active", "Manage active sorter", show=False),
-        # MANAGE letter keys: housekeeping runs by letter, numbers stay with the
-        # six WORKFLOW actions.
-        Binding("p", "probe", "Probe", show=False),
-        Binding("e", "run_key('params')", "Edit parameters", show=False),
+        # Every key here is ALSO printed on the row it runs (F2): the keys are
+        # accelerators for a list you can simply arrow through, never the only way
+        # to reach a function. The 1-6 numbers keep the meanings they have always
+        # had, so existing muscle memory, docs/WORKFLOW.md and every in-app hint
+        # stay true — the redesign moved the rows, not the keys.
+        Binding("1", "run_key('explore')", "Explore", show=False),
+        Binding("2", "run_key('sort')", "Sort", show=False),
+        Binding("3", "run_key('report')", "Report", show=False),
+        Binding("4", "run_key('gui')", "Inspect", show=False),
+        Binding("5", "run_key('compare')", "Compare", show=False),
+        Binding("6", "run_key('traces')", "Traces", show=False),
+        Binding("d", "run_key('data')", "Data files", show=False),
+        Binding("p", "run_key('probe')", "Probe geometry", show=False),
+        Binding("v", "run_key('verify')", "Check the install", show=False),
+        Binding("t", "run_key('picker')", "Choose the sorter", show=False),
+        Binding("e", "run_key('params')", "Sorter settings", show=False),
+        Binding("u", "run_key('triage')", "Judge the units", show=False),
+        Binding("y", "run_key('phy')", "Export to Phy", show=False),
+        Binding("r", "run_key('reopen')", "Reopen last result", show=False),
+        # Housekeeping — not workflow rows, so these live on the footer key line.
         Binding("m", "run_key('manage')", "Manage sorters", show=False),
         Binding("c", "run_key('theme')", "Colour theme", show=False),
-        Binding("v", "run_key('verify')", "Verify install", show=False),
-        Binding("u", "run_key('triage')", "Triage units", show=False),
-        Binding("y", "run_key('phy')", "Export to Phy", show=False),
-        Binding("r", "reopen_last", "Reopen last result", show=False),
-        Binding("d", "data_help", "Data files", show=False),
         Binding("f", "choose_folder", "Data folder", show=False),
+        # x manages the ACTIVE sorter (delete image / clear saved sort); w re-opens
+        # a running download. Both are documented in Help, not on the key line.
+        Binding("x", "manage_active", "Manage active sorter", show=False),
+        Binding("w", "watch_download", "Download", show=False),
         Binding("question_mark", "help", "Help", show=False),
         Binding("q", "quit", "Quit", show=False),
         # NOTE: Esc is deliberately NOT bound to quit — a reflexive "go back" press
         # should never hard-exit the dashboard and lose the user's place. Modals
         # keep their own Esc=cancel; q / Ctrl-C still quit the app.
         Binding("ctrl+c", "quit", "Quit", show=False),
-        # number-key jump: 1..6 -> the WORKFLOW actions (the first six table rows).
-        *[Binding(str(n), f"run_index({n - 1})", show=False) for n in range(1, 7)],
     ]
 
     def __init__(self, controller: Controller):
@@ -2883,6 +2928,12 @@ class SpikeMenuApp(App):
         self._accent = controller.accent
         self._last = None
         self._download = None          # the single live DownloadSession (or None)
+        # The layout plan the yield ladder last settled on. Painters that run
+        # outside _relayout (a reload, a theme change) reuse it rather than
+        # guessing a tier of their own.
+        self._plan_state = {"group_air": True, "section_air": True, "title": True,
+                            "headers": True, "compact": False, "banner": True,
+                            "results": True, "last": False, "dl": False}
         super().__init__()
 
     # -- CSS variable plumbing: $accentcolor follows the live theme ----------- #
@@ -2893,25 +2944,26 @@ class SpikeMenuApp(App):
 
     # -- layout --------------------------------------------------------------- #
     def compose(self) -> ComposeResult:
+        # State first (what the workbench knows), then the workflow list (what you
+        # can do), then the memory of the last action. RESULTS sits WITH the state
+        # it belongs to instead of below the list, so the three zones read as
+        # three: where I am · what I can do · what I last did.
         yield CrestWidget(id="crest")
         yield Static(id="titlebar")
         yield Static(id="databar")
         yield Static(id="sortbar")
-        yield Static(id="contextbar")
         yield Static(id="dlbar")
+        yield Static(id="results")
         with Vertical(id="body"):
-            yield Static(id="actionshead")
             with Vertical(id="actionpane"):
                 yield NavList(id="actions")
-        yield Static(id="results")
         yield Static(id="resultbar")
         yield Static(id="footer")
 
     def on_mount(self) -> None:
-        self._refresh_action_title()
         self._rebuild_actions()
         self._render_results()
-        # The actions ARE the screen (D5) — first-time users land on what to do.
+        # The workflow list IS the screen — a first-time user lands on the rows.
         self.query_one("#actions", OptionList).focus()
         self._refresh_footer()
         self._relayout()
@@ -2941,65 +2993,95 @@ class SpikeMenuApp(App):
         w, h = size.width, size.height
         self._render_databar(w)
         self._render_sortbar(w)
-        self._render_contextbar(w)
         self._render_dlbar(w)
-        self._render_actionshead(w)
-        self._render_results_text(w)   # the RESULTS rule tracks the live width
-        # Yield order (§1, D6): the blank-line AIR and the context/section chrome
-        # collapse first (dense), then the crest (tall terminals only anyway),
-        # then RESULTS, then (tiny) everything but the actions + footer.
-        tiny = h < self.TINY_ROWS
-        dense = h < self.AIR_ROWS
-        for wid in ("#titlebar", "#databar", "#sortbar", "#resultbar", "#results"):
-            self.query_one(wid).set_class(tiny, "collapsed")
-        # air-adjacent chrome yields at dense, BEFORE any content shrinks
-        for wid in ("#contextbar", "#actionshead"):
-            self.query_one(wid).set_class(tiny or dense, "collapsed")
-        # The DASHBOARD's screen, never self.screen: a resize under a modal must
-        # not stamp the air tier onto the modal and leave the base screen stale
-        # (D6 review #2 — that clipped the sixth action after Esc).
-        self.query_one("#body").screen.set_class(dense and not tiny, "dense")
-        self.query_one("#body").set_class(tiny, "tiny")
-        # ---- the yield budget (arithmetic, never hand-tuned) --------------------
-        # non-tiny fixed rows: footer 2 · title 1 · databar 1(+1 air) · sortbar 1
-        # · contextbar 1+1 (air tier only) · actionshead 1+1 (air tier only)
-        dl_rows = 1 if getattr(self, "_download", None) is not None else 0
-        result_rows = 0 if tiny else (1 if getattr(self.c, "last_result", None) else 0)
-        has_results = (not tiny) and bool(
-            self.c.infos[self.c.active_idx].get("present"))
-        if tiny:
-            fixed, body_min = 2 + dl_rows, 3
-        elif dense:
-            fixed, body_min = 5 + dl_rows + result_rows, 7
-        else:
-            fixed, body_min = 10 + dl_rows + result_rows, 7
-        # head + 3 content (+air): the takeaway line, the strong-at-ch site line,
-        # and the metrics line — plus a 4th content row on the rare sort whose
-        # curated result sits on a run that is no longer current, which RESULTS
-        # paints and therefore must be reserved (review F6: the arithmetic has to
-        # match what is painted, or the yield law is guessing).
-        # RESULTS still yields whole, before the action list.
-        extra = 1 if self.c.infos[self.c.active_idx].get("curated_elsewhere") else 0
-        results_rows = ((4 if dense else 5) + extra) if has_results else 0
-        # RESULTS yields before the action list: hide it when the budget is tight.
-        if has_results and h - fixed - results_rows < body_min:
-            has_results = False
-            results_rows = 0
-        self.query_one("#results").set_class(not has_results, "hidden")
-        reserve = fixed + results_rows + body_min
-        # D6: the crest is a tall-terminal luxury, never a mid-size squeeze.
-        tall = h >= self.TALL_ROWS
-        self.query_one("#crest", CrestWidget).fit(w, h if tall else 0, reserve)
+        plan = self._plan_state = self._plan(w, h)
+        # Collapse in the order the plan decided; the air tier is a Screen-level
+        # class set on the DASHBOARD's screen, never self.screen — a resize under a
+        # modal must not stamp the tier onto the modal and leave the base screen
+        # stale (D6 review #2, which clipped the last action row after Esc).
+        self.query_one("#titlebar").set_class(not plan["title"], "collapsed")
+        self.query_one("#databar").set_class(not plan["banner"], "collapsed")
+        self.query_one("#sortbar").set_class(not plan["banner"], "collapsed")
+        self.query_one("#resultbar").set_class(not plan["last"], "collapsed")
+        self.query_one("#body").screen.set_class(not plan["section_air"], "dense")
+        self._render_results_text(w, plan)
+        self._rebuild_actions(w, plan)
         self.query_one("#titlebar", Static).update(self._render_titlerule(w))
+        # The crest is a tall-terminal luxury, never a mid-size squeeze: it may
+        # only use rows the rest of the screen has already been granted.
+        tall = h >= self.TALL_ROWS
+        self.query_one("#crest", CrestWidget).fit(w, h if tall else 0,
+                                                  self._rows_needed(plan, w))
         self._refresh_footer(w)
 
     STACK_COLS = STACK_COLS
-        # Below TINY the title + banner + results collapse so the actions still fit;
-        # below AIR the blank-line air + context/section chrome collapse (before any
-        # content); at/above TALL the crest is allowed back (D6: tall terminals only).
-    TINY_ROWS = 14
-    AIR_ROWS = 30
+    # At/above TALL the crest is allowed back (a tall terminal only).
     TALL_ROWS = 34
+
+    # ---- the yield ladder (F2) --------------------------------------------- #
+    # What the screen gives up, in order, when the window is too short for
+    # everything: whitespace first, then identity chrome, then state, and the
+    # stage headings dead last. The fourteen workflow ROWS never yield — they are
+    # the design. Each entry is the plan key it flips and the value it flips to.
+    _LADDER = (
+        ("group_air", False),      # the blank line above each stage group
+        ("section_air", False),    # the blank lines between the screen's blocks
+        ("title", False),          # the centred "University of Pittsburgh" rule
+        ("compact", True),         # RESULTS drops its rule + metrics line
+        ("last", False),           # the LAST RESULT line
+        ("results", False),        # RESULTS entirely
+        ("banner", False),         # the DATA / SORT state rows
+        ("headers", False),        # the three stage headings (and their air)
+    )
+
+    def _plan(self, w: int, h: int) -> dict:
+        """Walk the ladder until the screen fits, then stop.
+
+        Pure arithmetic over the SAME row counts the painters produce
+        (``_results_lines``, ``_list_rows``), so the budget can never disagree
+        with what is actually painted — the D6 review-F6 failure mode, closed by
+        construction rather than by keeping two numbers in step by hand."""
+        info = self.c.infos[self.c.active_idx]
+        plan = {
+            "group_air": True, "section_air": True, "title": True,
+            "headers": True, "compact": False, "banner": True,
+            "results": bool(info.get("present")),
+            "last": bool(getattr(self.c, "last_result", None)),
+            "dl": getattr(self, "_download", None) is not None,
+        }
+        for key, value in self._LADDER:
+            if self._rows_needed(plan, w) <= h:
+                break
+            plan[key] = value
+        return plan
+
+    def _rows_needed(self, plan: dict, w: int) -> int:
+        """Rows this plan paints, top to bottom (the footer is docked at 2)."""
+        n = 2
+        if plan["dl"]:
+            n += 1
+        if plan["title"]:
+            n += 1
+        if plan["banner"]:
+            n += 2 + (1 if plan["section_air"] else 0)
+        if plan["results"]:
+            n += (len(self._results_lines(self._rule_width(w), plan["compact"]))
+                  + (1 if plan["section_air"] else 0))
+        n += self._list_rows(plan) + (1 if plan["section_air"] else 0)
+        if plan["last"]:
+            n += 1
+        return n
+
+    def _list_rows(self, plan: dict) -> int:
+        """Painted rows of the workflow list: every action row, plus a heading per
+        stage, plus one blank line above every stage but the first."""
+        groups = self._stage_groups()
+        n = sum(len(rows) for _label, rows in groups)
+        if plan["headers"]:
+            n += len(groups)
+            if plan["group_air"]:
+                n += max(0, len(groups) - 1)
+        return n
 
     # -- the always-on DATA / SORT banner ------------------------------------- #
     def _render_databar(self, width: int) -> None:
@@ -3091,44 +3173,29 @@ class SpikeMenuApp(App):
         t.truncate(max(1, width - 2), overflow="ellipsis")
         self.query_one("#sortbar", Static).update(t)
 
-    def _render_contextbar(self, width: int) -> None:
-        """One dim context sentence under SORT (D6): what the active sorter is +
-        how it fits the active probe. Never green — §1.5 reserves green for
-        verified results, and this is description, not verification."""
-        info = self.c.infos[self.c.active_idx]
-        desc = (info.get("description") or "").strip().rstrip(".")
-        fit = (info.get("fit") or {}).get("reason", "").strip().rstrip(".")
-        t = Text()
-        if desc:
-            t.append(desc, style="dim")
-        if desc and fit:
-            t.append("  —  ", style="dim")
-        if fit:
-            t.append(fit, style="dim")
-        t.truncate(max(1, width - 2), overflow="ellipsis")
-        self.query_one("#contextbar", Static).update(t)
-
     def _section_rule(self, label: str, avail: int) -> Text:
-        """The D6 section language (module-level ``_hairline``, shared with the
+        """The section language (module-level ``_hairline``, shared with the unit
         triage screen): a dim-bold label + a hairline rule, never a box."""
         return _hairline(label, avail)
 
-    # Rule widths: the widget's content_region is the truth once laid out, but it
-    # is STALE mid-resize (relayout runs on the event, before the layout pass) —
-    # so the live event width caps it (#actionshead paints at width-8 in the
-    # current CSS, #results at width-4). A rule capped a frame short self-heals
-    # on the next relayout; a rule a frame long would wrap out of the 1-row clip.
-    def _render_actionshead(self, width: int) -> None:
-        head = self.query_one("#actionshead", Static)
-        avail = head.content_region.width or max(10, width - 8)
-        avail = min(avail, max(10, width - 8))
-        head.update(self._section_rule("ACTIONS", avail))
+    def _rule_width(self, width: int) -> int:
+        """Content columns available to a dashboard row, and therefore to every
+        hairline rule — so RESULTS and the stage headings end in the same column.
+
+        The live window width is the truth: a widget's ``content_region`` is stale
+        mid-resize (relayout runs on the resize EVENT, before the layout pass), and
+        a rule a frame too long wraps out of its row and makes the yield budget
+        lie. 5 = the 2-column gutter on each side plus one column for the list's
+        scrollbar, which only appears when the list has to scroll.
+        """
+        return max(16, width - 5)
 
     def on_click(self, event) -> None:
-        # The SORT row (and its context sentence) is a pressable control: a click
-        # anywhere on it opens the sorter picker — same action as the `t` chip.
+        # The SORT row is a pressable control: a click anywhere on it opens the
+        # sorter picker — the same action as its ` t ` chip and the "Choose the
+        # sorter" row.
         wid = getattr(event.widget, "id", None)
-        if wid in ("sortbar", "contextbar"):
+        if wid == "sortbar":
             self.action_pick_sorter()
         elif wid == "results":
             self._open_triage()          # the ` u  triage` chip's mouse path
@@ -3173,31 +3240,40 @@ class SpikeMenuApp(App):
         bar.update(t)
 
     def _render_results(self) -> None:
-        """State-change entry point: repaint RESULTS, then re-run the layout
-        budget (the text itself is also repainted by _relayout on every resize,
-        via _render_results_text, so the hairline rule tracks the live width)."""
-        self._render_results_text()
+        """State-change entry point: re-run the layout budget, which repaints
+        RESULTS (and the workflow list) at the live width."""
         self._relayout()
 
-    def _render_results_text(self, width: int | None = None) -> None:
-        """RESULTS: shown only when the active sorter has a saved sort — a
-        hairline label + the takeaway line + where the strong units sit + one
-        metrics line. No prose, no recursion."""
+    def _render_results_text(self, width: int | None = None, plan=None) -> None:
+        """Paint RESULTS: shown only when the active sorter has a saved sort AND
+        the budget granted it rows. The content itself is built by
+        ``_results_lines`` — the one place its row count comes from."""
+        plan = plan if plan is not None else self._plan_state
         panel = self.query_one("#results", Static)
         info = self.c.infos[self.c.active_idx]
-        if not info.get("present"):
+        if not (plan["results"] and info.get("present")):
             panel.add_class("hidden")
             panel.update("")
             return
         panel.remove_class("hidden")
         width = width if width is not None else self.size.width
-        # The live width wins over content_region (stale mid-resize): margin 2+2,
-        # zero padding -> width-4.
-        avail = min(panel.content_region.width or 10_000, max(10, width - 4))
-        # Every line is built no-wrap and clipped to `avail`: RESULTS occupies the
-        # rows the yield budget reserves for it, never one more because a line grew
-        # (the D6 discipline _hairline already follows).
-        lines = [self._section_rule("RESULTS", avail)]
+        panel.update(Text("\n").join(
+            self._results_lines(self._rule_width(width), plan["compact"])))
+
+    def _results_lines(self, avail: int, compact: bool) -> list[Text]:
+        """RESULTS as a list of finished rows — the takeaway, where the strong
+        units sit, and (at full size) the hairline label and one metrics line.
+
+        Every line is built no-wrap and clipped to ``avail``, so RESULTS occupies
+        exactly the rows the yield budget reserved for it and never one more
+        because a line grew. ``compact`` is the budget's first concession: the
+        label rule and the metrics line go, the takeaway stays.
+        """
+        info = self.c.infos[self.c.active_idx]
+        lines: list[Text] = []
+        if not compact:
+            lines.append(self._section_rule("RESULTS", avail))
+        content_from = len(lines)
 
         def line() -> Text:
             t = Text(no_wrap=True)
@@ -3263,23 +3339,19 @@ class SpikeMenuApp(App):
         if other:
             line().append(other["short"], style=ui.SECONDARY)
         summary = info.get("summary")
-        metrics = line()
-        if summary:
-            row = _ss.headline_row(summary)
-            metrics.append("V_pp " + row["V_pp"] + " · SNR " + row["SNR"]
-                           + " · noise " + row["noise floor"]
-                           + " · yield " + row["yield (% active electrodes)"],
-                           style=ui.SECONDARY)
-        else:
-            metrics.append("metrics not computed for this sort", style="dim")
-        for t in lines[1:]:
+        if not compact:
+            metrics = line()
+            if summary:
+                row = _ss.headline_row(summary)
+                metrics.append("V_pp " + row["V_pp"] + " · SNR " + row["SNR"]
+                               + " · noise " + row["noise floor"]
+                               + " · yield " + row["yield (% active electrodes)"],
+                               style=ui.SECONDARY)
+            else:
+                metrics.append("metrics not computed for this sort", style="dim")
+        for t in lines[content_from:]:
             t.truncate(avail, overflow="ellipsis")
-        panel.update(Text("\n").join(lines))
-
-    def _refresh_action_title(self) -> None:
-        # D6: the section head (hairline rule) carries the plain "ACTIONS" label —
-        # the active sorter's one at-rest home stays the SORT banner (§1.1).
-        self._render_actionshead(self.size.width)
+        return lines
 
     # -- rendering helpers ---------------------------------------------------- #
     def _render_titlerule(self, width: int) -> Text:
@@ -3296,43 +3368,99 @@ class SpikeMenuApp(App):
                 + Text(header, style=f"bold {self._accent}")
                 + Text(" " + "─" * right, style=_BORDER_DIM))
 
-    # MANAGE rows run by letter (DESIGN_UX §2); this map is the row-prefix AND the
-    # binding contract (`?`/`q` are app-level keys shown for completeness).
-    _MANAGE_KEYS = {"params": "e", "manage": "m", "probe": "p", "verify": "v",
-                    "triage": "u", "phy": "y", "theme": "c", "help": "?",
-                    "quit": "q"}
+    def _stage_groups(self) -> list:
+        """The workflow list as (heading, rows) per stage, in workflow order.
+        ``chrome`` actions (Manage sorters, Colour theme, Help, Quit) are
+        housekeeping and deliberately have no stage — they live on the key line."""
+        out = []
+        for stage, label in _STAGES:
+            rows = [a for a in self.c.actions if a.get("stage") == stage]
+            if rows:
+                out.append((label, rows))
+        return out
 
-    def _workflow_actions(self) -> list[dict]:
-        return [a for a in self.c.actions if a.get("section", "workflow") == "workflow"]
+    # The column the row hints start in (the longest title, 21, plus a two-space
+    # gutter) and the narrowest hint worth printing. A hint that does not fit WHOLE
+    # is dropped rather than ellipsised to a fragment — the title alone still says
+    # what the row does, and half a sentence is noise, not information.
+    _TITLE_COL = 23
+    _HINT_MIN = 18
 
-    def _rebuild_actions(self) -> None:
-        """The six WORKFLOW actions, full width, each with its one-line description
-        (D5). The MANAGE housekeeping is NOT in the list — it runs by letter key,
-        shown on the footer's merged key line (D6)."""
+    def _rebuild_actions(self, width: int | None = None, plan=None) -> None:
+        """Rebuild the workflow list: every function the workbench has, as a
+        labelled row carrying its own key, under its stage heading.
+
+        Rows are truncated HERE, at ``_rule_width`` — Textual re-wraps option
+        content by its own rules (a Rich ``no_wrap`` does not survive the trip), so
+        a row one column too long silently becomes TWO painted rows and the yield
+        budget starts lying. The list is also rebuilt on every resize for the same
+        reason.
+        """
+        plan = plan if plan is not None else self._plan_state
+        width = width if width is not None else self.size.width
         ol = self.query_one("#actions", OptionList)
         keep = ol.highlighted
+        keep_id = (ol.get_option_at_index(keep).id
+                   if keep is not None and keep < ol.option_count else None)
         ol.clear_options()
+        avail = self._rule_width(width)
         present = self.c.data_report.get("present")
         first_enabled = None
-        for n, a in enumerate(self._workflow_actions()):
-            disabled = bool(a.get("needs_data")) and not present
-            if not disabled and first_enabled is None:
-                first_enabled = ol.option_count
-            ol.add_option(Option(self._action_text(a, disabled, n),
-                                 id=a["key"], disabled=disabled))
-        ol.highlighted = keep if (keep is not None and keep < ol.option_count) else first_enabled
+        for n, (label, rows) in enumerate(self._stage_groups()):
+            if plan["headers"]:
+                ol.add_option(Option(
+                    self._stage_text(label, avail, plan["group_air"] and n > 0),
+                    disabled=True))
+            for a in rows:
+                disabled = bool(a.get("needs_data")) and not present
+                if not disabled and first_enabled is None:
+                    first_enabled = ol.option_count
+                ol.add_option(Option(self._action_text(a, disabled, avail),
+                                     id=a["key"], disabled=disabled))
+        # Keep the cursor on the SAME ROW across a rebuild (the stage headings
+        # move indices around, so an index would drift to a neighbour).
+        want = next((i for i in range(ol.option_count)
+                     if ol.get_option_at_index(i).id == keep_id
+                     and not ol.get_option_at_index(i).disabled), None)
+        ol.highlighted = want if want is not None else first_enabled
 
-    def _action_text(self, a: dict, disabled: bool, index: int) -> Text:
+    def _stage_text(self, label: str, avail: int, lead_air: bool) -> Text:
+        """A stage heading: the hairline section language, with the group's blank
+        line riding on the heading itself so the air collapses by rebuilding."""
+        t = Text("\n") if lead_air else Text()
+        t.append_text(self._section_rule(label, avail))
+        return t
+
+    def _action_text(self, a: dict, disabled: bool, avail: int) -> Text:
+        """One workflow row: its key chip, what it is, and what it produces."""
         t = Text()
-        # D6: the jump-key is an inverse-video chip — a visibly pressable
-        # affordance at every width (the footer hint drops on narrow terminals).
-        t.append(f" {index + 1} ", style="reverse dim" if disabled else "reverse")
+        # The key is an inverse-video chip on the row itself — every function the
+        # workbench has is visible and says which key runs it (F2, decision 1).
+        t.append(f" {a.get('hotkey', '·')} ", style="reverse dim" if disabled else "reverse")
         t.append("  ")
-        t.append(a["title"], style="dim" if disabled else "bold")
-        if a.get("hint"):
-            t.append(f"   {a['hint']}", style="dim")
+        title = a["title"]
+        t.append(title, style="dim" if disabled else "bold")
+        pad = " " * max(1, self._TITLE_COL - len(title))
+        room = avail - self._TITLE_COL - 5
         if disabled:
-            t.append("   (needs data)", style="italic #f0883e")
+            # §1.7: the dead end names what is missing, in place of the hint.
+            note = "needs the recording files" if room >= 25 else "needs data"
+            if room >= self._HINT_MIN:
+                t.append(pad)
+                t.append(note, style="#f0883e")
+        else:
+            hint = a.get("hint") or ""
+            if hint and self._HINT_MIN <= room and len(hint) <= room:
+                t.append(pad)
+                t.append(hint, style="dim")
+            if a["key"] == "data" and room >= self._HINT_MIN:
+                # One row, two doors: `d` says what loaded, `f` points the
+                # workbench at another folder. A key that does something on this
+                # row is drawn on this row.
+                t.append("   ")
+                t.append(" f ", style="reverse dim")
+                t.append(" folder", style="dim")
+        t.truncate(avail, overflow="ellipsis")
         return t
 
 
@@ -3377,22 +3505,23 @@ class SpikeMenuApp(App):
         bar.update(t)
 
     def _footer_hint(self, width: int, focus: str | None = None) -> str:
-        """Width-adaptive key line — D6 merges the MANAGE keys and help into this
-        ONE bottom line (the old separate managebar row became air)."""
-        if width >= 118:
-            return ("↑/↓ ↵ · 1-6 run · t sorter · e params · m sorters · p probe · "
-                    "v verify · y phy · r reopen · d data · ? help · q quit")
-        if width >= 110:
-            return ("↑/↓ ↵ · 1-6 run · t sorter · e params · m sorters · p probe · "
-                    "v verify · r reopen · d data · ? help · q quit")
-        if width >= 100:
-            return ("↑/↓ ↵ · 1-6 run · t sorter · e params · m sorters · p probe · "
-                    "r reopen · ? help · q quit")
-        if width >= 72:
-            return "↵ run · 1-6 · t sorter · e params · m sorters · p probe · ? help · q quit"
-        if width >= 48:
-            return "↵ · 1-6 · t sorter · m · p · ? help · q quit"
-        return "↑↓ run · t · ? · q"
+        """Width-adaptive key line. F2 made it SHORT: every workflow key is printed
+        on its own row now, so this line teaches the navigation model and carries
+        only the housekeeping that has no row (Manage sorters, Colour theme, Help,
+        Quit)."""
+        # Each tier is sized to survive the footer's own width-2 truncation.
+        if width >= 108:
+            return ("↑/↓ move · ↵ run · or press the key shown on the row   ·   "
+                    "m sorters & Docker · c colour · ? help · q quit")
+        if width >= 83:
+            return ("↑/↓ move · ↵ run · or the key on the row · m sorters · "
+                    "c colour · ? help · q quit")
+        if width >= 76:
+            return ("↑/↓ ↵ run · or the key on the row · m sorters · c colour · "
+                    "? help · q quit")
+        if width >= 56:
+            return "↑/↓ ↵ run · or the row's key · m · c · ? help · q quit"
+        return "↑↓ ↵ run · ? help · q quit"
 
     def action_manage_active(self) -> None:
         """``x``: manage the ACTIVE sorter — a small confirm offering only the
@@ -3434,9 +3563,6 @@ class SpikeMenuApp(App):
             self._last = Text(f"reload after manage failed: {e!r}", style="#f85149")
         self._render_sortbar(self.size.width)
         self._refresh_footer()
-
-    def action_probe(self) -> None:
-        self._open_probes()
 
     def _open_probes(self) -> None:
         self.push_screen(ProbeManagerScreen(self.c, self._accent), self._after_probes)
@@ -3504,22 +3630,17 @@ class SpikeMenuApp(App):
     def action_help(self) -> None:
         self.push_screen(HelpScreen(self.c, self._accent, topic="overview"))
 
-    def action_run_index(self, i: int) -> None:
-        """1-6 jump-run WORKFLOW action ``i``. Both lists are always visible, so just
-        move focus to the actions list, highlight row ``i`` (the workflow rows are the
-        list's first rows), and run it. MANAGE actions have letter keys instead."""
-        workflow = self._workflow_actions()
-        if not (0 <= i < len(workflow)):
-            return
-        ol = self.query_one("#actions", OptionList)
-        ol.focus()
-        if i < ol.option_count:
-            ol.highlighted = i                 # fires the highlight -> renders INSPECTING
-        self._activate_action(workflow[i]["key"])
-
     def action_run_key(self, key: str) -> None:
-        """A MANAGE letter key (D5: manage actions live on the dim line, not in
-        the list) — run it directly."""
+        """Run an action from its key. When that action has a row, the cursor MOVES
+        to it first: a key press and an Enter on the row are the same gesture, and
+        the researcher can see where in the workflow the key just took them."""
+        ol = self.query_one("#actions", OptionList)
+        for i in range(ol.option_count):
+            opt = ol.get_option_at_index(i)
+            if opt.id == key and not opt.disabled:
+                ol.focus()
+                ol.highlighted = i
+                break
         self._activate_action(key)
 
     def action_reopen_last(self) -> None:
@@ -3532,7 +3653,6 @@ class SpikeMenuApp(App):
         if self.c.set_active_by_name(name):
             self._render_results()
             self._render_sortbar(self.size.width)
-            self._refresh_action_title()
             self._refresh_footer()
             return True
         return False
@@ -3727,6 +3847,12 @@ class SpikeMenuApp(App):
             self._open_theme()
         elif key == "help":
             self.action_help()
+        elif key == "picker":
+            self.action_pick_sorter()
+        elif key == "data":
+            self.action_data_help()
+        elif key == "reopen":
+            self.action_reopen_last()
         elif key == "params":
             self._open_params()
         elif key == "manage":

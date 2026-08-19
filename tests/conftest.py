@@ -16,25 +16,30 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
-# Action table mirroring SpikeInterface_Menu._ACTIONS (keys + needs_data + section),
-# so number-key indices, the WORKFLOW/MANAGE split, and the data-dimming behaviour
-# match the real app. D1 order of record: gui ("Inspect") 4th, compare 5th, traces 6th.
+# Action table mirroring SpikeInterface_Menu._ACTIONS (key, title, hint,
+# needs_data, stage, hotkey), so the stage grouping, the printed keys and the
+# data-dimming behaviour match the real app. F2 order of record: every function is
+# a row, binned into data / sort / share; `chrome` rows are housekeeping and never
+# enter the list.
 ACTIONS = [
-    ("explore", "Explore", "figures: LFP + events", True, "workflow"),
-    ("sort", "Sort", "full or quick", True, "workflow"),
-    ("report", "Report", "build + open HTML", True, "workflow"),
-    ("gui", "Inspect", "GUI on the saved sort", True, "workflow"),
-    ("compare", "Compare", "two saved sorts", True, "workflow"),
-    ("traces", "Traces", "scroll raw signal", True, "workflow"),
-    ("params", "Edit parameters", "tune the active sorter", False, "manage"),
-    ("manage", "Manage sorters", "download · delete", False, "manage"),
-    ("triage", "Triage units", "label the saved sort's units", False, "manage"),
-    ("phy", "Export to Phy", "saved sort → a Phy folder", True, "manage"),
-    ("probe", "Probe geometry", "pick / edit geometry", False, "manage"),
-    ("verify", "Verify install", "smoke test", False, "manage"),
-    ("theme", "Colour theme", "accent", False, "manage"),
-    ("help", "Help", "steps · sorters · Docker · data files", False, "manage"),
-    ("quit", "Quit", "exit", False, "manage"),
+    ("data", "Data files", "which files loaded, and where", False, "data", "d"),
+    ("probe", "Probe geometry", "the electrode map every sort uses", False, "data", "p"),
+    ("explore", "Explore the recording", "static figures — LFP, events, rates", True, "data", "1"),
+    ("traces", "Watch the traces", "scroll the raw signal in a window", True, "data", "6"),
+    ("verify", "Check the install", "every library and loader, pass or fail", False, "data", "v"),
+    ("picker", "Choose the sorter", "which algorithm finds the units", False, "sort", "t"),
+    ("params", "Sorter settings", "the parameters the next sort uses", False, "sort", "e"),
+    ("sort", "Sort the recording", "finds units in the broadband signal", True, "sort", "2"),
+    ("triage", "Judge the units", "good / MUA / noise, one key per unit", False, "sort", "u"),
+    ("phy", "Export to Phy", "a folder to curate the hard cases", True, "sort", "y"),
+    ("report", "Build the report", "one HTML page: units, quality, provenance", True, "share", "3"),
+    ("gui", "Inspect in the GUI", "waveforms + correlograms in a window", True, "share", "4"),
+    ("compare", "Compare two sorts", "how much two saved sorts agree", True, "share", "5"),
+    ("reopen", "Reopen last result", "the page you built most recently", False, "share", "r"),
+    ("manage", "Manage sorters", "download · delete", False, "chrome", "m"),
+    ("theme", "Colour theme", "accent", False, "chrome", "c"),
+    ("help", "Help", "which question · which surface · which key", False, "chrome", "?"),
+    ("quit", "Quit", "exit", False, "chrome", "q"),
 ]
 
 
@@ -55,8 +60,8 @@ class FakeController:
         self.active_sorter = "tridesclous2"
         self.active_idx = 0
         self.sorter_params: dict[str, dict] = {}
-        self.actions = [dict(key=k, title=t, hint=h, needs_data=nd, section=s)
-                        for k, t, h, nd, s in ACTIONS]
+        self.actions = [dict(key=k, title=t, hint=h, needs_data=nd, stage=s, hotkey=hk)
+                        for k, t, h, nd, s, hk in ACTIONS]
         self.last_result = None
         self.reopened = 0
         self.ran: list[tuple[str, str | None]] = []

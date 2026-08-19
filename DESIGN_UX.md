@@ -5,7 +5,9 @@ sort-progress modal, sort-how-much modal, the HTML report, spikeinterface-gui). 
 gate: nothing in D1–D4 is built until Ben approves or amends this spec.** Section §7 maps
 spec → implementation tasks. The peer session's feasibility critique
 (`docs/design/DESIGN_CRITIQUE_2026-08-18.md`, 10 findings) was folded in the same day —
-the spec below is the post-critique version, ready for the veto.*
+the spec below is the post-critique version, ready for the veto. **§2 was rewritten
+2026-08-19 to describe the F2 dashboard as built** — it is the spec of record for the
+dashboard, and it says which of §1's principles that design keeps and which it drops.*
 
 Ben's brief, verbatim goals: more accessible · less clutter · focused on what matters ·
 clean, with clarity, good spacing and hierarchy, ample room · the UX feels like the program
@@ -42,61 +44,124 @@ provides **timely updates and results**.
 7. **Every dead-end names its next step.** Empty, zero, and error states say what happened
    and the one action that helps ("0 units — lower detect_threshold in Edit parameters").
 
-## §2 The dashboard (D6, the airy dashboard — current spec of record)
+## §2 The dashboard (F2, the researcher dashboard — current spec of record)
 
-*History: D1 built the three-panel spec below-in-git; D5 (Ben, actions-first) put the
-sorter list behind the `t` picker and made the actions the screen; D6 (Ben, night —
-two reference mocks, synthesis approved) replaced D5's boxed-panel chrome with a
-whitespace + hairline language. §1 binds throughout.*
+*History: D1 built a three-panel spec; D5 (Ben, actions-first) put the sorter list behind
+the `t` picker and made six numbered actions the screen; D6 replaced boxed panels with a
+whitespace + hairline language. **F2 (Ben's directive of record, 2026-08-19 ~03:00) is what
+this section now describes** — the D6 dashboard was judged not sufficient: it showed six of
+the workbench's fourteen functions and hid the rest behind bare letters on one dim footer
+line, which is unreadable to a researcher meeting the app cold. This section was rewritten
+to match what was built, not the other way round. What §1 still binds, and what F2 dropped,
+is stated at the end.*
 
 ```
-                       █ SPIKE █            (crest: TALL terminals only, ≥34 rows)
-  ──────────────── University of Pittsburgh · SpikeInterface ────────────────
+                          █ SPIKE █             (crest: TALL terminals only, ≥34 rows)
+   ───────────── University of Pittsburgh · SpikeInterface ─────────────
 
-  DATA  ✓ all 3 streams      PROBE  NeuroNexus A1x16-3mm-100-703 · 16 ch @ 100 µm ✓
-  SORT  ★ tridesclous2 · 18 units · 132 s saved · Ready to run    [t] change
-  Fast, reliable, CPU-only. Good default — general-purpose, robust at low counts.
+   DATA  ✓ all 3 streams      PROBE  NeuroNexus A1x16-3mm-100-703 · 16 ch @ 100 µm ✓
+   SORT  ★ tridesclous2 · 15 units · 132 s saved · Ready to run    t  change
 
-  ACTIONS ────────────────────────────────────────────────────────────────────
-   [1]  Explore    figures: LFP + events
-   [2]  Sort       full or quick
-   [3]  Report     build + open HTML
-   [4]  Inspect    GUI on the saved sort
-   [5]  Compare    two saved sorts
-   [6]  Traces     scroll raw signal
+   RESULTS ────────────────────────────────────────────────────────────
+   tridesclous2 · 1 strong unit of 15 · 132 s sorted
+   strong at ch 7 · 4 more pass the rule on thin evidence    u  triage
+   V_pp 33.4 µV · SNR 5.3 · noise 3.98 µV · yield 88%
 
-  RESULTS ────────────────────────────────────────────────────────────────────
-  tridesclous2 · 18 units · 132 s sorted
-  V_pp 33.4 µV · SNR 5.3 · noise 3.98 µV · yield 88%
+   GET DATA ───────────────────────────────────────────────────────────
+    d   Data files            which files loaded, and where    f  folder
+    p   Probe geometry        the electrode map every sort uses
+    1   Explore the recording static figures — LFP, events, rates
+    6   Watch the traces      scroll the raw signal in a window
+    v   Check the install     every library and loader, pass or fail
 
-  LAST  ✓ report · 14:18 → outputs/report.html   r reopen
-  1-6 run · t sorter · e params · m sorters · p probe · v verify · r reopen · ? help · q quit
+   SORT & CURATE ──────────────────────────────────────────────────────
+    t   Choose the sorter     which algorithm finds the units
+    e   Sorter settings       the parameters the next sort uses
+    2   Sort the recording    finds units in the broadband signal
+    u   Judge the units       good / MUA / noise, one key per unit
+    y   Export to Phy         a folder to curate the hard cases
+
+   LOOK & SHARE ───────────────────────────────────────────────────────
+    3   Build the report      one HTML page: units, quality, provenance
+    4   Inspect in the GUI    waveforms + correlograms in a window
+    5   Compare two sorts     how much two saved sorts agree
+    r   Reopen last result    the page you built most recently
+
+   LAST  ✓ report · 14:18 → outputs/report.html   r reopen
+   ↑/↓ move · ↵ run · or press the key shown on the row · m sorters & Docker · c colour · ? help · q quit
 ```
 
-- **No boxes.** Sections are a dim label + hairline rule (`ACTIONS ────`) over
-  borderless content, separated by blank-line air. Focus lives on the highlighted
-  row, never on chrome.
-- **Crest is a tall-terminal luxury** (≥34 rows), never a mid-size squeeze; at the
-  default 80×24 it is simply absent.
-- **DATA line states the probe ONCE** — the label carries ch/pitch; no second
-  summary (§1.1).
-- **SORT keeps its one home and gains a pressable "change" control**: an
-  inverse-video `t` chip + verb; a mouse click anywhere on the row opens the
-  picker, the visible chip is the keyboard degradation.
-- **One dim context sentence** under SORT: active sorter description + probe fit.
-  Dim only — §1.5 reserves green for verified results, and this is description.
-- **Action rows carry inverse-video key chips** (` 1 `…` 6 `) — visibly pressable
-  affordances, per Ben's standing intent ("less annoying to deal with").
-- **One bottom key line**: the old MANAGE row merged into the footer's key line
-  (width-adaptive); the saved row became air.
-- **Air collapses BEFORE content** (the yield law): below 30 rows the blank-line
-  margins, context sentence, and section heads yield; below 14 everything but the
-  actions + footer; the never-clip and painted-rows tests pin 80×24 as fully
-  usable. RESULTS still yields before the action list when the budget is tight.
-- The `t` picker (filter input, grouped list, description footer), RESULTS
-  gating (only with a saved sort), and LAST RESULT semantics are unchanged from
-  D5. The RESULTS yield cell carries an "excluded as bad" suffix when PRE1's
-  bad-channel exclusion is active (absent on this recording).
+**Three zones, one job each.** *State* (DATA/PROBE · SORT · RESULTS) says where you are.
+*The workflow list* says what you can do. *Memory* (LAST + the key line) says what you last
+did and what is left over. A fact lives in exactly one zone: the banner never repeats a
+result, the rows never repeat state, RESULTS never repeats the banner.
+
+- **Every function is a visible, labelled row carrying its own key.** All fourteen:
+  five in GET DATA, five in SORT & CURATE, four in LOOK & SHARE. Nothing lives only
+  behind a letter on the footer. The hint says what the row **produces**, not how it
+  works. Only housekeeping with no workflow meaning stays on the key line — `m`
+  manage sorters/Docker, `c` colour, `? `help, `q` quit — plus `x` (manage the active
+  sorter) and `w` (re-open a running download), which are documented in Help.
+- **Stages are the navigation.** The three headings are the D6 hairline language
+  (dim label + rule) rendered as non-selectable rows inside the same list, so ↑/↓
+  steps over them and the grouping cannot drift out of sync with the rows.
+- **Keys were not remapped.** 1-6 keep the meanings they have always had; the redesign
+  moved the rows, not the keys. Every existing binding, `docs/WORKFLOW.md`, and every
+  in-app hint that names a key stays true. A key press also moves the cursor to its
+  row, so pressing a key and pressing Enter on the row are one gesture.
+- **"Data files/folder" is one row with two doors**: `d` says what loaded, and a
+  second ` f ` chip on the same row points the workbench at another folder.
+- **RESULTS moved above the list** and keeps face1's takeaway verbatim — the rollup
+  headline, the site line, and the pressable ` u  triage` chip (click anywhere on
+  RESULTS for the mouse path). The rollup's wording belongs to `sort_summary`.
+- **No boxes, and no prose.** Sections are a dim label + hairline rule over
+  borderless content, separated by blank-line air; the rules all end in the same
+  column. D6's context *sentence* (the active sorter's description) was **cut** —
+  it was the one paragraph on the screen, and the picker already shows a
+  description exactly where you are choosing a sorter.
+- **Hints are dropped whole, never ellipsised.** Below about 72 columns a hint that
+  cannot fit is removed and the row is its title alone; half a sentence is noise.
+- **Crest is a tall-terminal luxury** (≥34 rows); at 80×24 it is simply absent.
+
+**The yield ladder** (`menu_app.SpikeMenuApp._LADDER`, walked by `_plan`) is a budget, not
+a set of tiers: the layout walks the ladder and stops the moment the screen fits, so nothing
+yields that did not have to.
+
+| # | Yields | Rows |
+|---|---|---|
+| 1 | the blank line above each stage group | 2 |
+| 2 | the blank lines between the screen's blocks | 3 |
+| 3 | the centred title rule | 1 |
+| 4 | RESULTS' label rule + metrics line (the takeaway stays) | 2 |
+| 5 | the LAST RESULT line | 1 |
+| 6 | RESULTS entirely | 2 |
+| 7 | the DATA / SORT state rows | 2 |
+| 8 | the three stage headings | 3 |
+
+The fourteen rows never yield; below the bottom of the ladder the list scrolls, so every
+function stays reachable. **At 80×24 the ladder stops at step 4**: the whole workflow, both
+state rows, the takeaway and the LAST line are on screen at once and nothing scrolls. The
+budget counts the rows its own painters produce (`_results_lines`, `_list_rows`), so it
+cannot drift from what is painted — the D6 review-F6 failure closed by construction. Pinned
+by `test_painted_rows_match_the_budget`, `test_default_terminal_shows_the_whole_workflow`,
+`test_the_ladder_yields_air_then_chrome_then_state` and the SVG snapshots.
+
+**Help** (`ui.HELP_TOPICS`, one source for the Textual and typed-fallback screens) is
+rebuilt as *which question → which surface → which key*, in the same plain words as
+`docs/WORKFLOW.md` — which is the canonical version; the two must not diverge into a third
+vocabulary. Topics: Start here · Where do I look? · the three stages · The words · If it
+looks wrong · Sorters & Docker · Probe geometry · Data files · Keyboard · About. The body is
+a laid-out pane 50 columns wide at the default terminal, so its lines are written to that
+width and pinned there.
+
+**What F2 kept from §1**: one fact one place (§1.1 — the three zones are the mechanism);
+signal budget (§1.2 — a row is a key chip, a title and one dim phrase); hierarchy by weight
+(§1.3); air yields before content (§1.4); colour as a role, never the only carrier (§1.5);
+every dead end names its next step (§1.7 — a needs-data row says "needs the recording
+files" in place of its hint). **What F2 dropped**: the context sentence under SORT, and
+§1.4's "ample room" read as inner padding — the room here is between groups, not inside
+boxes. The `t` picker, RESULTS gating (a saved sort must exist), and LAST RESULT semantics
+are unchanged.
 
 ## §3 The sort experience (screenshots: SORTING modal ×2, "Sort how much?")
 

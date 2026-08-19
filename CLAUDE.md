@@ -240,9 +240,16 @@ placeholder (no two channels neighbours) remains available.
 - **Esc is a deliberate no-op**, so a reflexive back-press never exits the dashboard.
 - Sorting runs *in-UI* via a `run_sorting.py --progress json` subprocess, never `suspend()`.
   Actions needing a fresh process re-invoke the launcher itself (`_self`).
-- Responsive yield is budget arithmetic around `TINY_ROWS` (D5): chrome — crest, then
-  RESULTS, then banner/manage/LAST — yields under pressure so the action list never
-  clips; pinned by the painted-rows and never-clip Pilot tests.
+- **Every function is a visible, labelled row** (F2, 2026-08-19): the dashboard is a state
+  block (DATA/PROBE · SORT · RESULTS) over ONE list holding all fourteen functions, grouped
+  into GET DATA · SORT & CURATE · LOOK & SHARE, each row printing its own key. Housekeeping
+  (`m`/`c`/`x`/`w`/`?`/`q`) stays on the footer key line. The 1-6 numbers keep their
+  historical meanings — don't remap them; `docs/WORKFLOW.md` and the help name them.
+- Responsive yield is a budget walking `SpikeMenuApp._LADDER` (group air → section air →
+  title → RESULTS compact → LAST → RESULTS → banner → stage headings) and stopping the
+  moment the screen fits; the fourteen rows never yield. The budget counts rows from the
+  same painters that draw them, so it cannot drift. 80×24 shows everything without
+  scrolling; pinned by the painted-rows/never-clip Pilot tests and the SVG snapshots.
 
 ## Conventions
 

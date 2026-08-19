@@ -11,12 +11,12 @@ in scripts/menu_app.py; a typed menu is the fallback when Textual is absent or
 off-TTY). Run with an action -> dispatches it directly (handy for scripting).
 Heavy SpikeInterface imports are lazy, so the menu stays responsive.
 
-The dashboard has a left Sorter sidebar (←/→ to focus it, ↑/↓ to choose; the
-active sorter — what report/GUI/compare act on — is marked by the left accent
-bar and named in the SORT banner, its one home) and a right ACTIONS list: six
-numbered WORKFLOW actions (Enter or 1-6) over a dim MANAGE tier on letter keys.
-It stays usable at any window size and guides you when the recording files are
-missing. Styling mirrors scripts/run_sorting.py (see scripts/ui.py).
+The dashboard is a state block (DATA/PROBE, SORT, RESULTS) over one list of every
+function the workbench has, grouped into the three stages of the workflow — GET
+DATA, SORT & CURATE, LOOK & SHARE. Each row prints its own key and says what it
+produces; ↑/↓ + Enter runs the highlighted one. It stays usable at any window
+size and guides you when the recording files are missing. Styling mirrors
+scripts/run_sorting.py (see scripts/ui.py).
 
 Actions:
     explore   quick static figures (LFP + .nev) via scripts/explore_data.py
@@ -806,31 +806,40 @@ _MENU = [
     ("13", "help",   "Help",                    "what each step does · sorters · Docker · data"),
 ]
 
-# v2 (Textual) action table — (key, title, hint, needs_data, section). The first six
-# rows are THE WORKFLOW (numbered 1-6 in the dashboard, DESIGN_UX §2 order: the GUI
-# inspector is "Inspect", Compare precedes Traces); the rest are MANAGE — housekeeping
-# rendered dim below a gap, reached by letter keys. ``needs_data`` dims the action and
-# blocks it when no recording is present; MANAGE rows always work. ``help`` and
-# ``quit`` are handled in-app, not by DISPATCH.
+# v2 (Textual) action table — (key, title, hint, needs_data, stage, hotkey).
+#
+# F2 (2026-08-19, the researcher dashboard): every function the workbench has is a
+# VISIBLE, LABELED ROW carrying its own key, binned into the three workflow stages
+# a researcher moves through — ``data`` (get data) → ``sort`` (sort & curate) →
+# ``share`` (look & share). The hint says what the row PRODUCES, not how it works.
+# ``chrome`` rows are housekeeping: they keep their letter keys and live on the
+# footer's key line, not in the list. ``needs_data`` dims the row and blocks it when
+# no recording is present. ``hotkey`` is what the row prints and what the dashboard
+# binds — the 1-6 numbers keep the meanings they have always had, so every existing
+# binding, doc and prompt stays true. ``help``/``quit``/``theme``/``manage``/
+# ``picker``/``data``/``reopen`` are handled in-app, not by DISPATCH.
 _ACTIONS = [
-    ("explore", "Explore",          "figures: LFP + events, no sort needed",   True,  "workflow"),
-    ("sort",    "Sort",             "run the active sorter — full or quick",   True,  "workflow"),
-    ("report",  "Report",           "build + open the HTML report",            True,  "workflow"),
-    ("gui",     "Inspect",          "GUI on the saved sort (desktop window)",  True,  "workflow"),
-    ("compare", "Compare",          "two saved sorts → comparison.html",       True,  "workflow"),
-    ("traces",  "Traces",           "scroll raw signal (desktop window)",      True,  "workflow"),
-    ("params",  "Edit parameters",  "tune the active sorter (saved)",          False, "manage"),
-    ("manage",  "Manage sorters",   "download images · delete · clear sorts",  False, "manage"),
-    ("triage",  "Triage units",     "label the saved sort's units in here",    False, "manage"),
-    ("phy",     "Export to Phy",    "saved sort → a Phy folder to curate",     True,  "manage"),
-    ("probe",   "Probe geometry",   "pick / edit the electrode geometry",      False, "manage"),
-    ("verify",  "Verify install",   "environment smoke test",                  False, "manage"),
-    ("theme",   "Colour theme",     "pick an accent colour (saved)",           False, "manage"),
-    ("help",    "Help",             "steps · sorters · Docker · data files",   False, "manage"),
-    ("quit",    "Quit",             "exit the menu (or press q)",              False, "manage"),
+    ("data",    "Data files",            "which files loaded, and where",       False, "data",  "d"),
+    ("probe",   "Probe geometry",        "the electrode map every sort uses",   False, "data",  "p"),
+    ("explore", "Explore the recording", "static figures — LFP, events, rates",  True, "data",  "1"),
+    ("traces",  "Watch the traces",      "scroll the raw signal in a window",    True, "data",  "6"),
+    ("verify",  "Check the install",     "every library and loader, pass or fail", False, "data", "v"),
+    ("picker",  "Choose the sorter",     "which algorithm finds the units",     False, "sort",  "t"),
+    ("params",  "Sorter settings",       "the parameters the next sort uses",   False, "sort",  "e"),
+    ("sort",    "Sort the recording",    "finds units in the broadband signal",  True, "sort",  "2"),
+    ("triage",  "Judge the units",       "good / MUA / noise, one key per unit", False, "sort", "u"),
+    ("phy",     "Export to Phy",         "a folder to curate the hard cases",    True, "sort",  "y"),
+    ("report",  "Build the report",      "one HTML page: units, quality, provenance", True, "share", "3"),
+    ("gui",     "Inspect in the GUI",    "waveforms + correlograms in a window",  True, "share", "4"),
+    ("compare", "Compare two sorts",     "how much two saved sorts agree",        True, "share", "5"),
+    ("reopen",  "Reopen last result",    "the page you built most recently",    False, "share", "r"),
+    ("manage",  "Manage sorters",        "download images · delete · clear sorts", False, "chrome", "m"),
+    ("theme",   "Colour theme",          "pick an accent colour (saved)",       False, "chrome", "c"),
+    ("help",    "Help",                  "which question · which surface · which key", False, "chrome", "?"),
+    ("quit",    "Quit",                  "exit the menu (or press q)",          False, "chrome", "q"),
 ]
 # Keys that need a recording present (so the fallback menu can refuse them cleanly).
-_DATA_ACTIONS = {k for k, _t, _h, needs, _s in _ACTIONS if needs}
+_DATA_ACTIONS = {k for k, _t, _h, needs, _s, _hk in _ACTIONS if needs}
 
 # Artifact each action leaves behind, for the dashboard's LAST RESULT line and its
 # ``r`` reopen key. Only browser-openable artifacts get a reopen path.
@@ -876,6 +885,11 @@ _ACTION_DETAIL = {
                         "with 'curation.py import-phy'.",
                 "needs": ["saved_sort"], "output": "outputs/<sorter>/phy/"},
     "params":  {"what": "Tune the active sorter's parameters (saved per sorter)."},
+    "picker":  {"what": "Choose which sorting algorithm runs — grouped by what "
+                        "this computer can run right now; type to filter."},
+    "data":    {"what": "Which recording files were found, where they live, and "
+                        "how to point the workbench somewhere else."},
+    "reopen":  {"what": "Reopen the page the last action produced."},
     "manage":  {"what": "Download Docker sorter images, delete downloaded images, "
                         "and clear saved sort outputs — all in one place."},
     "probe":   {"what": "Choose, edit, add, or remove the electrode-geometry profile. "
@@ -918,8 +932,8 @@ class MenuController:
         self.cfg = cfg
         self.header = HEADER
         self.themes = dict(ui.THEMES)
-        self.actions = [dict(key=k, title=t, hint=h, needs_data=nd, section=s)
-                        for k, t, h, nd, s in _ACTIONS]
+        self.actions = [dict(key=k, title=t, hint=h, needs_data=nd, stage=s, hotkey=hk)
+                        for k, t, h, nd, s, hk in _ACTIONS]
         self.theme_name = cfg.get("theme", ui.DEFAULT_THEME)
         if self.theme_name not in ui.THEMES:
             self.theme_name = ui.DEFAULT_THEME

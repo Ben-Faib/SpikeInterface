@@ -1,12 +1,14 @@
 """Textual Pilot tests for the v2 dashboard (scripts/menu_app.py).
 
-The dashboard is a simultaneous three-panel layout: SORTERS (#sorterpane) and
-ACTIONS (#actionpane) are both always visible; ←/→ (and Tab/Shift-Tab) MOVE FOCUS
-between them; a bottom INSPECTING panel (#inspect) follows the focused pane; and an
-always-on two-line DATA/SORT banner (#databar / #sortbar) sits above the panes.
+The dashboard (F2, the researcher dashboard) is a STATE block (#databar DATA +
+PROBE, #sortbar the active sorter, #results the takeaway from the saved sort) over
+ONE workflow list (#actions) holding every function the workbench has as a
+labelled row carrying its own key, grouped into three stages — GET DATA · SORT &
+CURATE · LOOK & SHARE — with the LAST RESULT line (#resultbar) and a two-row
+footer below.
 
-These tests exercise the requirements that motivated the redesign: usable at small
-window sizes, an obvious + selectable active sorter, always-reachable actions, and
+These tests exercise the requirements that motivated the redesign: every function
+visible and reachable, the stage grouping, usability at small window sizes, and
 clear missing-data guidance.
 """
 from __future__ import annotations
@@ -16,33 +18,64 @@ import ui
 from textual.widgets import OptionList, Static
 
 
+def _row_ids(app) -> list:
+    """Ids of the workflow list's rows, headings included (headings have none)."""
+    ol = app.query_one("#actions", OptionList)
+    return [ol.get_option_at_index(i).id for i in range(ol.option_count)]
+
+
+def _row_text(app, key: str) -> str:
+    """The painted text of the row with this action key."""
+    ol = app.query_one("#actions", OptionList)
+    for i in range(ol.option_count):
+        opt = ol.get_option_at_index(i)
+        if opt.id == key:
+            return opt.prompt.plain
+    raise AssertionError(f"no row for {key!r} in {_row_ids(app)}")
+
+
+def _highlighted_id(app):
+    ol = app.query_one("#actions", OptionList)
+    return (None if ol.highlighted is None
+            else ol.get_option_at_index(ol.highlighted).id)
+
 
 async def test_down_moves_action_highlight(make_app):
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        await pilot.press("right")        # focus ACTIONS
-        await pilot.pause()
-        actions = app.query_one("#actions", OptionList)
-        assert actions.highlighted == 0
+        # The cursor lands on the first ROW, never on a stage heading.
+        assert _highlighted_id(app) == "data"
         await pilot.press("down")
         await pilot.pause()
-        assert actions.highlighted == 1
+        assert _highlighted_id(app) == "probe"
 
 
 async def test_jk_navigation(make_app):
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        await pilot.press("right")        # focus ACTIONS
-        await pilot.pause()
-        actions = app.query_one("#actions", OptionList)
         await pilot.press("j")
         await pilot.pause()
-        assert actions.highlighted == 1
+        assert _highlighted_id(app) == "probe"
         await pilot.press("k")
         await pilot.pause()
-        assert actions.highlighted == 0
+        assert _highlighted_id(app) == "data"
+
+
+async def test_arrows_step_over_the_stage_headings(make_app):
+    # The headings are structure, not destinations: walking down from the last row
+    # of one stage lands on the first row of the next, never on its heading.
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        for _ in range(4):
+            await pilot.press("down")
+        await pilot.pause()
+        assert _highlighted_id(app) == "verify"      # last row of GET DATA
+        await pilot.press("down")
+        await pilot.pause()
+        assert _highlighted_id(app) == "picker"      # first row of SORT & CURATE
 
 
 # --- DATA / SORT banner --------------------------------------------------- #
@@ -119,11 +152,19 @@ async def test_missing_data_dims_actions(make_app):
         await pilot.pause()
         # loud DATA line
         assert "✗" in app.query_one("#databar").render().plain
-        # All six workflow rows need data -> all disabled; the MANAGE letters
-        # (help/verify/theme/quit) still work from the dim line (D5).
-        actions = app.query_one("#actions", OptionList)
-        by_id = {o.id: o for o in actions._options}
-        assert all(o.disabled for o in by_id.values())
+        # The rows that need a recording are dimmed and say so IN PLACE of their
+        # hint; the rows that don't (data files, probe, install, sorter choice,
+        # settings, triage, reopen) stay live — the workflow still has doors.
+        ol = app.query_one("#actions", OptionList)
+        state = {ol.get_option_at_index(i).id: ol.get_option_at_index(i).disabled
+                 for i in range(ol.option_count)}
+        assert all(state[k] for k in ("explore", "traces", "sort", "phy",
+                                      "report", "gui", "compare"))
+        assert not any(state[k] for k in ("data", "probe", "verify", "picker",
+                                          "params", "triage", "reopen"))
+        assert "needs the recording files" in _row_text(app, "sort")
+        # The cursor starts on a row that actually works.
+        assert _highlighted_id(app) == "data"
         await pilot.press("question_mark")
         await pilot.pause()
         assert isinstance(app.screen, menu_app.HelpScreen)
@@ -150,17 +191,56 @@ async def test_help_screen_opens_via_question_mark(make_app):
         await pilot.press("question_mark")   # the ? key
         await pilot.pause()
         assert isinstance(app.screen, menu_app.HelpScreen)
-        assert "spike sorting" in app.screen.query_one("#helpbody", Static).render().plain.lower()
+        body = app.screen.query_one("#helpbody", Static).render().plain.lower()
+        assert "finds neurons" in body and "docs/workflow.md" in body
 
 
 async def test_help_action_runs(make_app):
-    # D5: help lives on the MANAGE line -> `?` runs it directly.
+    # Help is housekeeping: it has no workflow row, so `?` runs it directly.
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
         await pilot.press("question_mark")
         await pilot.pause()
         assert isinstance(app.screen, menu_app.HelpScreen)
+
+
+def test_help_teaches_the_real_workflow():
+    # F2: help is "which question → which surface → which key", and it teaches the
+    # workflow the workbench ACTUALLY has. The June three-step app (Explore → Sort
+    # → Report, no curation, no Phy, no runs) is the defect this replaces.
+    topics = {k: (t, b) for k, t, b in ui.HELP_TOPICS}
+    assert "steps" not in topics                       # the old three-step topic
+    for key in ("questions", "getdata", "sortcurate", "looksare", "words", "wrong"):
+        assert key in topics, key
+    everything = "\n".join(l for _t, b in topics.values() for l in b).lower()
+    # the surfaces that exist today, each named where a researcher would ask for it
+    for word in ("judge the units", "export to phy", "curated", "curation.py",
+                 "runs.py", "compare", "strong", "noise floor"):
+        assert word in everything, word
+    # the same vocabulary docs/WORKFLOW.md uses (one workflow, one set of words)
+    for word in ("unit", "contact", "run", "curation"):
+        assert word in "\n".join(topics["words"][1]).lower(), word
+
+
+def test_help_names_only_keys_that_work():
+    # Truthful to every key that actually works: the Keyboard topic must name each
+    # of the app's bindings, and must not invent one.
+    bound = {b.key for b in menu_app.SpikeMenuApp.BINDINGS}
+    text = "\n".join(dict((k, b) for k, _t, b in ui.HELP_TOPICS)["keys"])
+    for key in sorted(bound - {"ctrl+c", "question_mark"}):
+        assert f" {key} " in text or f"{key} " in text, f"help never names {key!r}"
+    assert "Ctrl-C" in text and "?" in text
+
+
+def test_help_lines_fit_the_help_pane():
+    # The help body is a LAID-OUT pane (key/answer columns), not free prose: at the
+    # default 80-col terminal it is 50 content columns wide, and a line that wraps
+    # breaks the columns. Titles must fit the 20-column topic list.
+    for key, title, lines in ui.HELP_TOPICS:
+        assert len(title) <= 18, (key, title)
+        for line in lines:
+            assert len(line) <= 50, (key, len(line), line)
 
 
 async def test_data_help_shows_stream_detail(make_app):
@@ -1425,34 +1505,83 @@ async def _pick(pilot, app, row_id):
 
 
 # --- boot + layout --------------------------------------------------------- #
-async def test_boots_actions_first(make_app):
-    # D5/D6: the actions ARE the screen — borderless full-width section focused
-    # on launch, no sorters pane, no INSPECTING, and the MANAGE keys merged into
-    # the ONE bottom key line (D6 — the separate managebar row became air).
+async def test_boots_on_the_workflow_list(make_app):
+    # F2: the workflow list IS the screen — borderless, focused on launch, and
+    # holding EVERY function the workbench has (no sorters pane, no INSPECTING,
+    # no separate manage row). The footer carries only the housekeeping that has
+    # no row of its own.
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
         actions = app.query_one("#actions", OptionList)
         assert app.focused is actions
-        assert actions.option_count == 6     # the six WORKFLOW actions only (D5)
         assert not app.query("#sorters") and not app.query("#inspect")
-        assert not app.query("#managebar")
+        assert not app.query("#managebar") and not app.query("#actionshead")
         footer = app.query_one("#footer").render().plain
-        for key in ("e params", "m sorters", "p probe", "v verify", "? help"):
+        for key in ("m sorters", "c colour", "? help", "q quit"):
             assert key in footer
+        # The workflow keys are NOT on the key line any more — they are on rows.
+        for gone in ("e params", "p probe", "v verify", "y phy"):
+            assert gone not in footer
 
 
-async def test_d6_sections_are_hairlines_not_boxes(make_app):
-    # D6: whitespace + hairline language — the ACTIONS/RESULTS labels live on
-    # rule lines, and no widget carries the old rounded-box chrome. Asserted at
-    # the PAINT level (render_line), not the renderable: a rule sized past the
-    # content width word-wraps out of the 1-row clip and vanishes while
-    # render().plain still contains it (D6 review #1).
+async def test_every_function_is_a_visible_labelled_row(make_app):
+    # Decision 1 of the F2 directive: every function is a VISIBLE, LABELED ROW
+    # carrying its own key — nothing hides behind a bare letter on a footer line.
+    app = make_app(present=True)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        keys = {"data": "d", "probe": "p", "explore": "1", "traces": "6",
+                "verify": "v", "picker": "t", "params": "e", "sort": "2",
+                "triage": "u", "phy": "y", "report": "3", "gui": "4",
+                "compare": "5", "reopen": "r"}
+        ids = _row_ids(app)
+        for key, hotkey in keys.items():
+            assert key in ids, f"{key} has no row"
+            row = _row_text(app, key)
+            assert row.startswith(f" {hotkey} "), f"{key} row does not print {hotkey!r}"
+            assert len(row.strip()) > 4          # it is labelled, not a bare key
+        # Housekeeping stays OFF the list (it is not workflow).
+        assert not ({"manage", "theme", "help", "quit"} & set(ids))
+
+
+async def test_rows_say_what_they_produce(make_app):
+    # Decision 1: each row says what it gives you. At the default terminal the
+    # hint is present in full — a hint that cannot fit whole is dropped, never
+    # ellipsised to a fragment.
+    app = make_app(present=True)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        assert "one HTML page: units, quality, provenance" in _row_text(app, "report")
+        assert "good / MUA / noise, one key per unit" in _row_text(app, "triage")
+    app2 = make_app(present=True)
+    async with app2.run_test(size=(56, 24)) as pilot:
+        await pilot.pause()
+        row = _row_text(app2, "report")
+        assert "Build the report" in row and "…" not in row
+
+
+async def test_rows_are_grouped_into_the_three_stages(make_app):
+    # Decision 1: the rows are binned into the workflow stages, in order, and the
+    # headings are the D6 hairline language rather than boxes.
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        head_paint = app.query_one("#actionshead").render_line(0).text
-        assert head_paint.startswith("ACTIONS") and "─" in head_paint
+        ol = app.query_one("#actions", OptionList)
+        heads, binned = [], {}
+        for i in range(ol.option_count):
+            opt = ol.get_option_at_index(i)
+            if opt.id is None:
+                heads.append(opt.prompt.plain.split("─")[0].strip())
+            else:
+                binned.setdefault(len(heads), []).append(opt.id)
+        assert heads == ["GET DATA", "SORT & CURATE", "LOOK & SHARE"]
+        assert binned[1] == ["data", "probe", "explore", "traces", "verify"]
+        assert binned[2] == ["picker", "params", "sort", "triage", "phy"]
+        assert binned[3] == ["report", "gui", "compare", "reopen"]
+        # Hairline, not a box: the heading paints its label + rule on ONE row.
+        first = ol.get_option_at_index(0).prompt.plain
+        assert first.startswith("GET DATA") and "─" in first and "\n" not in first
         assert app.query_one("#actionpane").styles.border_top[0] in ("", "none")
         results_paint = app.query_one("#results").render_line(0).text
         assert results_paint.startswith("RESULTS") and "─" in results_paint
@@ -1475,18 +1604,19 @@ async def test_d6_section_rules_track_resize(make_app):
 
 async def test_d6_resize_under_modal_keeps_dashboard_honest(make_app):
     # A resize while a modal is up must retier the DASHBOARD, not the modal —
-    # the stale-air bug clipped the sixth action after Esc (D6 review #2).
+    # the stale-air bug clipped the last action row after Esc (D6 review #2).
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
         await pilot.press("t")                     # sorter picker up
         await pilot.pause()
-        await pilot.resize_terminal(110, 15)       # dense while the modal is up
+        await pilot.resize_terminal(110, 20)       # squeezed while the modal is up
         await pilot.pause()
         await pilot.press("escape")
         await pilot.pause()
         assert app.query_one("#actionpane").region.height >= 6
-        assert app.query_one("#contextbar").has_class("collapsed")
+        assert app.query_one("#body").screen.has_class("dense")
+        assert app.query_one("#titlebar").has_class("collapsed")
 
 
 async def test_d6_crest_only_on_tall_terminals(make_app):
@@ -1513,17 +1643,20 @@ async def test_d6_databar_probe_stated_once(make_app):
         assert "contacts" not in bar             # the summary's word, not the label's
 
 
-async def test_d6_context_sentence_under_sort(make_app):
-    # One dim context sentence: active sorter description + probe fit. Dim only —
-    # §1.5 reserves green for verified results, and this is description.
+async def test_dashboard_carries_no_prose_sentence(make_app):
+    # Decision 2 of the F2 directive ("the design should just not be full of
+    # text"): the sorter's description sentence left the dashboard. It lives in
+    # the picker, where you are actually choosing a sorter — the row that opens
+    # the picker says what it is FOR, which is the dashboard's whole job.
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        ctx = app.query_one("#contextbar")
-        plain = ctx.render().plain
-        assert "tridesclous2 description" in plain and "tridesclous2 fit" in plain
-        styles = {str(s.style) for s in ctx.render().spans}
-        assert not any("#3fb950" in s or "green" in s for s in styles)
+        assert not app.query("#contextbar")
+        for wid in ("#databar", "#sortbar", "#results"):
+            assert "tridesclous2 description" not in app.query_one(wid).render().plain
+        assert "which algorithm finds the units" in _row_text(app, "picker")
+        picker = await _open_picker(pilot, app)
+        assert "tridesclous2 description" in picker.query_one("#pickdesc").render().plain
 
 
 async def test_d6_sortbar_click_opens_picker(make_app):
@@ -1538,28 +1671,74 @@ async def test_d6_sortbar_click_opens_picker(make_app):
         assert isinstance(app.screen, menu_app.SorterPickerScreen)
 
 
-async def test_d6_action_rows_carry_key_chips(make_app):
-    # Inverse-video key chips on the action rows — pressable-looking keys.
+async def test_action_rows_carry_their_own_key_chip(make_app):
+    # Inverse-video key chips on every row — pressable-looking keys, and the key
+    # printed is the key that runs the row.
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        a = app.c.actions[0]
-        t = app._action_text(a, disabled=False, index=0)
+        a = next(x for x in app.c.actions if x["key"] == "sort")
+        t = app._action_text(a, disabled=False, avail=90)
         assert any("reverse" in str(sp.style) for sp in t.spans)
-        assert t.plain.startswith(" 1 ")
+        assert t.plain.startswith(" 2 ")
 
 
-async def test_d6_air_collapses_before_content(make_app):
-    # The yield law: at 80×24 the air/context chrome is gone but every action row
-    # is painted; nothing content-bearing was sacrificed for whitespace.
+async def test_data_row_carries_the_folder_chip(make_app):
+    # "data files/folder" is ONE row with two doors: `d` says what loaded, `f`
+    # points the workbench elsewhere — and the second key is drawn on the row.
     app = make_app(present=True)
-    async with app.run_test(size=(80, 24)) as pilot:
+    async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        assert app.query_one("#contextbar").has_class("collapsed")
-        assert app.query_one("#actionshead").has_class("collapsed")
-        actions = app.query_one("#actions", OptionList)
-        assert app.query_one("#actionpane").region.height >= 6
-        assert actions.option_count == 6
+        row = _row_text(app, "data")
+        assert " f " in row and "folder" in row
+        await pilot.press("f")
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.DataFolderScreen)
+
+
+async def test_a_key_moves_the_cursor_to_its_row(make_app):
+    # A key press and an Enter on the row are the same gesture: the cursor moves
+    # so the researcher can see where in the workflow the key took them.
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("v")            # Check the install, in GET DATA
+        await pilot.pause()
+        assert _highlighted_id(app) == "verify"
+        assert ("verify", None) in app.c.ran
+
+
+async def test_the_ladder_yields_air_then_chrome_then_state(make_app):
+    # The yield law, rewritten for F2: whitespace goes first, then identity
+    # chrome, then state — and the fourteen workflow rows never yield. Walking
+    # the window down must never take a row away before it has taken air.
+    app = make_app(present=True)
+    async with app.run_test(size=(100, 40)) as pilot:
+        await pilot.pause()
+        app.c.record_result("report", True)   # so LAST is a thing that CAN yield
+        app._relayout()
+        await pilot.pause()
+        plan = app._plan_state
+        assert plan["group_air"] and plan["section_air"] and plan["title"]
+        assert plan["banner"] and plan["results"] and plan["last"]
+        assert not plan["compact"]
+        ladder = menu_app.SpikeMenuApp._LADDER
+        last = None
+        for h in range(40, 11, -1):
+            await pilot.resize_terminal(100, h)
+            await pilot.pause()
+            p = app._plan_state
+            # What the screen has given up must always be a PREFIX of the ladder:
+            # once a step is un-applied every later step must be too.
+            given = [p[k] == v for k, v in ladder]
+            assert given == sorted(given, reverse=True), (h, p)
+            # Shrinking never gives anything back.
+            if last is not None:
+                assert all(a >= b for a, b in zip(given, last)), (h, p)
+            last = given
+        # By the bottom of the walk everything but the fourteen rows has yielded.
+        assert not app._plan_state["headers"] and not app._plan_state["banner"]
+        assert app.query_one("#actions", OptionList).option_count == 14
 
 
 async def test_sortbar_names_active_with_change_hint(make_app):
@@ -1639,6 +1818,40 @@ async def test_actions_keep_rows_at_common_sizes(make_app):
             assert r.height >= 6, f"actions squeezed to {r.height} rows at {size}"
 
 
+async def test_default_terminal_shows_the_whole_workflow(make_app):
+    # THE promise of the F2 layout: at 80×24 every function is on screen at once,
+    # under its stage heading, with the state block and the LAST line still there.
+    # Nothing scrolls, nothing clips.
+    app = make_app(present=True)
+    async with app.run_test(size=(80, 24)) as pilot:
+        await pilot.pause()
+        app.c.record_result("report", True)          # LAST is present too
+        app._relayout()
+        await pilot.pause()
+        ol = app.query_one("#actions", OptionList)
+        pane = app.query_one("#actionpane")
+        assert ol.virtual_size.height <= pane.region.height, "the workflow list scrolls"
+        assert pane.region.intersection(app.screen.region).height == pane.region.height
+        for wid in ("#databar", "#sortbar", "#results", "#resultbar"):
+            w = app.query_one(wid)
+            assert not w.has_class("collapsed") and not w.has_class("hidden")
+            assert w.region.height >= 1
+        assert app.query_one("#footer").region.height == 2
+
+
+async def test_painted_rows_match_the_budget(make_app):
+    # The budget counts rows its own painter produces — a row that wrapped into
+    # two painted lines (Textual re-wraps option content by its own rules) would
+    # make the yield law guess. Pin the two numbers together at real widths.
+    for size in [(110, 40), (100, 30), (80, 24), (72, 26), (60, 24)]:
+        app = make_app(present=True)
+        async with app.run_test(size=size) as pilot:
+            await pilot.pause()
+            ol = app.query_one("#actions", OptionList)
+            assert ol.virtual_size.height == app._list_rows(app._plan_state), size
+            assert app._rows_needed(app._plan_state, size[0]) <= size[1], size
+
+
 async def test_tiny_never_clips_actions(make_app):
     for size in [(40, 12), (30, 8), (24, 6), (20, 5)]:
         app = make_app(present=True)
@@ -1646,6 +1859,9 @@ async def test_tiny_never_clips_actions(make_app):
             await pilot.pause()
             r = app.query_one("#actions").region
             assert r.intersection(app.screen.region).height > 0
+            # Every function is still REACHABLE — the list scrolls, it never drops
+            # a row to fit.
+            assert app.query_one("#actions", OptionList).option_count >= 14
 
 
 async def test_resize_wide_to_tiny_to_wide(make_app):
@@ -1655,8 +1871,9 @@ async def test_resize_wide_to_tiny_to_wide(make_app):
         for size in [(30, 8), (110, 40)]:
             await pilot.resize_terminal(*size)
             await pilot.pause()
-        assert not app.query_one("#results").has_class("collapsed")
+        assert not app.query_one("#results").has_class("hidden")
         assert app.query_one("#actionpane").region.height >= 6
+        assert app._plan_state["headers"] and app._plan_state["group_air"]
 
 
 # --- the sorter picker ----------------------------------------------------- #
