@@ -45,7 +45,8 @@ from plotly.offline import get_plotlyjs
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import blackrock_io as bio  # noqa: E402
-import curation  # noqa: E402  (curation record + the one output-path resolver; no SI)
+import curation  # noqa: E402  (curation record + curated-vs-raw state; no SI)
+import runs  # noqa: E402  (the run store: which saved run is current)
 import sort_summary  # noqa: E402  (array/yield headline metrics: load/compute/format)
 
 OUTPUT_DIR = bio.REPO_ROOT / "outputs"
@@ -92,23 +93,31 @@ def _analyzer_window_seconds(analyzer_dir) -> float:
         return -1.0
 
 
+def analyzer_dir_for(sorter: str) -> Path:
+    """The analyzer of ``sorter``'s CURRENT run — the store is the resolver."""
+    return runs.sort_paths(sorter, outputs=OUTPUT_DIR)["analyzer"]
+
+
 def _pick_default_analyzer() -> Path:
     """Choose the saved analyzer to report when none is given.
 
-    Prefers the **most complete** sort — the largest sorted window, tie-broken by
-    recency — so a bare ``build_report()`` shows a full-recording sort rather than
-    whichever sorter happens to be hardcoded or a leftover short ``--duration``
-    smoke test. Falls back to the legacy path when nothing is saved.
+    One candidate per sorter — its *current* run, per the store's resolution
+    order — then the **most complete** of those: the largest sorted window,
+    tie-broken by recency. So a bare ``build_report()`` shows a full-recording
+    sort rather than whichever sorter happens to be hardcoded or a leftover short
+    ``--duration`` smoke test. Falls back to the legacy path when nothing is saved.
     """
     candidates = []
-    for d in sorted(OUTPUT_DIR.glob("*/analyzer")):
-        if not d.is_dir():
-            continue
-        try:
-            mtime = d.stat().st_mtime
-        except OSError:
-            mtime = 0.0
-        candidates.append((_analyzer_window_seconds(d), mtime, d))
+    if OUTPUT_DIR.is_dir():
+        for sorter in sorted(p.name for p in OUTPUT_DIR.iterdir() if p.is_dir()):
+            d = analyzer_dir_for(sorter)
+            if not d.is_dir():
+                continue
+            try:
+                mtime = d.stat().st_mtime
+            except OSError:
+                mtime = 0.0
+            candidates.append((_analyzer_window_seconds(d), mtime, d))
     if not candidates:
         return DEFAULT_ANALYZER_DIR
     candidates.sort(key=lambda c: (c[0], c[1]))  # largest window, then most recent
@@ -118,9 +127,11 @@ def _pick_default_analyzer() -> Path:
 def _curation_facts(analyzer_dir) -> dict:
     """What this report is showing — curated or raw — and how to say it.
 
-    ``analyzer_dir`` is the RAW ``outputs/<sorter>/analyzer``; a curated result
-    beside it supersedes it. Returns {"dir", "curated", "line", "stale",
-    "record"} — a pure read (curation imports no SpikeInterface).
+    ``analyzer_dir`` is the RAW analyzer of one run; a curated result beside it
+    supersedes it. Returns {"dir", "run_dir", "curated", "line", "stale",
+    "record"} — a pure read (curation imports no SpikeInterface). ``run_dir`` is
+    the directory the raw sort lives in, which under the run store is
+    ``outputs/<sorter>/runs/<id>/`` and not the sorter directory.
     """
     raw_dir = Path(analyzer_dir)
     # A caller can also hand us the curated analyzer directly; then it IS the
@@ -136,7 +147,12 @@ def _curation_facts(analyzer_dir) -> dict:
     stale = (curation.stale_reason(_run_info(show_dir), record,
                                    _run_info(sorter_dir / "analyzer"))
              if is_curated else "")
-    return {"dir": show_dir, "curated": is_curated, "record": record, "stale": stale,
+    try:
+        where = sorter_dir.resolve().relative_to(bio.REPO_ROOT.resolve()).as_posix()
+    except ValueError:      # a run directory outside the repo (explicit --output-dir)
+        where = sorter_dir.as_posix()
+    return {"dir": show_dir, "run_dir": where + "/", "curated": is_curated,
+            "record": record, "stale": stale,
             "line": curation.provenance_line(record, curated=is_curated,
                                              has_curated=is_curated)}
 
@@ -149,7 +165,7 @@ def _curation_html(cur, sorter_label) -> str:
     # frames it, so the two never drift or repeat each other.
     line = html.escape(cur["line"])
     if cur["curated"]:
-        raw = html.escape(f"outputs/{sorter_label}/")
+        raw = html.escape(cur.get("run_dir") or f"outputs/{sorter_label}/")
         body = (f'<strong>Showing:</strong> {line}. The raw '
                 f'sorter output it came from is preserved in <code>{raw}</code>.')
         if cur["stale"]:
@@ -1168,6 +1184,25 @@ def _render_provenance(status, probe=None, info=None, cur=None) -> str:
             prov.append(f'sorted {html.escape(sorted_at.replace("T", " "))}')
     if info.get("sorter"):
         prov.append(f'sorter {html.escape(str(info["sorter"]))}')
+    # W2: the run's identity and the environment that produced it — what makes
+    # this report's numbers regenerable rather than merely plausible.
+    if info.get("run_id"):
+        prov.append(f'run {html.escape(str(info["run_id"]))}'
+                    + (" (--duration smoke run)" if info.get("smoke") else ""))
+    if info.get("geometry_hash"):
+        prov.append(f'geometry {html.escape(str(info["geometry_hash"]))}')
+    git = info.get("git") or {}
+    if git.get("sha"):
+        prov.append(f'repo {html.escape(str(git["sha"])[:8])}'
+                    + (" (dirty tree)" if git.get("dirty") else ""))
+    seed = info.get("seed") or {}
+    det = info.get("determinism") or {}
+    if seed.get("key"):
+        prov.append(f'seed {html.escape(str(seed.get("value")))}'
+                    + ("" if seed.get("pinned") else " (not pinned)"))
+    if det.get("class") == "measured-stochastic":
+        prov.append("this sorter is measured non-deterministic on this recording — "
+                    "unit counts and ids vary between identical runs")
     if isinstance(info.get("freq_min"), (int, float)) and isinstance(info.get("freq_max"), (int, float)):
         prov.append(f'bandpass {info["freq_min"]:g}–{info["freq_max"]:g} Hz, common median reference')
     bad = info.get("bad_channels")
@@ -1205,7 +1240,9 @@ def build_report(data_dir=None, analyzer_dir=None, out_path=None, sorter_label=N
     event channel via ``main()``)."""
     _p = progress or (lambda title: None)
     analyzer_dir = Path(analyzer_dir) if analyzer_dir else _pick_default_analyzer()
-    sorter_label = sorter_label or analyzer_dir.parent.name
+    # In the run store the analyzer's parent is a run id, not a sorter — ask the
+    # store which sorter owns the directory rather than reading a path segment.
+    sorter_label = sorter_label or runs.sorter_for_dir(analyzer_dir)
     # A curated result supersedes the raw sort it came from — the report shows it
     # and says so (the label carries the fact into every section title).
     cur = _curation_facts(analyzer_dir)
@@ -1290,7 +1327,7 @@ def main() -> int:
     ap.add_argument("--out", default=None)
     ap.add_argument("--progress", choices=["json"], default=None)
     args = ap.parse_args()
-    analyzer_dir = (OUTPUT_DIR / args.sorter / "analyzer") if args.sorter else None
+    analyzer_dir = analyzer_dir_for(args.sorter) if args.sorter else None
     # Explicit --sorter with nothing saved is a hard, honest error (the repo's
     # explicit-fails-hard / default-falls-back-soft asymmetry) — never a ✓ over
     # an empty report while a good sort sits unused (D3b review F2).
@@ -1300,7 +1337,8 @@ def main() -> int:
     analyzer_dir = analyzer_dir or _pick_default_analyzer()   # resolved ONCE (F4)
     # The caveat must describe the geometry the sort actually used (F1): the
     # explicit flag wins, else the sort's own provenance.
-    probe = args.probe or _run_info(analyzer_dir).get("probe")
+    _info = _run_info(analyzer_dir)
+    probe = args.probe or _info.get("probe_id") or _info.get("probe")
 
     if args.progress != "json":
         if err:

@@ -8,6 +8,7 @@
     uv run python scripts/run_sorting.py --verbosity quiet        # only the final result + table
     uv run python scripts/run_sorting.py --bad-channels 3,7       # name bad electrodes yourself
     uv run python scripts/run_sorting.py --no-bad-channel-detection   # sort every electrode
+    uv run python scripts/run_sorting.py --duration 30 --make-current # let a smoke run win
 
 Output is clean at every level: progress bars are aligned (uniform width/layout)
 and library/native warnings (probe, OpenMP, numba, resource_tracker) are muted.
@@ -37,14 +38,26 @@ quarter and still excludes.) Which channels were detected and which were exclude
 are recorded in run_info.json and stated on every surface that reports a channel
 count or yield.
 
-Outputs (git-ignored) land in outputs/<sorter>/:
+Outputs (git-ignored) land in a NEW per-run directory under
+outputs/<sorter>/runs/<run_id>/ — runs never overwrite each other, and
+outputs/<sorter>/current.json points at the one every surface reads (the store is
+owned by runs.py; see its docstring for the layout, the resolution order and the
+pointer semantics):
     sorter_output/        raw sorter working folder
     sorting/              saved SI Sorting   (reload: si.load(".../sorting"))
     analyzer/             SortingAnalyzer    (open in spikeinterface-gui, or reload)
     quality_metrics.csv   per-unit metrics: rate/SNR/ISI + presence, amplitude
                           cutoff/median and PCA isolation metrics where computable
-    run_info.json         provenance: sorter, window (effective vs total), band,
-                          channels sorted, unit count, versions, timestamp
+    run_info.json         the run record: sorter, run id, window (effective vs
+                          total), band + the whole preprocessing chain, channels
+                          sorted, unit count, the EFFECTIVE sorter parameters,
+                          seed, probe id + geometry hash, package versions, this
+                          repo's git sha, platform, timestamp
+
+A --duration run is a SMOKE run: it is saved like any other, but it never
+becomes the current sort while a full run exists — it says so and leaves the
+pointer alone (--make-current overrides). --output-dir bypasses the store
+entirely and writes exactly where you say.
 
 GEOMETRY: the Blackrock files carry no electrode map, so the geometry is a user
 choice owned by probes.py. The sort applies the active profile — this rig's real
@@ -76,6 +89,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import blackrock_io as bio  # noqa: E402
+import runs  # noqa: E402  (the versioned run store: run dirs, the pointer, provenance)
 import sort_progress as _sp  # noqa: E402  (pure JSON progress protocol)
 import sort_summary as _summary  # noqa: E402  (array/yield headline metrics)
 import sorters  # noqa: E402  (sorter registry: discovery / status / params / run)
@@ -538,49 +552,72 @@ def _ext_compute(analyzer, ext: str):
 
 
 def _write_run_info(out: Path, args, **fields) -> None:
-    """Write outputs/<sorter>/run_info.json so a sort is self-identifying.
+    """Write the run's ``run_info.json`` — the record that makes it regenerable.
 
-    Records the sorter, the effective vs total recording window, the band, the
-    channels actually sorted and the unit count — so downstream tools (and the
-    report) can tell a short ``--duration`` smoke test apart from a full run
-    instead of silently presenting one as the other.
+    It carries the sorter, the effective vs total window, the whole preprocessing
+    chain, the channels actually sorted and the unit count (so a short
+    ``--duration`` smoke is never mistaken for a full run), plus everything W2
+    added for regeneration: the EFFECTIVE sorter parameters copied at run time,
+    the seed, probe id + geometry hash, package versions, this repo's git sha,
+    and the platform. ``runs.py`` documents the schema; ``curation.json`` anchors
+    on these fields, so keys are only ever ADDED here.
     """
     info = {
+        "schema_version": runs.SCHEMA_VERSION,
         "created": datetime.now().isoformat(timespec="seconds"),
         "command": "run_sorting.py",
+        "argv": list(sys.argv[1:]),
         "duration_arg": args.duration,
         "keep_analog": args.keep_analog,
         "n_jobs": args.n_jobs,
         "probe": getattr(args, "probe", None),
+        "packages": runs.package_versions(),
+        "platform": runs.platform_info(),
+        "git": runs.git_info(),
         **fields,
     }
     try:
-        (out / "run_info.json").write_text(json.dumps(info, indent=2), encoding="utf-8")
+        (out / "run_info.json").write_text(json.dumps(info, indent=2, default=str),
+                                           encoding="utf-8")
     except Exception:  # noqa: BLE001 - provenance is best-effort
         pass
 
 
-def _warn_existing_sort(out: Path, ui: "ConsoleUI") -> None:
-    """Warn (don't block) before overwriting an existing sort in ``out``.
+def _repo_relative(path: Path) -> str:
+    """``outputs/tdc2/runs/<id>`` — POSIX and repo-relative, so a record read on
+    another machine still names the run. Absolute when it lives outside the repo."""
+    try:
+        return path.resolve().relative_to(bio.REPO_ROOT.resolve()).as_posix()
+    except ValueError:      # an --output-dir outside the repo
+        return path.as_posix()
 
-    The sort overwrites outputs/<sorter>/ in place, so a previous full run can be
-    silently replaced by a quick ``--duration`` smoke test. Surface what is about
-    to be lost; the run still proceeds (this is a CLI, not an interactive prompt).
+
+def _recording_base(data_dir) -> "str | None":
+    """The Blackrock file set this run read, by base name (no extension)."""
+    try:
+        return bio.find_blackrock_base(data_dir).name
+    except Exception:  # noqa: BLE001 - identity is best-effort provenance
+        return None
+
+
+def _note_current_run(sorter: str, run_id: "str | None", ui: "ConsoleUI") -> None:
+    """Say which run is current before this one starts — nothing is overwritten.
+
+    Runs land in their own directory now, so the old "overwriting a previous
+    sort" warning has no subject. What a user still needs to know is which run
+    the surfaces are reading and whether this one will replace it, which is
+    exactly what a ``--duration`` smoke must NOT do.
     """
-    info_path = out / "run_info.json"
-    if info_path.exists():
-        try:
-            prev = json.loads(info_path.read_text(encoding="utf-8"))
-            eff = prev.get("effective_seconds")
-            span = f"{eff:.0f}s" if isinstance(eff, (int, float)) else "?s"
-            ui.warn(f"overwriting previous {prev.get('sorter', '?')} sort "
-                    f"({prev.get('n_units', '?')} units over {span}, "
-                    f"created {prev.get('created', '?')})")
-            return
-        except Exception:  # noqa: BLE001 - fall through to the generic warning
-            pass
-    if (out / "analyzer").exists() or (out / "sorting").exists():
-        ui.warn(f"overwriting an existing sort in {out}")
+    if run_id is None:      # --output-dir: outside the store, nothing to displace
+        return
+    found = runs.resolve(sorter)
+    if found is None:
+        return
+    info = found["info"]
+    eff = info.get("effective_seconds")
+    span = f"{eff:.0f}s" if isinstance(eff, (int, float)) else "?s"
+    ui.detail(f"current {sorter} sort: {found['id']} ({info.get('n_units', '?')} units over "
+              f"{span}, sorted {info.get('created', '?')}) — kept; this run saves as {run_id}")
 
 
 def _friendly_sort_error(exc: Exception, use_docker: bool = False) -> str:
@@ -1019,7 +1056,13 @@ def main() -> int:
                         help="A probeinterface JSON file to use as the probe geometry.")
     parser.add_argument("--list-sorters", action="store_true",
                         help="Print every sorter and its availability, then exit.")
-    parser.add_argument("--output-dir", default=None, help="Where to write results (default: outputs/<sorter>/).")
+    parser.add_argument("--output-dir", default=None,
+                        help="Write results exactly here, outside the versioned run store "
+                             "(default: a new run under outputs/<sorter>/runs/).")
+    parser.add_argument("--make-current", action="store_true",
+                        help="Let this run become the current sort even if it is a "
+                             "--duration smoke run (which otherwise never displaces a "
+                             "full run).")
     parser.add_argument("--duration", type=float, default=None, help="Sort only the first N seconds (quick test).")
     parser.add_argument("--freq-min", type=float, default=300.0, help="Bandpass low cutoff (Hz).")
     parser.add_argument("--freq-max", type=float, default=6000.0, help="Bandpass high cutoff (Hz).")
@@ -1079,6 +1122,11 @@ def main() -> int:
     args.sorter = resolve_sorter(args.sorter, args.docker)
     overrides = resolve_overrides(args.sorter, args.param, args.params_file)
     probe_profile = resolve_probe(args.probe, args.probe_file)
+    # The EFFECTIVE parameter dict, COPIED here rather than referenced: what
+    # .si_menu.json or --params-file said at this moment is what ran, and a later
+    # edit to either must not rewrite this run's history.
+    _defaults = sorters.default_params(args.sorter)
+    effective_params = {**_defaults, **overrides}
 
     json_mode = args.progress == "json"
     total_phases = len(PHASES) - 1 if args.no_metrics else len(PHASES)
@@ -1117,16 +1165,25 @@ def main() -> int:
     # tqdm fires bar events); in JSON mode they render on stderr, off the channel.
     si.set_global_job_kwargs(n_jobs=args.n_jobs, progress_bar=show_bars or json_mode)
 
-    out = Path(args.output_dir) if args.output_dir else (bio.REPO_ROOT / "outputs" / args.sorter)
-    out.mkdir(parents=True, exist_ok=True)
+    # Each run gets its own directory in the store, so a re-sort never overwrites
+    # the last one. --output-dir stays literal: it writes exactly there and takes
+    # no part in the store (no run id, no pointer) — the hermetic escape hatch.
+    run_id = None if args.output_dir else runs.new_run_id()
+    out = (Path(args.output_dir) if args.output_dir
+           else runs.run_dir(args.sorter, run_id))
+    # NOT created yet: every check between here and the sort (probe, bad-channel
+    # names, the read itself) can still exit 1, and a run store littered with
+    # empty directories from runs that never started would be a lie about what
+    # exists. The directory appears when the sorter is about to write into it.
 
     ui.banner(args.sorter)
-    _warn_existing_sort(out, ui)  # flag (don't block) before we overwrite it
+    _note_current_run(args.sorter, run_id, ui)
 
     ui.phase(PHASES[0], "(.ns5)")
     rep.phase(PHASES[0], "(.ns5)")
     rec = bio.read_broadband(args.data_dir, attach_probe=False)  # probe applied below
     total_seconds = rec.get_total_duration()
+    n_channels_read = rec.get_num_channels()
     _ch_detail = (f"{rec.get_num_channels()} channels · "
                   f"{rec.get_sampling_frequency():g} Hz · {total_seconds:.1f}s")
     ui.detail(_ch_detail)
@@ -1176,6 +1233,12 @@ def main() -> int:
     if applied:
         ui.detail(_probe_msg)
     rep.detail(_probe_msg)
+    # Hash the geometry that is actually attached (either branch), so the record
+    # identifies the layout the sorter saw rather than the profile name asked for.
+    try:
+        geometry_hash = runs.geometry_hash(rec.get_probe())
+    except Exception:  # noqa: BLE001 - no probe / an odd probe object
+        geometry_hash = None
 
     fs = rec.get_sampling_frequency()
     freq_max = min(args.freq_max, 0.49 * fs)  # keep the high cutoff below Nyquist
@@ -1263,6 +1326,7 @@ def main() -> int:
     effective_seconds = rec.get_total_duration()
 
     use_container = sorters.uses_docker(args.sorter, args.docker)
+    out.mkdir(parents=True, exist_ok=True)   # the run directory starts existing here
     _sort_sub = args.sorter + ("  (docker)" if use_container else "")
     ui.phase(PHASES[2], _sort_sub)
     rep.phase(PHASES[2], _sort_sub)
@@ -1443,8 +1507,31 @@ def main() -> int:
             for stale in ("quality_metrics.csv", "summary.json", "summary.csv"):
                 (out / stale).unlink(missing_ok=True)
 
+    # The preprocessing chain, in the order it ran — the thing a regeneration has
+    # to match, and the thing a reader has to be able to check.
+    preprocessing = {
+        "reference": "global median",
+        "freq_min": args.freq_min,
+        "freq_max": freq_max,
+        "chain": [
+            {"step": "read_broadband", "n_channels": n_channels_read,
+             "sampling_rate_hz": fs, "duration_s": round(total_seconds, 3)},
+            {"step": "drop_aux_channels", "applied": not args.keep_analog,
+             "n_dropped": n_dropped},
+            {"step": "set_probe", "probe": probe_profile.get("name"),
+             "geometry_hash": geometry_hash},
+            {"step": "bandpass_filter", "freq_min": args.freq_min, "freq_max": freq_max},
+            {"step": "exclude_bad_channels", "enabled": detect_bad,
+             "method": args.bad_channel_method, "excluded": list(excluded),
+             "refused_auto": bad_plan["refused_auto"]},
+            {"step": "common_reference", "reference": "global", "operator": "median"},
+            {"step": "frame_slice", "applied": args.duration is not None,
+             "seconds": round(effective_seconds, 3)},
+        ],
+    }
     _write_run_info(
         out, args, si_version=si.__version__, sorter=args.sorter,
+        run_id=run_id, run_dir=_repo_relative(out), smoke=args.duration is not None,
         n_units=n_units, n_high_quality=n_high_quality, metrics_note=metrics_note,
         quality_rule=_summary.load_quality_rule(bio.REPO_ROOT / ".si_menu.json"),
         quality_rule_text=_summary.rule_text(
@@ -1453,7 +1540,30 @@ def main() -> int:
         n_dropped_analog=n_dropped, bad_channels=bad_plan, total_seconds=total_seconds,
         effective_seconds=effective_seconds, freq_min=args.freq_min, freq_max=freq_max,
         wall_seconds=round(time.monotonic() - _RUN_T0, 1),
+        params={"effective": effective_params, "defaults": _defaults, "overrides": overrides,
+                "params_file": args.params_file},
+        seed=runs.seed_of(args.sorter, effective_params),
+        determinism=runs.determinism_of(args.sorter),
+        probe_id=probe_profile.get("name"), probe_label=probe_profile.get("label"),
+        probe_kind=probe_profile.get("kind"), probe_file=args.probe_file,
+        probe_fallback=not applied, geometry_hash=geometry_hash,
+        preprocessing=preprocessing, docker=use_container,
+        recording={"data_dir": str(args.data_dir) if args.data_dir else None,
+                   "base": _recording_base(args.data_dir),
+                   "sampling_rate_hz": fs, "n_channels_read": n_channels_read,
+                   "n_channels_sorted": rec.get_num_channels(),
+                   "total_seconds": round(total_seconds, 3)},
     )
+
+    # The pointer moves LAST, once the run directory is complete — and a smoke run
+    # never takes it from a full run (runs.set_current pins the incumbent instead).
+    if run_id is not None:
+        ok, msg = runs.set_current(args.sorter, run_id, force=args.make_current)
+        if ok:
+            ui.detail(msg)
+        else:
+            ui.warn(msg)
+            rep.detail("⚠ " + msg)
 
     # The container-only binary copy of the recording is no longer needed. Cache
     # cleanup must never fail a run whose results are already saved: if a Windows

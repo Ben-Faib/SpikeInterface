@@ -44,6 +44,7 @@ sys.path.insert(0, str(SCRIPTS))
 import blackrock_io as bio  # noqa: E402
 import curation  # noqa: E402  (curation record + output-path resolver — pure, no SI)
 import report  # noqa: E402
+import runs  # noqa: E402  (the versioned run store: which saved run is current)
 import sort_summary  # noqa: E402  (array/yield headline metrics — pure load/format)
 import sorters as sorter_registry  # noqa: E402  (registry: discovery/status/params/run)
 import ui  # noqa: E402  (rich styling shared-look with run_sorting.py)
@@ -108,7 +109,15 @@ def _apply_saved_theme(cfg: dict) -> str:
 
 
 def _analyzer_dir(sorter: str) -> Path:
-    return bio.REPO_ROOT / "outputs" / sorter / "analyzer"
+    """The analyzer of ``sorter``'s CURRENT run, resolved by the run store.
+
+    The ONE place the controller turns a sorter name into a path: every saved-sort
+    fact on the dashboard (RESULTS, INSPECTING, the last-sort line, the GUI and
+    compare actions) reads through here, so they can never disagree about which
+    of several saved runs is the current one. Its ``.parent`` is that run's
+    directory — where run_info.json / summary.json live.
+    """
+    return runs.sort_paths(sorter)["analyzer"]
 
 
 # --------------------------------------------------------------------------- #
@@ -1334,10 +1343,11 @@ class MenuController:
         return sorter_registry.delete_docker_image(img)
 
     def clear_saved_sort(self, name: str) -> tuple[bool, str]:
-        """Delete outputs/<name>/ (the saved sorting + analyzer). Robust to locks."""
+        """Delete this sorter's whole run store — every saved run, the pointer and
+        any legacy layout. Robust to locks."""
         import shutil
 
-        folder = bio.REPO_ROOT / "outputs" / name
+        folder = runs.sorter_dir(name)
         if not folder.exists():
             return False, f"No saved sort for {name}."
         try:
@@ -1389,8 +1399,11 @@ class MenuController:
         """Where the in-UI sort's subprocess stderr (human/rich output + any Python
         traceback) is captured. The sort screen redirects the child's stderr here so a
         hard crash that bypasses the JSON error event is still diagnosable (its tail is
-        shown in the modal) instead of a blank 'sort exited (1) without finishing'."""
-        return _analyzer_dir(self.active_sorter).parent / "sort.log"
+        shown in the modal) instead of a blank 'sort exited (1) without finishing'.
+
+        Per SORTER, not per run: the log is opened before the child exists, so it
+        cannot live in a run directory the child has not created yet."""
+        return runs.sort_paths(self.active_sorter)["log"]
 
     def run_compare(self, pair) -> tuple[bool, str, bool]:
         """Compare a user-chosen pair of saved sorts (mismatch caveat handled in action)."""
@@ -1595,7 +1608,7 @@ def _manage_sorters_typed(args, use_docker: bool) -> None:
             ok, msg = sorter_registry.delete_docker_image(img)
             ui.say(("✓ " if ok else "✗ ") + msg)
         elif op == "clear":
-            folder = bio.REPO_ROOT / "outputs" / name
+            folder = runs.sorter_dir(name)
             if not folder.exists():
                 ui.warn(f"No saved sort for {name}.")
             else:

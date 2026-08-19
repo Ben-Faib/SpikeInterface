@@ -23,8 +23,9 @@ sorts with SpikeInterface's compare_two_sorters: an agreement-score heatmap + a
 matched/unmatched unit table.
 
 IMPORTANT: the comparison is only meaningful if both sorts cover the SAME
-recording window. Sorts are read from outputs/<sorter>/analyzer (the single
-source of truth, same as report.py). If the two durations differ, the page shows
+recording window. Each sorter's CURRENT run is resolved through the run store
+(runs.py) and read from its analyzer — the single source of truth, same as
+report.py. If the two durations differ, the page shows
 a clear caveat instead of a misleading matrix; re-sort both over a common window
 first (the SpikeInterface_Menu.py 'compare' action offers to do this).
 
@@ -51,6 +52,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import blackrock_io as bio  # noqa: E402
 import curation  # noqa: E402  (curation record + the one output-path resolver; no SI)
 import report  # noqa: E402  (reuse the HTML scaffolding helpers)
+import runs  # noqa: E402  (the run store: which saved run is current)
 import sort_summary  # noqa: E402  (array/yield headline metrics: load/format)
 
 OUTPUT_DIR = bio.REPO_ROOT / "outputs"
@@ -73,26 +75,36 @@ DURATION_TOLERANCE_S = 1.0
 ONLINE_NAME = "online (.nev)"
 
 
+def _paths(sorter: str) -> dict:
+    """Every path for ``sorter``'s CURRENT run — the run store is the resolver."""
+    return runs.sort_paths(sorter, outputs=OUTPUT_DIR)
+
+
+def _analyzer_dir(sorter: str) -> Path:
+    """The analyzer of ``sorter``'s CURRENT run — resolved by the run store."""
+    return _paths(sorter)["analyzer"]
+
+
 def saved_sorters() -> list[str]:
-    """Sorter names under outputs/ that have a saved analyzer, sorted."""
+    """Sorter names under outputs/ whose current run has a saved analyzer, sorted."""
     if not OUTPUT_DIR.exists():
         return []
     return sorted(
         p.name for p in OUTPUT_DIR.iterdir()
-        if (p / "analyzer").exists()
+        if p.is_dir() and _analyzer_dir(p.name).exists()
     )
 
 
 def _load(sorter: str, curated: bool = False):
-    """Return (sorting, duration_s) for a saved sort, or (None, None).
+    """Return (sorting, duration_s) for the sorter's current run, or (None, None).
 
-    ``curated`` reads outputs/<sorter>/curated/analyzer (the applied curation
-    record) instead of the raw sort; both paths come from ``curation.sort_paths``,
+    ``curated`` reads that run's ``curated/analyzer`` (the applied curation record)
+    instead of the raw sort; both paths come from the run store's ``sort_paths``,
     the one place output paths are resolved.
     """
     import spikeinterface.full as si
 
-    paths = curation.sort_paths(sorter)
+    paths = _paths(sorter)
     analyzer_dir = paths["curated_analyzer"] if curated else paths["analyzer"]
     if not analyzer_dir.is_dir():
         return None, None
@@ -173,24 +185,24 @@ def _metrics_section(curated: bool = False) -> dict:
     column says so — a curated column must never pass as raw sorter output.
     """
     names = saved_sorters()
-    cards = []
+    cards = []          # (column label, summary card, sorter name)
     for n in names:
-        paths = curation.sort_paths(n)
+        paths = _paths(n)
         _dir, has_curated = curation.preferred_analyzer(n)
         use_curated = curated and has_curated
         card = sort_summary.load_summary(paths["curated"] if use_curated else paths["out"])
-        cards.append((n + " (curated)" if use_curated else n, card))
-    cards = [(n, c) for n, c in cards if c is not None]
+        cards.append((n + " (curated)" if use_curated else n, card, n))
+    cards = [c for c in cards if c[1] is not None]
     if not cards:
         body = ('<div class="caveat">No saved array/yield summaries yet — run a sort '
                 '(each writes summary.json) to populate this table.</div>')
         return {"id": "metrics", "title": "Array / yield metrics by sorter", "html": body}
 
     metric_labels = list(sort_summary.headline_row(cards[0][1]).keys())  # the six, in order
-    header = "".join(f'<th>{html.escape(n)}</th>' for n, _ in cards)
+    header = "".join(f'<th>{html.escape(lbl)}</th>' for lbl, _c, _n in cards)
 
     def _row(label, value_of):
-        cells = "".join(f"<td>{html.escape(str(value_of(c)))}</td>" for _, c in cards)
+        cells = "".join(f"<td>{html.escape(str(value_of(c)))}</td>" for _l, c, _n in cards)
         return f"<tr><td>{html.escape(label)}</td>{cells}</tr>"
 
     body_rows = _row("units", lambda c: c.get("n_units", 0))
