@@ -67,6 +67,7 @@ VERDICT_STYLE = {
     compare.PAIR_MERGED: ("Merged", "warning"),
     compare.PAIR_ONE: ("One of two", "serious"),
     compare.PAIR_NEITHER: ("Neither cleanly found", "critical"),
+    compare.PAIR_AMBIGUOUS: ("Ambiguous", "serious"),
 }
 # Recovery buckets for the grid: (upper bound, ramp step, light text?).
 RECOVERY_BUCKETS = ((0.50, 150, False), (0.80, 250, False), (0.95, 400, False),

@@ -308,3 +308,17 @@ def test_a_partial_sweep_does_not_overclaim(store):
     data_no_tdc2 = sweep_page.sweep(["kilosort4"])
     v2 = sweep_page.verdict(data_no_tdc2)
     assert v2["headline"] == "Nothing to judge yet."
+
+
+def test_a_carrier_plus_duplicate_is_ambiguous_never_a_split(pair_test):
+    """Review F2: unit 4 merges BOTH neurons and unit 9 duplicates one of
+    them. Two distinct units clear the bar, but so does the single carrier:
+    calling that a split would crown a sorter that actually merged."""
+    reference = _sorting({0: REF_A, 1: REF_B})
+    offline = _sorting({4: REF_A + REF_B, 9: REF_B})
+    pair = _pair(pair_test(offline, reference))
+
+    assert pair["verdict"] == compare.PAIR_AMBIGUOUS
+    assert pair["carrier"] == "4" and pair["carrier_min"] == 1.0
+    assert pair["distinct_min"] >= compare.SPLIT_RECOVERY
+    assert "4" in pair["sorter_units"] and "9" in pair["sorter_units"]

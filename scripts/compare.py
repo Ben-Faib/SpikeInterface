@@ -97,6 +97,10 @@ PAIR_SPLIT = "split"
 PAIR_MERGED = "merged"
 PAIR_ONE = "one of two"
 PAIR_NEITHER = "neither"
+# Two distinct units each clear the bar AND a single unit carries both
+# references over it: the "split" may be a merged carrier plus a duplicate, so
+# neither clean verdict is honest. Never counted as a split.
+PAIR_AMBIGUOUS = "ambiguous"
 # Two sorts whose durations differ by more than this (seconds) are treated as
 # non-commensurate: comparing them would just measure the window mismatch.
 DURATION_TOLERANCE_S = 1.0
@@ -187,6 +191,10 @@ def _heatmap(cmp) -> go.Figure:
                       title="Agreement scores (Hungarian-ordered)",
                       xaxis_title=f"{cmp.sorting2_name} unit",
                       yaxis_title=f"{cmp.sorting1_name} unit",
+                      # Unit ids are LABELS: numeric-looking id strings otherwise
+                      # resolve both axes to linear and the unsorted coordinates
+                      # degenerate to an empty-looking grid (no cells rendered).
+                      xaxis_type="category", yaxis_type="category",
                       height=480, margin=dict(t=40, b=40))
     return fig
 
@@ -892,7 +900,14 @@ def manual_pair_test(sorter, data_dir=None, nev_path=None, delta_ms=ONLINE_DELTA
             score = min(rec.get(u, 0.0) for rec in recs)
             if score > carrier_min:
                 carrier, carrier_min = u, score
-        if distinct_min >= SPLIT_RECOVERY:
+        if distinct_min >= SPLIT_RECOVERY and carrier_min >= SPLIT_RECOVERY:
+            # A clean split verdict here would crown a sorter that may have
+            # merged (carrier + duplicate). Both readings are true of the
+            # numbers; the verdict says so instead of picking the flattering
+            # one, and the assignment/carrier fields carry the evidence.
+            verdict = PAIR_AMBIGUOUS
+            named = sorted({*combo, carrier}, key=str)
+        elif distinct_min >= SPLIT_RECOVERY:
             verdict, named = PAIR_SPLIT, list(combo)
         elif carrier_min >= SPLIT_RECOVERY:
             verdict, named = PAIR_MERGED, [carrier]
