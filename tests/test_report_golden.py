@@ -49,10 +49,15 @@ _SUB_RE = re.compile(r'<div class="subsec" id="([^"]+)"[^>]*>(.*?)(?=<div class=
 @pytest.fixture(scope="module")
 def built_report(tmp_path_factory):
     """(html, analyzer_dir, data_present) for a fresh report, or a module skip."""
-    if not any(d.is_dir() for d in OUTPUTS.glob("*/analyzer")):
-        pytest.skip("no saved sort (outputs/<sorter>/analyzer) — run a sort first")
     import blackrock_io as bio
     import report
+    import runs
+
+    # Ask the run store, not the old outputs/<sorter>/analyzer shape: since W2 a
+    # sort lands in outputs/<sorter>/runs/<run_id>/, so a literal glob would skip
+    # this whole module on a machine that HAS saved sorts.
+    if not runs.saved_sorters(outputs=OUTPUTS):
+        pytest.skip("no saved sort in outputs/ — run a sort first")
 
     try:
         bio.find_blackrock_base()

@@ -117,7 +117,9 @@ def test_bare_make_report_invocation():
     # outputs/report.html is the command's documented job (a conscious choice);
     # the mtime check proves a fresh build, not a stale-file pass. Skips on a
     # data-less clone.
-    if not any(d.is_dir() for d in (ROOT / "outputs").glob("*/analyzer")):
+    import runs   # the store knows where a sort lives; a raw glob no longer does
+
+    if not runs.saved_sorters(outputs=ROOT / "outputs"):
         pytest.skip("no saved sort — the bare invocation would honestly error")
     out = ROOT / "outputs" / "report.html"
     before = out.stat().st_mtime if out.exists() else 0.0

@@ -102,8 +102,10 @@ never a verdict. What is compared, each with its tolerance stated:
                          other also found within CONTAINMENT_DELTA_MS
     metric ranges        V_pp / SNR / yield within stated relative tolerance
 
-Bit-identity is never claimed unless observed: the report says
-"BIT-IDENTICAL" only when containment is exactly 1.0 in both directions.
+Bit-identity is never claimed unless observed: the report says "BIT-IDENTICAL"
+only when the two pooled spike trains are equal spike for spike. Containment
+1.0 in both directions is not enough — two different sorts routinely find every
+spike within the coincidence window without agreeing on a single timestamp.
 
 API
 ---
@@ -838,7 +840,13 @@ def compare_runs(recorded: dict, regenerated: dict, *,
                            V_INFO, det.get("note", "")))
 
     failed = [c for c in crit if c["verdict"] in _FAILING]
-    identical = (fwd == 1.0 and back == 1.0) if (fwd is not None and back is not None) else False
+    # Bit-identity means the trains ARE the same, sample for sample — not that
+    # every spike found a partner inside a +/-0.4 ms window, which two different
+    # sorts routinely do. Claiming it on containment alone would be the report
+    # telling its strongest lie in its strongest words.
+    identical = (recorded_spikes is not None and regenerated_spikes is not None
+                 and len(recorded_spikes) == len(regenerated_spikes)
+                 and all(x == y for x, y in zip(recorded_spikes, regenerated_spikes)))
     if failed:
         verdict = "NOT REGENERATED"
     elif identical:
