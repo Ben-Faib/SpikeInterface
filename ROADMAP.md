@@ -29,13 +29,13 @@ box) runs alongside everything.
   strong-units view leading the report, the RESULTS takeaway line, triage
   strong-first ordering, and docs/WORKFLOW.md (the plain-language guide).
   Fable review on completion.
-- **Queued next (face2, starts when face1 lands — same files):** Ben's second
-  directive tonight: "help page is broken… idk what to do… make bins."
-  Confirmed defect: HELP_TOPICS (ui.py) still teaches the June three-step app —
-  no triage/curation/phy/runs. face2 = help rewritten around the real loop
-  (which question → which surface → which key), and the dashboard actions
-  grouped into workflow stages (get data → sort & curate → look & share) with
-  each row saying what it produces and what naturally follows.
+- **Queued next (face2, starts when face1 lands — same files):** the researcher
+  dashboard redesign, per Ben's three decisions of record (~03:00): all functions
+  as visible labeled rows in workflow bins; fully autonomous redesign that MAY
+  override DESIGN_UX (Ben: the document "led to this design not being
+  sufficient" — spacing and grouping over text; DESIGN_UX §2 rewritten to match
+  the landed design); help rebuilt as which-question → which-surface → which-key;
+  clean-pass labels are Ben's real curation record.
 - **Gated OPEN (the whole remaining board):** P3 (adapter map) · WD (lab-box
   access) · W3 (fuller face pick — first slice already directed) · W4 (lab
   recordings).
@@ -172,19 +172,30 @@ The queue:
    conductor's session may have died mid-build — read the branch log and worktree
    status first; finish whatever is unfinished, then a fresh-context Fable review,
    fold, rebase onto main, land, seal.
-2. BUILD face2 (Ben's directive, verbatim: "help page is broken… idk what to do…
-   make bins"): the help system rewritten around the real workflow — ui.py
-   HELP_TOPICS still teaches the June three-step app, a confirmed defect — as
-   "which question → which surface → which key"; and the dashboard actions grouped
-   into workflow stages (get data → sort & curate → look & share) with each row
-   saying what it produces and what naturally follows. DESIGN_UX §1 binds all
-   surface language; deliberate snapshot re-baselines per tests/README.md; Fable
-   review, fold, land, seal.
+2. BUILD face2 — the researcher dashboard redesign (Ben's decisions of record,
+   2026-08-19 ~03:00, supersede DESIGN_UX where they conflict): every function
+   becomes a VISIBLE, LABELED ROW — triage, Phy export, params, probe, verify
+   included — grouped into workflow stages (get data → sort & curate → look &
+   share), each row saying what it produces; the design relies on spacing and
+   grouping, not text density ("the design should just not be full of text");
+   quality titles and groupings a researcher can navigate cold. DESIGN_UX is NOT
+   binding here — Ben has ruled it suspect ("it led to this design not being
+   sufficient") and trusts the redesign wholesale; where the new design conflicts
+   with the document, the new design wins and DESIGN_UX §2 is rewritten in the
+   same slice as the new spec of record. The help system is rewritten around the
+   real workflow ("which question → which surface → which key" — ui.py
+   HELP_TOPICS still teaches the June three-step app, a confirmed defect).
+   Architecture invariants still bind (view imports no SI; never-clip; deliberate
+   snapshot re-baselines per tests/README.md). Fully autonomous: no mock
+   checkpoint — Fable review is the only gate; Ben amends the landed result.
+   Fold, land, seal.
 3. THE CLEAN PASS, on main, through the store: one fresh full sort → u-triage
    (label the four strong cells good — they match Ben's manual sort at 93-100%,
    sealed evidence; junk tail noise/unsure) → apply → report + compare --nev
-   PFCM7_d0ephys_Block2_manuallySorted.nev. This is the product demo: every
-   surface must read coherently against ONE run id. Quote the report's
+   PFCM7_d0ephys_Block2_manuallySorted.nev. These labels are Ben's REAL curation
+   record (his decision, 2026-08-19): evidence-backed, fully editable in triage
+   later, every decision audit-trailed with its source. This is the product demo:
+   every surface must read coherently against ONE run id. Quote the report's
    strong-units block and the RESULTS line verbatim in the seal.
 4. UNIFY AND CLEAN: verify merged with `git branch --merged main`, then delete
    every merged branch (lane-w1s3, lane-w1s4, lane-w2-integration,
