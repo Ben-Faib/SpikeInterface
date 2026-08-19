@@ -183,6 +183,10 @@ placeholder (no two channels neighbours) remains available.
 - **neo file sets:** neo keys on the filename *without* extension (`foo.nev` + `foo.ns2` +
   `foo.ns5` = one set). Pass `find_blackrock_base()`'s extension-less stem to
   `read_blackrock`/`get_neo_streams`. `read_spikes` is the exception — it appends `.nev`.
+  Discovery prefers a stem that carries `.nsX` data (a stray/extra `.nev` beside the set —
+  e.g. a manual re-export — can never be picked by sort-order luck), falls back to a lone
+  `.nev` only when no analog data exists, and **refuses honestly, naming the candidates**,
+  when several sets are genuinely ambiguous (callers degrade via `FileNotFoundError`).
 - **Stream selection:** pass exactly **one** selector. `read_lfp` normalises to `stream_id`
   and leaves `stream_name=None`. (An in-code comment claims SI *rejects* receiving both — that
   is stale: SI 0.104 only asserts at least one is given, and `stream_name` silently wins.
@@ -194,8 +198,10 @@ placeholder (no two channels neighbours) remains available.
 - **Events are *not* actually best-effort**, despite the docstring: `read_events` has no
   internal try/except, so a neo parse failure **propagates**. It returns `[]` only when there
   are genuinely no event channels. Callers must wrap it.
-- **Blackrock unit ids** — a property of the *data*, which no code enforces or filters on:
-  `0` = unsorted threshold crossings, `1..n` = online-sorted units, `255` = noise/invalidated.
+- **Blackrock unit ids** — semantics owned by `blackrock_io` (`unit_class`,
+  `UNIT_CLASS_LABELS`, `online_unit_labels`; consumed by compare/explore from that one
+  home): `0` = unsorted threshold crossings, `1..n` = online-sorted units,
+  `255` = noise/invalidated.
 
 ### Sorters
 

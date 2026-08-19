@@ -19,17 +19,16 @@ box) runs alongside everything.
 
 ## ▶ NOW — updated 2026-08-18 late: **THE CONDUCTOR RUN IS LIVE** (sealing sessions: update this box FIRST)
 
-- **Lanes in flight:** PRE1 bad-channel exclusion (builder, main tree — owns
-  run_sorting/sort_summary/report + outputs/, baseline archived before the re-sort),
-  W1 slice 2 curation loop (builder, isolated worktree — mechanism now, post-PRE1
-  validation at integration), debt bundle (builder, isolated worktree — report
-  headers, D2b manifest, label home → blackrock_io, controller dead code, extra-.nev
-  robustness), D6 airy dashboard (peer lane — menu_app main screen + ui + snapshot
-  re-baseline). P2 SEALED (peer, `8af8111`).
-- **Integration order at the conductor:** PRE1 lands first (review → commit → seal),
-  then W2 launches (run_sorting freed) and the debt bundle rebases in; W1s2 lands →
-  W1s3 (Phy) ∥ W1s4 (TUI triage) launch on its record schema. Gated OPEN: P3
-  (adapter map), WD (lab box), W3 (face pick), W4 (lab data).
+- **Sealed this run:** P2 (peer `8af8111`) · PRE1 (`c823f55`, premise re-scoped:
+  zero bad channels in-band; tdc2 non-determinism 14/16/18 measured) · D6 (peer
+  `98f2645`) · DEBT (`0127dac`, extra-.nev latent bug fixed).
+- **Lanes in flight:** W1 s2 curation loop (review fix-first: folding 2 blockers +
+  7 more on its branch), W1 s3 Phy export (stacked on s2's branch, export half
+  first), W2 reproducibility (worktree; run store + provenance + regenerate).
+- **Next:** s2 folded → conductor integrates (re-run validation vs manual .nev on
+  main) → s3 rebases in → W1 s4 TUI triage launches (peer lane, D6 language + s2
+  record) → W2 integrates last → final full suite + real launch check + closing
+  seal. Gated OPEN: P3 (adapter map), WD (lab box), W3 (face pick), W4 (lab data).
 
 ## The dependency graph
 
@@ -66,8 +65,8 @@ box) runs alongside everything.
 | 10 | W1 curation | `goals/GOAL_W1_CURATION.md` | **slice 1 SEALED 2026-08-18** (rule owner); **slice 2 IN FLIGHT** (worktree lane); slices 3-4 launch on s2's record schema |
 | 11 | W2 reproducibility | `goals/GOAL_W2_REPRO.md` | next after PRE1 lands (run_sorting freed) |
 | PRE1 | bad channels out of the reference (E1's finding; conductor prompt item 1) | prompt below | **SEALED 2026-08-18** (`c823f55`) — **premise re-scoped with evidence**: zero channels flagged; ch1's pathology is sub-300 Hz (bandpass removes it pre-CMR; in-band it's the QUIETEST channel and carries a unit); feature kept as insurance + measured tdc2 non-determinism (14/16/18 units) now drives W1 anchoring + W2 tolerances |
-| D6 | the airy dashboard (Ben's two mocks, approved in-session) | NORTHSTAR decision 2026-08-18 night | **IN FLIGHT 2026-08-18** (peer lane; menu_app main screen + ui; lands before W1s4 touches the menu) |
-| DEBT | recorded-debt bundle: report headers · D2b manifest · label home · dead code · extra-.nev | conductor prompt item 6 | **IN FLIGHT 2026-08-18** (worktree lane) |
+| D6 | the airy dashboard (Ben's two mocks, approved in-session) | NORTHSTAR decision 2026-08-18 night | **SEALED 2026-08-18** (peer, `98f2645`) — hairline sections, crest ≥34 rows, pressable t-chip, key chips, air-yields-first; review fix-first (hairline never painted; resize-under-modal), all folded; suite 441, deliberate double re-baseline |
+| DEBT | recorded-debt bundle: report headers · D2b manifest · label home · dead code · extra-.nev | conductor prompt item 6 | **SEALED 2026-08-18** (`0127dac`) — all five closed; extra-.nev was a REAL latent bug (discovery by sort-order luck → now prefers-data + honest ambiguity refusal, one sealed test deliberately flipped); review ship, findings 1-4 folded; recorded: th-padding dead-click cosmetic |
 | 12 | W3 face | `goals/GOAL_W3_FACE.md` | gated: Ben's pick, after D track |
 | 13 | W4 multi-recording | `goals/GOAL_W4_MULTI.md` | gated: W1+W2+lab data |
 | — | WD lab deployment items 1–4 | `goals/GOAL_WD_DEPLOY.md` | gated: lab-box access |

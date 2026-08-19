@@ -49,6 +49,25 @@ A need left only in a chat summary is a need Ben never sees.*
 
 ## The ledger (newest first)
 
+**2026-08-18 — DEBT: the five recorded debts, closed in one lane (`0127dac`)**
+- Did: keyboard-sortable report headers (real buttons, aria-sort state), the D2b
+  pending-phase manifest (`plan` event, SHAPES-gated, modal shows pending rows),
+  online_unit_labels/unit_class relocated to blackrock_io as the one home, five
+  provably-dead controller members deleted, and extra-.nev discovery made robust.
+- Means: the extra-.nev item was a REAL latent bug — with the manual export beside the
+  recording, discovery returned the first name-sorted `.nev` and was right by luck;
+  it now prefers the stem carrying data and refuses honestly, naming candidates, when
+  genuinely ambiguous (one sealed test deliberately flipped from pins-the-guess to
+  pins-the-refusal).
+- Moved: Fable review ship (five low findings, four folded — ambiguity reason now
+  reaches the compare page and the Data Setup checklist; probes.py catalog helpers
+  deleted as the next dead layer; sort hint surfaced on the report); combined-code
+  validation after rebases: 459 green, smoke canary 3.919 µV; CLAUDE.md's two stale
+  loader bullets refreshed in the seal commit.
+- Needs Ben: nothing.
+- Next: recorded cosmetic (report th-padding dead-click zone) rides the debt list;
+  W1 s2 integration is the next merge.
+
 **2026-08-18 — D6: the airy dashboard (peer session, `98f2645`)**
 - Did: replaced the boxed-panel chrome with Ben's approved whitespace + hairline
   language — crest tall-terminals-only, probe stated once, a pressable t-chip "change"
