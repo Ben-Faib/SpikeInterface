@@ -216,6 +216,31 @@ def test_rollup_nan_never_masquerades_as_failure():
     assert u0["verdict"] is None and u0["verdict_word"] == "not judged"
     assert r["n_accepted"] == 0 and r["n_unjudged"] == 4
     assert "no criterion could be evaluated" in u0["why"]
+    # ...and the same tri-state holds on every derived line: unjudged units are
+    # never "sub-threshold candidates" on the contact line, and an all-unjudged
+    # sort says so instead of claiming the rule rejected anything.
+    assert all(c["n_other"] == 0 for c in r["contacts"])
+    assert sum(c["n_unjudged"] for c in r["contacts"]) == 4
+    assert "not judged" in r["contact_line"]
+    assert "sub-threshold" not in r["contact_line"]
+    assert r["headline"] == "4 units not judged — no evaluable quality metrics"
+    assert r["site_line"] == r["headline"]
+
+
+def test_takeaway_mixed_failures_and_unjudged_disclose_both():
+    # Some units judged-and-failed, some unjudged: the failure wording stands but
+    # the unjudged count is disclosed on both lines (unjudged != failed).
+    lines = ss.takeaway_lines(0, [], 0, [], "SNR ≥ 4 (NaN ignored)",
+                              n_unjudged=2, n_units=5)
+    assert lines["headline"] == "0 strong units · 2 not judged"
+    assert lines["site_line"] == "no unit passes SNR ≥ 4 · 2 not judged"
+
+
+def test_f_rejects_inf_as_well_as_nan():
+    assert ss._f(float("inf")) is None
+    assert ss._f(float("-inf")) is None
+    assert ss._f(float("nan")) is None
+    assert ss._f("3.5") == 3.5
 
 
 def test_rollup_per_contact_counts_and_line():

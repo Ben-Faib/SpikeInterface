@@ -678,7 +678,7 @@ def _html_document(title, sections, heading=None, subtitle=None) -> str:
 # --------------------------------------------------------------------------- #
 # Section renderers (each returns inner HTML; wrapped by _safe_section)
 # --------------------------------------------------------------------------- #
-def _pass_quality(analyzer) -> "tuple[int | None, int]":
+def _pass_quality(analyzer) -> "tuple[int | None, int, int]":
     """(n units passing the quality rule, n units) via the rule's one owner,
     sort_summary. n_pass is None when nothing was evaluable."""
     n_units = len(analyzer.unit_ids)
@@ -1496,8 +1496,14 @@ def build_report(data_dir=None, analyzer_dir=None, out_path=None, sorter_label=N
         try:
             import compare
 
+            # Pin the match to THE RUN THIS REPORT SHOWS: without `run`,
+            # match_manual resolves the current run, and a report built for a
+            # pinned older analyzer_dir would get match cells from a different
+            # sort's unit ids (tdc2 ids are not stable across runs).
+            # (resolve(): sort_paths reads a relative path as a run ID)
             matches = compare.match_manual(
-                sorter_label, data_dir=data_dir, curated=cur["curated"])
+                sorter_label, data_dir=data_dir, curated=cur["curated"],
+                run=Path(cur["run_dir"]).resolve())
         except Exception:  # noqa: BLE001 - a reference is a bonus, never a gate
             matches = None
 

@@ -13,7 +13,12 @@ Single source of truth for the six numbers the lab wants out of every sort:
 aggregates above); ``write_summary`` persists it to ``summary.json`` (+ a one-row
 ``summary.csv`` of the headline numbers) next to the sort; ``load_summary`` reads
 it back, and ``load_quality_metrics`` reads the per-unit ``quality_metrics.csv``
-the sort wrote (NaN -> None, so a surface can render an honest "–"). The compute
+the sort wrote (NaN -> None, so a surface can render an honest "–"). Note the
+report reads these same metrics from the saved analyzer's own extension while
+the menu/triage read this CSV: the two agree only because the sort pipeline
+writes both in the same run — recompute metrics inside the analyzer (Qt GUI,
+notebook) without re-exporting the CSV and the two surfaces will silently
+disagree. The compute
 side is SpikeInterface/NumPy-dependent and imported lazily, so the Textual menu —
 which must import **no** SpikeInterface — can still call the pure
 ``load_summary`` / ``load_quality_metrics`` / ``format_card`` / ``headline_row``
@@ -53,6 +58,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 from pathlib import Path
 
 
@@ -102,7 +108,7 @@ def _f(value):
         v = float(value)
     except (TypeError, ValueError):
         return None
-    return None if v != v else v          # v != v -> NaN
+    return v if math.isfinite(v) else None    # NaN and ±inf are both "no number"
 
 
 def load_quality_rule(config_path=None) -> dict:
@@ -325,16 +331,24 @@ def contact_line(contacts, *, max_named=8) -> str:
         if c["n_other"]:
             bit += (f" + {c['n_other']} sub-threshold "
                     f"candidate{'' if c['n_other'] == 1 else 's'}")
+        if c.get("n_unjudged"):
+            bit += f" + {c['n_unjudged']} not judged"
         parts.append(bit)
     line = " · ".join(parts)
     if rest:
         n_c = len(rest)
         n_a = sum(c["n_accepted"] for c in rest)
         n_o = sum(c["n_other"] for c in rest)
+        n_u = sum(c.get("n_unjudged", 0) for c in rest)
+        held = []
+        if n_o:
+            held.append(f"{n_o} sub-threshold candidate{'' if n_o == 1 else 's'}")
+        if n_u:
+            held.append(f"{n_u} not judged")
+        held.append(f"{n_a} accepted unit{'' if n_a == 1 else 's'}" if n_a
+                    else "no accepted unit")
         tail = (f"{n_c} further contact{'' if n_c == 1 else 's'} hold "
-                f"{n_o} sub-threshold candidate{'' if n_o == 1 else 's'}"
-                + (f" and {n_a} accepted unit{'' if n_a == 1 else 's'}" if n_a
-                   else " and no accepted unit"))
+                + " and ".join(held))
         line = f"{line} — {tail}" if line else tail[0].upper() + tail[1:]
     return line or "no units on any contact"
 
@@ -425,11 +439,18 @@ def unit_rollup(summary, metrics=None, *, rule=None, spike_counts=None,
         contacts.append({
             "contact": c,
             "n_accepted": sum(1 for u in accepted if u["contact"] == c),
-            "n_other": sum(1 for u in units if u["contact"] == c and not u["verdict"]),
+            # n_other is REAL failures only; a unit nothing could judge is its
+            # own count, never a "sub-threshold candidate" (not-judged ≠ failed).
+            "n_other": sum(1 for u in units
+                           if u["contact"] == c and u["verdict"] is False),
+            "n_unjudged": sum(1 for u in units
+                              if u["contact"] == c and u["verdict"] is None),
         })
     contacts.sort(key=lambda c: (-c["n_accepted"], _contact_sort_key(c["contact"])))
     lines = takeaway_lines(len(strong), [u["contact"] for u in strong],
-                           len(thin), [u["contact"] for u in thin], rule_text(rule))
+                           len(thin), [u["contact"] for u in thin], rule_text(rule),
+                           n_unjudged=sum(1 for u in units if u["verdict"] is None),
+                           n_units=len(units))
     return {
         "rule": dict(rule),
         "rule_text": rule_text(rule),
@@ -452,7 +473,8 @@ def unit_rollup(summary, metrics=None, *, rule=None, spike_counts=None,
 
 
 def takeaway_lines(n_strong, strong_contacts, n_thin, thin_contacts,
-                   rule_sentence="", max_contacts: int = 8) -> dict:
+                   rule_sentence="", max_contacts: int = 8,
+                   n_unjudged: int = 0, n_units: int = 0) -> dict:
     """The takeaway in words: ``{"headline", "site_line"}``.
 
     Both come from the SAME split — strong vs passes-the-rule-on-thin-evidence —
@@ -493,9 +515,16 @@ def takeaway_lines(n_strong, strong_contacts, n_thin, thin_contacts,
             "site_line": (f"{n_thin} unit{'' if n_thin == 1 else 's'} {verb} the rule "
                           f"only on thin evidence{where}"),
         }
-    return {"headline": "0 strong units",
-            "site_line": ("no unit passes " + rule_sentence.split(" (NaN")[0]
-                          if rule_sentence else "no unit passes the quality rule")}
+    if n_unjudged and n_unjudged == n_units:
+        # Nothing was evaluable anywhere. "No unit passes" would claim the rule
+        # judged and rejected them; it never got to judge at all.
+        line = (f"{n_units} unit{'' if n_units == 1 else 's'} not judged — "
+                "no evaluable quality metrics")
+        return {"headline": line, "site_line": line}
+    fail_line = ("no unit passes " + rule_sentence.split(" (NaN")[0]
+                 if rule_sentence else "no unit passes the quality rule")
+    suffix = f" · {n_unjudged} not judged" if n_unjudged else ""
+    return {"headline": "0 strong units" + suffix, "site_line": fail_line + suffix}
 
 
 # Stable order + display labels for the six headline metrics. Used by the report,
