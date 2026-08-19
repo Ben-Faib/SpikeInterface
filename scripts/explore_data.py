@@ -135,20 +135,46 @@ def _unit_spike_times(sorting, unit_id):
 
 
 def plot_raster(sorting, out_path: Path):
+    """The full-recording detections figure, readable at 132 s (Ben's feedback:
+    the old squat scatter smeared every group into a dashed stripe).
+
+    Top: a real raster (eventplot — one thin vertical line per event, roomy
+    rows, per-row event counts so a near-empty row reads as a fact, not a
+    rendering glitch). Bottom, same clock: per-group detection rate in 1 s bins,
+    which is what actually shows STRUCTURE at this time scale — bursts, quiet
+    stretches, the coordinated episodes."""
     unit_ids = list(sorting.get_unit_ids())
     labels = _detection_labels(sorting)
-    fig, ax = plt.subplots(figsize=(11, max(3, 0.3 * len(unit_ids) + 1)))
-    for row, unit in enumerate(unit_ids):
-        times = _unit_spike_times(sorting, unit)
-        ax.scatter(times, np.full_like(times, row), s=2, marker="|")
+    trains = [_unit_spike_times(sorting, u) for u in unit_ids]
+    t_end = max((t[-1] for t in trains if len(t)), default=1.0)
+    colors = [f"C{i % 10}" for i in range(len(unit_ids))]
+
+    fig, (ax, ax2) = plt.subplots(
+        2, 1, sharex=True, figsize=(11, max(6, 0.55 * len(unit_ids) + 3.5)),
+        height_ratios=[2, 1], constrained_layout=True)
+    ax.eventplot(trains, colors=colors, linewidths=0.4, linelengths=0.75,
+                 lineoffsets=range(len(unit_ids)))
     ax.set_yticks(range(len(unit_ids)))
-    ax.set_yticklabels(labels)
-    ax.set_xlabel("Time (s)")
+    ax.set_yticklabels([f"{lab}  (n={len(tr)})" for lab, tr in zip(labels, trains)],
+                       fontsize=9)
     ax.set_ylabel("Detection group (ch#class)")
+    ax.margins(y=0.04)
     # Honest naming (C1 finding): these are the rig's ONLINE DETECTIONS —
     # class 0 rows are unsorted threshold crossings, not sorted units.
-    ax.set_title(f"Online detections (.nev) — {len(unit_ids)} channel groups, full recording")
-    fig.tight_layout()
+    ax.set_title(f"Online detections (.nev) — {len(unit_ids)} channel groups, "
+                 f"{t_end:.0f} s")
+    bins = np.arange(0, t_end + 1.0, 1.0)
+    for tr, c, lab in zip(trains, colors, labels):
+        if not len(tr):
+            continue
+        counts, edges = np.histogram(tr, bins=bins)
+        ax2.plot(edges[:-1] + 0.5, counts, lw=0.8, color=c, alpha=0.85)
+    ax2.set_xlabel("Time (s)")
+    ax2.set_ylabel("events / s")
+    ax2.set_title("Detection rate per group (1 s bins)", fontsize=10)
+    for a in (ax, ax2):
+        a.spines[["top", "right"]].set_visible(False)
+        a.grid(axis="x", alpha=0.15)
     fig.savefig(out_path, dpi=120)
     plt.close(fig)
 
@@ -240,7 +266,7 @@ def main() -> int:
          OUTPUT_DIR / "simultaneity.png"),
         ("LFP traces (.ns2) — every channel the figure title claims",
          OUTPUT_DIR / "lfp_traces.png"),
-        ("Online detections (.nev) — full recording, per channel group",
+        ("Online detections (.nev) — raster + per-group rate, full recording",
          OUTPUT_DIR / "spike_raster.png"),
         ("Mean detection rate per channel group (.nev)",
          OUTPUT_DIR / "firing_rates.png"),
