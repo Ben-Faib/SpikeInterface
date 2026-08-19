@@ -49,6 +49,25 @@ A need left only in a chat summary is a need Ben never sees.*
 
 ## The ledger (newest first)
 
+**2026-08-18 — P2: multi-shank / ProbeGroup support (peer session, `8af8111`)**
+- Did: a multi-probe ProbeGroup (or a probe with native shank ids) now imports as one
+  self-contained profile — shank labels and per-shank pitch/density materialised, group
+  wiring validated as one permutation across all contacts and pinned channel→shank→
+  position verbatim by test, build reconstructing shanks with an honest outline — with
+  the Fable review's five actionable findings folded pre-seal.
+- Means: the lab's multi-shank probes drop into the library like any other, density
+  classing stays physical (global contact proximity, not shank labels — so sorter fits
+  can't be fooled either way), and the report's probe view shows shanks as real columns
+  with zero report changes.
+- Moved: gates in an isolated worktree (main outputs/ left to PRE1): suite 388 green, 48
+  probe unit tests, 30 s multi-shank sort at noise floor 3.993 µV, both shank columns in
+  the analyzer and report; save_profile now also shields wiring/shank keys from
+  stripping upserts.
+- Needs Ben: nothing.
+- Next: P3 (wiring surfaces) inherits three recorded items — the --probe-file identity
+  trap (P1), coincident-probes error wording, and per-shank display consumption by the
+  menu lane when its probe UI pass lands; conductor flips the P2 row.
+
 **2026-08-18 — W1 slice 1: the quality rule, owned and honest (+ Option A adjudicated)**
 - Did: replaced the hardcoded SNR≥5 headline with a configurable, NaN-honest,
   provenance-recorded quality rule owned by sort_summary and stated verbatim on every
