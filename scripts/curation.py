@@ -149,9 +149,15 @@ Paths and state (pure):
     counts(record) -> {"total", "splits", "merges", "labels", "removed"}
     provenance_line(record, curated=True, has_curated=False) -> str
                                                the honest-surface sentence
-    state(sorter, root=None) -> dict           what the surfaces need to be honest:
-        {"has_record", "has_curated", "counts", "line", "stale", "stale_reason",
-         "record_path", "curated_dir", "updated", "curated_units"}
+    state(sorter, root=None, run=None) -> dict what the surfaces need to be honest:
+        {"run", "has_record", "has_curated", "counts", "line", "stale",
+         "stale_reason", "record_path", "curated_dir", "updated", "curated_units",
+         "elsewhere"}
+    curated_elsewhere(sorter, root=None) -> dict | None
+                                               a curated result on a run that is
+                                               NOT current (or the pre-store
+                                               layout), so no surface goes silent
+                                               about it when the pointer moves
     stale_reason(curated_run, record, raw_run) -> str   why a curated result no
                                                longer describes what is on disk
     anchor_error(record, sorter, root=None) -> str      why a decision must not be
@@ -299,9 +305,45 @@ def preferred_analyzer_dir(analyzer_dir) -> "tuple[Path, bool]":
     return raw, False
 
 
-def preferred_analyzer(sorter: str, root=None) -> "tuple[Path, bool]":
-    """(analyzer dir to show, is_curated) for a sorter — the same rule, by name."""
-    return preferred_analyzer_dir(sort_paths(sorter, root)["analyzer"])
+def preferred_analyzer(sorter: str, root=None, *, run=None) -> "tuple[Path, bool]":
+    """(analyzer dir to show, is_curated) for a sorter — the same rule, by name.
+
+    ``run`` pins a specific run instead of the current one (``sort_paths``)."""
+    return preferred_analyzer_dir(sort_paths(sorter, root, run=run)["analyzer"])
+
+
+def curated_elsewhere(sorter: str, root=None) -> "dict | None":
+    """A curated result that exists but is NOT on the run the surfaces are showing.
+
+    Curated output is anchored to the run it curates, which is correct and which
+    means a fresh sort moves the pointer and the older curated result stops being
+    shown anywhere. Correct anchoring, unacceptable silence: this finds it so the
+    surfaces can name it. Returns {"run", "legacy", "dir", "current", "line"} for
+    the newest such run, or None — including None when the current run is itself
+    curated, because then nothing is being hidden.
+
+    Nothing is migrated or adopted: the curated result stays where it was built,
+    and the only way to curate the current run is to apply a record to it.
+    """
+    current = runs.resolve(sorter, root)
+    if current is None or preferred_analyzer(sorter, root)[1]:
+        return None
+    for entry in runs.list_runs(sorter, root):
+        if entry["id"] == current["id"]:
+            continue
+        if not (entry["dir"] / CURATED_DIRNAME / "analyzer").is_dir():
+            continue
+        which = "the pre-store layout" if entry["legacy"] else f"run {entry['id']}"
+        return {"run": entry["id"], "legacy": entry["legacy"], "dir": entry["dir"],
+                "where": _rel(entry["dir"] / CURATED_DIRNAME, root),
+                "current": current["id"],
+                "line": (f"a curated result exists on {which}; the current run "
+                         f"({current['id']}) is uncurated — apply a record to this "
+                         f"run to curate it"),
+                # The same fact for a width-constrained surface. Both sentences
+                # live here so no surface composes curation language itself.
+                "short": f"curated result on {which} — apply to curate this run"}
+    return None
 
 
 # --------------------------------------------------------------------------- #
@@ -349,10 +391,11 @@ def _identity_mismatch(want: dict, have: dict, want_label: str = "record") -> li
     return out
 
 
-def read_run_info(sorter: str, root=None) -> dict:
+def read_run_info(sorter: str, root=None, *, run=None) -> dict:
     """The current run's run_info.json; {} when absent/unreadable. No SI import."""
     try:
-        return json.loads(sort_paths(sorter, root)["run_info"].read_text(encoding="utf-8"))
+        return json.loads(
+            sort_paths(sorter, root, run=run)["run_info"].read_text(encoding="utf-8"))
     except Exception:  # noqa: BLE001 - provenance is best-effort
         return {}
 
@@ -626,11 +669,12 @@ def stale_reason(curated_run: dict, record: "dict | None", raw_run: dict) -> str
 def anchor_error(record: "dict | None", sorter: str, root=None) -> str:
     """Why a decision must NOT be written into ``record`` for the sort on disk.
 
-    "" when the record is anchored to ``outputs/<sorter>/`` and may be decided on
-    or applied. Pure — json + pathlib, so the menu can ask before offering to
-    label. ``record=None`` asks the same question about a record that does not
-    exist yet: only the disk side has to be identifiable, because ``new_record``
-    anchors a fresh record to exactly that identity.
+    "" when the record is anchored to the sorter's CURRENT run (``sort_paths``,
+    i.e. the store) and may be decided on or applied. Pure — json + pathlib, so
+    the menu can ask before offering to label. ``record=None`` asks the same
+    question about a record that does not exist yet: only the disk side has to be
+    identifiable, because ``new_record`` anchors a fresh record to exactly that
+    identity.
 
     An anchor only binds if BOTH sides carry it. All-None compares as "matches
     everything", which is the exact failure the anchor exists to prevent — so a
@@ -674,7 +718,7 @@ def anchor_error(record: "dict | None", sorter: str, root=None) -> str:
           "was decided about that run.")
 
 
-def state(sorter: str, root=None) -> dict:
+def state(sorter: str, root=None, *, run=None) -> dict:
     """What a surface needs to be honest about curated-vs-raw. No SI import.
 
     ``stale`` is True when the curated result cannot be trusted as-is — the
@@ -682,20 +726,29 @@ def state(sorter: str, root=None) -> dict:
     (see ``stale_reason``). ``has_record`` False with ``has_curated`` True is
     exactly that last case: the numbers are curated, their provenance is not on
     disk, and no surface may call them raw.
+
+    ``elsewhere`` is the other silence: a curated result built on a run that is
+    no longer current (or in the pre-store layout) would otherwise vanish from
+    every surface the moment a new sort moves the pointer. It carries a line
+    naming where that result is; None when there is none, or when the run being
+    shown is itself curated. ``run`` pins a specific run instead of the current
+    one, in which case ``elsewhere`` is not looked for — it is a fact about which
+    run is current, and a pinned view is not making that claim.
     """
-    p = sort_paths(sorter, root)
-    record = load_record(sorter, root)
-    _dir, has_curated = preferred_analyzer(sorter, root)
+    p = sort_paths(sorter, root, run=run)
+    record = load_record(path=p["record"])
+    _dir, has_curated = preferred_analyzer(sorter, root, run=run)
     curated_run = {}
     if has_curated:
         try:
             curated_run = json.loads(p["curated_run_info"].read_text(encoding="utf-8"))
         except Exception:  # noqa: BLE001 - provenance is best-effort
             curated_run = {}
-    reason = (stale_reason(curated_run, record, read_run_info(sorter, root))
+    reason = (stale_reason(curated_run, record, read_run_info(sorter, root, run=run))
               if has_curated else "")
     return {
         "sorter": sorter,
+        "run": p["id"],
         "has_record": record is not None,
         "has_curated": has_curated,
         "counts": counts(record),
@@ -706,6 +759,7 @@ def state(sorter: str, root=None) -> dict:
         "curated_dir": str(p["curated"]),
         "updated": (record or {}).get("updated"),
         "curated_units": curated_run.get("n_units"),
+        "elsewhere": curated_elsewhere(sorter, root) if run is None else None,
     }
 
 
@@ -1523,6 +1577,9 @@ def _show(sorter: str, root=None) -> int:
     if record is None:
         print(f"{sorter}: no curation record yet ({st['record_path']} absent).")
         print(f"  {st['line']}")
+        if st["elsewhere"]:
+            print(f"  ! {st['elsewhere']['line']}")
+            print(f"    it is at {st['elsewhere']['where']}")
         return 0
     c = st["counts"]
     print(f"{sorter}: {st['line']}")
@@ -1546,6 +1603,9 @@ def _show(sorter: str, root=None) -> int:
     else:
         print(f"  curated  not built yet — run: python scripts/curation.py apply "
               f"--sorter {sorter}")
+    if st["elsewhere"]:
+        print(f"  ! {st['elsewhere']['line']}")
+        print(f"    it is at {st['elsewhere']['where']}")
     errs = structural_errors(record)
     if errs:
         print("  ! " + "; ".join(errs))

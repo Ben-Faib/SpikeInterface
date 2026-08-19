@@ -3177,6 +3177,12 @@ class SpikeMenuApp(App):
         t.append(" u ", style="reverse dim")
         t.append(" triage", style="dim")
         t.append("\n", style=ui.PRIMARY)
+        # A curated result anchored to a run that is no longer current is still on
+        # disk. The numbers above are the raw ones; without this line the curated
+        # result would simply stop existing on every surface (§1.7 names the step).
+        other = info.get("curated_elsewhere")
+        if other:
+            t.append(other["short"] + "\n", style=ui.SECONDARY)
         summary = info.get("summary")
         if summary:
             row = _ss.headline_row(summary)

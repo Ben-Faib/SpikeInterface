@@ -95,7 +95,7 @@ def _analyzer_window_seconds(analyzer_dir) -> float:
 
 def analyzer_dir_for(sorter: str) -> Path:
     """The analyzer of ``sorter``'s CURRENT run — the store is the resolver."""
-    return runs.sort_paths(sorter, outputs=OUTPUT_DIR)["analyzer"]
+    return runs.sort_paths(sorter)["analyzer"]
 
 
 def _pick_default_analyzer() -> Path:
@@ -108,8 +108,9 @@ def _pick_default_analyzer() -> Path:
     ``--duration`` smoke test. Falls back to the legacy path when nothing is saved.
     """
     candidates = []
-    if OUTPUT_DIR.is_dir():
-        for sorter in sorted(p.name for p in OUTPUT_DIR.iterdir() if p.is_dir()):
+    base = runs.outputs_dir()       # read at call time — same tree as the resolver
+    if base.is_dir():
+        for sorter in sorted(p.name for p in base.iterdir() if p.is_dir()):
             d = analyzer_dir_for(sorter)
             if not d.is_dir():
                 continue
@@ -129,9 +130,12 @@ def _curation_facts(analyzer_dir) -> dict:
 
     ``analyzer_dir`` is the RAW analyzer of one run; a curated result beside it
     supersedes it. Returns {"dir", "run_dir", "curated", "line", "stale",
-    "record"} — a pure read (curation imports no SpikeInterface). ``run_dir`` is
-    the directory the raw sort lives in, which under the run store is
-    ``outputs/<sorter>/runs/<id>/`` and not the sorter directory.
+    "record", "elsewhere"} — a pure read (curation imports no SpikeInterface).
+    ``run_dir`` is the directory the raw sort lives in, which under the run store
+    is ``outputs/<sorter>/runs/<id>/`` and not the sorter directory.
+    ``elsewhere`` is a curated result sitting on a run that is no longer current
+    (or in the pre-store layout), which the report must name rather than let
+    disappear the moment a new sort moved the pointer.
     """
     raw_dir = Path(analyzer_dir)
     # A caller can also hand us the curated analyzer directly; then it IS the
@@ -151,8 +155,14 @@ def _curation_facts(analyzer_dir) -> dict:
         where = sorter_dir.resolve().relative_to(bio.REPO_ROOT.resolve()).as_posix()
     except ValueError:      # a run directory outside the repo (explicit --output-dir)
         where = sorter_dir.as_posix()
+    # Only the report of the CURRENT run may say "the current run is uncurated",
+    # so the line is attached there and nowhere else.
+    sorter = runs.sorter_for_dir(raw_dir)
+    current = runs.current_dir(sorter)
+    elsewhere = (curation.curated_elsewhere(sorter)
+                 if current is not None and current == sorter_dir else None)
     return {"dir": show_dir, "run_dir": where + "/", "curated": is_curated,
-            "record": record, "stale": stale,
+            "record": record, "stale": stale, "elsewhere": elsewhere,
             "line": curation.provenance_line(record, curated=is_curated,
                                              has_curated=is_curated)}
 
@@ -175,7 +185,17 @@ def _curation_html(cur, sorter_label) -> str:
                     f'{html.escape(str(sorter_label))}</code> before trusting the '
                     'numbers below.</div>')
         return f'<p class="note">{body}</p>'
-    return f'<p class="note"><strong>Showing:</strong> {line}.</p>'
+    shown = f'<p class="note"><strong>Showing:</strong> {line}.</p>'
+    # A curated result on a run this report is not showing is still on disk, and
+    # the anchoring that keeps it correct is exactly what would make it silent.
+    other = cur.get("elsewhere")
+    if other:
+        shown += ('<div class="caveat">' + html.escape(other["line"])
+                  + ' <code>uv run python scripts/curation.py show --sorter '
+                  + html.escape(str(sorter_label)) + '</code> lists the record; '
+                  'the older curated result stays where it was built, in '
+                  f'<code>{html.escape(str(other["where"]))}</code>.</div>')
+    return shown
 
 
 def _probe_caveat(probe, n_drop=0, bad=None) -> str:

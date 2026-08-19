@@ -181,6 +181,68 @@ def test_state_reports_raw_curated_and_stale(tmp_path):
     assert st["stale"] and "new decisions" in st["stale_reason"]
 
 
+def _run_on_disk(tmp_path, run_id, *, curated=False, units=3):
+    """One run in the store, optionally with a curated result built on it."""
+    paths = curation.sort_paths(SORTER, tmp_path, run=run_id)
+    paths["analyzer"].mkdir(parents=True)
+    paths["run_info"].write_text(
+        json.dumps({**RUN_INFO, "run_id": run_id, "n_units": units}), encoding="utf-8")
+    if curated:
+        paths["curated_analyzer"].mkdir(parents=True)
+        paths["curated_run_info"].write_text(
+            json.dumps({"curated": True, "n_units": units}), encoding="utf-8")
+    return paths
+
+
+def test_a_curated_result_on_a_non_current_run_is_named_not_hidden(tmp_path, monkeypatch):
+    """Curated output is anchored to the run it curates — correct, and it means a
+    fresh sort moves the pointer and the curated result stops being shown. The
+    surfaces must say where it went instead of going silent."""
+    old = _run_on_disk(tmp_path, "20260818-100000-aaaaaa", curated=True)
+    # Only run: it IS current, so nothing is hidden and there is nothing to say.
+    assert curation.curated_elsewhere(SORTER, tmp_path) is None
+    assert curation.state(SORTER, tmp_path)["elsewhere"] is None
+
+    _run_on_disk(tmp_path, "20260819-100000-bbbbbb")      # a newer, uncurated sort
+    st = curation.state(SORTER, tmp_path)
+    assert st["run"] == "20260819-100000-bbbbbb" and not st["has_curated"]
+    other = st["elsewhere"]
+    assert other["run"] == "20260818-100000-aaaaaa" and not other["legacy"]
+    assert other["line"] == (
+        "a curated result exists on run 20260818-100000-aaaaaa; the current run "
+        "(20260819-100000-bbbbbb) is uncurated — apply a record to this run to "
+        "curate it")
+    assert other["where"] == "outputs/fakesorter/runs/20260818-100000-aaaaaa/curated"
+    assert other["dir"] == old["out"]
+
+    # ...and the report says it where a reader will meet it. (report resolves the
+    # store from the repo root at call time, so this is the tree it reads.)
+    monkeypatch.setattr(curation.bio, "REPO_ROOT", tmp_path)
+    html = report._curation_html(
+        report._curation_facts(curation.sort_paths(SORTER)["analyzer"]), SORTER)
+    assert other["line"] in html and other["where"] in html
+
+
+def test_a_pre_store_curated_result_is_named_when_a_new_sort_supersedes_it(tmp_path):
+    """The lab's existing curated sorts live in outputs/<sorter>/curated/. The
+    first sort after this integration moves the pointer to a run directory; the
+    old result must be named as being in the pre-store layout, never migrated."""
+    legacy = curation.sort_paths(SORTER, tmp_path)
+    (legacy["out"] / "analyzer").mkdir(parents=True)
+    legacy["run_info"].write_text(json.dumps(RUN_INFO), encoding="utf-8")
+    (legacy["out"] / "curated" / "analyzer").mkdir(parents=True)
+    _run_on_disk(tmp_path, "20260819-100000-bbbbbb")
+
+    other = curation.state(SORTER, tmp_path)["elsewhere"]
+    assert other["legacy"] and other["run"] == "legacy"
+    assert other["line"].startswith("a curated result exists on the pre-store layout;")
+    assert other["where"] == "outputs/fakesorter/curated"
+    assert other["short"] == ("curated result on the pre-store layout — "
+                              "apply to curate this run")
+    # Nothing was moved or adopted: it is still exactly where it was built.
+    assert (tmp_path / "outputs" / SORTER / "curated" / "analyzer").is_dir()
+
+
 def test_curated_on_disk_without_a_record_is_never_called_raw(tmp_path):
     """Deleting curation.json must not turn curated numbers into "raw sorter
     output — no curation applied" on any surface."""

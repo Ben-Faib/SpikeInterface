@@ -228,6 +228,10 @@ def _catalog(active: str, use_docker: bool, profile: dict | None = None) -> list
             # {has_record, has_curated, counts, line, stale, ...} — what the view
             # needs to name the result honestly (curation.state, SI-free).
             "curated": cur if show_curated else None,
+            # A curated result built on a run that is no longer current: correct
+            # anchoring, but it would vanish from every surface without this.
+            # None whenever the shown result IS curated (nothing is hidden then).
+            "curated_elsewhere": cur.get("elsewhere"),
             "fit": probes.fit(name, profile) if profile is not None else {"rank": "ok", "reason": ""},
         }
         group = info["group"]
