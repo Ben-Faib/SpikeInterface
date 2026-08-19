@@ -2,6 +2,16 @@
 
     uv run python scripts/compare.py                        # two saved sorters
     uv run python scripts/compare.py --online tridesclous2  # a sort vs the online .nev units
+    uv run python scripts/compare.py --online tridesclous2 --curated \
+        --nev PFCM7_d0ephys_Block2_manuallySorted.nev       # the CURATED sort vs a manual .nev
+
+``--curated`` compares the curated sorting (outputs/<sorter>/curated/analyzer,
+built by ``curation.py apply``) instead of the raw sorter output — the point of
+the curation lifecycle is that decisions can be measured against a reference.
+Every page states which of the two it is showing, in both modes; without the flag
+a sorter with a curated result is still shown raw, and says so. Asking for
+``--curated`` where nothing has been applied is a hard error, not a silent
+fallback to raw.
 
 The pair mode writes outputs/comparison.html; the online mode writes
 outputs/comparison_online.html — separate files, so building one never silently
@@ -38,6 +48,7 @@ import plotly.graph_objects as go
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import blackrock_io as bio  # noqa: E402
+import curation  # noqa: E402  (curation record + the one output-path resolver; no SI)
 import report  # noqa: E402  (reuse the HTML scaffolding helpers)
 import sort_summary  # noqa: E402  (array/yield headline metrics: load/format)
 
@@ -71,15 +82,34 @@ def saved_sorters() -> list[str]:
     )
 
 
-def _load(sorter: str):
-    """Return (sorting, duration_s) from outputs/<sorter>/analyzer, or (None, None)."""
+def _load(sorter: str, curated: bool = False):
+    """Return (sorting, duration_s) for a saved sort, or (None, None).
+
+    ``curated`` reads outputs/<sorter>/curated/analyzer (the applied curation
+    record) instead of the raw sort; both paths come from ``curation.sort_paths``,
+    the one place output paths are resolved.
+    """
     import spikeinterface.full as si
 
-    analyzer_dir = OUTPUT_DIR / sorter / "analyzer"
+    paths = curation.sort_paths(sorter)
+    analyzer_dir = paths["curated_analyzer"] if curated else paths["analyzer"]
     if not analyzer_dir.exists():
         return None, None
     a = si.load_sorting_analyzer(analyzer_dir)
     return a.sorting, float(a.get_total_duration())
+
+
+def result_line(sorter: str, curated: bool) -> str:
+    """The one honest sentence naming what a page is comparing (curated or raw)."""
+    st = curation.state(sorter)
+    return curation.provenance_line(curation.load_record(sorter), curated=curated,
+                                    has_curated=st["has_curated"])
+
+
+def _result_note(sorter: str, curated: bool) -> str:
+    """That sentence as a paragraph, prefixed with the sorter it describes."""
+    return (f'<p class="note"><strong>{html.escape(sorter)}:</strong> '
+            f'{html.escape(result_line(sorter, curated))}.</p>')
 
 
 def _heatmap(cmp) -> go.Figure:
@@ -132,15 +162,22 @@ def _match_table(cmp) -> str:
             + '</tr></thead><tbody>' + rows + '</tbody></table>')
 
 
-def _metrics_section() -> dict:
+def _metrics_section(curated: bool = False) -> dict:
     """Cross-sorter array/yield table: the six headline metrics for EVERY saved sort.
 
     Unlike the agreement matrix this is per-sort, so it stays valid even when the
     sorts cover different windows — but unit-count-derived figures (yield, units/ch)
-    do scale with window length, so each sort's window is shown for honesty.
+    do scale with window length, so each sort's window is shown for honesty. With
+    ``curated`` the curated result's metrics are shown where one exists, and the
+    column says so — a curated column must never pass as raw sorter output.
     """
     names = saved_sorters()
-    cards = [(n, sort_summary.load_summary(OUTPUT_DIR / n)) for n in names]
+    cards = []
+    for n in names:
+        paths = curation.sort_paths(n)
+        use_curated = curated and paths["curated_analyzer"].is_dir()
+        card = sort_summary.load_summary(paths["curated"] if use_curated else paths["out"])
+        cards.append((n + " (curated)" if use_curated else n, card))
     cards = [(n, c) for n, c in cards if c is not None]
     if not cards:
         body = ('<div class="caveat">No saved array/yield summaries yet — run a sort '
@@ -169,7 +206,7 @@ def _metrics_section() -> dict:
     return {"id": "metrics", "title": "Array / yield metrics by sorter", "html": note + table}
 
 
-def build_comparison(data_dir=None, sorters=None, out_path=None) -> Path:
+def build_comparison(data_dir=None, sorters=None, out_path=None, curated=False) -> Path:
     out_path = Path(out_path) if out_path else (OUTPUT_DIR / "comparison.html")
     OUTPUT_DIR.mkdir(exist_ok=True)
     if sorters is None:
@@ -177,8 +214,15 @@ def build_comparison(data_dir=None, sorters=None, out_path=None) -> Path:
         sorters = tuple(found[:2]) if len(found) >= 2 else DEFAULT_SORTERS
     s1_name, s2_name = sorters
 
-    s1, d1 = _load(s1_name)
-    s2, d2 = _load(s2_name)
+    # With --curated each side shows its curated result where one exists; the
+    # per-sort note below says which, so a mixed page is still honest.
+    def _side(name):
+        use = curated and curation.sort_paths(name)["curated_analyzer"].is_dir()
+        return _load(name, curated=use), use
+
+    (s1, d1), c1 = _side(s1_name)
+    (s2, d2), c2 = _side(s2_name)
+    which = _result_note(s1_name, c1) + _result_note(s2_name, c2)
 
     if s1 is None or s2 is None:
         missing = [n for n, s in [(s1_name, s1), (s2_name, s2)] if s is None]
@@ -197,10 +241,11 @@ def build_comparison(data_dir=None, sorters=None, out_path=None) -> Path:
         body = (f'<p class="note">Both sorts cover {d1:.1f}s.</p>'
                 + report._fig_html(_heatmap(cmp)) + _match_table(cmp))
 
-    section = {"id": "compare", "title": f"{s1_name} vs {s2_name}", "html": body}
+    section = {"id": "compare", "title": f"{s1_name} vs {s2_name}",
+               "html": which + body}
     # The cross-sorter array/yield table sits first: it summarises EVERY saved sort
     # (not just the agreement pair) and the six lab-requested metrics live here.
-    sections = [_metrics_section(), section]
+    sections = [_metrics_section(curated=curated), section]
     out_path.write_text(report._html_document("Sorter comparison", sections), encoding="utf-8")
     return out_path
 
@@ -433,18 +478,22 @@ def _caveat_section(sorter, body) -> dict:
 
 
 def build_online_comparison(sorter, data_dir=None, out_path=None, nev_path=None,
-                            delta_ms=ONLINE_DELTA_TIME_MS) -> Path:
+                            delta_ms=ONLINE_DELTA_TIME_MS, curated=False) -> Path:
     """outputs/comparison_online.html — one saved sort vs a .nev sorted reference.
 
     Default reference: the recording's own .nev (the rig's LIVE sorting).
     ``nev_path`` compares against an explicit re-exported .nev instead — e.g. a
     MANUALLY sorted export for the same recording; the page names the file.
+    ``curated`` compares the curated sorting instead of the raw one — this is how
+    a curation decision is measured against a reference. Which of the two is
+    shown is always stated on the page.
     Its OWN file (not the pair page's comparison.html): the two modes must never
     silently replace each other's output (C1 review F2)."""
     out_path = Path(out_path) if out_path else (OUTPUT_DIR / "comparison_online.html")
     OUTPUT_DIR.mkdir(exist_ok=True)
     ref_note = (f"Reference: {Path(nev_path).name} (explicit re-export)" if nev_path
                 else "The rig's live sorting as a reference")
+    which = _result_note(sorter, curated)
 
     def _write(sections):
         out_path.write_text(
@@ -454,7 +503,12 @@ def build_online_comparison(sorter, data_dir=None, out_path=None, nev_path=None,
             encoding="utf-8")
         return out_path
 
-    offline, window_s = _load(sorter)
+    offline, window_s = _load(sorter, curated=curated)
+    if offline is None and curated:
+        return _write([_caveat_section(sorter, (
+            f'<strong>No curated result for {html.escape(str(sorter))}.</strong> Record '
+            'decisions and apply them first: <code>uv run python scripts/curation.py '
+            f'apply --sorter {html.escape(str(sorter))}</code>, then rebuild this page.'))])
     if offline is None:
         saved = saved_sorters()
         have = (" Saved sorts: " + ", ".join(saved) + ".") if saved else ""
@@ -508,8 +562,8 @@ def build_online_comparison(sorter, data_dir=None, out_path=None, nev_path=None,
     return _write([
         _reference_section(accounting, _crop_note(crop_info)),
         {"id": "compare", "title": f"{sorter} vs {ONLINE_NAME}",
-         "html": _online_compare_html(cmp, cropped, offline, sorter,
-                                      delta_ms=delta_ms)},
+         "html": which + _online_compare_html(cmp, cropped, offline, sorter,
+                                              delta_ms=delta_ms)},
     ])
 
 
@@ -529,12 +583,23 @@ def main(argv=None) -> int:
         "--delta-ms", type=float, default=ONLINE_DELTA_TIME_MS,
         help="with --online: the coincidence window (default %(default)s ms — wide "
              "because crossing timestamps lead peak-aligned ones by ~0.6 ms here)")
+    parser.add_argument(
+        "--curated", action="store_true",
+        help="compare the CURATED sorting (outputs/<sorter>/curated/, built by "
+             "curation.py apply) instead of the raw sorter output")
     args = parser.parse_args(argv)
     if args.nev and not args.online:
         parser.error("--nev requires --online SORTER")
+    # An explicit --curated with nothing applied fails hard rather than quietly
+    # comparing the raw sort (the repo's explicit-fails-hard asymmetry).
+    if args.curated and args.online:
+        if not curation.sort_paths(args.online)["curated_analyzer"].is_dir():
+            parser.error(
+                f"--curated: no curated result for {args.online} — record decisions "
+                f"and run: uv run python scripts/curation.py apply --sorter {args.online}")
     print(build_online_comparison(args.online, nev_path=args.nev,
-                                  delta_ms=args.delta_ms)
-          if args.online else build_comparison())
+                                  delta_ms=args.delta_ms, curated=args.curated)
+          if args.online else build_comparison(curated=args.curated))
     return 0
 
 

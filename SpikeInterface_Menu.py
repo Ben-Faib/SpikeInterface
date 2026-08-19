@@ -42,6 +42,7 @@ ROOT = Path(__file__).resolve().parent
 SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import blackrock_io as bio  # noqa: E402
+import curation  # noqa: E402  (curation record + output-path resolver — pure, no SI)
 import report  # noqa: E402
 import sort_summary  # noqa: E402  (array/yield headline metrics — pure load/format)
 import sorters as sorter_registry  # noqa: E402  (registry: discovery/status/params/run)
@@ -145,13 +146,16 @@ def _load_dashboard(data_dir, active: str, sorter_list, docker: bool):
     return pipeline, infos
 
 
-def _saved_summary(sorter: str):
+def _saved_summary(sorter: str, curated: bool = False):
     """(present, units, duration) for a sorter's saved analyzer; best-effort.
 
-    Short-circuits cheaply when there is no analyzer dir (the common case), so
-    probing all ~22 sorters stays fast. Never raises.
+    ``curated`` reads outputs/<sorter>/curated/analyzer (the applied curation
+    record) instead of the raw sort. Short-circuits cheaply when there is no
+    analyzer dir (the common case), so probing all ~22 sorters stays fast. Never
+    raises.
     """
-    d = _analyzer_dir(sorter)
+    paths = curation.sort_paths(sorter)
+    d = paths["curated_analyzer"] if curated else paths["analyzer"]
     if not d.exists():
         return False, 0, 0.0
     try:
@@ -184,6 +188,20 @@ def _catalog(active: str, use_docker: bool, profile: dict | None = None) -> list
     out = []
     for name in sorter_registry.available():
         present, units, duration = _saved_summary(name)
+        # Curation state is a pure JSON/path read (no SpikeInterface). When a
+        # curated result exists it is what the report shows, so the dashboard's
+        # RESULTS numbers come from it too — and the fact rides along so the view
+        # can say "curated" instead of implying raw sorter output.
+        cur = curation.state(name)
+        show_curated = present and cur["has_curated"]
+        if show_curated:
+            c_present, c_units, c_duration = _saved_summary(name, curated=True)
+            if c_present:
+                units, duration = c_units, c_duration
+            else:
+                show_curated = False
+        summary_dir = (curation.sort_paths(name)["curated"] if show_curated
+                       else curation.sort_paths(name)["out"])
         info = {
             "name": name,
             "group": sorter_registry.group_of(name, installed_set=inst),
@@ -195,7 +213,10 @@ def _catalog(active: str, use_docker: bool, profile: dict | None = None) -> list
             "active": name == active,
             # The array/yield headline summary (six metrics) for the INSPECTING panel;
             # a cheap SI-free JSON read, None until a sort writes summary.json.
-            "summary": sort_summary.load_summary(_analyzer_dir(name).parent) if present else None,
+            "summary": sort_summary.load_summary(summary_dir) if present else None,
+            # {has_record, has_curated, counts, line, stale, ...} — what the view
+            # needs to name the result honestly (curation.state, SI-free).
+            "curated": cur if show_curated else None,
             "fit": probes.fit(name, profile) if profile is not None else {"rank": "ok", "reason": ""},
         }
         group = info["group"]

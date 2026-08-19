@@ -126,7 +126,9 @@ def online_page(tmp_path, monkeypatch):
     """Build the --online page over injected sortings; returns the visible text."""
     def _build(offline=None, window_s=30.0, online=None, labels=None, exc=None):
         monkeypatch.setattr(compare, "OUTPUT_DIR", tmp_path)
-        monkeypatch.setattr(compare, "_load", lambda s: (offline, window_s))
+        # _load takes a `curated` flag (W1 slice 2); the fake ignores it.
+        monkeypatch.setattr(compare, "_load",
+                            lambda s, curated=False: (offline, window_s))
 
         def _read_spikes(data_dir=None, **kw):
             if exc is not None:
@@ -225,13 +227,24 @@ def test_online_page_refuses_to_guess_when_labels_are_unreadable(online_page):
 # --------------------------------------------------------------------------- #
 def test_cli_without_flags_still_builds_the_two_sorter_page(monkeypatch, capsys):
     calls = []
-    monkeypatch.setattr(compare, "build_comparison", lambda: calls.append("pair") or "out.html")
+    monkeypatch.setattr(compare, "build_comparison",
+                        lambda **kw: calls.append("pair") or "out.html")
     monkeypatch.setattr(compare, "build_online_comparison",
                         lambda *a, **kw: pytest.fail("online mode ran without --online"))
 
     assert compare.main([]) == 0
     assert calls == ["pair"]
     assert capsys.readouterr().out.strip() == "out.html"
+
+
+def test_cli_curated_without_a_curated_result_fails_hard(monkeypatch, capsys):
+    """--curated must never quietly fall back to the raw sort (the repo's
+    explicit-fails-hard asymmetry)."""
+    monkeypatch.setattr(compare, "build_online_comparison",
+                        lambda *a, **kw: pytest.fail("built a page anyway"))
+    with pytest.raises(SystemExit):
+        compare.main(["--online", "nosuchsorter", "--curated"])
+    assert "no curated result" in capsys.readouterr().err
 
 
 def test_cli_online_flag_selects_the_nev_mode(monkeypatch, capsys):

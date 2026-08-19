@@ -1602,10 +1602,18 @@ class ManageSortersScreen(ModalScreen):
             self._render_foot()
             return
         name, units = info["name"], info.get("units", "?")
+        # Curation decisions live in outputs/<name>/ too, and a re-run sort cannot
+        # get them back (unit ids are not stable across re-sorts) — say so.
+        note = f"Deletes outputs/{name}/ — you can re-run the sort later."
+        if info.get("curated"):
+            n = info["curated"].get("counts", {}).get("total", 0)
+            note = (f"Deletes outputs/{name}/ — the sort, its curation record "
+                    f"({n} decision{'' if n == 1 else 's'}) and the curated result. "
+                    "A re-run sort cannot restore the decisions.")
         self.app.push_screen(
             ChoiceModal(f"Clear the saved {name} sort ({units}u)?",
                         [("confirm", "Clear saved sort", ""), ("cancel", "Keep it", "")],
-                        note=f"Deletes outputs/{name}/ — you can re-run the sort later."),
+                        note=note),
             lambda r: self._confirmed_clear_sort(name) if r == "confirm" else None)
 
     def _confirmed_clear_sort(self, name: str) -> None:
@@ -2818,8 +2826,16 @@ class SpikeMenuApp(App):
         t = self._section_rule("RESULTS", avail)
         t.append("\n")
         t.append(info["name"], style=f"bold {self._accent}")
-        t.append(f" · {info['units']} units · {info['duration']:.0f} s sorted\n",
+        t.append(f" · {info['units']} units · {info['duration']:.0f} s sorted",
                  style=ui.PRIMARY)
+        # A curated result is what the report shows, so this line must name it as
+        # curated rather than let the numbers read as raw sorter output.
+        curated = info.get("curated")
+        if curated:
+            n = curated.get("counts", {}).get("total", 0)
+            t.append(f" · curated ({n} decision{'' if n == 1 else 's'})",
+                     style=ui.SECONDARY)
+        t.append("\n", style=ui.PRIMARY)
         summary = info.get("summary")
         if summary:
             row = _ss.headline_row(summary)

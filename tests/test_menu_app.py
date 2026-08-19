@@ -1587,6 +1587,26 @@ async def test_results_section_only_with_saved_sort(make_app):
         assert app.query_one("#results").has_class("hidden")
 
 
+async def test_results_names_a_curated_result(make_app):
+    """W1 slice 2: when a curated result exists it is what the report shows, so
+    RESULTS must say so — the numbers must never read as raw sorter output."""
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        assert "curated" not in app.query_one("#results").render().plain
+        # The controller ships curation.state() alongside the other per-sorter facts.
+        app.c.infos[app.c.active_idx]["curated"] = {
+            "has_curated": True, "stale": False,
+            "counts": {"splits": 3, "merges": 0, "labels": 1, "removed": 0, "total": 4},
+            "line": "curated from the tridesclous2 run (sorted 2026-08-18 21:15), "
+                    "4 decisions (3 splits, 0 merges, 1 label), 2026-08-18 21:27"}
+        app._render_results()
+        await pilot.pause()
+        text = app.query_one("#results").render().plain
+        assert "curated (4 decisions)" in text
+        assert "12 units" in text          # the rest of the line is unchanged
+
+
 async def test_actions_keep_rows_at_common_sizes(make_app):
     # The primary panel never starves: real painted rows at the sizes people use.
     for size in [(110, 40), (100, 24), (80, 24), (60, 24)]:

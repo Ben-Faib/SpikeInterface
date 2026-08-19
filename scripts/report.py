@@ -23,6 +23,13 @@ data; it only writes the HTML.
 Single source of truth for the sort = the saved SortingAnalyzer (sorting +
 templates + quality_metrics all come from it, so they can never disagree). The
 loose outputs/<sorter>/sorting/ folder and quality_metrics.csv are ignored.
+
+Curated vs raw: when a sorter has a curated result (outputs/<sorter>/curated/,
+built by ``curation.py apply``) the report shows THAT — a curated result
+supersedes the raw sort it came from — and states it in the verdict, the
+subtitle, the section titles and the provenance section, naming the run and the
+decisions it replays. Without one the report says it is showing raw sorter
+output. Either way the reader is never left guessing which they are looking at.
 """
 from __future__ import annotations
 
@@ -38,6 +45,7 @@ from plotly.offline import get_plotlyjs
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import blackrock_io as bio  # noqa: E402
+import curation  # noqa: E402  (curation record + the one output-path resolver; no SI)
 import sort_summary  # noqa: E402  (array/yield headline metrics: load/compute/format)
 
 OUTPUT_DIR = bio.REPO_ROOT / "outputs"
@@ -105,6 +113,48 @@ def _pick_default_analyzer() -> Path:
         return DEFAULT_ANALYZER_DIR
     candidates.sort(key=lambda c: (c[0], c[1]))  # largest window, then most recent
     return candidates[-1][2]
+
+
+def _curation_facts(analyzer_dir) -> dict:
+    """What this report is showing — curated or raw — and how to say it.
+
+    ``analyzer_dir`` is the RAW ``outputs/<sorter>/analyzer``; a curated result
+    beside it supersedes it. Returns {"dir", "curated", "line", "stale",
+    "record"} — a pure read (curation imports no SpikeInterface).
+    """
+    raw_dir = Path(analyzer_dir)
+    sorter_dir = raw_dir.parent
+    curated_dir = sorter_dir / curation.CURATED_DIRNAME / "analyzer"
+    is_curated = raw_dir.name == "analyzer" and \
+        sorter_dir.name != curation.CURATED_DIRNAME and curated_dir.is_dir()
+    record = curation.load_record(path=sorter_dir / curation.RECORD_NAME)
+    show_dir = curated_dir if is_curated else raw_dir
+    stale = (curation.stale_reason(_run_info(curated_dir), record, _run_info(raw_dir))
+             if is_curated else "")
+    return {"dir": show_dir, "curated": is_curated, "record": record, "stale": stale,
+            "line": curation.provenance_line(record, curated=is_curated,
+                                             has_curated=curated_dir.is_dir())}
+
+
+def _curation_html(cur, sorter_label) -> str:
+    """The curated-vs-raw sentence as a paragraph (amber when the record moved on)."""
+    if cur is None:
+        return ""
+    # One owner for the sentence itself (curation.provenance_line); this only
+    # frames it, so the two never drift or repeat each other.
+    line = html.escape(cur["line"])
+    if cur["curated"]:
+        raw = html.escape(f"outputs/{sorter_label}/")
+        body = (f'<strong>Showing:</strong> {line}. The raw '
+                f'sorter output it came from is preserved in <code>{raw}</code>.')
+        if cur["stale"]:
+            return ('<div class="caveat">' + body + ' <strong>Out of date: '
+                    f'{html.escape(cur["stale"])}</strong> — re-run '
+                    '<code>uv run python scripts/curation.py apply --sorter '
+                    f'{html.escape(str(sorter_label))}</code> before trusting the '
+                    'numbers below.</div>')
+        return f'<p class="note">{body}</p>'
+    return f'<p class="note"><strong>Showing:</strong> {line}.</p>'
 
 
 def _probe_caveat(probe, n_drop=0, bad=None) -> str:
@@ -593,7 +643,8 @@ def _pass_quality(analyzer) -> "tuple[int | None, int]":
         return None, n_units
 
 
-def _render_verdict(analyzer, analyzer_dir, info, sorter_label, status, data_dir=None) -> str:
+def _render_verdict(analyzer, analyzer_dir, info, sorter_label, status, data_dir=None,
+                    cur=None) -> str:
     """The answer first: four stat tiles (DESIGN_UX §4.1).
 
     When no raw data loaded at all (fresh clone / wrong folder) this is also the
@@ -604,6 +655,9 @@ def _render_verdict(analyzer, analyzer_dir, info, sorter_label, status, data_dir
                                                        ".nev online detections")]
     lead = (_getting_started_html(data_dir)
             if data_stages and all(r["status"] != "PASS" for r in data_stages) else "")
+    # Curated or raw, said before any number is read (§1: the reader never has to
+    # guess which result the tiles describe).
+    lead += _curation_html(cur, sorter_label)
     if analyzer is None:
         return (lead + '<p class="skip">No saved sort for '
                 f'{html.escape(str(sorter_label))} — run one from the launcher '
@@ -1055,9 +1109,33 @@ def _render_context(lfp, nev, events) -> str:
     return "".join(out)
 
 
-def _render_provenance(status, probe=None, info=None) -> str:
+def _curation_provenance(cur) -> str:
+    """The curation record's own provenance block: the decisions and where they live."""
+    if not cur or not cur.get("record"):
+        return ('<p class="note">No curation record for this sort — nothing has been '
+                'merged, split or labelled; these are the sorter\'s own units.</p>')
+    record = cur["record"]
+    c = curation.counts(record)
+    rows = [[html.escape(str(d.get("at", "")).replace("T", " ")),
+             html.escape(str(d.get("type", ""))),
+             html.escape(", ".join(str(u) for u in d.get("units", []))),
+             html.escape(str(d.get("method", ""))),
+             html.escape(json.dumps(d.get("params", {}), sort_keys=True))]
+            for d in record.get("decisions", [])]
+    table = _table([("when", False), ("decision", False), ("units", False),
+                    ("method", False), ("parameters", False)], rows, sortable=False)
+    tools = ", ".join(f"{k} {v}" for k, v in (record.get("tools") or {}).items())
+    return (f'<p class="note">Curation record: {c["total"]} decision(s) — '
+            f'{c["splits"]} split(s), {c["merges"]} merge(s), {c["labels"]} label(s). '
+            f'Written by {html.escape(tools)}. Applying it re-clusters nothing: a split '
+            'is stored as an explicit spike-index partition, so the curated result is a '
+            'deterministic replay of these decisions.</p>' + table)
+
+
+def _render_provenance(status, probe=None, info=None, cur=None) -> str:
     """One home for provenance (§4.3): the pipeline status table + versions +
-    the probe/aux notes that used to sit in a separate About section."""
+    the probe/aux notes that used to sit in a separate About section, plus the
+    curation record's decisions when this report shows a curated result."""
     import importlib
 
     rows = [[f'<span class="badge {r["status"]}">{r["status"]}</span>',
@@ -1067,7 +1145,15 @@ def _render_provenance(status, probe=None, info=None) -> str:
     info = info or {}
     prov = []
     if info.get("created"):
-        prov.append(f'sorted {html.escape(str(info["created"]).replace("T", " "))}')
+        # For a curated result 'created' is when the record was APPLIED; the sort's
+        # own timestamp lives in the record's run identity.
+        verb = "curated" if info.get("curated") else "sorted"
+        prov.append(f'{verb} {html.escape(str(info["created"]).replace("T", " "))}')
+    if info.get("curated"):
+        sorted_at = str(((cur or {}).get("record") or {}).get("curates", {})
+                        .get("run", {}).get("created") or "")
+        if sorted_at:
+            prov.append(f'sorted {html.escape(sorted_at.replace("T", " "))}')
     if info.get("sorter"):
         prov.append(f'sorter {html.escape(str(info["sorter"]))}')
     if isinstance(info.get("freq_min"), (int, float)) and isinstance(info.get("freq_max"), (int, float)):
@@ -1089,6 +1175,7 @@ def _render_provenance(status, probe=None, info=None) -> str:
     return ('<p class="note">One row per pipeline stage — PASS means it loaded, '
             'SKIP means optional/absent, FAIL means broken.</p>'
             + table + prov_html
+            + _curation_provenance(cur)
             + _probe_caveat(probe, 0, info.get("bad_channels"))
             + '<p class="note">The broadband stream mixes 16 neural channels (raw 1–16) '
               'with 6 analog aux channels (analog 1–6); the sort excludes the analog aux '
@@ -1107,6 +1194,11 @@ def build_report(data_dir=None, analyzer_dir=None, out_path=None, sorter_label=N
     _p = progress or (lambda title: None)
     analyzer_dir = Path(analyzer_dir) if analyzer_dir else _pick_default_analyzer()
     sorter_label = sorter_label or analyzer_dir.parent.name
+    # A curated result supersedes the raw sort it came from — the report shows it
+    # and says so (the label carries the fact into every section title).
+    cur = _curation_facts(analyzer_dir)
+    analyzer_dir = cur["dir"]
+    display_label = f"{sorter_label} · curated" if cur["curated"] else sorter_label
     out_path = Path(out_path) if out_path else (OUTPUT_DIR / "report.html")
     OUTPUT_DIR.mkdir(exist_ok=True)
 
@@ -1126,9 +1218,9 @@ def build_report(data_dir=None, analyzer_dir=None, out_path=None, sorter_label=N
     _p("Render figures")
     sections = [
         _safe_section("verdict", "Verdict", _render_verdict, analyzer, analyzer_dir, info,
-                      sorter_label, status, data_dir, state=sorted_state),
-        _safe_section("sorted", f"Sorted units ({sorter_label})", _render_sorted, analyzer,
-                      sorter_label, info, probe, state=sorted_state),
+                      sorter_label, status, data_dir, cur, state=sorted_state),
+        _safe_section("sorted", f"Sorted units ({display_label})", _render_sorted, analyzer,
+                      display_label, info, probe, state=sorted_state),
         _safe_section("qc", "Quality metrics", _render_qc, analyzer, state=sorted_state),
         _safe_section("summary", "Array & yield", _render_summary, analyzer, analyzer_dir,
                       state=sorted_state),
@@ -1137,7 +1229,7 @@ def build_report(data_dir=None, analyzer_dir=None, out_path=None, sorter_label=N
         _safe_section("context", "Recording context", _render_context, objects.get("lfp"),
                       objects.get("nev"), objects.get("events"), state=ctx_state),
         _safe_section("provenance", "Provenance", _render_provenance, status, probe, info,
-                      state=prov_state),
+                      cur, state=prov_state),
     ]
 
     # The TOC glyph must describe what actually RENDERED (D3 review #2/#3): a
@@ -1152,9 +1244,10 @@ def build_report(data_dir=None, analyzer_dir=None, out_path=None, sorter_label=N
 
     _p("Inline Plotly + write")
     rec = _recording_name(data_dir) or "Recording"
-    sorted_at = str(info.get("created", "")).replace("T", " ")[:16]
-    subtitle = " · ".join([html.escape(str(sorter_label))]
-                          + ([f"sorted {html.escape(sorted_at)}"] if sorted_at else []))
+    stamp = str(info.get("created", "")).replace("T", " ")[:16]
+    verb = "applied" if cur["curated"] else "sorted"
+    subtitle = " · ".join([html.escape(str(display_label))]
+                          + ([f"{verb} {html.escape(stamp)}"] if stamp else []))
     out_path.write_text(
         _html_document(f"{rec} — sort report", sections, heading=rec, subtitle=subtitle),
         encoding="utf-8")
@@ -1238,7 +1331,9 @@ def main() -> int:
             i, t, started = state["open"]
             emit({"t": "phase_done", "i": i, "title": t,
                   "secs": round(time.monotonic() - started, 2)})
-        n_units = _run_info(analyzer_dir).get("n_units")   # the SAME dir we built (F4)
+        # The unit count of the result actually shown — curated when there is one,
+        # from the SAME dir we built (F4).
+        n_units = _run_info(_curation_facts(analyzer_dir)["dir"]).get("n_units")
         emit({"t": "done", "ok": True, "units": n_units, "out": str(out), "note": None})
         return 0
     except Exception as e:  # noqa: BLE001 - last-resort protocol error
