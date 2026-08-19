@@ -255,3 +255,19 @@ def test_run_info_records_the_parameters_spikeinterface_actually_used():
         checked += 1
     if not checked:
         pytest.skip("no saved run carries SpikeInterface's own parameter record")
+
+
+def test_editor_renders_none_default_values_as_json_it_can_reload():
+    # Display side of the same encoding law: a None-default parameter is
+    # json-loaded on save, so the editor must render its saved value as JSON.
+    # str() of a dict here repopulated the field with Python repr, which the
+    # editor then refused (red field, Ctrl+S dead) on reopen.
+    from menu_app import _param_to_str
+
+    for saved in ({"filter": 1}, [1, 2], 42, 1.5, True, "mad"):
+        rendered = _param_to_str(saved, None)
+        assert sorters.coerce_param(None, rendered) == saved, rendered
+    assert _param_to_str(None, None) == ""
+    # Non-None scalar defaults keep their plain rendering.
+    assert _param_to_str(7, 5) == "7"
+    assert _param_to_str("mad", "std") == "mad"

@@ -706,7 +706,7 @@ class ParamEditorScreen(ModalScreen):
                             self._widgets[key] = ("bool", w)
                             yield w
                         elif isinstance(default, (int, float, str)) or default is None:
-                            w = Input(value=_param_to_str(cur), id=f"w_{key}")
+                            w = Input(value=_param_to_str(cur, default), id=f"w_{key}")
                             self._widgets[key] = ("scalar", w)
                             yield w
                         else:  # dict / list -> JSON
@@ -4224,8 +4224,17 @@ def _trunc(text: str, n: int) -> str:
 
 
 
-def _param_to_str(value) -> str:
-    """Render a scalar/None default for an Input field ('' for None)."""
+def _param_to_str(value, default=None) -> str:
+    """Render a value for a scalar Input field ('' for None).
+
+    A None-default parameter round-trips through JSON (coerce_param json-loads
+    whatever is typed), so its saved value must render as JSON here too: str()
+    of a dict would repopulate the field with Python repr, which the editor
+    then refuses to save.
+    """
     if value is None:
         return ""
+    if default is None:
+        import json
+        return json.dumps(value)
     return str(value)
