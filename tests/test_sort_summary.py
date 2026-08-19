@@ -42,7 +42,7 @@ def test_headline_row_has_six_metrics_in_uV():
 
 def test_yield_cell_states_the_shrunken_denominator_when_channels_were_excluded():
     # PRE1: excluding a bad channel shrinks the yield denominator. The cell must say
-    # so — a smaller denominator quietly inflating the percentage is the failure mode.
+    # so - a smaller denominator quietly inflating the percentage is the failure mode.
     row = ss.headline_row(_summary(n_channels=15, n_active_channels=10, yield_pct=66.7,
                                    excluded_channels=["3"]))
     assert row["yield (% active electrodes)"] == "66.7% (10/15 sorted; 1 excluded as bad)"
@@ -89,7 +89,7 @@ def test_csv_row_columns_match():
 def test_none_medians_render_as_dash():
     empty = ss._empty_summary("simple", n_channels=16, units_in_uV=True, duration_s=5.0)
     row = ss.headline_row(empty)
-    assert row["V_pp"] == "—" and row["SNR"] == "—" and row["noise floor"] == "—"
+    assert row["V_pp"] == "-" and row["SNR"] == "-" and row["noise floor"] == "-"
     # yield/units are real zeros (no units), not dashes
     assert row["yield (% active electrodes)"] == "0% (0/16)"
 
@@ -109,7 +109,7 @@ def test_load_summary_missing_returns_none(tmp_path):
 
 
 def test_load_quality_metrics_is_pure_and_nan_honest(tmp_path):
-    """The per-unit metrics as the sort wrote them — read, never recomputed, and a
+    """The per-unit metrics as the sort wrote them - read, never recomputed, and a
     cell the sort could not compute comes back None (a surface renders "–")."""
     (tmp_path / "quality_metrics.csv").write_text(
         ",firing_rate,snr,amplitude_cutoff,l_ratio\n"
@@ -123,7 +123,7 @@ def test_load_quality_metrics_is_pure_and_nan_honest(tmp_path):
     assert rows["0"]["amplitude_cutoff"] is None       # blank cell, not 0.0
     assert rows["1"]["l_ratio"] is None                # NaN, not 0.0
     assert rows["1"]["amplitude_cutoff"] == 0.031
-    # A non-fatal metrics failure deletes the file — that is {} , never a crash.
+    # A non-fatal metrics failure deletes the file - that is {} , never a crash.
     assert ss.load_quality_metrics(tmp_path / "nope") == {}
 
 
@@ -166,7 +166,7 @@ def test_load_quality_rule_survives_non_dict_config(tmp_path):
 
 
 # --------------------------------------------------------------------------- #
-# The per-contact rollup (the takeaway) — one home for "which units look real".
+# The per-contact rollup (the takeaway) - one home for "which units look real".
 # --------------------------------------------------------------------------- #
 def _rollup_summary():
     """Four units on three contacts; two share contact 7."""
@@ -223,7 +223,7 @@ def test_rollup_nan_never_masquerades_as_failure():
     assert sum(c["n_unjudged"] for c in r["contacts"]) == 4
     assert "not judged" in r["contact_line"]
     assert "sub-threshold" not in r["contact_line"]
-    assert r["headline"] == "4 units not judged — no evaluable quality metrics"
+    assert r["headline"] == "4 units not judged - no evaluable quality metrics"
     assert r["site_line"] == r["headline"]
 
 
@@ -266,7 +266,7 @@ def test_isolation_phrase_thresholds_and_honesty_gates():
     assert ss.isolation_phrase(_CLEAN, n_spikes=10) == "too few spikes to judge"
     # SpikeInterface's degenerate isolation_distance is discarded, not believed.
     assert ss.isolation_phrase({"isolation_distance": 1e15},
-                               n_spikes=5000) == "no isolation metrics — cannot judge"
+                               n_spikes=5000) == "no isolation metrics - cannot judge"
     assert ss.isolation_phrase(_CLEAN, n_spikes=5000) == "clean"
     assert ss.isolation_phrase({"nn_hit_rate": 0.7}, n_spikes=5000) == "mostly separate"
     # Poor + a co-located unit names the neighbour it overlaps.
@@ -313,7 +313,7 @@ def test_rule_detail_and_quality_pass_agree():
 
 
 # --------------------------------------------------------------------------- #
-# Review F2/F4 — "strong" must not flatter thin evidence, and an uncounted unit
+# Review F2/F4 - "strong" must not flatter thin evidence, and an uncounted unit
 # must not borrow the too-few phrase.
 # --------------------------------------------------------------------------- #
 def _thin_case(counts):
@@ -331,7 +331,7 @@ def test_a_pass_on_too_few_spikes_is_hedged_not_called_strong():
     # 2 and 3 pass on 30 spikes; 0 passes on 5000.
     r = _thin_case({"0": 5000, "1": 6000, "2": 30, "3": 30})
     by = {u["unit"]: u for u in r["units"]}
-    # The RULE's verdict is untouched — the pass-quality count must not move.
+    # The RULE's verdict is untouched - the pass-quality count must not move.
     assert [by[u]["verdict"] for u in (0, 2, 3)] == [True, True, True]
     assert r["n_accepted"] == 3
     # ...but only the unit whose evidence carries it is called strong.

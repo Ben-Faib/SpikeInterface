@@ -85,7 +85,7 @@ def test_show_channels_resolves_probe():
 
 
 # --------------------------------------------------------------------------- #
-# Bad-channel exclusion (PRE1) — the report must say WHICH channels left and,
+# Bad-channel exclusion (PRE1) - the report must say WHICH channels left and,
 # in the provenance line, WHO decided. On this rig detection flags nothing, so
 # the manual-only path is the realistic one and must not credit the detector.
 # --------------------------------------------------------------------------- #
@@ -106,7 +106,7 @@ def test_provenance_credits_the_detector_when_it_found_them():
 
 def test_provenance_says_manual_when_the_user_named_them():
     # The regression this pins: attributing a hand-named channel to "(mad)" credits
-    # the detector with a call it never made — and here it never makes any.
+    # the detector with a call it never made - and here it never makes any.
     line = report._bad_channel_provenance(_bad(manual=["3"], excluded=["3"]))
     assert "named manually" in line and "(mad)" not in line
 
@@ -172,7 +172,7 @@ def test_run_stamp_on_a_curated_result_names_the_raw_run_not_the_anchor_dict():
 
 
 def test_run_stamp_on_a_legacy_curated_result_never_prints_the_sorter_as_a_run():
-    # Legacy curated results live at outputs/<sorter>/curated — the path's name
+    # Legacy curated results live at outputs/<sorter>/curated - the path's name
     # is the sorter, which must not masquerade as a run id.
     info = {"curated": True, "curated_from": "outputs/tridesclous2",
             "created": "2026-08-18T20:00:00"}

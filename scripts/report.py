@@ -8,12 +8,12 @@
 
 Flags: --data-dir, --sorter (explicit + missing analyzer = hard error), --probe
 (geometry-caveat truth; falls back to run_info), --out, --progress json. This CLI
-never opens a browser — callers decide.
+never opens a browser - callers decide.
 
-Writes outputs/report.html — one offline file (Plotly JS inlined), laid out
+Writes outputs/report.html - one offline file (Plotly JS inlined), laid out
 verdict-first per DESIGN_UX §4: a stat-tile header answering "how many units,
 are they any good", a sticky table of contents with per-section status glyphs,
-then the evidence in reader order — 1 Verdict · 2 Sorted units · 3 Quality
+then the evidence in reader order - 1 Verdict · 2 Sorted units · 3 Quality
 metrics · 4 Array & yield · 5 Probe & channels · 6 Recording context (the raw
 streams, demoted to input context) · 7 Provenance (status table + versions).
 One chart theme and one unit colormap run through every figure, so a unit keeps
@@ -25,8 +25,8 @@ templates + quality_metrics all come from it, so they can never disagree). The
 loose outputs/<sorter>/sorting/ folder and quality_metrics.csv are ignored.
 
 Curated vs raw: when a sorter has a curated result (outputs/<sorter>/curated/,
-built by ``curation.py apply``) the report shows THAT — a curated result
-supersedes the raw sort it came from — and states it in the verdict, the
+built by ``curation.py apply``) the report shows THAT - a curated result
+supersedes the raw sort it came from - and states it in the verdict, the
 subtitle, the section titles and the provenance section, naming the run and the
 decisions it replays. Without one the report says it is showing raw sorter
 output. Either way the reader is never left guessing which they are looking at.
@@ -56,7 +56,7 @@ LFP_MAX_CHANNELS = 8
 FOLD_ROWS = 8            # tables longer than this go behind a <details> fold
 
 # "Passes quality" is a rule of thumb for orientation, not curation. W1 slice 1:
-# the rule has ONE owner — sort_summary (configurable via .si_menu.json
+# the rule has ONE owner - sort_summary (configurable via .si_menu.json
 # `quality_rule`, NaN-honest per unit); the tile states the effective rule.
 
 # Expected post-bandpass + CMR noise floor for this rig: an OBSERVED regression
@@ -65,7 +65,7 @@ FOLD_ROWS = 8            # tables longer than this go behind a <details> fold
 # flagged, because that usually means the µV gain was applied twice (~1 µV).
 # Trigger band deliberately WIDER than the display text's observed range: the
 # canary's job is ~4-vs-~1 discrimination (double-scaling) or gross CMR damage,
-# not a ±0.1 µV gate — a healthy 3.88 re-run must not be accused (D3 review #1).
+# not a ±0.1 µV gate - a healthy 3.88 re-run must not be accused (D3 review #1).
 NOISE_BAND_UV = (3.5, 4.5)
 
 
@@ -94,21 +94,21 @@ def _analyzer_window_seconds(analyzer_dir) -> float:
 
 
 def analyzer_dir_for(sorter: str) -> Path:
-    """The analyzer of ``sorter``'s CURRENT run — the store is the resolver."""
+    """The analyzer of ``sorter``'s CURRENT run - the store is the resolver."""
     return runs.sort_paths(sorter)["analyzer"]
 
 
 def _pick_default_analyzer() -> Path:
     """Choose the saved analyzer to report when none is given.
 
-    One candidate per sorter — its *current* run, per the store's resolution
-    order — then the **most complete** of those: the largest sorted window,
+    One candidate per sorter - its *current* run, per the store's resolution
+    order - then the **most complete** of those: the largest sorted window,
     tie-broken by recency. So a bare ``build_report()`` shows a full-recording
     sort rather than whichever sorter happens to be hardcoded or a leftover short
     ``--duration`` smoke test. Falls back to the legacy path when nothing is saved.
     """
     candidates = []
-    base = runs.outputs_dir()       # read at call time — same tree as the resolver
+    base = runs.outputs_dir()       # read at call time - same tree as the resolver
     if base.is_dir():
         for sorter in sorted(p.name for p in base.iterdir() if p.is_dir()):
             d = analyzer_dir_for(sorter)
@@ -126,11 +126,11 @@ def _pick_default_analyzer() -> Path:
 
 
 def _curation_facts(analyzer_dir) -> dict:
-    """What this report is showing — curated or raw — and how to say it.
+    """What this report is showing - curated or raw - and how to say it.
 
     ``analyzer_dir`` is the RAW analyzer of one run; a curated result beside it
     supersedes it. Returns {"dir", "run_dir", "curated", "line", "stale",
-    "record", "elsewhere"} — a pure read (curation imports no SpikeInterface).
+    "record", "elsewhere"} - a pure read (curation imports no SpikeInterface).
     ``run_dir`` is the directory the raw sort lives in, which under the run store
     is ``outputs/<sorter>/runs/<id>/`` and not the sorter directory.
     ``elsewhere`` is a curated result sitting on a run that is no longer current
@@ -180,7 +180,7 @@ def _curation_html(cur, sorter_label) -> str:
                 f'sorter output it came from is preserved in <code>{raw}</code>.')
         if cur["stale"]:
             return ('<div class="caveat">' + body + ' <strong>Out of date: '
-                    f'{html.escape(cur["stale"])}</strong> — re-run '
+                    f'{html.escape(cur["stale"])}</strong> - re-run '
                     '<code>uv run python scripts/curation.py apply --sorter '
                     f'{html.escape(str(sorter_label))}</code> before trusting the '
                     'numbers below.</div>')
@@ -209,7 +209,7 @@ def _probe_caveat(probe, n_drop=0, bad=None) -> str:
             if n_drop else "")
     drop += _bad_channel_note(bad)
     if probe in (None, "independent"):
-        return ('<div class="caveat">Placeholder independent-channel probe — cross-channel '
+        return ('<div class="caveat">Placeholder independent-channel probe - cross-channel '
                 'spatial structure (depth / probe map) is not physical.' + drop + '</div>')
     import probes as _probes  # lazy import (probeinterface; not needed unless a real probe is active)
     prof = _probes.get(probe)
@@ -222,7 +222,7 @@ def _bad_channel_provenance(bad: dict) -> str:
     """One provenance clause naming WHO excluded each channel, not just that some were.
 
     An exclusion can come from the detector, from ``--bad-channels``, or from both,
-    and on this rig the detector flags nothing — so attributing a hand-named channel
+    and on this rig the detector flags nothing - so attributing a hand-named channel
     to "(mad)" would credit the detector with a call the user made. run_info keeps
     ``detected`` and ``manual`` apart; this mirrors that split."""
     excluded = [str(c) for c in (bad.get("excluded") or [])]
@@ -241,7 +241,7 @@ def _bad_channel_provenance(bad: dict) -> str:
         return f'bad channels excluded: {html.escape(", ".join(excluded))} ({source})'
     if bad.get("refused_auto"):
         return (f'bad-channel detection ({method}) flagged '
-                f'{len(bad.get("detected") or [])} channels — too many to trust, none excluded')
+                f'{len(bad.get("detected") or [])} channels - too many to trust, none excluded')
     if bad.get("enabled"):
         return f'bad-channel detection ({method}): none flagged'
     return 'bad-channel detection disabled'
@@ -251,13 +251,13 @@ def _bad_channel_note(bad) -> str:
     """One sentence on the bad-channel exclusion, from run_info's ``bad_channels``.
 
     Empty for a sort that predates the feature (no record) or one that excluded
-    nothing — the reader is only told about channels that actually left."""
+    nothing - the reader is only told about channels that actually left."""
     excluded = [str(c) for c in ((bad or {}).get("excluded") or [])]
     if not excluded:
         return ""
     ids = html.escape(", ".join(excluded))
-    return (f' {len(excluded)} channel(s) ({ids}) were excluded as bad — out of the common '
-            'median reference and out of the sort — so channel counts and yield below are '
+    return (f' {len(excluded)} channel(s) ({ids}) were excluded as bad - out of the common '
+            'median reference and out of the sort - so channel counts and yield below are '
             'over the electrodes that remained.')
 
 
@@ -265,14 +265,14 @@ def _getting_started_html(data_dir) -> str:
     """Prominent fresh-clone guidance shown when no recording is present."""
     folder = str(Path(data_dir).expanduser().resolve()) if data_dir else str(bio.REPO_ROOT)
     rows = "".join(
-        f"<li><code>&lt;RECORDING&gt;{ext}</code> — {html.escape(label)}</li>"
+        f"<li><code>&lt;RECORDING&gt;{ext}</code> - {html.escape(label)}</li>"
         for ext, label in (
-            (".ns2", "LFP — analog @ 1 kHz"),
-            (".ns5", "Broadband — raw @ 30 kHz (spike-sortable)"),
+            (".ns2", "LFP - analog @ 1 kHz"),
+            (".ns5", "Broadband - raw @ 30 kHz (spike-sortable)"),
             (".nev", "Spike events + digital markers"),
         )
     )
-    return ('<div class="caveat"><strong>No recording found — nothing to report yet.</strong> '
+    return ('<div class="caveat"><strong>No recording found - nothing to report yet.</strong> '
             'Drop a Blackrock file set (three files sharing one base name) into '
             f'<code>{html.escape(folder)}</code> (or pass <code>--data-dir</code>):'
             f'<ul>{rows}</ul>'
@@ -385,7 +385,7 @@ def _style(fig, title=None, height=None, **layout):
 
 
 def _unit_colors(unit_ids) -> dict:
-    """{str(unit id): colour} — the shared unit colormap, keyed by id."""
+    """{str(unit id): colour} - the shared unit colormap, keyed by id."""
     return {str(u): UNIT_PALETTE[i % len(UNIT_PALETTE)] for i, u in enumerate(unit_ids)}
 
 
@@ -422,7 +422,7 @@ SORT_HINT = "Sort any column: click a header, or Tab to it and press Enter."
 
 
 def _sort_th(label, col, numeric=False) -> str:
-    """One sortable header cell — the single home for the sort control's markup.
+    """One sortable header cell - the single home for the sort control's markup.
 
     The control is a real ``<button>``, not a click handler on the ``<th>``: that
     is what makes the column order reachable by keyboard (Tab to it, Enter or
@@ -625,7 +625,7 @@ function sortTable(btn, col, numeric) {
   table.setAttribute('data-col', col);
   table.setAttribute('data-dir', asc ? 'asc' : 'desc');
   // The current order is state, so it is announced (aria-sort) and drawn (the
-  // arrow is CSS on the same attribute) — one source, never a colour-only cue.
+  // arrow is CSS on the same attribute) - one source, never a colour-only cue.
   var ths = table.tHead.rows[0].cells;
   for (var k = 0; k < ths.length; k++) { ths[k].setAttribute('aria-sort', 'none'); }
   ths[col].setAttribute('aria-sort', asc ? 'ascending' : 'descending');
@@ -656,7 +656,7 @@ def _html_document(title, sections, heading=None, subtitle=None) -> str:
            f'<ol class="toc">{"".join(items)}</ol>'
            '<p class="toc-legend">✓ present · ○ absent · ! needs attention</p>')
     generated = datetime.now().strftime("%Y-%m-%d %H:%M")
-    subtitle = subtitle or "Self-contained — works offline."
+    subtitle = subtitle or "Self-contained - works offline."
     return f"""<!DOCTYPE html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -671,7 +671,7 @@ def _html_document(title, sections, heading=None, subtitle=None) -> str:
 <h1>{html.escape(heading or title)}</h1>
 <p class="sub">{subtitle}</p>
 {''.join(body)}
-<p class="page-foot">Generated {generated} — self-contained, works offline.</p>
+<p class="page-foot">Generated {generated} - self-contained, works offline.</p>
 </main>
 </div>
 </body></html>"""
@@ -694,14 +694,14 @@ def _pass_quality(analyzer) -> "tuple[int | None, int, int]":
     except Exception:  # noqa: BLE001 - metric columns vary; degrade to "unknown"
         # THREE values on every path (face1 review F3): both callers 3-unpack, so
         # a 2-tuple here would raise inside _render_verdict and _safe_section
-        # would replace the whole verdict section — tiles, takeaway and all —
+        # would replace the whole verdict section - tiles, takeaway and all -
         # with an error box, on the one path that exists to degrade gracefully.
         return None, n_units, 0
 
 
 def _quality_metric_rows(analyzer) -> dict:
     """{unit id (str): {metric: value}} from the analyzer's quality-metrics
-    extension — the same single source the rest of this report reads. ``{}`` when
+    extension - the same single source the rest of this report reads. ``{}`` when
     the sort has none (metrics are non-fatal), and then every unit is honestly
     "not judged" rather than silently failed."""
     try:
@@ -721,7 +721,7 @@ def _spike_counts(analyzer) -> dict:
 
 
 def _run_stamp(info, analyzer_dir, display_label) -> str:
-    """Which result, from which run, over which window — one line, escaped.
+    """Which result, from which run, over which window - one line, escaped.
 
     A takeaway nobody can trace back to a run is a takeaway nobody can check, so
     the block is stamped with the run store's own identity: the run id (a curated
@@ -732,7 +732,7 @@ def _run_stamp(info, analyzer_dir, display_label) -> str:
     run_id = info.get("run_id")
     if not run_id:
         # A curated result names the RAW run it was built from. curated_from is
-        # that run's path; curated_from_run is the anchor DICT — never printable.
+        # that run's path; curated_from_run is the anchor DICT - never printable.
         src = Path(str(info.get("curated_from", "")))
         if src.parent.name == "runs":
             run_id = src.name
@@ -758,8 +758,8 @@ def _run_stamp(info, analyzer_dir, display_label) -> str:
 def _match_cell(match) -> str:
     """One manual-reference cell, or an honest gap.
 
-    The PRIMARY fact is recovery — how much of the human's unit this unit carries
-    ("carries 99% of ch9#2") — because that is what answers "did we find the
+    The PRIMARY fact is recovery - how much of the human's unit this unit carries
+    ("carries 99% of ch9#2") - because that is what answers "did we find the
     neuron the human found". Symmetric agreement cannot answer it here: our units
     fire far denser than the manual selection, so a unit holding 947 of a
     reference unit's 959 spikes scores ~0.13 and falls below SpikeInterface's
@@ -816,7 +816,7 @@ def _render_strong_units(rollup, stamp_html, matches_meta) -> str:
 
     The synthesis the workbench used to compute everywhere and conclude nowhere.
     Every verdict, phrase and ranking here comes from ``sort_summary.unit_rollup``
-    — this function only lays it out.
+    - this function only lays it out.
     """
     with_match = bool(rollup["has_matches"])
     headers = [("unit", False), ("contact", False), ("SNR", True), ("spikes", True),
@@ -829,10 +829,10 @@ def _render_strong_units(rollup, stamp_html, matches_meta) -> str:
     rule_note = (f'<p class="note"><strong>“Strong” means the quality rule passed '
                  f'on enough spikes to mean it:</strong> '
                  f'{html.escape(rollup["rule_text"])}. A rule of thumb for orientation, '
-                 'tunable through <code>quality_rule</code> in <code>.si_menu.json</code> — '
+                 'tunable through <code>quality_rule</code> in <code>.si_menu.json</code> - '
                  'never a certification that a unit is one neuron. A unit that satisfies '
                  f'every criterion on fewer than {sort_summary.ISOLATION_MIN_SPIKES} spikes '
-                 'still <em>passes</em> — it is counted in the pass-quality tile — but it is '
+                 'still <em>passes</em> - it is counted in the pass-quality tile - but it is '
                  'listed as passing <em>on thin evidence</em> rather than called strong: at '
                  'that count the ISI and amplitude criteria are counting almost nothing and '
                  'the isolation metrics cannot be computed at all. Isolation phrases come '
@@ -859,7 +859,7 @@ def _render_strong_units(rollup, stamp_html, matches_meta) -> str:
             f'<code>{html.escape(str(m.get("reference", "")))}</code> '
             f'({m.get("n_reference_units", 0)} sorted reference units, coincidence window '
             f'{m.get("delta_ms", 0):g} ms). <strong>“carries 99% of ch9#2” means this unit '
-            'holds 99% of that human-sorted unit\'s spikes</strong> — the direction that '
+            'holds 99% of that human-sorted unit\'s spikes</strong> - the direction that '
             'answers whether we found the neuron the human found. The grey sub-line gives '
             'the other direction, which is small whenever our unit fires far denser than '
             'the manual selection (it usually does). A reference, not ground truth.</p>')
@@ -887,8 +887,8 @@ def _render_strong_units(rollup, stamp_html, matches_meta) -> str:
                  + html.escape(rollup["rule_text"]) + '). The sort found '
                  f'{rollup["n_units"]} candidate'
                  f'{"" if rollup["n_units"] == 1 else "s"}; they are listed below. Next '
-                 'step: judge them by hand — <code>uv run python '
-                 'SpikeInterface_Menu.py</code>, then <code>u</code> for triage — or '
+                 'step: judge them by hand - <code>uv run python '
+                 'SpikeInterface_Menu.py</code>, then <code>u</code> for triage - or '
                  'loosen <code>quality_rule</code> in <code>.si_menu.json</code> if the '
                  'thresholds are wrong for this preparation.</div>')
         body += split_html
@@ -897,7 +897,7 @@ def _render_strong_units(rollup, stamp_html, matches_meta) -> str:
         unjudged = (f" ({n_un} of them could not be judged at all)" if n_un else "")
         body += _fold(
             f'{len(tail)} sub-threshold candidate{"" if len(tail) == 1 else "s"}'
-            f'{unjudged} — the same columns, same ranking',
+            f'{unjudged} - the same columns, same ranking',
             _table(headers, _unit_rows(tail, with_match)),
             open_when=not accepted)
     return f'<div class="takeaway">{body}{rule_note}</div>'
@@ -908,7 +908,7 @@ def _render_verdict(analyzer, analyzer_dir, info, sorter_label, status, data_dir
     """The answer first: four stat tiles (DESIGN_UX §4.1).
 
     When no raw data loaded at all (fresh clone / wrong folder) this is also the
-    one home for the getting-started guidance — the reader meets it before the
+    one home for the getting-started guidance - the reader meets it before the
     wall of FileNotFoundError reprs in the provenance table.
     """
     data_stages = [r for r in status if r["stage"] in ("LFP (.ns2)", "Broadband (.ns5)",
@@ -920,7 +920,7 @@ def _render_verdict(analyzer, analyzer_dir, info, sorter_label, status, data_dir
     lead += _curation_html(cur, sorter_label)
     if analyzer is None:
         return (lead + '<p class="skip">No saved sort for '
-                f'{html.escape(str(sorter_label))} — run one from the launcher '
+                f'{html.escape(str(sorter_label))} - run one from the launcher '
                 '(<code>uv run python SpikeInterface_Menu.py sort</code>), then rebuild '
                 'this report.</p>')
 
@@ -929,7 +929,7 @@ def _render_verdict(analyzer, analyzer_dir, info, sorter_label, status, data_dir
 
     # The takeaway leads (Ben, 2026-08-19: "at contact 5 we want to know how many
     # neurons we think we found"). It is built from what the sort saved, judged by
-    # the rule's one owner, and rendered above the stat tiles — a failure here
+    # the rule's one owner, and rendered above the stat tiles - a failure here
     # degrades to a note rather than taking the whole verdict section with it.
     try:
         rollup = sort_summary.unit_rollup(
@@ -948,18 +948,18 @@ def _render_verdict(analyzer, analyzer_dir, info, sorter_label, status, data_dir
 
     tiles = []
 
-    # 1 — units.
+    # 1 - units.
     tiles.append(_tile(
         "units", f"{n_units}",
-        note=("no units at this detect threshold — lower detect_threshold in Edit parameters "
+        note=("no units at this detect threshold - lower detect_threshold in Edit parameters "
               "and re-run" if n_units == 0 else ""),
         state="warn" if n_units == 0 else ""))
 
-    # 2 — pass-quality count (a rule of thumb, stated on the tile).
+    # 2 - pass-quality count (a rule of thumb, stated on the tile).
     n_pass, n_scored, n_unjudged = _pass_quality(analyzer)
     rule = (sort_summary.rule_text(
         sort_summary.load_quality_rule(bio.REPO_ROOT / ".si_menu.json"))
-        + " — a rule of thumb, not curation")
+        + " - a rule of thumb, not curation")
     if n_pass is None:
         tiles.append(_tile("pass quality", "–",
                            note="quality metrics absent or not evaluable for any unit"))
@@ -969,7 +969,7 @@ def _render_verdict(analyzer, analyzer_dir, info, sorter_label, status, data_dir
             rule += f" · {n_unjudged} not judgeable"
         tiles.append(_tile("pass quality", val, note=rule))
 
-    # 3 — noise floor: the number and its expected band, never a pass/fail claim.
+    # 3 - noise floor: the number and its expected band, never a pass/fail claim.
     in_uV = bool((summary or {}).get("units_in_uV", True))
     noise = ((summary or {}).get("noise_floor_uV") or {}).get("median")
     lo, hi = NOISE_BAND_UV
@@ -980,24 +980,24 @@ def _render_verdict(analyzer, analyzer_dir, info, sorter_label, status, data_dir
                                  else "no saved summary for this sort")))
     elif not in_uV:
         tiles.append(_tile("noise floor", f'{noise:.3g}<span class="u"> a.u.</span>',
-                           note="no µV gain on this recording — amplitudes are raw a.u."))
+                           note="no µV gain on this recording - amplitudes are raw a.u."))
     else:
         outside = not (lo <= float(noise) <= hi)
         band = f"expected ≈{lo:g}–{hi:g} µV for this rig, post-bandpass + CMR"
         tiles.append(_tile(
             "noise floor", f'{noise:.3g}<span class="u"> µV</span>',
-            note=(f"outside the {band} — a value near 1 µV means the µV gain was applied "
+            note=(f"outside the {band} - a value near 1 µV means the µV gain was applied "
                   "twice; check the sort's scaling before trusting any amplitude here"
                   if outside else band),
             state="warn" if outside else ""))
 
-    # 4 — window sorted, with the partial-sort caveat inline.
+    # 4 - window sorted, with the partial-sort caveat inline.
     eff, tot = info.get("effective_seconds"), info.get("total_seconds")
     if not isinstance(eff, (int, float)):
         eff = analyzer.get_total_duration()
     partial = isinstance(tot, (int, float)) and isinstance(eff, (int, float)) and eff < tot - 1.0
     if partial:
-        note = (f"of the {tot:.0f} s recording ({eff / tot * 100:.0f}%) — unit counts are not "
+        note = (f"of the {tot:.0f} s recording ({eff / tot * 100:.0f}%) - unit counts are not "
                 "comparable across windows; re-run without --duration for the full sort")
     elif isinstance(tot, (int, float)):
         note = f"the full {tot:.0f} s recording"
@@ -1031,19 +1031,19 @@ def _spike_figs(unit_ids, train_seconds, title_prefix, total_duration=None, colo
                                     name=f"unit {int(u)}"))
     raster.update_yaxes(tickvals=list(range(len(unit_ids))),
                         ticktext=[str(int(u)) for u in unit_ids], title="unit id")
-    _style(raster, title=f"{title_prefix} — spike raster ({len(unit_ids)} units · {duration:.0f} s)",
+    _style(raster, title=f"{title_prefix} - spike raster ({len(unit_ids)} units · {duration:.0f} s)",
            height=max(320, 22 * len(unit_ids) + 80), xaxis_title="time (s)", showlegend=False)
 
     rates = [trains[u].size / duration for u in unit_ids]
     rate = go.Figure(go.Bar(x=[str(int(u)) for u in unit_ids], y=rates, marker_color=pal))
-    _style(rate, title=f"{title_prefix} — mean firing rate ({len(unit_ids)} units)",
+    _style(rate, title=f"{title_prefix} - mean firing rate ({len(unit_ids)} units)",
            height=360, xaxis_title="unit id", yaxis_title="rate (Hz)")
     return raster, rate
 
 
 def _render_sorted(analyzer, sorter_label, info=None, probe=None) -> str:
     if analyzer is None:
-        return ('<p class="skip">No saved analyzer found — run a sort first: '
+        return ('<p class="skip">No saved analyzer found - run a sort first: '
                 '<code>uv run python scripts/run_sorting.py</code>.</p>')
     sorting = analyzer.sorting
     fs = analyzer.sampling_frequency
@@ -1061,7 +1061,7 @@ def _render_sorted(analyzer, sorter_label, info=None, probe=None) -> str:
     chan_ids = list(analyzer.channel_ids)
     n_samples = templates.shape[1]
     tms = (np.arange(n_samples) - nbefore) / fs * 1000.0
-    # The analyzer already returns µV when the recording carries gains — label it
+    # The analyzer already returns µV when the recording carries gains - label it
     # as such, never re-apply the gain (CLAUDE.md: the double-scaling trap).
     amp_unit = ("µV" if bool(getattr(analyzer, "return_in_uV",
                                      getattr(analyzer, "return_scaled", True))) else "a.u.")
@@ -1084,7 +1084,7 @@ def _render_sorted(analyzer, sorter_label, info=None, probe=None) -> str:
     partial_html = (
         f'<div class="caveat"><strong>Partial sort:</strong> only the first {eff:.0f}s of the '
         f'{tot:.0f}s recording were sorted (e.g. a quick <code>--duration</code> test). The '
-        f'recording-context section covers the full recording — unit counts are not comparable '
+        f'recording-context section covers the full recording - unit counts are not comparable '
         f'across different windows.</div>' if partial else "")
     probe_html = _probe_caveat(probe, info.get("n_dropped_analog") or 0,
                                info.get("bad_channels"))
@@ -1117,11 +1117,11 @@ _QC_COLS = {
 
 def _render_qc(analyzer) -> str:
     if analyzer is None:
-        return '<p class="skip">No saved analyzer — quality metrics unavailable.</p>'
+        return '<p class="skip">No saved analyzer - quality metrics unavailable.</p>'
     try:
         qm = analyzer.get_extension("quality_metrics").get_data()  # DataFrame, index = unit ids
     except Exception:  # noqa: BLE001 - metrics are non-fatal, so a sort can lack them
-        return ('<p class="skip">This sort has no saved quality metrics — they are computed '
+        return ('<p class="skip">This sort has no saved quality metrics - they are computed '
                 'after the units are saved, and are skipped when that step fails.</p>')
     # Render whatever the analyzer computed (old saved sorts carry fewer columns):
     # a preferred reading order first, then any remaining columns appended as-is.
@@ -1135,15 +1135,15 @@ def _render_qc(analyzer) -> str:
             for uid, r in qm.iterrows()]
     n_pass, _n, _u = _pass_quality(analyzer)
     pass_line = ("" if n_pass is None else
-                 f' — {n_pass} pass the quality rule (stated on the verdict tile)')
+                 f' - {n_pass} pass the quality rule (stated on the verdict tile)')
     # The report's FIRST sortable table, so this is where the sort affordance is
-    # stated — for the mouse and the keyboard both (SORT_HINT is the one wording).
-    fold_summary = (f'Per-unit quality metrics — {len(qm)} units × {len(cols)} metrics{pass_line}. '
+    # stated - for the mouse and the keyboard both (SORT_HINT is the one wording).
+    fold_summary = (f'Per-unit quality metrics - {len(qm)} units × {len(cols)} metrics{pass_line}. '
                     f'{SORT_HINT} "–" = not computable for that unit.')
     table = _fold(fold_summary, _table(headers, rows), open_when=len(qm) <= FOLD_ROWS)
     if "isolation_distance" in qm.columns:
         table += ('<p class="note">PCA isolation metrics are unreliable for units with '
-                  'very few spikes — an astronomically large isolation distance with a '
+                  'very few spikes - an astronomically large isolation distance with a '
                   'blank L-ratio means a degenerate fit, not superb isolation.</p>')
 
     scatter = ""
@@ -1180,9 +1180,9 @@ def _render_summary(analyzer, analyzer_dir) -> str:
         except Exception:  # noqa: BLE001 - degrade to a skip row rather than crash
             summary = None
     if summary is None:
-        return '<p class="skip">No saved analyzer — array/yield summary unavailable.</p>'
+        return '<p class="skip">No saved analyzer - array/yield summary unavailable.</p>'
     if summary.get("n_units", 0) == 0:
-        return '<p class="skip">No units in this sort — array/yield summary is empty.</p>'
+        return '<p class="skip">No units in this sort - array/yield summary is empty.</p>'
 
     amp = "µV" if summary.get("units_in_uV", True) else "a.u."
     row = sort_summary.headline_row(summary)
@@ -1195,9 +1195,9 @@ def _render_summary(analyzer, analyzer_dir) -> str:
     pu_rows = [[f"{p['unit']}", _num(p.get("v_pp_uV"), ".1f"), _num(p.get("snr"), ".2f"),
                 html.escape(str(p.get("best_channel", "")))] for p in per_unit]
     # No sort hint repeated here: SORT_HINT is stated once, at the report's first
-    # sortable table (§1.1 — one fact, one home).
+    # sortable table (§1.1 - one fact, one home).
     pu_table = _fold(
-        f"Per-unit amplitude &amp; SNR — {len(pu_rows)} units, peak-to-peak on the best channel.",
+        f"Per-unit amplitude &amp; SNR - {len(pu_rows)} units, peak-to-peak on the best channel.",
         _table([("unit", True), (f"V_pp ({amp})", True), ("SNR", True), ("best ch", False)], pu_rows),
         open_when=len(pu_rows) <= FOLD_ROWS)
 
@@ -1210,7 +1210,7 @@ def _render_summary(analyzer, analyzer_dir) -> str:
         colours = [ACCENT if c in active else DIM_MARK for c in chan_ids]
         fig = go.Figure(go.Bar(x=chan_ids, y=[0 if v is None else v for v in noise],
                                marker_color=colours))
-        _style(fig, title=(f"Noise floor per channel ({amp}) — "
+        _style(fig, title=(f"Noise floor per channel ({amp}) - "
                            f"{len(active)} of {len(chan_ids)} electrodes active (darker)"),
                height=360, xaxis_title="channel", yaxis_title=f"noise floor ({amp})")
         noise_html = _figure(fig, f"Bar chart of noise floor in {amp} for each of the {len(chan_ids)} "
@@ -1221,7 +1221,7 @@ def _render_summary(analyzer, analyzer_dir) -> str:
             'signal the sort uses (so it is a post-CMR figure, consistent with SNR). '
             '"Active electrode" = the peak channel of ≥1 sorted unit.</p>'
             if summary.get("units_in_uV", True) else
-            '<p class="note">No µV gain on this recording — amplitudes are raw a.u.</p>')
+            '<p class="note">No µV gain on this recording - amplitudes are raw a.u.</p>')
     # The yield denominator is the electrodes that were sorted; if any were excluded
     # as bad, say so here rather than let a smaller denominator flatter the number.
     excluded = [str(c) for c in (summary.get("excluded_channels") or [])]
@@ -1238,7 +1238,7 @@ def _render_probe(analyzer, analyzer_dir) -> str:
     position, labelled by channel, coloured by per-channel noise floor, with the
     sort's active electrodes ringed. Shows the geometry the sort actually used."""
     if analyzer is None:
-        return '<p class="skip">No saved analyzer — probe geometry unavailable.</p>'
+        return '<p class="skip">No saved analyzer - probe geometry unavailable.</p>'
     try:
         loc = np.asarray(analyzer.get_channel_locations())
     except Exception:  # noqa: BLE001 - no geometry attached
@@ -1268,7 +1268,7 @@ def _render_probe(analyzer, analyzer_dir) -> str:
         fig.add_trace(go.Scatter(x=ax, y=ay, mode="markers", name="active electrode",
                                  marker=dict(size=30, color="rgba(0,0,0,0)",
                                              line=dict(color=ACCENT, width=3))))
-    _style(fig, title=f"Collection sites — {len(chan_ids)} contacts, electrode geometry",
+    _style(fig, title=f"Collection sites - {len(chan_ids)} contacts, electrode geometry",
            height=560, xaxis_title="x (µm)", yaxis_title="depth y (µm)",
            yaxis=dict(autorange="reversed"),
            xaxis=dict(range=[x.min() - max((x.max() - x.min()) * 0.6, 60),
@@ -1287,7 +1287,7 @@ def _render_probe(analyzer, analyzer_dir) -> str:
 
 def _render_lfp(lfp) -> str:
     if lfp is None:
-        return '<p class="skip">LFP failed to load — see the provenance section.</p>'
+        return '<p class="skip">LFP failed to load - see the provenance section.</p>'
     from scipy.signal import welch
 
     fs = lfp.get_sampling_frequency()
@@ -1305,7 +1305,7 @@ def _render_lfp(lfp) -> str:
                                         name=str(ch), line=dict(width=0.8)))
     traces_fig.update_yaxes(tickvals=[i * spacing for i in range(len(chan_ids))],
                             ticktext=[str(c) for c in chan_ids], title="channel")
-    _style(traces_fig, title=f"LFP — first {LFP_WINDOW_S:g}s, {len(chan_ids)} channels @ {fs:g} Hz",
+    _style(traces_fig, title=f"LFP - first {LFP_WINDOW_S:g}s, {len(chan_ids)} channels @ {fs:g} Hz",
            height=460, xaxis_title="time (s)")
 
     # Power spectrum (Welch) over the same channels.
@@ -1325,7 +1325,7 @@ def _render_lfp(lfp) -> str:
 
 def _render_nev(nev) -> str:
     if nev is None:
-        return '<p class="skip">.nev units failed to load — see the provenance section.</p>'
+        return '<p class="skip">.nev units failed to load - see the provenance section.</p>'
     fs = nev.get_sampling_frequency()
     unit_ids = list(nev.get_unit_ids())
     try:
@@ -1335,10 +1335,10 @@ def _render_nev(nev) -> str:
     raster, rate = _spike_figs(unit_ids, lambda u: nev.get_unit_spike_train(u) / fs,
                                "Online (.nev)", total_duration=total)
     return ('<p class="note">Spike events the rig detected in real time (.nev). SpikeInterface '
-            'renumbers them positionally — the Blackrock class (sorted unit vs unsorted threshold '
+            'renumbers them positionally - the Blackrock class (sorted unit vs unsorted threshold '
             'crossing vs noise) lives in the channel labels; <code>compare.py --online</code> '
             'gives the honest accounting. In this recording all are unsorted threshold '
-            'crossings — the rig\'s own '
+            'crossings - the rig\'s own '
             'threshold crossings, not this sort. Blackrock convention: unit 0 = unsorted '
             'threshold crossings, 1..n = sorted, 255 = noise.</p>'
             + _figure(raster, f"Spike raster of the {len(unit_ids)} online .nev units, one row per unit.")
@@ -1347,7 +1347,7 @@ def _render_nev(nev) -> str:
 
 def _render_events(events) -> str:
     if events is None:
-        return '<p class="skip">Events could not be read (best-effort) — see the provenance section.</p>'
+        return '<p class="skip">Events could not be read (best-effort) - see the provenance section.</p>'
     nonempty = [e for e in events if len(e["times"])]
     empty_names = [e["name"] for e in events if not len(e["times"])]
     if not nonempty:
@@ -1372,10 +1372,10 @@ def _render_events(events) -> str:
 def _render_context(lfp, nev, events) -> str:
     """LFP + online .nev units + event markers: the recording as recorded.
 
-    Demoted below the sort (§4.3) — it is input context, not results. Each
+    Demoted below the sort (§4.3) - it is input context, not results. Each
     sub-block degrades to its own honest note, never a crashed section.
     """
-    out = ['<p class="note">The raw streams as recorded, covering the <em>full</em> recording — '
+    out = ['<p class="note">The raw streams as recorded, covering the <em>full</em> recording - '
            'input context for the sort above, not results of it.</p>']
     for sub_id, title, render, obj in (
             ("lfp", "LFP (.ns2 @ 1 kHz)", _render_lfp, lfp),
@@ -1396,10 +1396,10 @@ def _curation_provenance(cur) -> str:
             # Curated data with no record: say the decisions are unknown. Claiming
             # "nothing was curated" here would describe the raw sort, not this one.
             return ('<div class="caveat">This is a curated result, but its curation '
-                    'record is missing — nothing on disk says which merges, splits or '
+                    'record is missing - nothing on disk says which merges, splits or '
                     'labels produced these units, so they cannot be audited. Re-apply '
                     'from a record, or treat the raw sort as the result.</div>')
-        return ('<p class="note">No curation record for this sort — nothing has been '
+        return ('<p class="note">No curation record for this sort - nothing has been '
                 'merged, split or labelled; these are the sorter\'s own units.</p>')
     record = cur["record"]
     c = curation.counts(record)
@@ -1412,7 +1412,7 @@ def _curation_provenance(cur) -> str:
     table = _table([("when", False), ("decision", False), ("units", False),
                     ("method", False), ("parameters", False)], rows, sortable=False)
     tools = ", ".join(f"{k} {v}" for k, v in (record.get("tools") or {}).items())
-    return (f'<p class="note">Curation record: {c["total"]} decision(s) — '
+    return (f'<p class="note">Curation record: {c["total"]} decision(s) - '
             f'{c["splits"]} split(s), {c["merges"]} merge(s), {c["labels"]} label(s). '
             f'Written by {html.escape(tools)}. Applying it re-clusters nothing: a split '
             'is stored as an explicit spike-index partition, so the curated result is a '
@@ -1443,7 +1443,7 @@ def _render_provenance(status, probe=None, info=None, cur=None) -> str:
             prov.append(f'sorted {html.escape(sorted_at.replace("T", " "))}')
     if info.get("sorter"):
         prov.append(f'sorter {html.escape(str(info["sorter"]))}')
-    # W2: the run's identity and the environment that produced it — what makes
+    # W2: the run's identity and the environment that produced it - what makes
     # this report's numbers regenerable rather than merely plausible.
     if info.get("run_id"):
         prov.append(f'run {html.escape(str(info["run_id"]))}'
@@ -1460,7 +1460,7 @@ def _render_provenance(status, probe=None, info=None, cur=None) -> str:
         prov.append(f'seed {html.escape(str(seed.get("value")))}'
                     + ("" if seed.get("pinned") else " (not pinned)"))
     if det.get("class") == "measured-stochastic":
-        prov.append("this sorter is measured non-deterministic on this recording — "
+        prov.append("this sorter is measured non-deterministic on this recording - "
                     "unit counts and ids vary between identical runs")
     if isinstance(info.get("freq_min"), (int, float)) and isinstance(info.get("freq_max"), (int, float)):
         prov.append(f'bandpass {info["freq_min"]:g}–{info["freq_max"]:g} Hz, common median reference')
@@ -1478,7 +1478,7 @@ def _render_provenance(status, probe=None, info=None, cur=None) -> str:
         except Exception:  # noqa: BLE001
             versions.append(f"{mod} (not importable)")
 
-    return ('<p class="note">One row per pipeline stage — PASS means it loaded, '
+    return ('<p class="note">One row per pipeline stage - PASS means it loaded, '
             'SKIP means optional/absent, FAIL means broken.</p>'
             + table + prov_html
             + _curation_provenance(cur)
@@ -1499,10 +1499,10 @@ def build_report(data_dir=None, analyzer_dir=None, out_path=None, sorter_label=N
     event channel via ``main()``)."""
     _p = progress or (lambda title: None)
     analyzer_dir = Path(analyzer_dir) if analyzer_dir else _pick_default_analyzer()
-    # In the run store the analyzer's parent is a run id, not a sorter — ask the
+    # In the run store the analyzer's parent is a run id, not a sorter - ask the
     # store which sorter owns the directory rather than reading a path segment.
     sorter_label = sorter_label or runs.sorter_for_dir(analyzer_dir)
-    # A curated result supersedes the raw sort it came from — the report shows it
+    # A curated result supersedes the raw sort it came from - the report shows it
     # and says so (the label carries the fact into every section title).
     cur = _curation_facts(analyzer_dir)
     analyzer_dir = cur["dir"]
@@ -1563,7 +1563,7 @@ def build_report(data_dir=None, analyzer_dir=None, out_path=None, sorter_label=N
 
     # The TOC glyph must describe what actually RENDERED (D3 review #2/#3): a
     # section whose body opens with an honest skip is ○ absent, and one carrying
-    # an error box is ! needs-attention — never a ✓ over missing/broken content.
+    # an error box is ! needs-attention - never a ✓ over missing/broken content.
     for sec in sections:
         body = sec.get("html", "")
         if 'class="err"' in body:
@@ -1578,7 +1578,7 @@ def build_report(data_dir=None, analyzer_dir=None, out_path=None, sorter_label=N
     subtitle = " · ".join([html.escape(str(display_label))]
                           + ([f"{verb} {html.escape(stamp)}"] if stamp else []))
     out_path.write_text(
-        _html_document(f"{rec} — sort report", sections, heading=rec, subtitle=subtitle),
+        _html_document(f"{rec} - sort report", sections, heading=rec, subtitle=subtitle),
         encoding="utf-8")
     return out_path
 
@@ -1586,8 +1586,8 @@ def build_report(data_dir=None, analyzer_dir=None, out_path=None, sorter_label=N
 def main() -> int:
     """CLI for the launcher's report progress modal (D3b, DESIGN_UX §6).
 
-    ``--progress json`` speaks the sort_progress event protocol on stdout —
-    phase / phase_done / done / error, emitter-side elapsed — while every other
+    ``--progress json`` speaks the sort_progress event protocol on stdout -
+    phase / phase_done / done / error, emitter-side elapsed - while every other
     write is pushed to stderr, mirroring run_sorting's purity rule. Plain mode
     just builds and prints the path. This entry NEVER opens a browser; the
     caller decides (the menu reopens via the LAST RESULT path)."""
@@ -1609,9 +1609,9 @@ def main() -> int:
     args = ap.parse_args()
     analyzer_dir = analyzer_dir_for(args.sorter) if args.sorter else None
     # Explicit --sorter with nothing saved is a hard, honest error (the repo's
-    # explicit-fails-hard / default-falls-back-soft asymmetry) — never a ✓ over
+    # explicit-fails-hard / default-falls-back-soft asymmetry) - never a ✓ over
     # an empty report while a good sort sits unused (D3b review F2).
-    err = (f"no saved analyzer for --sorter {args.sorter} — run a sort first: "
+    err = (f"no saved analyzer for --sorter {args.sorter} - run a sort first: "
            f"uv run python scripts/run_sorting.py --sorter {args.sorter}"
            if args.sorter and not (analyzer_dir and analyzer_dir.is_dir()) else None)
     analyzer_dir = analyzer_dir or _pick_default_analyzer()   # resolved ONCE (F4)
@@ -1631,7 +1631,7 @@ def main() -> int:
 
     # fd-level purity (F6, run_sorting.py's proven trick): keep a private dup of
     # the real stdout as the event channel, then point fd 1 at stderr so ANY
-    # fd-1 writer — spawned SI workers included — can never corrupt the channel.
+    # fd-1 writer - spawned SI workers included - can never corrupt the channel.
     chan = os.fdopen(os.dup(1), "w", encoding="utf-8", newline="\n")
     os.dup2(2, 1)
     t0 = time.monotonic()
@@ -1661,7 +1661,7 @@ def main() -> int:
             i, t, started = state["open"]
             emit({"t": "phase_done", "i": i, "title": t,
                   "secs": round(time.monotonic() - started, 2)})
-        # The unit count of the result actually shown — curated when there is one,
+        # The unit count of the result actually shown - curated when there is one,
         # from the SAME dir we built (F4).
         n_units = _run_info(_curation_facts(analyzer_dir)["dir"]).get("n_units")
         emit({"t": "done", "ok": True, "units": n_units, "out": str(out), "note": None})

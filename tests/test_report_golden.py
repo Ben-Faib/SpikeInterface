@@ -1,7 +1,7 @@
 """Structural golden checks for the generated HTML report.
 
 Builds a FRESH report with today's ``report.py`` into a pytest tmp dir (never
-touching ``outputs/report.html``) and checks its structure — sections present
+touching ``outputs/report.html``) and checks its structure - sections present
 and in order, nav wired to every section, figures/tables non-empty where the
 saved data says they must be, no crashed sections, fully self-contained.
 Deliberately not pixel-perfect: the D-track redesign may restyle everything,
@@ -11,7 +11,7 @@ Skips cleanly when no saved sort exists (fresh clone / CI without data): the
 report's sorted-unit content comes only from a saved SortingAnalyzer.
 
 Re-baselining: if a redesign legitimately renames/reorders/adds sections,
-update ``REQUIRED_SECTION_ORDER`` (and only it) in the same commit — see
+update ``REQUIRED_SECTION_ORDER`` (and only it) in the same commit - see
 ``tests/README.md``.
 """
 from __future__ import annotations
@@ -57,7 +57,7 @@ def built_report(tmp_path_factory):
     # sort lands in outputs/<sorter>/runs/<run_id>/, so a literal glob would skip
     # this whole module on a machine that HAS saved sorts.
     if not runs.saved_sorters(outputs=OUTPUTS):
-        pytest.skip("no saved sort in outputs/ — run a sort first")
+        pytest.skip("no saved sort in outputs/ - run a sort first")
 
     try:
         bio.find_blackrock_base()
@@ -73,7 +73,7 @@ def built_report(tmp_path_factory):
 def _sections(html: str) -> dict[str, str]:
     """Ordered {section id: full section html}; asserts the parse found some."""
     secs = {m.group(1): m.group(0) for m in _SECTION_RE.finditer(html)}
-    assert secs, "no <section id=...> blocks parsed — markup shape changed?"
+    assert secs, "no <section id=...> blocks parsed - markup shape changed?"
     return secs
 
 
@@ -98,7 +98,7 @@ def test_nav_links_every_section(built_report):
 
 def test_no_section_crashed(built_report):
     # _safe_section turns a renderer exception into a visible red box instead
-    # of a crash — good for the reader, but any such box in a freshly built
+    # of a crash - good for the reader, but any such box in a freshly built
     # report is a regression the suite must surface.
     html, _, _ = built_report
     # Both the section-level and sub-block-level crash boxes are defects
@@ -131,7 +131,7 @@ def test_has_rendered_figures(built_report):
 
 def test_sorted_section_shows_units(built_report):
     # The analyzer exists (fixture guarantee), so the sorted section must show
-    # real unit content — an "unavailable" fallback here means the report
+    # real unit content - an "unavailable" fallback here means the report
     # could not load a sort that is actually on disk.
     html, _, _ = built_report
     sorted_html = _sections(html)["sorted"]

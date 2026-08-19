@@ -1,4 +1,4 @@
-"""Per-sort array / yield summary — the group-requested headline metrics.
+"""Per-sort array / yield summary - the group-requested headline metrics.
 
 Single source of truth for the six numbers the lab wants out of every sort:
 
@@ -16,11 +16,11 @@ it back, and ``load_quality_metrics`` reads the per-unit ``quality_metrics.csv``
 the sort wrote (NaN -> None, so a surface can render an honest "–"). Note the
 report reads these same metrics from the saved analyzer's own extension while
 the menu/triage read this CSV: the two agree only because the sort pipeline
-writes both in the same run — recompute metrics inside the analyzer (Qt GUI,
+writes both in the same run - recompute metrics inside the analyzer (Qt GUI,
 notebook) without re-exporting the CSV and the two surfaces will silently
 disagree. The compute
-side is SpikeInterface/NumPy-dependent and imported lazily, so the Textual menu —
-which must import **no** SpikeInterface — can still call the pure
+side is SpikeInterface/NumPy-dependent and imported lazily, so the Textual menu -
+which must import **no** SpikeInterface - can still call the pure
 ``load_summary`` / ``load_quality_metrics`` / ``format_card`` / ``headline_row``
 helpers to render a saved sort. This mirrors the lazy-import discipline in
 ``sorters.py``.
@@ -38,8 +38,8 @@ excluded ids to ``compute_summary(excluded_channels=...)`` and they are persiste
 as ``excluded_channels`` and stated in the yield cell that every surface renders.
 
 ``unit_rollup(summary, metrics, ...)`` is the module's other half: the **takeaway**
-— which units pass the quality rule, at which contact each one peaks, how separate
-it looks in plain words, and how many accepted units live on each contact — ranked
+- which units pass the quality rule, at which contact each one peaks, how separate
+it looks in plain words, and how many accepted units live on each contact - ranked
 strongest first. It is pure (no SpikeInterface, no NumPy) and it is the ONE home
 for that synthesis: the report's strong-units block, the dashboard's RESULTS line
 and the in-TUI triage order all read it rather than each deciding for itself which
@@ -50,8 +50,8 @@ satisfy every criterion on thirty spikes, where the ISI and amplitude criteria a
 counting almost nothing and the isolation metrics are already meaningless. The
 rule's verdict is left exactly as it is (``verdict``, and the pass count every
 surface shows), but the WORD is hedged below ``ISOLATION_MIN_SPIKES``: those units
-are ``thin``, and the headline says so — *"1 strong unit (ch 7) · 5 more pass the
-rule on thin evidence"* — rather than flattering thin evidence into a headline
+are ``thin``, and the headline says so - *"1 strong unit (ch 7) · 5 more pass the
+rule on thin evidence"* - rather than flattering thin evidence into a headline
 number.
 
 The rollup also answers **"do I need to split this unit?"** (``split_advice``, the
@@ -70,7 +70,7 @@ from pathlib import Path
 
 
 # --------------------------------------------------------------------------- #
-# The unit quality rule (W1 slice 1) — ONE owner for "n of m pass quality".
+# The unit quality rule (W1 slice 1) - ONE owner for "n of m pass quality".
 #
 # Grounded in common practice (SpikeInterface docs / Allen-style criteria), and
 # a rule of thumb for ORIENTATION, never a substitute for curation. Configurable:
@@ -95,7 +95,7 @@ _RULE_METRICS = {
     "amplitude_cutoff_max": ("amplitude_cutoff", "max"),
     "presence_ratio_min": ("presence_ratio", "min"),
 }
-# How each criterion is WORDED — one home, so the rule sentence on a tile and the
+# How each criterion is WORDED - one home, so the rule sentence on a tile and the
 # reason printed against a single unit are the same words.
 _RULE_LABELS = {
     "snr_min": "SNR ≥ {v:g}",
@@ -140,7 +140,7 @@ def load_quality_rule(config_path=None) -> dict:
 
 
 def rule_text(rule=None) -> str:
-    """The effective rule, human-readable — shown wherever the count is shown."""
+    """The effective rule, human-readable - shown wherever the count is shown."""
     rule = rule or DEFAULT_QUALITY_RULE
     parts = [_RULE_LABELS[k].format(v=rule[k]) for k in DEFAULT_QUALITY_RULE if k in rule]
     return " · ".join(parts) + " (NaN criteria skipped)"
@@ -149,7 +149,7 @@ def rule_text(rule=None) -> str:
 def rule_detail(row, rule=None) -> dict:
     """Judge ONE unit against the rule: ``{flag, n_evaluable, failed}``.
 
-    The single evaluator — ``quality_pass`` counts its flags and the rollup
+    The single evaluator - ``quality_pass`` counts its flags and the rollup
     below quotes its ``failed`` list, so a headline count and a per-unit reason
     can never disagree. ``failed`` is a list of ``(label, value, threshold)``
     already phrased the way ``rule_text`` phrases the rule, e.g.
@@ -166,7 +166,7 @@ def rule_detail(row, rule=None) -> dict:
         if col is None:
             continue
         v = _f(row.get(col))
-        if v is None:                      # absent or NaN — honestly not evaluable
+        if v is None:                      # absent or NaN - honestly not evaluable
             continue
         evaluable += 1
         if (direction == "min" and v < thr) or (direction == "max" and v > thr):
@@ -180,7 +180,7 @@ def quality_pass(rows, rule=None) -> "tuple[int, list]":
     (e.g. a quality-metrics DataFrame's ``to_dict("records")``).
 
     Flags are TRI-STATE: True = passed every evaluable criterion, False = failed
-    one, **None = no criterion was evaluable for that unit** — "we couldn't judge
+    one, **None = no criterion was evaluable for that unit** - "we couldn't judge
     it" must never masquerade as "it failed" (or as a fake 0-pass headline).
     """
     rule = rule or DEFAULT_QUALITY_RULE
@@ -189,20 +189,20 @@ def quality_pass(rows, rule=None) -> "tuple[int, list]":
 
 
 # --------------------------------------------------------------------------- #
-# The per-contact rollup — ONE owner for the synthesis "which units look real,
+# The per-contact rollup - ONE owner for the synthesis "which units look real,
 # at which contact". The report's strong-units block, the dashboard RESULTS line
 # and the in-TUI triage order all read ``unit_rollup``; none of them re-derives a
 # verdict, a ranking or a phrase of its own.
 #
 # "Strong" is nothing more than the quality rule above having passed, and the
 # rule is stated verbatim (``rule_text``) wherever the count is shown. A rule of
-# thumb for orientation — never a certification that a unit is one neuron.
+# thumb for orientation - never a certification that a unit is one neuron.
 #
 # The ISOLATION PHRASE is derived from the PCA-based metrics the sort saves and
 # from nothing else (amplitude and SNR are the quality rule's business):
 #
 #   nn_hit_rate         fraction of a spike's nearest neighbours in PC space that
-#                       belong to the same unit — 1.0 is a unit that never sits
+#                       belong to the same unit - 1.0 is a unit that never sits
 #                       inside another one.
 #   l_ratio             how much foreign mass leaks into the unit's cluster;
 #                       small is good (Schmitzer-Torbert et al. use ~0.05-0.1).
@@ -227,14 +227,14 @@ _ISOLATION_DIRECTION = {"nn_hit_rate": "min", "l_ratio": "max", "isolation_dista
 # THIN EVIDENCE (face1 review F2). A unit can pass every criterion on a handful of
 # spikes: the ISI and amplitude criteria are then counting almost nothing, and the
 # isolation metrics are already unusable below ISOLATION_MIN_SPIKES. Calling that
-# "strong" — beside a dense, well-matched unit that failed ISI by 0.1 — flatters
+# "strong" - beside a dense, well-matched unit that failed ISI by 0.1 - flatters
 # the thin one and buries the real one, which is exactly the flattery the surfaces
 # must not commit.
 #
 # So the rule's PASS is left alone (``verdict`` stays True, and the pass-quality
 # count every surface shows is unchanged) and the WORDING is hedged: a passing
 # unit is only called "strong" unhedged when its evidence could carry the claim.
-# The same floor does both jobs, because it is the same question — are there
+# The same floor does both jobs, because it is the same question - are there
 # enough spikes here to mean anything?
 #
 # A unit whose spike count is UNKNOWN (a caller with no Sorting open) is hedged
@@ -245,7 +245,7 @@ THIN_WORDS = {
     "few": "passes the rule · too few spikes to judge",
     "unknown": "passes the rule · spike count unknown",
 }
-UNKNOWN_SPIKES_PHRASE = "spike count unknown — isolation not judged"
+UNKNOWN_SPIKES_PHRASE = "spike count unknown - isolation not judged"
 
 
 def thin_reason(verdict, n_spikes) -> str:
@@ -267,7 +267,7 @@ def isolation_phrase(metrics, *, n_spikes=None, shares_contact_with=0,
 
     ``metrics`` is one unit's row of quality metrics. ``n_spikes`` is its spike
     count when known (None = unknown, and then the too-few-spikes gate simply
-    cannot fire — it is never guessed). ``shares_contact_with`` is how many OTHER
+    cannot fire - it is never guessed). ``shares_contact_with`` is how many OTHER
     units peak on the same contact, which is the only thing that lets a poor
     score name a concrete neighbour instead of gesturing at the array.
     """
@@ -283,13 +283,13 @@ def isolation_phrase(metrics, *, n_spikes=None, shares_contact_with=0,
     # An UNCOUNTED unit is not a well-isolated one. Without the count the too-few
     # gate cannot fire, so scoring the metrics anyway would let the same unit read
     # "clean" on a surface that skipped the counts and "too few spikes to judge"
-    # on one that did them — the one-home promise broken by omission (review F4).
+    # on one that did them - the one-home promise broken by omission (review F4).
     if n_spikes is None:
         return UNKNOWN_SPIKES_PHRASE
     if n_spikes < ISOLATION_MIN_SPIKES:
         return "too few spikes to judge"
     if not usable:
-        return "no isolation metrics — cannot judge"
+        return "no isolation metrics - cannot judge"
     poor = clean = 0
     for key, v in usable.items():
         hi_is_good = _ISOLATION_DIRECTION[key] == "min"
@@ -473,7 +473,7 @@ def contact_line(contacts, *, max_named=8) -> str:
                     else "no accepted unit")
         tail = (f"{n_c} further contact{'' if n_c == 1 else 's'} hold "
                 + " and ".join(held))
-        line = f"{line} — {tail}" if line else tail[0].upper() + tail[1:]
+        line = f"{line} - {tail}" if line else tail[0].upper() + tail[1:]
     return line or "no units on any contact"
 
 
@@ -481,7 +481,7 @@ def unit_rollup(summary, metrics=None, *, rule=None, spike_counts=None,
                 matches=None, bimodality=None) -> dict:
     """The takeaway for one sort: which units look real, and at which contact.
 
-    Pure — json/csv-level inputs, no SpikeInterface, no NumPy — so the menu's
+    Pure - json/csv-level inputs, no SpikeInterface, no NumPy - so the menu's
     view process reads the same synthesis the report renders.
 
         summary        the sort's ``summary.json`` dict (``load_summary``); its
@@ -494,7 +494,7 @@ def unit_rollup(summary, metrics=None, *, rule=None, spike_counts=None,
                        is then honestly "not judged".
         rule           ``load_quality_rule`` output; defaults to DEFAULT_QUALITY_RULE.
         spike_counts   {unit: n spikes}, when the caller has the Sorting. Absent
-                       leaves ``n_spikes`` None on every unit — an honest gap,
+                       leaves ``n_spikes`` None on every unit - an honest gap,
                        never an estimate.
         matches        {unit: {"unit", "containment", ...}} from
                        ``compare.match_manual``. None = no manual reference was
@@ -506,7 +506,7 @@ def unit_rollup(summary, metrics=None, *, rule=None, spike_counts=None,
                        corroborating clause; it never changes who is advised.
 
     Units are RANKED: accepted (the rule passed) first by SNR descending, then
-    everything else by SNR descending — a unit with no SNR ranks last inside its
+    everything else by SNR descending - a unit with no SNR ranks last inside its
     group rather than being dropped.
     """
     rule = rule or DEFAULT_QUALITY_RULE
@@ -516,7 +516,7 @@ def unit_rollup(summary, metrics=None, *, rule=None, spike_counts=None,
     match_by = {str(k): v for k, v in (matches or {}).items()}
     bimodal_by = {str(k): v for k, v in (bimodality or {}).items()}
 
-    # How many units peak on each contact — what lets a poor isolation score name
+    # How many units peak on each contact - what lets a poor isolation score name
     # the neighbour it is overlapping.
     on_contact: dict = {}
     for row in per_unit:
@@ -550,7 +550,7 @@ def unit_rollup(summary, metrics=None, *, rule=None, spike_counts=None,
             "why": ("" if detail["flag"] else
                     ("no criterion could be evaluated for this unit"
                      if detail["flag"] is None else
-                     " · ".join(f"{lbl} — is {v:.3g}" for lbl, v, _thr in detail["failed"]))),
+                     " · ".join(f"{lbl} - is {v:.3g}" for lbl, v, _thr in detail["failed"]))),
             "isolation": isolation_phrase(
                 qm, n_spikes=n_spikes, contact=contact,
                 shares_contact_with=on_contact.get(contact, 1) - 1),
@@ -563,7 +563,7 @@ def unit_rollup(summary, metrics=None, *, rule=None, spike_counts=None,
             "match": match_by.get(key),
         })
 
-    # Strong first, then the passes-on-thin-evidence, then the tail — each by SNR
+    # Strong first, then the passes-on-thin-evidence, then the tail - each by SNR
     # descending; a missing SNR sinks inside its group. A thin pass must not
     # outrank a unit whose evidence could actually carry the claim (review F2).
     units.sort(key=lambda u: (0 if u["strong"] else 1 if u["verdict"] else 2,
@@ -596,7 +596,7 @@ def unit_rollup(summary, metrics=None, *, rule=None, spike_counts=None,
         "units": units,
         "contacts": contacts,
         "n_units": len(units),
-        # n_accepted is every unit the RULE passed — the pass-quality count every
+        # n_accepted is every unit the RULE passed - the pass-quality count every
         # surface already shows. n_strong is the subset whose evidence carries it.
         "n_accepted": len(accepted),
         "n_strong": len(strong),
@@ -622,7 +622,7 @@ def takeaway_lines(n_strong, strong_contacts, n_thin, thin_contacts,
                    n_unjudged: int = 0, n_units: int = 0) -> dict:
     """The takeaway in words: ``{"headline", "site_line"}``.
 
-    Both come from the SAME split — strong vs passes-the-rule-on-thin-evidence —
+    Both come from the SAME split - strong vs passes-the-rule-on-thin-evidence -
     so the report's block and the dashboard's site line can never tell different
     stories about the same sort. ``headline`` leads the report block; ``site_line``
     is the dashboard's one line under the name.
@@ -648,7 +648,7 @@ def takeaway_lines(n_strong, strong_contacts, n_thin, thin_contacts,
             "site_line": f"strong at ch {_chans(strong_contacts)}{thin_clause}",
         }
     if n_thin:
-        # Nothing passed on evidence that could carry it. That is the headline —
+        # Nothing passed on evidence that could carry it. That is the headline -
         # not a count of zero with the thin passes quietly filed underneath.
         verb = "passes" if n_thin == 1 else "pass"
         where = f" (ch {_chans(thin_contacts)})"
@@ -661,7 +661,7 @@ def takeaway_lines(n_strong, strong_contacts, n_thin, thin_contacts,
     if n_unjudged and n_unjudged == n_units:
         # Nothing was evaluable anywhere. "No unit passes" would claim the rule
         # judged and rejected them; it never got to judge at all.
-        line = (f"{n_units} unit{'' if n_units == 1 else 's'} not judged — "
+        line = (f"{n_units} unit{'' if n_units == 1 else 's'} not judged - "
                 "no evaluable quality metrics")
         return {"headline": line, "site_line": line}
     fail_line = ("no unit passes " + rule_sentence.split(" (NaN")[0]
@@ -697,14 +697,14 @@ CSV_COLUMNS = [
 
 
 # --------------------------------------------------------------------------- #
-# Compute (SpikeInterface + NumPy — imported lazily inside the function)
+# Compute (SpikeInterface + NumPy - imported lazily inside the function)
 # --------------------------------------------------------------------------- #
 def _ensure(analyzer, ext: str) -> bool:
     """Best-effort: make sure ``ext`` is available on ``analyzer``. Returns presence.
 
     Used when summarising a saved analyzer that might predate one of the
     extensions we need. ``run_sorting`` always pre-computes them, so this is a
-    no-op there. Never raises — a compute failure just leaves the extension absent
+    no-op there. Never raises - a compute failure just leaves the extension absent
     and the caller degrades (e.g. SNR omitted).
     """
     if analyzer.get_extension(ext) is not None:
@@ -754,7 +754,7 @@ def compute_summary(analyzer, *, sorter: "str | None" = None,
     returned dict is JSON-serialisable and is the schema persisted to summary.json.
 
     ``excluded_channels`` are the ids the pipeline dropped as bad *before* the
-    analyzer existed — the analyzer cannot know about them, and every count here
+    analyzer existed - the analyzer cannot know about them, and every count here
     (``n_channels``, the yield denominator) is over the channels that survived. They
     are recorded so the surfaces can say so rather than change meaning silently.
     """
@@ -771,7 +771,7 @@ def compute_summary(analyzer, *, sorter: "str | None" = None,
         duration_s = None
 
     # Are the analyzer's trace-derived extensions (templates, noise_levels) ALREADY in
-    # µV? create_sorting_analyzer(return_in_uV=True) — the SI default — scales them when
+    # µV? create_sorting_analyzer(return_in_uV=True) - the SI default - scales them when
     # the recording carries gains, so multiplying by the gain again here would
     # double-apply it (V_pp/noise would come out ~gain× too small). SI 0.104 exposes
     # the flag as analyzer.return_in_uV (older: return_scaled). Derive a per-channel
@@ -808,7 +808,7 @@ def compute_summary(analyzer, *, sorter: "str | None" = None,
     have_templates = _ensure(analyzer, "templates")
     have_noise = _ensure(analyzer, "noise_levels")
     if not have_templates:
-        raise RuntimeError("templates extension unavailable — cannot compute V_pp / yield")
+        raise RuntimeError("templates extension unavailable - cannot compute V_pp / yield")
 
     templates = analyzer.get_extension("templates").get_data()  # (units, samples, ch)
 
@@ -992,14 +992,14 @@ def load_summary(out_dir) -> "dict | None":
 def load_quality_metrics(out_dir) -> dict:
     """Read outputs/<sorter>/quality_metrics.csv as ``{unit id (str): {column: value}}``.
 
-    Pure — csv + pathlib, no SpikeInterface — so the menu's view process can show
+    Pure - csv + pathlib, no SpikeInterface - so the menu's view process can show
     per-unit evidence without paying for SI, and the numbers shown are the ones
     the sort actually wrote (nothing is recomputed here).
 
-    A blank or NaN cell becomes ``None`` — "we could not judge this unit on this
+    A blank or NaN cell becomes ``None`` - "we could not judge this unit on this
     metric" (amplitude_cutoff is honestly NaN below 500 spikes) must never render
     as 0. Column order is the file's; the unnamed index column is the unit id.
-    ``{}`` when the file is absent — a non-fatal metrics failure deletes it.
+    ``{}`` when the file is absent - a non-fatal metrics failure deletes it.
     """
     path = Path(out_dir) / "quality_metrics.csv"
     try:
@@ -1029,7 +1029,7 @@ def _med(summary: dict, key: str):
 
 def _fmt(value, unit: str = "") -> str:
     if value is None:
-        return "—"
+        return "-"
     suffix = f" {unit}" if unit else ""
     return f"{value:g}{suffix}"
 
@@ -1040,7 +1040,7 @@ def headline_row(summary: dict) -> dict:
     n_active = summary.get("n_active_channels", 0)
     n_ch = summary.get("n_channels", 0)
     # The denominator is the electrodes that were SORTED. When bad channels were
-    # excluded that is fewer than the array has, so the cell says so — a shrinking
+    # excluded that is fewer than the array has, so the cell says so - a shrinking
     # denominator must never quietly inflate the percentage.
     n_excluded = len(summary.get("excluded_channels") or [])
     denom = f"{n_active}/{n_ch} sorted; {n_excluded} excluded as bad" if n_excluded \

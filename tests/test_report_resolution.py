@@ -1,4 +1,4 @@
-"""B1 regression — a bare ``report`` (no --sorter) must resolve a sorter and
+"""B1 regression - a bare ``report`` (no --sorter) must resolve a sorter and
 never crash joining a None into the analyzer path.
 
 Unit tests pin the resolution precedence (explicit > persisted-with-saved-sort >
@@ -86,7 +86,7 @@ def test_falls_to_the_only_saved_sort(universe):
 
 def test_the_pick_names_the_sorter_not_the_run_id(universe, tmp_path):
     # Every other test here saves the pre-store layout, where the analyzer's
-    # parent IS the sorter — so reading that path segment passed them all while
+    # parent IS the sorter - so reading that path segment passed them all while
     # being wrong under the run store, which puts a RUN ID there. A bare report
     # on a store-only tree then built for a "sorter" named 20260819-... and every
     # section degraded to "No saved analyzer".
@@ -137,7 +137,7 @@ def test_bare_make_report_invocation():
     import runs   # the store knows where a sort lives; a raw glob no longer does
 
     if not runs.saved_sorters(outputs=ROOT / "outputs"):
-        pytest.skip("no saved sort — the bare invocation would honestly error")
+        pytest.skip("no saved sort - the bare invocation would honestly error")
     out = ROOT / "outputs" / "report.html"
     before = out.stat().st_mtime if out.exists() else 0.0
     res = subprocess.run(
