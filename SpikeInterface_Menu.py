@@ -50,7 +50,7 @@ import ui  # noqa: E402  (rich styling shared-look with run_sorting.py)
 import probes  # noqa: E402  (probe-geometry registry: profiles/features/build/fit)
 
 QUICK_SECONDS = 30
-ACTIONS = ["explore", "sort", "report", "gui", "traces", "compare", "verify"]
+ACTIONS = ["explore", "sort", "report", "gui", "traces", "compare", "verify", "phy"]
 # Actions that open a blocking Qt window: the menu launches them in a fresh
 # child process so the menu survives and Qt gets a clean process each time.
 QT_ACTIONS = {"gui", "traces"}
@@ -308,8 +308,18 @@ def _last_message(action: str, sorter: str, ok: bool) -> str:
             "sort": f"Sorted {sorter}", "report": f"Built report ({sorter})",
             "gui": "Opened the GUI inspector", "traces": "Opened the trace viewer",
             "compare": "Built sorter comparison", "verify": "Ran the install check",
+            "phy": f"Exported {sorter} for Phy",
         }.get(action, action)
         return f"✗ {verb}"
+    if action == "phy":
+        # Name WHICH sort went out, from the one rule that decides it (the same
+        # curated-supersedes-raw call the export itself makes).
+        _dir, curated = curation.preferred_analyzer(sorter)
+        paths = curation.sort_paths(sorter)
+        folder = paths["curated_phy"] if curated else paths["phy"]
+        which = "curated" if curated else "raw"
+        rel = folder.relative_to(bio.REPO_ROOT).as_posix()
+        return f"✓ Exported the {which} {sorter} sort for Phy → {rel}"
     if action == "sort":
         info = _read_run_info(sorter)
         n, hq = info.get("n_units"), info.get("n_high_quality")
@@ -397,6 +407,18 @@ def action_sort(args) -> bool:
 def action_verify(args) -> bool:
     flags = ["--data-dir", args.data_dir] if args.data_dir else []
     return _shell("verify_install.py", *flags)
+
+
+def action_phy(args) -> bool:
+    """Export the active sorter's saved sort to a Phy folder for manual curation.
+
+    curation.py owns which sort goes out (the curated result when one exists) and
+    prints the folder + the re-import command; this only names the sorter.
+    """
+    if not args.sorter:
+        args.sorter = (_load_config().get("active_sorter")
+                       or sorter_registry.default_sorter())
+    return _shell("curation.py", "export-phy", "--sorter", args.sorter)
 
 
 def _open_in_browser(uri: str) -> None:
@@ -706,7 +728,7 @@ def action_compare(args) -> bool:
 DISPATCH = {
     "explore": action_explore, "sort": action_sort, "report": action_report,
     "gui": action_gui, "traces": action_traces, "compare": action_compare,
-    "verify": action_verify,
+    "verify": action_verify, "phy": action_phy,
 }
 
 # (key, action, title, hint)
@@ -741,6 +763,7 @@ _ACTIONS = [
     ("traces",  "Traces",           "scroll raw signal (desktop window)",      True,  "workflow"),
     ("params",  "Edit parameters",  "tune the active sorter (saved)",          False, "manage"),
     ("manage",  "Manage sorters",   "download images · delete · clear sorts",  False, "manage"),
+    ("phy",     "Export to Phy",    "saved sort → a Phy folder to curate",     True,  "manage"),
     ("probe",   "Probe geometry",   "pick / edit the electrode geometry",      False, "manage"),
     ("verify",  "Verify install",   "environment smoke test",                  False, "manage"),
     ("theme",   "Colour theme",     "pick an accent colour (saved)",           False, "manage"),
@@ -783,6 +806,11 @@ _ACTION_DETAIL = {
                 "needs": ["broadband"], "output": "a desktop window"},
     "compare": {"what": "Build an agreement matrix between two saved sorts.",
                 "needs": ["two_sorts"], "output": "outputs/comparison.html"},
+    "phy":     {"what": "Export the saved sort to a Phy folder so the hard cases "
+                        "can be curated by hand elsewhere — the curated result "
+                        "when one exists, else the raw sort. Verdicts come back "
+                        "with 'curation.py import-phy'.",
+                "needs": ["saved_sort"], "output": "outputs/<sorter>/phy/"},
     "params":  {"what": "Tune the active sorter's parameters (saved per sorter)."},
     "manage":  {"what": "Download Docker sorter images, delete downloaded images, "
                         "and clear saved sort outputs — all in one place."},

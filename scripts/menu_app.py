@@ -2496,6 +2496,7 @@ class SpikeMenuApp(App):
         Binding("m", "run_key('manage')", "Manage sorters", show=False),
         Binding("c", "run_key('theme')", "Colour theme", show=False),
         Binding("v", "run_key('verify')", "Verify install", show=False),
+        Binding("y", "run_key('phy')", "Export to Phy", show=False),
         Binding("r", "reopen_last", "Reopen last result", show=False),
         Binding("d", "data_help", "Data files", show=False),
         Binding("f", "choose_folder", "Data folder", show=False),
@@ -2877,7 +2878,7 @@ class SpikeMenuApp(App):
     # MANAGE rows run by letter (DESIGN_UX §2); this map is the row-prefix AND the
     # binding contract (`?`/`q` are app-level keys shown for completeness).
     _MANAGE_KEYS = {"params": "e", "manage": "m", "probe": "p", "verify": "v",
-                    "theme": "c", "help": "?", "quit": "q"}
+                    "phy": "y", "theme": "c", "help": "?", "quit": "q"}
 
     def _workflow_actions(self) -> list[dict]:
         return [a for a in self.c.actions if a.get("section", "workflow") == "workflow"]
@@ -2956,9 +2957,9 @@ class SpikeMenuApp(App):
     def _footer_hint(self, width: int, focus: str | None = None) -> str:
         """Width-adaptive key line — D6 merges the MANAGE keys and help into this
         ONE bottom line (the old separate managebar row became air)."""
-        if width >= 110:
+        if width >= 118:
             return ("↑/↓ ↵ · 1-6 run · t sorter · e params · m sorters · p probe · "
-                    "v verify · r reopen · d data · ? help · q quit")
+                    "v verify · y phy · r reopen · d data · ? help · q quit")
         if width >= 100:
             return ("↑/↓ ↵ · 1-6 run · t sorter · e params · m sorters · p probe · "
                     "r reopen · ? help · q quit")

@@ -28,6 +28,7 @@ ACTIONS = [
     ("traces", "Traces", "scroll raw signal", True, "workflow"),
     ("params", "Edit parameters", "tune the active sorter", False, "manage"),
     ("manage", "Manage sorters", "download · delete", False, "manage"),
+    ("phy", "Export to Phy", "saved sort → a Phy folder", True, "manage"),
     ("probe", "Probe geometry", "pick / edit geometry", False, "manage"),
     ("verify", "Verify install", "smoke test", False, "manage"),
     ("theme", "Colour theme", "accent", False, "manage"),

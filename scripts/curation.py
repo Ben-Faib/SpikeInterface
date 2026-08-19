@@ -5,6 +5,8 @@
     uv run python scripts/curation.py merge --sorter tridesclous2 --units 15,16
     uv run python scripts/curation.py split --sorter tridesclous2 --unit 4 --unit 8
     uv run python scripts/curation.py apply --sorter tridesclous2
+    uv run python scripts/curation.py export-phy --sorter tridesclous2
+    uv run python scripts/curation.py import-phy --sorter tridesclous2
 
 Single source of truth for **what was decided about a sort and what that
 produced**. A sort finds candidate units; the decisions a human (or a scripted
@@ -14,8 +16,10 @@ the sort, and are replayed deterministically to build the curated output.
     outputs/<sorter>/                     the RAW sort (never mutated — the audit trail)
         sorting/ analyzer/ run_info.json summary.json quality_metrics.csv
         curation.json                     THE RECORD (this module owns it)
+        phy/                              the raw sort exported for Phy
         curated/                          the applied result, a first-class output
             sorting/ analyzer/ run_info.json summary.json quality_metrics.csv
+            phy/                          the curated result exported for Phy
 
 ``sort_paths()`` is the ONE place any of those paths is resolved — W2's versioned
 run store re-plumbs that function and nothing else.
@@ -80,7 +84,54 @@ Everything above the ``propose_splits`` / ``apply_record`` line imports **no
 SpikeInterface** — ``load_record``, ``counts``, ``provenance_line``, ``state``
 and ``sort_paths`` are json + pathlib only, so the menu's view process (and the
 coming TUI triage slice) can read curation state without paying for SI.
-``propose_splits`` and ``apply_record`` import SI inside the function.
+``import_phy_labels`` is pure too — bringing verdicts back is json + csv.
+``propose_splits``, ``apply_record`` and ``export_phy`` import SI inside the
+function.
+
+The Phy round trip
+------------------
+The sorter merges what a human splits, and on this recording two of the three
+merged pairs provably do not separate in the feature space the scripted split
+sees. Phy is the path for those: the export goes out, a human decides, the
+verdicts come back into this record.
+
+    1. uv run python scripts/curation.py export-phy --sorter tridesclous2
+       Writes ``outputs/<sorter>/phy/`` (or ``curated/phy/`` — the CURATED result
+       is exported when one exists, mirroring the report's rule; ``--raw`` forces
+       the raw sort). Labels already in the record are seeded into the export, so
+       Phy opens showing what was decided rather than a blank slate.
+    2. Copy that folder to a machine with Phy and open it:
+       ``phy template-gui params.py``. Mark clusters good / mua / noise (and
+       ``:quality unsure`` for the workbench's fourth verdict). Save.
+    3. Copy the folder back and:
+       uv run python scripts/curation.py import-phy --sorter tridesclous2
+       Each verdict becomes a labelled decision in the record with
+       ``method: "phy"``. Then ``apply`` as usual.
+
+Phy's ``cluster_id`` is a 0-based INDEX, not a unit id — SI's exporter writes the
+mapping to ``cluster_si_unit_ids.tsv`` and the import reads verdicts back through
+it. The export drops ``workbench_phy.json`` beside it carrying the run-identity
+anchor, so an import onto a re-sorted ``outputs/<sorter>/`` is refused (unit ids
+are not stable across re-sorts) rather than labelling the wrong units.
+
+**Which file is the verdict:** ``cluster_group.tsv`` — the column Phy's own UI
+edits — and ``cluster_quality.tsv`` fills in ONLY where group is ``unsorted``.
+That ordering is deliberate: quality is a column *we* exported, so letting it win
+would let a stale exported value override the curator's group edit.
+``unsorted`` means "no verdict", never a decision.
+
+**Collision rule — newest wins, loudly.** A Phy verdict that disagrees with a
+label already in the record replaces it, and the decision entry keeps what it
+replaced (``detail: {"replaced": "good", "replaced_method": "manual"}``) so the
+audit trail still shows the hand-written verdict. The import prints every
+override. A verdict identical to the recorded one writes nothing at all, so
+re-importing the same folder is a no-op.
+
+**Labels only.** Merges and splits performed *inside* Phy are not imported —
+they create cluster ids this sort never had. Those clusters are skipped and
+named in the import's report, never silently dropped. A curated export cannot be
+imported at all: its unit ids are the curated ones, and the record is keyed to
+the raw sort's.
 
 API
 ---
@@ -98,9 +149,12 @@ Paths and state (pure):
     stale_reason(curated_run, record, raw_run) -> str   why a curated result no
                                                longer describes what is on disk
     structural_errors(record) -> list[str]     schema check without SI
+    import_phy_labels(sorter, folder=..., root=..., dry_run=False) -> dict
+                                               Phy's verdicts -> labelled decisions
 
 Decisions (pure record mutation; each appends to ``decisions``):
-    add_label(record, unit_id, label, note="", source="manual")
+    add_label(record, unit_id, label, note="", source="manual", params=None,
+              detail=None)
                                                source = where the decision came
                                                from ("manual", "phy", "tui", a
                                                rule name); it lands in the
@@ -118,6 +172,7 @@ SpikeInterface-backed:
     validate(record)                           SI's validate_curation_dict
     propose_splits(analyzer, unit_ids, ...)    -> {unit_id: (indices, params, detail)}
     apply_record(record, root=None, ...)       -> {"out", "n_units", ...}
+    export_phy(sorter, root=None, raw=False, ...)  -> {"out", "curated", ...}
 
 ``propose_splits`` partitions a unit's spikes by k-means on per-spike features —
 spike amplitude and/or the top principal components on the unit's peak channel,
@@ -147,6 +202,7 @@ metrics failure deletes the half-built ``analyzer/``, ``quality_metrics.csv`` an
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import sys
 from datetime import datetime
@@ -160,6 +216,7 @@ SCHEMA_VERSION = "1"
 KIND = "spikeinterface-workbench-curation"
 RECORD_NAME = "curation.json"
 CURATED_DIRNAME = "curated"
+PHY_DIRNAME = "phy"
 # SpikeInterface's curation-format version this module writes (0.104 accepts 1|2).
 CURATION_FORMAT_VERSION = "2"
 
@@ -169,6 +226,19 @@ QUALITY_KEY = "quality"
 QUALITY_OPTIONS = ("good", "MUA", "noise", "unsure")
 LABEL_DEFINITIONS = {QUALITY_KEY: {"label_options": list(QUALITY_OPTIONS),
                                    "exclusive": True}}
+
+# The Phy boundary. Phy's cluster_group vocabulary is good/mua/noise/unsorted;
+# "unsure" has no Phy group, so it exports as "unsorted" (no verdict) and makes
+# the round trip through cluster_quality.tsv instead. "unsorted" coming back is
+# the absence of a verdict, never a decision.
+PHY_MANIFEST_NAME = "workbench_phy.json"
+PHY_MANIFEST_KIND = "spikeinterface-workbench-phy-export"
+PHY_GROUP_FILE = "cluster_group.tsv"
+PHY_QUALITY_FILE = f"cluster_{QUALITY_KEY}.tsv"
+PHY_UNIT_ID_FILE = "cluster_si_unit_ids.tsv"      # SI's cluster_id -> unit id map
+PHY_GROUP_FOR_LABEL = {"good": "good", "MUA": "mua", "noise": "noise",
+                       "unsure": "unsorted"}
+LABEL_FOR_PHY_GROUP = {"good": "good", "mua": "MUA", "noise": "noise"}
 
 # Defaults for the scripted split. Chosen once and applied to every unit — a
 # per-unit tuning would make the record a story about the answer, not a method.
@@ -200,11 +270,13 @@ def sort_paths(sorter: str, root=None) -> dict:
         "run_info": out / "run_info.json",
         "summary": out / "summary.json",
         "record": out / RECORD_NAME,
+        "phy": out / PHY_DIRNAME,
         "curated": curated,
         "curated_sorting": curated / "sorting",
         "curated_analyzer": curated / "analyzer",
         "curated_run_info": curated / "run_info.json",
         "curated_metrics": curated / "quality_metrics.csv",
+        "curated_phy": curated / PHY_DIRNAME,
     }
 
 
@@ -254,6 +326,23 @@ def _run_identity(run_info: dict) -> dict:
     keys = ("created", "sorter", "n_units", "si_version", "probe",
             "effective_seconds", "total_seconds")
     return {k: run_info.get(k) for k in keys}
+
+
+def _identity_mismatch(want: dict, have: dict, want_label: str = "record") -> list:
+    """Human-readable differences between two run identities ([] when they agree).
+
+    Only the fields that actually pin a sort are compared, and a field missing on
+    either side is not a mismatch — an older run_info without it must not read as
+    a different sort. ``want_label`` names what is being compared against disk
+    (the curation record, or a Phy export's manifest).
+    """
+    out = []
+    for key, label in (("sorter", "sorter"), ("created", "sorted at"),
+                       ("n_units", "units"), ("effective_seconds", "window (s)")):
+        a, b = (want or {}).get(key), (have or {}).get(key)
+        if a is not None and b is not None and a != b:
+            out.append(f"{label}: {want_label} {a!r}, on disk {b!r}")
+    return out
 
 
 def read_run_info(sorter: str, root=None) -> dict:
@@ -327,14 +416,16 @@ def _decide(record: dict, kind: str, units, method: str, params: dict,
 
 
 def add_label(record: dict, unit_id, label: str, note: str = "",
-              source: str = "manual") -> dict:
+              source: str = "manual", params=None, detail=None) -> dict:
     """Label one unit good/MUA/noise/unsure (replaces that unit's previous label).
 
     ``source`` is where the decision came from and lands in the decision's
     ``method``: "manual" for a person here, "phy" for a label round-tripped back
     from a Phy export, "tui" for the in-menu triage, a rule name for an
     automatic pass. A label's origin decides how much it is worth, so it is
-    recorded rather than assumed.
+    recorded rather than assumed. ``params``/``detail`` ride into the decision
+    entry for sources that carry extra provenance (the Phy import records the
+    cluster id and folder it read the verdict from).
     """
     if label not in QUALITY_OPTIONS:
         raise ValueError(f"unknown label {label!r} — one of {list(QUALITY_OPTIONS)}")
@@ -343,8 +434,33 @@ def add_label(record: dict, unit_id, label: str, note: str = "",
     labels = [m for m in record["curation"]["manual_labels"] if m["unit_id"] != uid]
     labels.append({"unit_id": uid, "labels": {QUALITY_KEY: [label]}})
     record["curation"]["manual_labels"] = labels
-    _decide(record, "label", [uid], source, {"label": label}, note=note)
+    p = {"label": label}
+    p.update(params or {})
+    _decide(record, "label", [uid], source, p, detail=detail, note=note)
     return record
+
+
+def label_of(record: "dict | None", unit_id) -> "str | None":
+    """The unit's current quality label in the record (None when unlabelled)."""
+    uid = _plain(unit_id)
+    for m in (record or {}).get("curation", {}).get("manual_labels") or []:
+        if m.get("unit_id") == uid:
+            got = (m.get("labels") or {}).get(QUALITY_KEY) or []
+            return got[0] if got else None
+    return None
+
+
+def label_method_of(record: "dict | None", unit_id) -> "str | None":
+    """How the unit's current label was decided ("manual", "phy", …), or None.
+
+    The last label decision for that unit wins — decisions are append-only, and
+    ``add_label`` replaces the unit's entry in ``manual_labels`` each time.
+    """
+    uid = _plain(unit_id)
+    for d in reversed((record or {}).get("decisions") or []):
+        if d.get("type") == "label" and d.get("units") == [uid]:
+            return d.get("method")
+    return None
 
 
 def add_merge(record: dict, unit_ids, note: str = "") -> dict:
@@ -386,6 +502,22 @@ def _require_unit(record: dict, unit_id) -> None:
     if unit_id not in record["curation"]["unit_ids"]:
         raise ValueError(f"unit {unit_id!r} is not in this sort "
                          f"({record['curation']['unit_ids']})")
+
+
+def _match_unit(unit_ids, text):
+    """The id in ``unit_ids`` that ``text`` names, or None.
+
+    SpikeInterface unit ids are ints here but may be strings in another sort, and
+    a "4" arriving from a CLI flag or a Phy TSV must mean the same unit either
+    way — so resolve against the ids the sort actually has, never by guessing.
+    """
+    if text in unit_ids:
+        return text
+    try:
+        number = int(text)
+    except (TypeError, ValueError):
+        return None
+    return number if number in unit_ids else None
 
 
 # --------------------------------------------------------------------------- #
@@ -586,6 +718,192 @@ def open_record(sorter: str, root=None) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# The Phy round trip, half 2: verdicts back into the record (pure — csv + json)
+# --------------------------------------------------------------------------- #
+def _read_tsv(path) -> list:
+    """[(first column, second column), …] from a Phy TSV; [] when it isn't there.
+
+    Phy's TSVs are tab-separated with a one-line header. ``newline=""`` is the
+    csv module's contract and is what keeps the reader honest about the CRLF a
+    Windows-side Phy writes.
+    """
+    rows = []
+    try:
+        with open(path, newline="", encoding="utf-8") as fh:
+            reader = csv.reader(fh, delimiter="\t")
+            if next(reader, None) is None:
+                return []
+            for row in reader:
+                if len(row) >= 2 and row[0].strip():
+                    rows.append((row[0].strip(), row[1].strip()))
+    except OSError:
+        return []
+    return rows
+
+
+def _write_tsv(path, header, rows) -> None:
+    with open(path, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh, delimiter="\t")
+        writer.writerow(header)
+        writer.writerows(rows)
+
+
+def phy_verdicts(folder) -> tuple:
+    """``({cluster_id: (label, file)}, [rejected values])`` for a Phy folder.
+
+    ``cluster_group.tsv`` is the verdict — it is the column Phy's own UI edits.
+    ``cluster_quality.tsv`` (the workbench's exported column, which a curator can
+    set in Phy with ``:quality unsure``) fills in ONLY where group says
+    ``unsorted``: quality is a column *we* wrote, so letting it win would let a
+    stale exported value override the curator's group edit.
+
+    ``unsorted`` (and an empty quality cell) means "no verdict" and is not a
+    decision. Anything else outside the two vocabularies is REJECTED and named in
+    the second return value — a curator's typo is not a thing to drop quietly.
+    """
+    found, rejected = {}, []
+    for cid, value in _read_tsv(Path(folder) / PHY_GROUP_FILE):
+        label = LABEL_FOR_PHY_GROUP.get(value.lower())
+        if label is not None:
+            found[cid] = (label, PHY_GROUP_FILE)
+        elif value.lower() != "unsorted":
+            rejected.append(f"cluster {cid}: {PHY_GROUP_FILE} says {value!r}, which "
+                            f"is not one of {sorted(LABEL_FOR_PHY_GROUP)} or 'unsorted'")
+    for cid, value in _read_tsv(Path(folder) / PHY_QUALITY_FILE):
+        if cid in found or not value:
+            continue                      # group already carries a verdict / no verdict
+        match = next((o for o in QUALITY_OPTIONS if o.lower() == value.lower()), None)
+        if match is not None:
+            found[cid] = (match, PHY_QUALITY_FILE)
+        else:
+            rejected.append(f"cluster {cid}: {PHY_QUALITY_FILE} says {value!r}, which "
+                            f"is not one of {list(QUALITY_OPTIONS)}")
+    return found, rejected
+
+
+def _cluster_order(cid: str):
+    """Sort key for Phy cluster ids: numeric where they are numbers ("10" after
+    "2"), lexical otherwise — decisions land in the record in cluster order."""
+    try:
+        return (0, int(cid), "")
+    except (TypeError, ValueError):
+        return (1, 0, str(cid))
+
+
+def phy_manifest(folder) -> "dict | None":
+    """The ``workbench_phy.json`` an export drops beside the Phy files, or None."""
+    try:
+        data = json.loads((Path(folder) / PHY_MANIFEST_NAME).read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 - absent / malformed -> caller degrades
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def import_phy_labels(sorter: str, folder=None, root=None, *,
+                      dry_run: bool = False) -> dict:
+    """Bring a curator's Phy verdicts back in as labelled decisions in the record.
+
+    ``folder`` defaults to ``outputs/<sorter>/phy``. The export's manifest is the
+    contract: it names the sort the folder came from, and this refuses to write
+    when that no longer matches the sort on disk (unit ids are not stable across
+    re-sorts) or when the folder is a CURATED export (its ids are the curated
+    ones; the record is keyed to the raw sort's).
+
+    Every verdict is written through ``add_label`` with ``method="phy"``. A
+    verdict that disagrees with a label already in the record replaces it and
+    keeps what it replaced in the decision entry; an identical one writes
+    nothing. Merges and splits made inside Phy are not imported — the cluster ids
+    they create are reported as skipped, never silently dropped.
+
+    Returns ``{"folder", "record_path", "imported", "unchanged", "overridden",
+    "skipped", "saved"}``; ``imported`` and ``overridden`` are lists of dicts.
+    """
+    paths = sort_paths(sorter, root)
+    folder = Path(folder) if folder is not None else paths["phy"]
+    if not folder.is_dir():
+        raise RuntimeError(
+            f"no Phy folder at {folder} — export one first: "
+            f"python scripts/curation.py export-phy --sorter {sorter}")
+
+    manifest = phy_manifest(folder)
+    if manifest is None or manifest.get("kind") != PHY_MANIFEST_KIND:
+        raise RuntimeError(
+            f"{folder} carries no {PHY_MANIFEST_NAME}, so there is no way to tell "
+            "which sort its cluster ids belong to. Next step: re-export with "
+            f"python scripts/curation.py export-phy --sorter {sorter}, curate that "
+            "folder in Phy, and import it.")
+    if manifest.get("curated"):
+        raise RuntimeError(
+            f"{folder} is an export of the CURATED result — its cluster ids are the "
+            "curated units', and the curation record is keyed to the raw sort's, so "
+            "these verdicts cannot be attached to it. Next step: export the raw sort "
+            f"(python scripts/curation.py export-phy --sorter {sorter} --raw), curate "
+            "that in Phy, import it, then apply.")
+    if manifest.get("sorter") != sorter:
+        raise RuntimeError(
+            f"{folder} was exported from the {manifest.get('sorter')!r} sort, not "
+            f"{sorter!r}. Next step: import it against that sorter, or re-export.")
+
+    mismatch = _identity_mismatch(manifest.get("run") or {},
+                                  _run_identity(read_run_info(sorter, root)),
+                                  want_label="export")
+    if mismatch:
+        raise RuntimeError(
+            f"{folder} was exported from a different {sorter} sort — "
+            + "; ".join(mismatch)
+            + ". Unit ids are not stable across re-sorts, so these verdicts would "
+              "land on the wrong units. Next step: re-export the sort now in "
+              f"outputs/{sorter}/ (python scripts/curation.py export-phy --sorter "
+              f"{sorter}), curate that folder in Phy, and import it.")
+
+    record = open_record(sorter, root)
+    _check_run_identity(record, sorter, root)
+    unit_ids = record["curation"]["unit_ids"]
+    cluster_to_unit = dict(_read_tsv(folder / PHY_UNIT_ID_FILE))
+    if not cluster_to_unit:
+        raise RuntimeError(
+            f"{folder / PHY_UNIT_ID_FILE} is missing or empty, so Phy's cluster ids "
+            "cannot be mapped back to unit ids. Next step: re-export with "
+            f"python scripts/curation.py export-phy --sorter {sorter}.")
+
+    verdicts, rejected = phy_verdicts(folder)
+    imported, overridden, unchanged, skipped = [], [], [], []
+    for cid, (label, source_file) in sorted(verdicts.items(),
+                                            key=lambda kv: _cluster_order(kv[0])):
+        named = cluster_to_unit.get(cid)
+        uid = _match_unit(unit_ids, named) if named is not None else None
+        if uid is None:
+            # A cluster Phy created (a merge or split done in its UI) — this
+            # imports labels only, and silence here would look like agreement.
+            skipped.append(f"cluster {cid} ({label}) is not a unit of this sort")
+            continue
+        previous = label_of(record, uid)
+        if previous == label:
+            unchanged.append({"unit": uid, "label": label})
+            continue
+        entry = {"unit": uid, "label": label, "cluster": cid, "from": source_file,
+                 "previous": previous,
+                 "previous_method": label_method_of(record, uid) if previous else None}
+        detail = None
+        if previous is not None:
+            detail = {"replaced": previous,
+                      "replaced_method": entry["previous_method"]}
+            overridden.append(entry)
+        add_label(record, uid, label, source="phy",
+                  params={"cluster_id": cid, "source_file": source_file},
+                  detail=detail)
+        imported.append(entry)
+
+    saved = False
+    if imported and not dry_run:
+        save_record(record, paths["record"])
+        saved = True
+    return {"folder": folder, "record_path": paths["record"], "imported": imported,
+            "unchanged": unchanged, "overridden": overridden, "skipped": skipped,
+            "rejected": rejected, "saved": saved}
+
+
+# --------------------------------------------------------------------------- #
 # SpikeInterface-backed: validation, the scripted split, apply
 # --------------------------------------------------------------------------- #
 def validate(record: dict) -> None:
@@ -760,12 +1078,7 @@ def _check_run_identity(record: dict, sorter: str, root=None) -> None:
             "most likely written while run_info.json was missing. Next step: write a "
             f"fresh record against the sort now in outputs/{sorter}/ — the old record "
             "stays as the audit trail of what was decided.")
-    mismatch = []
-    for key, label in (("sorter", "sorter"), ("created", "sorted at"),
-                       ("n_units", "units"), ("effective_seconds", "window (s)")):
-        a, b = want.get(key), have.get(key)
-        if a is not None and b is not None and a != b:
-            mismatch.append(f"{label}: record {a!r}, on disk {b!r}")
+    mismatch = _identity_mismatch(want, have)
     if not mismatch:
         return
     raise RuntimeError(
@@ -990,6 +1303,116 @@ def apply_record(record: dict, root=None, *, out_dir=None, verbose: bool = True,
 
 
 # --------------------------------------------------------------------------- #
+# The Phy round trip, half 1: the export (SpikeInterface-backed)
+# --------------------------------------------------------------------------- #
+def _seed_phy_labels(folder: Path, labels: dict) -> int:
+    """Put the labels already decided into the exported folder. Returns how many.
+
+    SI's exporter writes every cluster ``unsorted``; a curator opening this in Phy
+    should see the verdicts that already exist, not a blank slate. Both files are
+    written keyed by Phy's ``cluster_id`` (a 0-based index), mapped through the
+    exporter's own ``cluster_si_unit_ids.tsv``.
+    """
+    pairs = _read_tsv(folder / PHY_UNIT_ID_FILE)
+    known = list(labels)
+    groups, qualities, n = [], [], 0
+    for cid, unit in pairs:
+        uid = _match_unit(known, unit)
+        label = labels.get(uid) if uid is not None else None
+        groups.append((cid, PHY_GROUP_FOR_LABEL.get(label, "unsorted")))
+        qualities.append((cid, label or ""))
+        n += label is not None
+    _write_tsv(folder / PHY_GROUP_FILE, ("cluster_id", "group"), groups)
+    _write_tsv(folder / PHY_QUALITY_FILE, ("cluster_id", QUALITY_KEY), qualities)
+    return n
+
+
+def export_phy(sorter: str, root=None, *, raw: bool = False, out_dir=None,
+               verbose: bool = True, n_jobs: int = 1) -> dict:
+    """Export the sort a curator should open in Phy → a Phy folder.
+
+    Which sort: the CURATED result when one has been built, else the raw sort —
+    the same curated-supersedes-raw rule the report follows (``preferred_analyzer``).
+    ``raw=True`` forces the raw sort even when a curated result exists. The
+    returned dict says which was exported; so does ``workbench_phy.json`` in the
+    folder, alongside the run-identity anchor that lets an import refuse a folder
+    exported from a sort that has since been re-run.
+    """
+    import spikeinterface.full as si
+    from spikeinterface.exporters import export_to_phy
+
+    import run_sorting as _sort  # the sort pipeline's Windows-safe rmtree
+
+    paths = sort_paths(sorter, root)
+    analyzer_dir, curated = preferred_analyzer(sorter, root)
+    if raw:
+        analyzer_dir, curated = paths["analyzer"], False
+    if not analyzer_dir.is_dir():
+        raise RuntimeError(
+            f"no saved {sorter} analyzer at {analyzer_dir} — run a sort first: "
+            f"uv run python scripts/run_sorting.py --sorter {sorter}")
+
+    out = Path(out_dir) if out_dir else (paths["curated_phy"] if curated
+                                         else paths["phy"])
+    analyzer = si.load_sorting_analyzer(analyzer_dir)
+    if verbose:
+        which = "curated result" if curated else "raw sort"
+        print(f"exporting the {which} ({len(analyzer.unit_ids)} units, "
+              f"{analyzer_dir}) for Phy → {out}")
+    _sort._robust_rmtree(out)
+    # use_relative_path: params.py then points at "recording.dat" beside it rather
+    # than at this machine's absolute path — the export is meant to be COPIED to a
+    # machine that has Phy, and an absolute dat_path would not survive the trip
+    # (least of all across macOS -> Windows).
+    export_to_phy(analyzer, out, verbose=verbose, use_relative_path=True,
+                  n_jobs=n_jobs, progress_bar=verbose)
+
+    record = load_record(sorter, root)
+    if curated:
+        # The curated sorting carries the labels apply_curation replayed onto it;
+        # the record's labels name RAW units, which these ids are not.
+        prop = analyzer.sorting.get_property(QUALITY_KEY)
+        labels = {} if prop is None else {
+            _plain(u): str(v) for u, v in zip(analyzer.unit_ids, prop)
+            if str(v) in QUALITY_OPTIONS}
+    else:
+        labels = {m["unit_id"]: (m.get("labels") or {}).get(QUALITY_KEY, [None])[0]
+                  for m in (record or {}).get("curation", {}).get("manual_labels") or []}
+        labels = {u: v for u, v in labels.items() if v in QUALITY_OPTIONS}
+    n_seeded = _seed_phy_labels(out, labels)
+
+    manifest = {
+        "kind": PHY_MANIFEST_KIND,
+        "schema_version": SCHEMA_VERSION,
+        "exported": _now(),
+        "sorter": sorter,
+        "curated": curated,
+        "analyzer": str(analyzer_dir),
+        "n_units": len(analyzer.unit_ids),
+        "labels_seeded": n_seeded,
+        # The anchor: which raw sort these cluster ids belong to. An import
+        # against a re-sorted outputs/<sorter>/ is refused on this.
+        "run": _run_identity(read_run_info(sorter, root)),
+        "record_updated": (record or {}).get("updated"),
+        "tools": _tool_versions(),
+    }
+    (out / PHY_MANIFEST_NAME).write_text(json.dumps(manifest, indent=2),
+                                         encoding="utf-8")
+    if verbose:
+        print(f"{n_seeded} of {len(analyzer.unit_ids)} clusters carry a label "
+              "already decided")
+        print(f"open it with: phy template-gui {out / 'params.py'}")
+        if curated:
+            print("this is the CURATED result — its verdicts cannot be imported "
+                  "back into the record (export --raw for a round trip)")
+        else:
+            print(f"bring verdicts back with: python scripts/curation.py "
+                  f"import-phy --sorter {sorter}")
+    return {"out": out, "curated": curated, "n_units": len(analyzer.unit_ids),
+            "analyzer": analyzer_dir, "labels_seeded": n_seeded}
+
+
+# --------------------------------------------------------------------------- #
 # CLI
 # --------------------------------------------------------------------------- #
 def _show(sorter: str, root=None) -> int:
@@ -1029,6 +1452,37 @@ def _show(sorter: str, root=None) -> int:
     return 0
 
 
+def _report_import(result: dict, sorter: str, dry_run: bool = False) -> int:
+    """Print what an import did (or would do). Overrides are named, never implied."""
+    n = len(result["imported"])
+    verb = "would import" if dry_run else "imported"
+    print(f"{verb} {_plural(n, 'label')} from {result['folder']}")
+    for e in result["imported"]:
+        was = (f"  (was {e['previous']}, {e['previous_method']})"
+               if e["previous"] else "")
+        print(f"  unit {e['unit']}: {e['label']}   "
+              f"[phy cluster {e['cluster']}, {e['from']}]{was}")
+    if result["overridden"]:
+        print(f"! {_plural(len(result['overridden']), 'label')} already in the record "
+              "changed — the replaced value is kept in the decision log")
+    if result["unchanged"]:
+        print(f"  {_plural(len(result['unchanged']), 'unit')} already carried the "
+              "same verdict — nothing written for them")
+    for s in result["skipped"]:
+        print(f"  skipped: {s}")
+    if result["skipped"]:
+        print("  (this imports labels only — merges/splits made in Phy are not "
+              "brought back)")
+    for s in result["rejected"]:
+        print(f"! not a verdict this workbench understands — {s}")
+    if result["saved"]:
+        print(result["record_path"])
+        print(f"next step: python scripts/curation.py apply --sorter {sorter}")
+    elif n and dry_run:
+        print("--dry-run: the record was not written")
+    return 0
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__.splitlines()[0],
@@ -1065,6 +1519,19 @@ def main(argv=None) -> int:
     p_apply.add_argument("--out", default=None, help="write the curated result here "
                          "instead of outputs/<sorter>/curated/")
     p_apply.add_argument("--n-jobs", type=int, default=1)
+    p_export = _common(sub.add_parser(
+        "export-phy", help="export the sort for Phy (the curated result when one exists)"))
+    p_export.add_argument("--raw", action="store_true",
+                          help="export the raw sort even when a curated result exists")
+    p_export.add_argument("--out", default=None,
+                          help="write the Phy folder here instead of outputs/<sorter>/phy/")
+    p_export.add_argument("--n-jobs", type=int, default=1)
+    p_import = _common(sub.add_parser(
+        "import-phy", help="import Phy's edited labels back into the record"))
+    p_import.add_argument("--from", dest="folder", default=None,
+                          help="the Phy folder to read (default: outputs/<sorter>/phy/)")
+    p_import.add_argument("--dry-run", action="store_true",
+                          help="report what would change without writing the record")
     args = ap.parse_args(argv)
 
     root = args.root
@@ -1095,6 +1562,25 @@ def main(argv=None) -> int:
             return 1
         print(result["out"])
         return 0
+
+    if args.cmd == "export-phy":
+        try:
+            result = export_phy(args.sorter, root, raw=args.raw, out_dir=args.out,
+                                n_jobs=args.n_jobs)
+        except Exception as e:  # noqa: BLE001 - one honest line, not a traceback
+            print(f"export-phy failed: {e}", file=sys.stderr)
+            return 1
+        print(result["out"])
+        return 0
+
+    if args.cmd == "import-phy":
+        try:
+            result = import_phy_labels(args.sorter, folder=args.folder, root=root,
+                                       dry_run=args.dry_run)
+        except Exception as e:  # noqa: BLE001 - one honest line, not a traceback
+            print(f"import-phy failed: {e}", file=sys.stderr)
+            return 1
+        return _report_import(result, args.sorter, dry_run=args.dry_run)
 
     record = open_record(args.sorter, root)
     try:
@@ -1132,22 +1618,12 @@ def main(argv=None) -> int:
 
 
 def _resolve_unit(record: dict, text: str):
-    """Match a --unit argument to a real unit id of this sort.
-
-    SpikeInterface unit ids are ints here but may be strings in another sort, and
-    "4" must mean the same unit either way — so resolve against the record rather
-    than guessing a type.
-    """
+    """Match a --unit argument to a real unit id of this sort."""
     ids = record["curation"]["unit_ids"]
-    if text in ids:
-        return text
-    try:
-        number = int(text)
-    except (TypeError, ValueError):
-        number = None
-    if number is not None and number in ids:
-        return number
-    raise ValueError(f"unit {text!r} is not in this sort ({ids})")
+    uid = _match_unit(ids, text)
+    if uid is None:
+        raise ValueError(f"unit {text!r} is not in this sort ({ids})")
+    return uid
 
 
 if __name__ == "__main__":
