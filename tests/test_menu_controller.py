@@ -711,3 +711,39 @@ def test_actions_bin_into_the_three_workflow_stages():
     # Every hotkey is unique - two rows claiming one key is a lie on one of them.
     hotkeys = [hk for _k, _t, _h, _n, _s, hk in M._ACTIONS]
     assert len(hotkeys) == len(set(hotkeys))
+
+
+def test_dashboard_rollup_fires_the_advisory_from_the_summary_file_alone(monkeypatch, tmp_path):
+    """Review F1: the dashboard refresh reads only summary.json + the metrics
+    csv (no SpikeInterface, no Sorting), so the advisory must fire from the
+    spike counts the summary recorded at sort time - and the recorded
+    bimodality picks the same clause the report shows."""
+    import sort_summary as ss
+
+    c, paths = _triage_controller(monkeypatch, tmp_path)
+    summ = json.loads(paths["out"].joinpath("summary.json").read_text())
+    for row in summ["per_unit"]:
+        row["n_spikes"] = 5000
+    summ["per_unit"][2]["amplitude_bimodality"] = 0.9
+    paths["out"].joinpath("summary.json").write_text(json.dumps(summ))
+    paths["out"].joinpath("quality_metrics.csv").write_text(
+        ",firing_rate,snr,isi_violations_ratio\n"
+        "0,0.2045,5.0409,0.0\n1,0.4772,5.2151,0.0\n2,19.79,4.5170,1.3\n")
+
+    rollup = M._rollup_for(paths["out"])          # the dashboard's exact call
+    assert rollup["n_split_candidates"] == 1
+    assert rollup["split_chip"] == ss.split_chip(1)
+    by = {u["unit"]: u for u in rollup["units"]}
+    assert by[2]["split_advice"] == ss.SPLIT_PHRASE_BIMODAL
+    assert by[0]["split_advice"] == "" and by[1]["split_advice"] == ""
+    # The recorded counts also un-hedge the rule's passes: with evidence on
+    # file the passing units are STRONG, not "spike count unknown".
+    assert by[0]["strong"] is True and by[0]["n_spikes"] == 5000
+    # An old summary (no n_spikes keys) stays honestly silent and hedged.
+    for row in summ["per_unit"]:
+        del row["n_spikes"]
+    summ["per_unit"][2].pop("amplitude_bimodality", None)
+    paths["out"].joinpath("summary.json").write_text(json.dumps(summ))
+    old = M._rollup_for(paths["out"])
+    assert old["n_split_candidates"] == 0 and old["split_chip"] == ""
+    assert all(u["n_spikes"] is None for u in old["units"])

@@ -408,6 +408,21 @@ def _chan_list(contacts, max_contacts: int = 8) -> str:
     return "·".join(shown) + ("…" if len(contacts) > max_contacts else "")
 
 
+def split_chip(n_split) -> str:
+    """The advisory at dashboard size, or "" when nothing fires.
+
+    One home for the words, as ``split_line`` is for the report's sentence: the
+    dashboard renders this verbatim (prefixing its own key chip) rather than
+    deciding its own phrasing (review F2).
+    """
+    n_split = int(n_split)
+    if not n_split:
+        return ""
+    if n_split == 1:
+        return "1 unit may be 2 cells · export to Phy to split"
+    return f"{n_split} units may be 2 cells each · export to Phy to split"
+
+
 def split_line(n_split, split_contacts, max_contacts: int = 8) -> str:
     """The advisory in one line, or "" when nothing fires.
 
@@ -529,7 +544,12 @@ def unit_rollup(summary, metrics=None, *, rule=None, spike_counts=None,
         qm = metrics.get(key) or metrics.get(uid) or {}
         detail = rule_detail(qm, rule)
         contact = _contact_of(row)
+        # A caller with the Sorting open wins; otherwise the count the summary
+        # file recorded at sort time. Old summaries lack the key and stay an
+        # honest None (hedged verdicts, silent advisory), never an estimate.
         n_spikes = counts.get(key)
+        if n_spikes is None:
+            n_spikes = row.get("n_spikes")
         thin = thin_reason(detail["flag"], n_spikes)
         snr = _f(row.get("snr"))
         if snr is None:
@@ -558,8 +578,14 @@ def unit_rollup(summary, metrics=None, *, rule=None, spike_counts=None,
             # this fires on has already failed the rule's ISI criterion (the
             # threshold is a multiple of it), so it explains a sub-threshold
             # verdict rather than contradicting a pass.
-            "split_advice": split_advice(qm, n_spikes=n_spikes, snr=snr, rule=rule,
-                                         bimodality=bimodal_by.get(key)),
+            "split_advice": split_advice(
+                qm, n_spikes=n_spikes, snr=snr, rule=rule,
+                # The live analyzer's score wins; else the one the summary file
+                # recorded at sort time - so triage and the dashboard read the
+                # same clause the report shows.
+                bimodality=(bimodal_by.get(key)
+                            if key in bimodal_by
+                            else row.get("amplitude_bimodality"))),
             "match": match_by.get(key),
         })
 
@@ -609,6 +635,7 @@ def unit_rollup(summary, metrics=None, *, rule=None, spike_counts=None,
         "n_split_candidates": len(splits),
         "split_contacts": [u["contact"] for u in splits],
         "split_line": split_line(len(splits), [u["contact"] for u in splits]),
+        "split_chip": split_chip(len(splits)),
         "split_rule_text": split_rule_text(rule),
         "contact_line": contact_line(contacts),
         "headline": lines["headline"],
@@ -832,6 +859,18 @@ def compute_summary(analyzer, *, sorter: "str | None" = None,
                 except Exception:  # noqa: BLE001 - missing/NaN -> omit
                     pass
 
+    # Spike counts and amplitude bimodality ride the summary file so SI-free
+    # readers (the dashboard refresh) can run the SAME rollup - merge advisory
+    # included - from the file alone. Without the recorded count the advisory's
+    # evidence floor made the dashboard row unreachable (review F1); old
+    # summaries that lack these keys degrade to honest silence, never a guess.
+    try:
+        spike_counts = {u: int(analyzer.sorting.get_unit_spike_train(u).size)
+                        for u in unit_ids}
+    except Exception:  # noqa: BLE001 - a sorting-less analyzer: honest None
+        spike_counts = {}
+    bimodality = amplitude_bimodality(analyzer)
+
     per_unit = []
     active_idx: set = set()
     for i, u in enumerate(unit_ids):
@@ -839,11 +878,14 @@ def compute_summary(analyzer, *, sorter: "str | None" = None,
         best = int(np.argmax(ptp))                    # "best channel" = max peak-to-peak
         active_idx.add(best)
         snr = snr_by_unit.get(u)
+        bc = bimodality.get(str(_py(u)))
         per_unit.append({
             "unit": _py(u),
             "v_pp_uV": round(float(ptp[best] * scale[best]), 3),
             "snr": round(float(snr), 3) if snr is not None else None,
             "best_channel": channel_ids[best],
+            "n_spikes": spike_counts.get(u),
+            "amplitude_bimodality": round(float(bc), 4) if bc is not None else None,
         })
 
     n_active = len(active_idx)

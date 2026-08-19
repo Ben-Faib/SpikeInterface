@@ -21,6 +21,14 @@ is Python repr for dict / list / None-default parameters. The child then exited
 with "expected JSON for this parameter" before sorting started, so any edit to a
 parameter like tridesclous2's ``job_kwargs`` or spykingcircus2's ``detection``
 made the dashboard's sort button fail. See ``_param_arg``.
+
+Containerized-sort caveat (recorded, review F4): run_info.json's defaults come
+from HOST-side introspection while a Docker sort runs under the container's own
+SpikeInterface, so version skew between the two could make the recorded
+"effective" drift from what actually ran. The provenance test below walks every
+saved run - Docker ones included - comparing the record against the parameter
+dict SpikeInterface itself wrote inside the run; it is the tripwire for that
+skew (all saved runs match today).
 """
 from __future__ import annotations
 

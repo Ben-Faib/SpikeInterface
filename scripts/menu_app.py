@@ -3392,14 +3392,13 @@ class SpikeMenuApp(App):
         summary = info.get("summary")
         if not compact:
             # The merge advisory, compactly, from the same rollup home as the
-            # takeaway (advisory only, never a gate): the full sentence with
-            # per-unit evidence belongs to the report and the triage card - this
-            # row names the count and the next step.
-            if rollup and rollup.get("n_split_candidates"):
-                n = rollup["n_split_candidates"]
+            # takeaway (advisory only, never a gate): sort_summary owns the
+            # words (split_chip, quoted verbatim); this view only adds the key
+            # chip for its own affordance (y is the Phy export key).
+            if rollup and rollup.get("split_chip"):
                 adv = line()
-                adv.append(f"{n} unit{'' if n == 1 else 's'} may be 2 cells each"
-                           " · y exports to Phy for splitting", style="#f0883e")
+                adv.append(" y ", style="reverse dim")
+                adv.append(" " + rollup["split_chip"], style="#f0883e")
             metrics = line()
             if summary:
                 row = _ss.headline_row(summary)

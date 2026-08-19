@@ -16,6 +16,8 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 
+import sort_summary as _ss  # noqa: E402 - SI-free import; the fake quotes its words
+
 # Action table mirroring SpikeInterface_Menu._ACTIONS (key, title, hint,
 # needs_data, stage, hotkey), so the stage grouping, the printed keys and the
 # data-dimming behaviour match the real app. F2 order of record: every function is
@@ -227,10 +229,13 @@ class FakeController:
                 "n_split_candidates": self.split_candidates,
                 "split_contacts": [str(u % 16 + 1) for u in
                                    self._split_units(n_units)],
-                "split_line": (f"{self.split_candidates} units fire at impossible "
-                               "intervals: each likely two cells under one label"
-                               if self.split_candidates else ""),
-                "split_rule_text": "ISI ratio ≥ 1.0 with ≥ 1000 spikes and solid SNR"}
+                # The real module's own words (importable SI-free), so a future
+                # rewording cannot silently drift the fake and its assertions.
+                "split_line": _ss.split_line(
+                    self.split_candidates,
+                    [str(u % 16 + 1) for u in self._split_units(n_units)]),
+                "split_chip": _ss.split_chip(self.split_candidates),
+                "split_rule_text": _ss.split_rule_text()}
 
     def _split_units(self, n_units: int) -> list:
         rest = [u for u in range(n_units) if u not in self._accepted(n_units)]
@@ -401,9 +406,7 @@ class FakeController:
                 "verdict_word": "strong" if ok else "sub-threshold",
                 "why": "" if ok else "ISI ratio ≤ 0.5 - is 1.2",
                 "isolation": "clean" if ok else "mostly separate",
-                "split_advice": ("fires at impossible intervals: likely two "
-                                 "cells sharing this contact. Consider "
-                                 "splitting (export to Phy)"
+                "split_advice": (_ss.SPLIT_PHRASE
                                  if u in self._split_units(info["units"]) else ""),
                 # amplitude_cutoff is None: NaN on disk must render as "–", never 0.
                 "metrics": {"firing_rate": 0.5 + u, "snr": 5.0 + u * 0.1,

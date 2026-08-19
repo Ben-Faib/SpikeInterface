@@ -2378,8 +2378,10 @@ async def test_merge_advisory_reaches_results_and_the_triage_card(make_app):
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
         results = app.query_one("#results").render().plain
-        assert "2 units may be 2 cells each" in results
-        assert "y exports to Phy for splitting" in results
+        # sort_summary owns the words (split_chip, quoted verbatim); the view
+        # adds only its key chip for the y affordance.
+        assert "2 units may be 2 cells each · export to Phy to split" in results
+        assert " y " in results
         screen = await _open_triage(pilot, app)
         # The cursor opens on a strong unit: its card must NOT carry the line.
         card = screen.query_one("#triagecard").render().plain
