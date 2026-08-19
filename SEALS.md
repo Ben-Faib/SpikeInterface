@@ -49,6 +49,25 @@ A need left only in a chat summary is a need Ben never sees.*
 
 ## The ledger (newest first)
 
+**2026-08-18 — D6: the airy dashboard (peer session, `98f2645`)**
+- Did: replaced the boxed-panel chrome with Ben's approved whitespace + hairline
+  language — crest tall-terminals-only, probe stated once, a pressable t-chip "change"
+  control on SORT (click opens the picker), a dim context sentence, inverse-video key
+  chips on action rows, the manage/help keys merged into one bottom line, and air wired
+  into the yield order to collapse before content — with DESIGN_UX §2 rewritten as the
+  spec of record.
+- Means: the dashboard reads as sections of air instead of boxes, every affordance looks
+  pressable (Ben's "less annoying" intent), and 80×24 stays fully usable with never-clip
+  and painted-rows still pinned.
+- Moved: the Fable review went fix-first and caught the flagship hairline never actually
+  painting (word-wrapped out of its 1-row clip — and my first snapshot re-baseline had
+  enshrined the bug) plus a resize-under-modal never-clip violation; all seven findings
+  folded, the hairline test now asserts the paint, and the snapshots were re-baselined a
+  deliberate second time; suite 441 green, real-controller launch verified.
+- Needs Ben: nothing — open the dashboard when convenient; it's his mock synthesis live.
+- Next: the debt bundle merges onto this (conductor), and W1s4's triage screen inherits
+  the D6 section language.
+
 **2026-08-18 — PRE1: bad channels out of the reference — premise measured false, feature kept (`c823f55`)**
 - Did: built data-driven bad-channel detection/exclusion into the sort pipeline
   (mad, pinned seed, 25% wholesale-refusal, manual naming, provenance on every
