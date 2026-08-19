@@ -17,7 +17,7 @@ box) runs alongside everything.
 
 ---
 
-## ▶ NOW — updated 2026-08-19 night: **CONDUCTOR v2 CLOSED (queue complete) — the face track is live on Ben's directive**
+## ▶ NOW — updated 2026-08-19 ~03:00: **paste THE CONDUCTOR v3 (below) into ONE fresh session — the clean unification**
 
 - **The run closed with everything landed:** W1 s2/s3/s4 + W2 all on main
   (`482d68d`), per-slice Fable reviews folded, final gates green (suite 625-
@@ -141,7 +141,75 @@ Authored with `fable-prompt-builder` **when Ben's veto lands**, against the spec
 `goals/GOAL_D_UIUX.md` + the spec sections from DESIGN_UX §7, name the T1 gates
 (deliberate snapshot re-baselining with reviewed diffs), and seal per the contract.
 
-### THE CONDUCTOR v2 — re-entry: land the parked lanes, finish the queue  [READY — paste into a fresh session]
+### THE CONDUCTOR v3 — the clean unification: land the face, one branch, pushed  [READY — paste into a fresh session]
+
+```
+The UPitt researchers need this workbench to take raw Blackrock files to curated,
+defensible single units — and tonight Ben asked for one thing above all: a clean,
+comprehensible product on one clean branch. The previous conductor landed the whole
+W1+W2 arc (curation lifecycle, Phy round trip, TUI triage, versioned run store —
+SEALS.md's 2026-08-19 blocks) and left the face track in flight. You are the fresh
+conductor: land what's in flight, unify everything onto main, push it, delete every
+side branch, and leave the repo in a state a newcomer could read.
+
+Re-enter from the board, never from memory: CLAUDE.md's Orchestration read order,
+SEALS.md for where things stand, ROADMAP's NOW box. First acts: confirm no other
+session is writing to this tree (LESSONS S7 — a concurrent session hard-reset the
+tree mid-run tonight; check ListAgents and `ps` for stray claude processes on this
+repo before touching anything), then verify every branch tip before building on it.
+
+The queue:
+
+1. LAND face1 (the takeaway surface) from branch lane-face1 (worktree
+   .claude/worktrees/lane-face1, cut from 482d68d, data symlinked). Its brief: the
+   per-contact strong-units rollup owned by sort_summary (one function; isolation
+   phrases in plain words; "strong" = the quality rule verbatim, tunable, never a
+   certification), leading the report with run identity stamped and the manual-.nev
+   match column when the reference is present (reuse compare.py's matching — one
+   home); the RESULTS takeaway line ("N strong units (ch 5·7·7·11)"); triage
+   strong-first ordering; docs/WORKFLOW.md — the plain-language guide (glossary
+   once at top: contact/site/channel, spike, unit, sorting). The previous
+   conductor's session may have died mid-build — read the branch log and worktree
+   status first; finish whatever is unfinished, then a fresh-context Fable review,
+   fold, rebase onto main, land, seal.
+2. BUILD face2 (Ben's directive, verbatim: "help page is broken… idk what to do…
+   make bins"): the help system rewritten around the real workflow — ui.py
+   HELP_TOPICS still teaches the June three-step app, a confirmed defect — as
+   "which question → which surface → which key"; and the dashboard actions grouped
+   into workflow stages (get data → sort & curate → look & share) with each row
+   saying what it produces and what naturally follows. DESIGN_UX §1 binds all
+   surface language; deliberate snapshot re-baselines per tests/README.md; Fable
+   review, fold, land, seal.
+3. THE CLEAN PASS, on main, through the store: one fresh full sort → u-triage
+   (label the four strong cells good — they match Ben's manual sort at 93-100%,
+   sealed evidence; junk tail noise/unsure) → apply → report + compare --nev
+   PFCM7_d0ephys_Block2_manuallySorted.nev. This is the product demo: every
+   surface must read coherently against ONE run id. Quote the report's
+   strong-units block and the RESULTS line verbatim in the seal.
+4. UNIFY AND CLEAN: verify merged with `git branch --merged main`, then delete
+   every merged branch (lane-w1s3, lane-w1s4, lane-w2-integration,
+   worktree-agent-*) — anything unmerged gets a decision on the board, never a
+   silent -D; `git worktree remove` every .claude/worktrees/* entry and
+   `git worktree prune`; fold add-fable-prompt-builder-skill in or delete it with
+   its reason on the board; then push main to origin. Raw data and outputs/ stay
+   local (gitignored) — verify nothing large or private is in the push set first.
+5. CLOSE: final full suite + the run-spikeinterface launch check on main; board
+   pass — SEALS block, ROADMAP NOW box naming only the four gated OPEN items
+   (P3 adapter map · WD lab box · W3 fuller face pick · W4 lab recordings).
+
+Method unchanged and law: builders on Opus, reviews on Fable, one fresh-context
+review per substantive slice, findings folded or recorded; explicit-path commits
+(never git add -A); board docs committed in the same breath they are written
+(LESSONS S7); CLAUDE.md's Invariants that bite bind every edit (µV double-scaling
+gate, ~4 µV canary as verdict, aux+bad channels drop before CMR, stdout purity,
+view imports no SI, runs never clobber); raw data never enters git or leaves the
+machine; a queue item whose premise fails gets re-scoped on the board with the
+evidence; needs for Ben go in SEALS OPEN, batched. If the run stops short, seal
+partial state per the between-run contract — this prompt pattern continues from
+the board.
+```
+
+### THE CONDUCTOR v2 — re-entry: land the parked lanes, finish the queue  [SUPERSEDED by v3 — queue completed 2026-08-19, kept for provenance]
 
 ```
 The UPitt researchers in Tracy's lab need this workbench to take raw Blackrock
