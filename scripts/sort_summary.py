@@ -12,10 +12,13 @@ Single source of truth for the six numbers the lab wants out of every sort:
 ``compute_summary(analyzer)`` builds the full record (per-unit V_pp/SNR + the
 aggregates above); ``write_summary`` persists it to ``summary.json`` (+ a one-row
 ``summary.csv`` of the headline numbers) next to the sort; ``load_summary`` reads
-it back. The compute side is SpikeInterface/NumPy-dependent and imported lazily,
-so the Textual menu — which must import **no** SpikeInterface — can still call the
-pure ``load_summary`` / ``format_card`` / ``headline_row`` helpers to render a
-saved summary. This mirrors the lazy-import discipline in ``sorters.py``.
+it back, and ``load_quality_metrics`` reads the per-unit ``quality_metrics.csv``
+the sort wrote (NaN -> None, so a surface can render an honest "–"). The compute
+side is SpikeInterface/NumPy-dependent and imported lazily, so the Textual menu —
+which must import **no** SpikeInterface — can still call the pure
+``load_summary`` / ``load_quality_metrics`` / ``format_card`` / ``headline_row``
+helpers to render a saved sort. This mirrors the lazy-import discipline in
+``sorters.py``.
 
 Amplitudes (V_pp, noise floor) are reported in physical **µV** when the recording
 carries a gain (Blackrock does: ~0.25 µV/sample); otherwise they fall back to raw
@@ -387,6 +390,39 @@ def load_summary(out_dir) -> "dict | None":
         return json.loads((Path(out_dir) / "summary.json").read_text(encoding="utf-8"))
     except Exception:  # noqa: BLE001 - absent / malformed -> caller degrades
         return None
+
+
+def load_quality_metrics(out_dir) -> dict:
+    """Read outputs/<sorter>/quality_metrics.csv as ``{unit id (str): {column: value}}``.
+
+    Pure — csv + pathlib, no SpikeInterface — so the menu's view process can show
+    per-unit evidence without paying for SI, and the numbers shown are the ones
+    the sort actually wrote (nothing is recomputed here).
+
+    A blank or NaN cell becomes ``None`` — "we could not judge this unit on this
+    metric" (amplitude_cutoff is honestly NaN below 500 spikes) must never render
+    as 0. Column order is the file's; the unnamed index column is the unit id.
+    ``{}`` when the file is absent — a non-fatal metrics failure deletes it.
+    """
+    path = Path(out_dir) / "quality_metrics.csv"
+    try:
+        text = path.read_text(encoding="utf-8")
+    except Exception:  # noqa: BLE001 - absent / unreadable -> caller degrades
+        return {}
+    out = {}
+    for row in csv.DictReader(text.splitlines()):
+        unit = row.pop("", None)
+        if unit is None:
+            continue
+        values = {}
+        for col, raw in row.items():
+            try:
+                v = float(raw)
+            except (TypeError, ValueError):     # blank cell / non-numeric
+                v = None
+            values[col] = None if v is None or v != v else v    # v != v -> NaN
+        out[str(unit)] = values
+    return out
 
 
 def _med(summary: dict, key: str):

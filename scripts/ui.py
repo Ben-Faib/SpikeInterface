@@ -74,6 +74,7 @@ HELP_TOPICS = [
      ["↑/↓ or j/k move · Enter run · 1-6 run a workflow action",
       "t change sorter (opens the picker: type to filter, Enter chooses, Esc closes)",
       "e params · m manage sorters · p probe · v verify · c theme · r reopen last result",
+      "u triage the saved sort's units (g good · m MUA · n noise · u unsure, Esc back)",
       "x manage the active sorter · w expand download · d data files · f data folder",
       "? help · q or Ctrl-C quit  (Esc closes a dialog, not the app)"]),
     ("about", "About",

@@ -519,3 +519,137 @@ def test_report_cli_speaks_the_protocol(tmp_path):
     assert "phase" in types and "phase_done" in types
     if types[-1] == "done":
         assert res.returncode == 0 and (tmp_path / "r.html").exists()
+
+
+# --- W1 slice 4: the in-TUI triage seam (controller half) ------------------- #
+TRIAGE_SORTER = "tridesclous2"
+TRIAGE_RUN = {"created": "2026-08-19T09:00:00", "sorter": TRIAGE_SORTER,
+              "n_units": 3, "si_version": "0.104.3", "probe": "nnx-a1x16-3mm-100",
+              "effective_seconds": 30.0, "total_seconds": 132.0}
+
+
+def _saved_sort(tmp_path, monkeypatch, run=None, metrics=True):
+    """A saved sort on disk under a tmp repo root: run_info + summary + metrics."""
+    import blackrock_io as bio
+    import curation
+
+    monkeypatch.setattr(bio, "REPO_ROOT", tmp_path)
+    paths = curation.sort_paths(TRIAGE_SORTER)
+    paths["out"].mkdir(parents=True, exist_ok=True)
+    paths["run_info"].write_text(json.dumps(run or TRIAGE_RUN), encoding="utf-8")
+    paths["out"].joinpath("summary.json").write_text(json.dumps({
+        "sorter": TRIAGE_SORTER, "n_units": 3, "units_in_uV": True,
+        "per_unit": [{"unit": 0, "v_pp_uV": 23.868, "snr": 5.041, "best_channel": "1"},
+                     {"unit": 1, "v_pp_uV": 22.482, "snr": 5.215, "best_channel": "2"},
+                     {"unit": 2, "v_pp_uV": 61.311, "snr": 4.517, "best_channel": "3"}],
+    }), encoding="utf-8")
+    if metrics:
+        paths["out"].joinpath("quality_metrics.csv").write_text(
+            ",firing_rate,snr,amplitude_cutoff\n"
+            "0,0.2045,5.0409,\n1,0.4772,5.2151,0.031\n2,19.79,4.5170,0.004\n",
+            encoding="utf-8")
+    return paths
+
+
+def _triage_controller(monkeypatch, tmp_path, **kw):
+    import sorters as reg
+    monkeypatch.setattr(reg, "installed", lambda: [TRIAGE_SORTER])
+    monkeypatch.setattr(reg, "available", lambda: [TRIAGE_SORTER])
+    monkeypatch.setattr(reg, "docker_available", lambda *a, **k: False)
+    paths = _saved_sort(tmp_path, monkeypatch, **kw)
+    c = _controller(monkeypatch, tmp_path)
+    assert c.active_sorter == TRIAGE_SORTER
+    return c, paths
+
+
+def test_triage_state_reads_the_evidence_off_disk(monkeypatch, tmp_path):
+    """Per-unit evidence is READ (summary.json + quality_metrics.csv as written),
+    never recomputed, and a NaN metric stays None so the surface can say "–"."""
+    c, _paths = _triage_controller(monkeypatch, tmp_path)
+    st = c.triage_state()
+    assert st["sorter"] == TRIAGE_SORTER and st["empty"] == "" and st["blocked"] == ""
+    assert st["total"] == 3 and st["reviewed"] == 0
+    assert st["columns"] == ["firing_rate", "snr", "amplitude_cutoff"]
+    first = st["units"][0]
+    assert first["unit"] == 0 and first["peak_channel"] == "1"
+    assert first["v_pp_uV"] == 23.868
+    assert first["metrics"]["snr"] == 5.0409
+    assert first["metrics"]["amplitude_cutoff"] is None      # blank on disk
+    assert st["units"][1]["metrics"]["amplitude_cutoff"] == 0.031
+    # No saved Sorting here -> an honest unknown, never an invented count.
+    assert first["n_spikes"] is None
+    # curation.state() is the one source for what is being shown.
+    assert st["line"] == "raw sorter output — no curation applied"
+    assert st["stale"] is False and st["stale_reason"] == ""
+    assert f"--sorter {TRIAGE_SORTER}" in st["apply_hint"]
+
+
+def test_triage_spike_counts_come_from_the_saved_sorting(monkeypatch, tmp_path):
+    si = __import__("pytest").importorskip("spikeinterface.full")
+    c, paths = _triage_controller(monkeypatch, tmp_path)
+    sorting = si.NumpySorting.from_samples_and_labels(
+        [[10, 20, 30, 40, 50, 60]], [[0, 0, 0, 1, 1, 2]], sampling_frequency=30000.0)
+    sorting.save(folder=paths["sorting"])
+    counts = {u["unit"]: u["n_spikes"] for u in c.triage_state()["units"]}
+    assert counts == {0: 3, 1: 2, 2: 1}
+
+
+def test_label_unit_writes_a_tui_verdict_that_survives_a_relaunch(monkeypatch, tmp_path):
+    import curation
+
+    c, paths = _triage_controller(monkeypatch, tmp_path)
+    ok, msg = c.label_unit(1, "noise")
+    assert ok and "noise" in msg
+    assert c.label_unit(2, "good")[0]
+
+    # It is the real record, with the decision's origin recorded as the TUI.
+    record = json.loads(paths["record"].read_text(encoding="utf-8"))
+    assert curation.structural_errors(record) == []
+    assert curation.label_of(record, 1) == "noise"
+    assert curation.label_method_of(record, 1) == "tui"
+    assert record["curates"]["run"]["created"] == TRIAGE_RUN["created"]
+
+    # Relaunch: a fresh controller over the same repo reads the verdicts back.
+    fresh, _paths = _triage_controller(monkeypatch, tmp_path)
+    st = fresh.triage_state()
+    assert st["reviewed"] == 2 and st["total"] == 3
+    assert [u["label"] for u in st["units"]] == [None, "noise", "good"]
+    assert st["units"][1]["label_method"] == "tui"
+
+
+def test_triage_refuses_a_record_written_against_another_sort(monkeypatch, tmp_path):
+    """Unit ids are not stable across re-sorts: a record for a different run is
+    refused, its labels are NOT shown against these units, and nothing is written."""
+    import curation
+
+    c, paths = _triage_controller(monkeypatch, tmp_path)
+    assert c.label_unit(1, "noise")[0]
+    before = paths["record"].read_text(encoding="utf-8")
+    # ...then the sort is re-run underneath it (18 units, a new timestamp).
+    paths["run_info"].write_text(json.dumps(
+        {**TRIAGE_RUN, "created": "2026-08-19T11:00:00", "n_units": 18}),
+        encoding="utf-8")
+
+    ok, msg = c.label_unit(2, "good")
+    assert not ok
+    assert "written against a different" in msg and "Next step:" in msg
+    assert paths["record"].read_text(encoding="utf-8") == before   # nothing written
+
+    st = c.triage_state()
+    assert st["blocked"] == msg
+    assert st["reviewed"] == 0
+    assert all(u["label"] is None for u in st["units"])   # never on the wrong units
+    assert curation.label_of(curation.load_record(TRIAGE_SORTER), 1) == "noise"
+
+
+def test_triage_with_no_saved_sort_names_the_next_step(monkeypatch, tmp_path):
+    import sorters as reg
+    monkeypatch.setattr(reg, "installed", lambda: [TRIAGE_SORTER])
+    monkeypatch.setattr(reg, "available", lambda: [TRIAGE_SORTER])
+    monkeypatch.setattr(reg, "docker_available", lambda *a, **k: False)
+    import blackrock_io as bio
+    monkeypatch.setattr(bio, "REPO_ROOT", tmp_path)
+    c = _controller(monkeypatch, tmp_path)
+    st = c.triage_state()
+    assert st["units"] == [] and st["total"] == 0
+    assert "No saved" in st["empty"] and "sort" in st["empty"]

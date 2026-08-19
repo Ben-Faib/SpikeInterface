@@ -108,6 +108,25 @@ def test_load_summary_missing_returns_none(tmp_path):
     assert ss.load_summary(tmp_path / "nope") is None
 
 
+def test_load_quality_metrics_is_pure_and_nan_honest(tmp_path):
+    """The per-unit metrics as the sort wrote them — read, never recomputed, and a
+    cell the sort could not compute comes back None (a surface renders "–")."""
+    (tmp_path / "quality_metrics.csv").write_text(
+        ",firing_rate,snr,amplitude_cutoff,l_ratio\n"
+        "0,0.2045,5.0409,,\n"
+        "1,0.4772,5.2151,0.031,nan\n", encoding="utf-8")
+    rows = ss.load_quality_metrics(tmp_path)
+    assert list(rows) == ["0", "1"]
+    # Column order is the file's, so a surface can lay them out as written.
+    assert list(rows["0"]) == ["firing_rate", "snr", "amplitude_cutoff", "l_ratio"]
+    assert rows["0"]["snr"] == 5.0409
+    assert rows["0"]["amplitude_cutoff"] is None       # blank cell, not 0.0
+    assert rows["1"]["l_ratio"] is None                # NaN, not 0.0
+    assert rows["1"]["amplitude_cutoff"] == 0.031
+    # A non-fatal metrics failure deletes the file — that is {} , never a crash.
+    assert ss.load_quality_metrics(tmp_path / "nope") == {}
+
+
 # --- W1 slice 1: the quality rule's one owner ------------------------------- #
 def test_quality_pass_tristate_flags():
     import sort_summary as ss

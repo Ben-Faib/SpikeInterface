@@ -1892,3 +1892,157 @@ async def test_picker_gpu_pick_gives_honest_hint(make_app):
         assert not isinstance(app.screen, menu_app.SorterPickerScreen)
         foot = app.query_one("#footer").render().plain
         assert "GPU" in foot
+
+
+# ========================================================================== #
+# W1 slice 4 — in-TUI unit triage: label -> record -> back, and every refusal
+# ========================================================================== #
+STALE_RECORD = ("this curation record was written against a different tridesclous2 "
+                "sort — units: record 12, on disk 18. Unit ids are not stable across "
+                "re-sorts, so replaying these decisions would curate the wrong units. "
+                "Next step: write a fresh record against the sort now in "
+                "outputs/tridesclous2/.")
+
+
+async def _open_triage(pilot, app):
+    await pilot.pause()
+    await pilot.press("u")
+    await pilot.pause()
+    assert isinstance(app.screen, menu_app.UnitTriageScreen)
+    return app.screen
+
+
+async def test_journey_triage_label_persists_and_relaunch_shows_it(make_controller):
+    """The slice's whole point: label a unit, the verdict reaches the curation
+    record through the controller, the screen says so at once (row + reviewed
+    n/N), and a relaunch over the same record still shows it."""
+    c = make_controller(present=True)
+    app = menu_app.SpikeMenuApp(c)
+    async with app.run_test(size=(110, 40)) as pilot:
+        screen = await _open_triage(pilot, app)
+        units = screen.query_one("#triagelist", OptionList)
+        assert units.option_count == 12 and units.highlighted == 0
+        assert "reviewed 0/12" in screen.query_one("#triagestate").render().plain
+
+        await pilot.press("g")                       # unit 0 -> good
+        await pilot.pause()
+        assert c.labelled == [("tridesclous2", 0, "good")]
+        assert "good" in units.get_option_at_index(0).prompt.plain
+        assert "reviewed 1/12" in screen.query_one("#triagestate").render().plain
+        # A verdict advances the cursor: triage is one keypress per unit.
+        assert units.highlighted == 1
+
+        await pilot.press("n")                       # unit 1 -> noise
+        await pilot.pause()
+        assert c.labelled[-1] == ("tridesclous2", 1, "noise")
+        assert "reviewed 2/12" in screen.query_one("#triagestate").render().plain
+
+        await pilot.press("escape")                  # Esc goes BACK, never exits
+        await pilot.pause()
+        assert not isinstance(app.screen, menu_app.UnitTriageScreen)
+        assert app.is_running
+        assert "2/12 units reviewed" in app._last.plain
+
+    # Relaunch over the same record: the verdicts are still there.
+    app2 = menu_app.SpikeMenuApp(c)
+    async with app2.run_test(size=(110, 40)) as pilot:
+        screen = await _open_triage(pilot, app2)
+        rows = screen.query_one("#triagelist", OptionList)
+        assert "good" in rows.get_option_at_index(0).prompt.plain
+        assert "noise" in rows.get_option_at_index(1).prompt.plain
+        assert "reviewed 2/12" in screen.query_one("#triagestate").render().plain
+        card = screen.query_one("#triagecard").render().plain
+        assert "good" in card and "tui" in card      # the verdict AND its origin
+
+
+async def test_triage_card_shows_the_evidence_and_is_nan_honest(make_app):
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        screen = await _open_triage(pilot, app)
+        card = screen.query_one("#triagecard").render().plain
+        assert "peak channel" in card and "spikes" in card
+        # Every quality_metrics column that exists is shown...
+        for col in ("firing_rate", "snr", "isi_violations_ratio", "presence_ratio",
+                    "amplitude_cutoff"):
+            assert col in card
+        # ...and a metric the sort could not compute reads "–", never 0.
+        assert "amplitude_cutoff      –" in card
+        # The cursor is the detail request: moving it repaints the card.
+        await pilot.press("down")
+        await pilot.pause()
+        assert "UNIT 1" in screen.query_one("#triagecardhead").render().plain
+
+
+async def test_triage_states_curated_vs_raw_and_stale_verbatim(make_app):
+    """curation.state() is the one source: its sentence is shown as written, and a
+    curated result the record outran says so rather than looking fine."""
+    app = make_app(present=True)
+    app.c.triage_line = ("curated from the tridesclous2 run (sorted 2026-08-18 21:15), "
+                         "4 decisions (3 splits, 0 merges, 1 label), 2026-08-18 21:27")
+    app.c.triage_stale_reason = "the raw sort was re-run after this curated result was built"
+    async with app.run_test(size=(110, 40)) as pilot:
+        screen = await _open_triage(pilot, app)
+        assert app.c.triage_line in screen.query_one("#triageprov").render().plain
+        hint = screen.query_one("#triagehint").render().plain
+        assert app.c.triage_stale_reason in hint and "stale" in hint
+
+
+# --- T3 honesty states (§1.7): the triage dead-ends name their next step ----- #
+async def test_triage_refuses_a_record_for_another_sort_and_writes_nothing(make_app):
+    app = make_app(present=True)
+    app.c.triage_blocked = STALE_RECORD
+    app.c.labels["tridesclous2"] = {0: "good"}      # decided about the OTHER sort
+    async with app.run_test(size=(110, 40)) as pilot:
+        screen = await _open_triage(pilot, app)
+        assert "refused" in screen.query_one("#triagestate").render().plain
+        # The refusal is on the screen IN FULL, with its next step.
+        card = screen.query_one("#triagecard").render().plain
+        assert "written against a different" in card and "Next step:" in card
+        assert "REFUSED" in screen.query_one("#triagecardhead").render().plain
+        # The other sort's labels are NOT shown against these unit ids.
+        rows = screen.query_one("#triagelist", OptionList)
+        assert "good" not in rows.get_option_at_index(0).prompt.plain
+        assert "reviewed 0/12" in screen.query_one("#triagestate").render().plain
+
+        await pilot.press("g")                       # a verdict is refused...
+        await pilot.pause()
+        assert app.c.labelled == []                  # ...and nothing is written
+        assert "Next step:" in screen._last.plain
+
+
+async def test_triage_with_no_saved_sort_names_its_next_step(make_app):
+    app = make_app(present=True)
+    app.c.clear_saved_sort("tridesclous2")
+    app.c.reload()
+    async with app.run_test(size=(110, 40)) as pilot:
+        screen = await _open_triage(pilot, app)
+        assert screen.query_one("#triagelist", OptionList).option_count == 0
+        body = (screen.query_one("#triagecard").render().plain + " "
+                + screen.query_one("#triagehint").render().plain)
+        assert "No saved" in body and "sort" in body        # what happened + the fix
+        await pilot.press("g")                              # nothing to label
+        await pilot.pause()
+        assert app.c.labelled == []
+
+
+async def test_triage_key_row_never_clips(make_app):
+    """The verdict keys are the action row: docked, so they survive every size the
+    dashboard's own never-clip doctrine covers."""
+    for size in [(80, 24), (60, 24), (40, 12), (30, 8)]:
+        app = make_app(present=True)
+        async with app.run_test(size=size) as pilot:
+            screen = await _open_triage(pilot, app)
+            foot = screen.query_one("#triagefoot").region
+            assert foot.intersection(screen.region).height == 2, f"clipped at {size}"
+            assert screen.query_one("#triagelist").region.height >= 1
+
+
+async def test_triage_reachable_from_the_results_section(make_app):
+    """The entry point: the ` u  triage` chip on RESULTS — key and mouse."""
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        assert not app.query_one("#results").has_class("hidden")
+        await pilot.click("#results")
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.UnitTriageScreen)

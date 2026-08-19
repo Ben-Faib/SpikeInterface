@@ -166,3 +166,37 @@ def test_sort_progress_done_with_note(snap_compare, make_app):
         await pilot.pause()
 
     assert snap_compare(app, terminal_size=FULL, run_before=push_and_feed)
+
+
+# --------------------------------------------------------------------------- #
+# The unit triage screen (W1 slice 4)
+# --------------------------------------------------------------------------- #
+async def _open_triage(pilot):
+    await pilot.pause()
+    await pilot.press("u")
+    await pilot.pause()
+
+
+def test_triage_screen(snap_compare, make_app):
+    # Mid-pass: two verdicts already recorded, the cursor on the third unit.
+    app = make_app(present=True)
+    app.c.labels["tridesclous2"] = {0: "good", 1: "noise"}
+    assert snap_compare(app, terminal_size=FULL, run_before=_open_triage)
+
+
+def test_triage_screen_default_terminal(snap_compare, make_app):
+    # 80x24 stays fully usable: the list, the card and the verdict keys all fit.
+    assert snap_compare(make_app(present=True), terminal_size=(80, 24),
+                        run_before=_open_triage)
+
+
+def test_triage_screen_refused(snap_compare, make_app):
+    # The anchor refusal owns the screen's body: what happened + the next step.
+    app = make_app(present=True)
+    app.c.triage_blocked = (
+        "this curation record was written against a different tridesclous2 sort — "
+        "units: record 12, on disk 18. Unit ids are not stable across re-sorts, so "
+        "replaying these decisions would curate the wrong units. Next step: write a "
+        "fresh record against the sort now in outputs/tridesclous2/ — the old record "
+        "stays as the audit trail of what was decided about that run.")
+    assert snap_compare(app, terminal_size=FULL, run_before=_open_triage)

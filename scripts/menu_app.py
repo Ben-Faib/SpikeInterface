@@ -39,8 +39,11 @@ Layout (responsive):
 
 ``t`` opens the picker; Enter there routes the choice through the normal
 activate / download / enable-Docker flows. ``x`` manages the ACTIVE sorter.
-Yield order on small windows: crest → RESULTS → (tiny) banner/manage/LAST —
-the action list and footer never clip.
+``u`` (the ` u  triage` chip on RESULTS, or a click on that section) opens
+``UnitTriageScreen``: the saved sort's units with their per-unit evidence and
+g/m/n/u to label each good/MUA/noise/unsure, written through the controller into
+the curation record. Yield order on small windows: crest → RESULTS → (tiny)
+banner/manage/LAST — the action list and footer never clip.
 
 The accent colour is themeable (driven into the ``$accentcolor`` CSS variable);
 the Pitt blue+gold shield is fixed. Both lists scroll, so the active sorter and
@@ -90,6 +93,22 @@ STACK_COLS = 64
 SHIELD_RESERVE = 24
 # Unfocused panel border colour (focus uses the live accent).
 _BORDER_DIM = "#3a3f47"
+
+
+def _hairline(label: str, avail: int) -> Text:
+    """The D6 section language: a small dim-bold label with a hairline rule filling
+    exactly ``avail`` content columns — whitespace + hairline, never a box, and
+    never a wrapped-away rule (D6 review #1). Shared by the dashboard and the unit
+    triage screen so both surfaces speak it identically.
+
+    ``no_wrap``: a Rich Text renderable wraps by Rich's rules (Textual's text-wrap
+    doesn't reach it) — any residual overlength must CLIP, never wrap the rule out
+    of a 1-row widget.
+    """
+    t = Text(no_wrap=True)
+    t.append(label + " ", style=f"bold {ui.SECONDARY}")
+    t.append("─" * max(0, avail - len(label) - 1), style=_BORDER_DIM)
+    return t
 
 # Status-word -> session phase, shared by the download status handler.
 _DL_PHASE = {"Downloading": "downloading", "Verifying": "verifying",
@@ -145,6 +164,13 @@ class Controller(Protocol):
     def record_result(self, key: str, ok: bool) -> None: ...
     def reopen_last(self) -> tuple[bool, str]: ...
     def sort_expectations(self) -> dict: ...   # {"span","wall_seconds"} of the last run
+    # Unit triage (W1 slice 4). ``triage_state`` is the active sorter's saved units
+    # + the curation state that makes them honest ({units, columns, reviewed, total,
+    # line, stale, stale_reason, apply_hint, blocked, empty}); ``label_unit`` writes
+    # ONE verdict through curation.py and returns (ok, message) — a refusal (the
+    # record is not anchored to the sort on disk) writes nothing and says why.
+    def triage_state(self) -> dict: ...
+    def label_unit(self, unit_id, label: str) -> tuple[bool, str]: ...
 
 
 # --------------------------------------------------------------------------- #
@@ -1642,6 +1668,308 @@ class ManageSortersScreen(ModalScreen):
         self.dismiss(True)
 
 
+# The four verdicts the TUI writes, in key order. The vocabulary itself is
+# curation.py's (QUALITY_OPTIONS) — these strings must match it exactly; this is
+# only its keyboard half, so the view still imports no curation module.
+_TRIAGE_KEYS = (("g", "good"), ("m", "MUA"), ("n", "noise"), ("u", "unsure"))
+# Colour is a ROLE (§1.5), never the carrier: the verdict WORD is always printed.
+# green = passed review · yellow = multi-unit, caution · dim = rejected ·
+# amber = looked at and undecided, so it still has a next step.
+_TRIAGE_LABEL_STYLE = {"good": "#3fb950", "MUA": "#d29922",
+                       "noise": "#6e7681", "unsure": "#f0883e"}
+
+
+def _fmt_metric(value) -> str:
+    """One evidence cell. ``None`` — a value the sort could not compute, e.g.
+    amplitude_cutoff below 500 spikes — renders as an honest "–", never as 0."""
+    if value is None:
+        return "–"
+    if isinstance(value, bool):
+        return str(value)
+    if isinstance(value, int):
+        return f"{value:,}"
+    if isinstance(value, float):
+        if abs(value) < 1e6 and value == int(value):
+            return f"{int(value):,}"
+        return f"{value:.4g}"
+    return str(value)
+
+
+class UnitTriageScreen(ModalScreen):
+    """In-TUI unit triage (W1 slice 4): the active sorter's saved units, the
+    evidence the sort wrote about each, and g/m/n/u to label the one under the
+    cursor good / MUA / noise / unsure.
+
+    A *view*: it imports no SpikeInterface and no curation module. Every verdict
+    goes out through the controller (``label_unit``) into the same curation record
+    the report, the Phy export and ``curation.py`` read, and every fact on screen
+    comes back from ``triage_state`` — this screen decides nothing about the
+    record, including whether a label may be written at all.
+
+    D6 §2 language: sections are a dim label + hairline over borderless content,
+    the key chips are inverse-video (visibly pressable), and the key row is docked
+    so it can never clip. The cursor is the detail-request gesture (§1.2) — rows
+    carry the unit id and its verdict, all the evidence lives in the card.
+    """
+
+    DEFAULT_CSS = """
+    UnitTriageScreen { background: $background; }
+    UnitTriageScreen #triagetitle { height: 1; padding: 0 2; }
+    UnitTriageScreen #triagestate { height: 1; padding: 0 2; }
+    UnitTriageScreen #triageprov { height: auto; max-height: 2; padding: 0 2;
+                                   color: $text-muted; }
+    UnitTriageScreen #triagehint { height: auto; max-height: 3; padding: 0 2 1 2; }
+    UnitTriageScreen #triageprov.collapsed,
+    UnitTriageScreen #triagehint.collapsed { display: none; }
+    UnitTriageScreen #triagerow { height: 1fr; padding: 0 2; }
+    UnitTriageScreen #triagelistpane { width: 26; height: 1fr; }
+    UnitTriageScreen #triagecardpane { width: 1fr; height: 1fr; padding: 0 0 0 2; }
+    UnitTriageScreen #triagelisthead, UnitTriageScreen #triagecardhead { height: 1; }
+    UnitTriageScreen #triagelist { height: 1fr; border: none; background: $background; }
+    UnitTriageScreen #triagelist:focus { border: none; }
+    UnitTriageScreen #triagecardscroll { height: 1fr; }
+    UnitTriageScreen #triagecard { height: auto; }
+    UnitTriageScreen #triagefoot { dock: bottom; height: 2; padding: 0 2; }
+    """
+
+    BINDINGS = [
+        Binding("escape", "close", "Back", show=False),
+        *[Binding(k, f"label('{v}')", f"Label {v}", show=False)
+          for k, v in _TRIAGE_KEYS],
+    ]
+
+    # Below this the dim provenance/hint rows yield so the list keeps its rows —
+    # air collapses before content (§1.4), and the key row is docked regardless.
+    TINY_ROWS = 14
+    # Width of the unit-list column; the card takes the rest.
+    LIST_COLS = 26
+
+    def __init__(self, controller, accent: str):
+        super().__init__()
+        self._c = controller
+        self._accent = accent
+        self._state: dict = {}
+        self._last = None          # the newest verdict result / refusal
+        self._wrote = 0            # verdicts written during this visit
+
+    def compose(self) -> ComposeResult:
+        yield Static(id="triagetitle")
+        yield Static(id="triagestate")
+        yield Static(id="triageprov")
+        yield Static(id="triagehint")
+        with Horizontal(id="triagerow"):
+            with Vertical(id="triagelistpane"):
+                yield Static(id="triagelisthead")
+                yield NavList(id="triagelist")
+            with Vertical(id="triagecardpane"):
+                yield Static(id="triagecardhead")
+                with VerticalScroll(id="triagecardscroll"):
+                    yield Static(id="triagecard")
+        yield Static(id="triagefoot")
+
+    def on_mount(self) -> None:
+        self._refresh()
+        self.query_one("#triagelist", OptionList).focus()
+
+    # -- state ---------------------------------------------------------------- #
+    def _refresh(self) -> None:
+        """Re-read everything from the controller and repaint. Called on mount and
+        after every write, so a verdict — and the reviewed n/N count — is what the
+        record now says, not what this screen hoped it would say."""
+        self._state = self._c.triage_state() or {}
+        self._rebuild_list()
+        self._relayout()
+
+    def _rebuild_list(self) -> None:
+        ol = self.query_one("#triagelist", OptionList)
+        keep = ol.highlighted
+        ol.clear_options()
+        for unit in self._state.get("units", []):
+            ol.add_option(Option(self._row_text(unit), id=str(unit["unit"])))
+        if ol.option_count:
+            ol.highlighted = (keep if (keep is not None and keep < ol.option_count)
+                              else 0)
+
+    def _row_text(self, unit: dict) -> Text:
+        # Two marks at rest (§1.2): the unit id and its verdict. Everything else
+        # is in the card, under the cursor.
+        t = Text()
+        t.append(f"{unit['unit']!s:>4}  ", style=ui.PRIMARY)
+        label = unit.get("label")
+        if label:
+            t.append(label, style=_TRIAGE_LABEL_STYLE.get(label, ""))
+        else:
+            t.append("–", style="dim")
+        return t
+
+    def _current(self) -> "dict | None":
+        ol = self.query_one("#triagelist", OptionList)
+        units = self._state.get("units", [])
+        if ol.highlighted is None or ol.highlighted >= len(units):
+            return None
+        return units[ol.highlighted]
+
+    # -- rendering ------------------------------------------------------------ #
+    def on_resize(self, event) -> None:
+        # self.size lags during a resize; event.size carries the new size.
+        self._relayout(event.size)
+
+    def _relayout(self, size=None) -> None:
+        size = size if size is not None else self.size
+        tiny = size.height < self.TINY_ROWS
+        for wid in ("#triageprov", "#triagehint"):
+            self.query_one(wid).set_class(tiny, "collapsed")
+        self._render_header(size.width)
+        self._render_card(size.width)
+        self._render_foot(size.width)
+
+    def _render_header(self, width: int) -> None:
+        st = self._state
+        avail = max(10, width - 4)
+        self.query_one("#triagetitle", Static).update(
+            _hairline(f"TRIAGE  {st.get('sorter', '')}", avail))
+        # reviewed n/N is the progress line: a verdict must be visible the instant
+        # it lands, and this count is the honest measure of how far the pass got.
+        line = Text(no_wrap=True)
+        if st.get("empty"):
+            line.append("nothing to triage", style="#f0883e")
+        else:
+            reviewed, total = st.get("reviewed", 0), st.get("total", 0)
+            line.append(f"reviewed {reviewed}/{total}",
+                        style=f"bold {self._accent}" if reviewed else ui.PRIMARY)
+            if st.get("blocked"):
+                line.append("   ✗ labels refused — this record is not for the sort "
+                            "on disk", style="bold #f0883e")
+        line.truncate(avail, overflow="ellipsis")
+        self.query_one("#triagestate", Static).update(line)
+        # curation.state()'s sentence, verbatim: the ONE source for curated-vs-raw.
+        # With no sort there is nothing for it to describe, so it stays silent
+        # rather than calling an absent result "raw sorter output".
+        self.query_one("#triageprov", Static).update(
+            Text("" if st.get("empty") else st.get("line", ""), style=ui.SECONDARY))
+        hint = Text()
+        if st.get("empty"):
+            hint.append(st["empty"], style="#f0883e")
+        elif st.get("blocked"):
+            pass         # the card carries the refusal AND its next step, in full
+        elif st.get("stale_reason"):
+            # Verbatim + amber: a curated result that no longer matches disk.
+            hint.append("⚠ the curated result is stale — " + st["stale_reason"],
+                        style="#f0883e")
+        else:
+            hint.append("verdicts are recorded, not applied — build the curated "
+                        "result with  " + str(st.get("apply_hint", "")), style="dim")
+        self.query_one("#triagehint", Static).update(hint)
+
+    def _render_card(self, width: int) -> None:
+        head = self.query_one("#triagecardhead", Static)
+        card = self.query_one("#triagecard", Static)
+        avail = max(10, width - self.LIST_COLS - 6)
+        st = self._state
+        # Stop the UNITS rule short of the pane edge: with the card pane's own
+        # padding that leaves a clear column of air between the two sections, so
+        # they never read as one long rule (D6: sections of air and hairlines).
+        self.query_one("#triagelisthead", Static).update(
+            _hairline("UNITS", max(10, self.LIST_COLS - 2)))
+        # A dead end states what happened and the one action that helps (§1.7), in
+        # full — the card is the only place with the room, so it takes the refusal.
+        if st.get("blocked"):
+            head.update(_hairline("LABELS REFUSED", avail))
+            card.update(Text(st["blocked"], style="#f0883e"))
+            return
+        if st.get("empty"):
+            head.update(_hairline("NO SAVED SORT", avail))
+            card.update(Text(st["empty"], style="#f0883e"))
+            return
+        unit = self._current()
+        if unit is None:
+            head.update(_hairline("UNIT", avail))
+            card.update(Text(""))
+            return
+        head.update(_hairline(f"UNIT {unit['unit']}", avail))
+        t = Text()
+        t.append(f"{'verdict':<22}", style=ui.SECONDARY)
+        label = unit.get("label")
+        if label:
+            t.append(label, style=_TRIAGE_LABEL_STYLE.get(label, ""))
+            if unit.get("label_method"):
+                t.append(f"   {unit['label_method']}", style="dim")
+        else:
+            t.append("not reviewed yet", style="dim")
+        t.append("\n")
+        for name, value in (("peak channel", unit.get("peak_channel")),
+                            ("spikes", unit.get("n_spikes")),
+                            ("V_pp (µV)", unit.get("v_pp_uV"))):
+            t.append(f"{name:<22}", style=ui.SECONDARY)
+            t.append(_fmt_metric(value) + "\n", style=ui.PRIMARY)
+        columns = st.get("columns") or []
+        t.append("\n")
+        if columns:
+            t.append(_hairline("QUALITY METRICS", avail))
+            t.append("\n")
+            metrics = unit.get("metrics") or {}
+            for col in columns:
+                t.append(f"{col:<22}", style=ui.SECONDARY)
+                t.append(_fmt_metric(metrics.get(col)) + "\n", style=ui.PRIMARY)
+        else:
+            t.append("no quality_metrics.csv beside this sort — the six headline "
+                     "numbers above are all the evidence saved", style="dim")
+        card.update(t)
+
+    def _render_foot(self, width: int) -> None:
+        cap = max(1, width - 4)
+        line1 = Text()
+        if self._last is not None:
+            line1.append(self._last)
+        line1.truncate(cap, overflow="ellipsis")
+        # Inverse-video key chips: visibly pressable affordances (D6), and the row
+        # is docked so it survives every window size.
+        line2 = Text(no_wrap=True)
+        for key, label in _TRIAGE_KEYS:
+            line2.append(f" {key} ", style="reverse")
+            line2.append(f" {label}   ", style="dim")
+        line2.append(" Esc ", style="reverse dim")
+        line2.append(" back", style="dim")
+        line2.truncate(cap, overflow="ellipsis")
+        self.query_one("#triagefoot", Static).update(line1 + Text("\n") + line2)
+
+    # -- verdicts ------------------------------------------------------------- #
+    def on_option_list_option_highlighted(self, event) -> None:
+        event.stop()
+        self._render_card(self.size.width)
+
+    def on_option_list_option_selected(self, event: OptionList.OptionSelected) -> None:
+        # Enter selects nothing here — the verdict keys are the action.
+        event.stop()
+
+    def action_label(self, label: str) -> None:
+        unit = self._current()
+        if unit is None:
+            return
+        ok, message = self._c.label_unit(unit["unit"], label)
+        self._last = Text(message, style=_result_style(ok, message))
+        if ok:
+            self._wrote += 1
+        index = self.query_one("#triagelist", OptionList).highlighted
+        self._refresh()
+        if ok:
+            # Triage is a pass DOWN the list: a verdict advances the cursor so the
+            # loop is one keypress per unit, not two.
+            ol = self.query_one("#triagelist", OptionList)
+            if index is not None and index + 1 < ol.option_count:
+                ol.highlighted = index + 1
+
+    def action_close(self) -> None:
+        """Esc goes back to the dashboard — the modal pattern. It never exits the
+        app (that stays q / Ctrl-C, and Esc on the dashboard is a no-op)."""
+        st = self._state
+        if not self._wrote:
+            self.dismiss(None)
+            return
+        self.dismiss(f"{st.get('sorter', 'triage')}: {st.get('reviewed', 0)}/"
+                     f"{st.get('total', 0)} units reviewed")
+
+
 # Kind -> editable numeric params (label, default) for the probe editor.
 _PROBE_KIND_FIELDS = {
     "independent": [("pitch_um", 250.0)],
@@ -2496,6 +2824,7 @@ class SpikeMenuApp(App):
         Binding("m", "run_key('manage')", "Manage sorters", show=False),
         Binding("c", "run_key('theme')", "Colour theme", show=False),
         Binding("v", "run_key('verify')", "Verify install", show=False),
+        Binding("u", "run_key('triage')", "Triage units", show=False),
         Binding("y", "run_key('phy')", "Export to Phy", show=False),
         Binding("r", "reopen_last", "Reopen last result", show=False),
         Binding("d", "data_help", "Data files", show=False),
@@ -2736,16 +3065,9 @@ class SpikeMenuApp(App):
         self.query_one("#contextbar", Static).update(t)
 
     def _section_rule(self, label: str, avail: int) -> Text:
-        """The D6 section language: a small dim-bold label with a hairline rule
-        filling exactly ``avail`` content columns — whitespace + hairline, never
-        a box, and never a wrapped-away rule (D6 review #1)."""
-        # no_wrap: a Rich Text renderable wraps by Rich's rules (Textual's
-        # text-wrap doesn't reach it) — any residual overlength must CLIP, never
-        # wrap the rule out of a 1-row widget.
-        t = Text(no_wrap=True)
-        t.append(label + " ", style=f"bold {ui.SECONDARY}")
-        t.append("─" * max(0, avail - len(label) - 1), style=_BORDER_DIM)
-        return t
+        """The D6 section language (module-level ``_hairline``, shared with the
+        triage screen): a dim-bold label + a hairline rule, never a box."""
+        return _hairline(label, avail)
 
     # Rule widths: the widget's content_region is the truth once laid out, but it
     # is STALE mid-resize (relayout runs on the event, before the layout pass) —
@@ -2761,8 +3083,11 @@ class SpikeMenuApp(App):
     def on_click(self, event) -> None:
         # The SORT row (and its context sentence) is a pressable control: a click
         # anywhere on it opens the sorter picker — same action as the `t` chip.
-        if getattr(event.widget, "id", None) in ("sortbar", "contextbar"):
+        wid = getattr(event.widget, "id", None)
+        if wid in ("sortbar", "contextbar"):
             self.action_pick_sorter()
+        elif wid == "results":
+            self._open_triage()          # the ` u  triage` chip's mouse path
 
     def _render_dlbar(self, width: int) -> None:
         """The collapsed download indicator. Hidden when no session; while live shows
@@ -2843,6 +3168,14 @@ class SpikeMenuApp(App):
             if curated.get("stale"):
                 mark += " · stale"
             t.append(mark, style=ui.SECONDARY)
+        # The pressable triage control, in D6's `t change` shape: an inverse-video
+        # key chip + verb, with a click anywhere on RESULTS as the mouse path. It
+        # lives HERE and not on the footer's key line because triage acts on the
+        # saved sort — and RESULTS is present exactly when there is one (§1.7: no
+        # affordance for a thing that isn't there).
+        t.append("   ")
+        t.append(" u ", style="reverse dim")
+        t.append(" triage", style="dim")
         t.append("\n", style=ui.PRIMARY)
         summary = info.get("summary")
         if summary:
@@ -2878,7 +3211,8 @@ class SpikeMenuApp(App):
     # MANAGE rows run by letter (DESIGN_UX §2); this map is the row-prefix AND the
     # binding contract (`?`/`q` are app-level keys shown for completeness).
     _MANAGE_KEYS = {"params": "e", "manage": "m", "probe": "p", "verify": "v",
-                    "phy": "y", "theme": "c", "help": "?", "quit": "q"}
+                    "triage": "u", "phy": "y", "theme": "c", "help": "?",
+                    "quit": "q"}
 
     def _workflow_actions(self) -> list[dict]:
         return [a for a in self.c.actions if a.get("section", "workflow") == "workflow"]
@@ -3028,6 +3362,24 @@ class SpikeMenuApp(App):
             self._last = Text(f"reload after probe change failed: {e!r}", style="#f85149")
         self._render_sortbar(self.size.width)
         self._render_databar(self.size.width)
+        self._refresh_footer()
+
+    def _open_triage(self) -> None:
+        self.push_screen(UnitTriageScreen(self.c, self._accent), self._after_triage)
+
+    def _after_triage(self, result) -> None:
+        """Triage closed. Verdicts changed the curation record, so the per-sorter
+        facts the dashboard shows (curated counts, RESULTS) may have moved —
+        reload and repaint, exactly like the other state-mutating modals."""
+        if result:
+            self._last = Text(str(result), style=f"bold {self._accent}")
+        try:
+            self.c.reload()
+            self._render_results()
+            self._rebuild_actions()
+        except Exception as e:  # noqa: BLE001 - a reload failure must not kill the app
+            self._last = Text(f"reload after triage failed: {e!r}", style="#f85149")
+        self._render_sortbar(self.size.width)
         self._refresh_footer()
 
     def action_pick_sorter(self) -> None:
@@ -3293,6 +3645,10 @@ class SpikeMenuApp(App):
             self.push_screen(ManageSortersScreen(self.c, self._accent), self._after_manage)
         elif key == "probe":
             self._open_probes()
+        elif key == "triage":
+            # Reads outputs/<sorter>/ only — it needs no recording, so it opens
+            # even when the data folder is empty and says so on the screen.
+            self._open_triage()
         elif key == "report" and self.c.data_report.get("present"):
             log_path = None
             try:

@@ -28,6 +28,7 @@ ACTIONS = [
     ("traces", "Traces", "scroll raw signal", True, "workflow"),
     ("params", "Edit parameters", "tune the active sorter", False, "manage"),
     ("manage", "Manage sorters", "download · delete", False, "manage"),
+    ("triage", "Triage units", "label the saved sort's units", False, "manage"),
     ("phy", "Export to Phy", "saved sort → a Phy folder", True, "manage"),
     ("probe", "Probe geometry", "pick / edit geometry", False, "manage"),
     ("verify", "Verify install", "smoke test", False, "manage"),
@@ -109,6 +110,14 @@ class FakeController:
         # Paths a test marks as vanished-from-disk, so reopen_last can mirror the
         # real controller's is-it-still-there check.
         self.gone: set[str] = set()
+        # Unit triage (W1 slice 4). The verdicts written so far stand in for the
+        # curation record on disk: they survive a "relaunch" over the same
+        # controller exactly as the real record survives one over the same repo.
+        self.labels: dict[str, dict] = {}
+        self.labelled: list[tuple] = []
+        self.triage_blocked = ""            # tests set the anchor refusal here
+        self.triage_stale_reason = ""
+        self.triage_line = "raw tridesclous2 sorter output — no curation applied"
         self.reload()
 
     # A small fake universe spanning all four groups. READY sorters come first so
@@ -310,6 +319,48 @@ class FakeController:
         if key == "sort" and info.get("present"):
             out["caveat"] = f"Re-running replaces the saved {info['name']} sort ({info['units']}u)."
         return out
+
+    # -- unit triage (mirrors MenuController.triage_state / label_unit) --------- #
+    _TRIAGE_COLUMNS = ["firing_rate", "snr", "isi_violations_ratio",
+                       "presence_ratio", "amplitude_cutoff"]
+
+    def triage_state(self) -> dict:
+        sorter = self.active_sorter
+        info = self.infos[self.active_idx]
+        st = {"sorter": sorter, "line": self.triage_line,
+              "stale": bool(self.triage_stale_reason),
+              "stale_reason": self.triage_stale_reason,
+              "apply_hint": f"uv run python scripts/curation.py apply --sorter {sorter}",
+              "blocked": self.triage_blocked, "empty": "",
+              "columns": [], "units": [], "reviewed": 0, "total": 0}
+        if not info.get("present"):
+            st["empty"] = (f"No saved {sorter} sort to triage yet — press 2 on the "
+                           "dashboard to sort, then come back.")
+            return st
+        # A blocked record's labels are for a DIFFERENT sort's unit ids, so they are
+        # not shown against these units (the real controller does the same).
+        labels = {} if self.triage_blocked else self.labels.get(sorter, {})
+        st["columns"] = list(self._TRIAGE_COLUMNS)
+        st["units"] = [{
+            "unit": u, "label": labels.get(u),
+            "label_method": "tui" if u in labels else None,
+            "peak_channel": str(u % 16 + 1), "n_spikes": 1000 + u,
+            "v_pp_uV": 30.0 + u,
+            # amplitude_cutoff is None: NaN on disk must render as "–", never 0.
+            "metrics": {"firing_rate": 0.5 + u, "snr": 5.0 + u * 0.1,
+                        "isi_violations_ratio": 0.0, "presence_ratio": 1.0,
+                        "amplitude_cutoff": None},
+        } for u in range(info["units"])]
+        st["total"] = len(st["units"])
+        st["reviewed"] = sum(1 for x in st["units"] if x["label"])
+        return st
+
+    def label_unit(self, unit_id, label: str) -> tuple[bool, str]:
+        if self.triage_blocked:
+            return False, self.triage_blocked          # refused: nothing written
+        self.labels.setdefault(self.active_sorter, {})[unit_id] = label
+        self.labelled.append((self.active_sorter, unit_id, label))
+        return True, f"unit {unit_id} → {label}"
 
     def run_compare(self, pair) -> tuple[bool, str, bool]:
         self.ran_compare = tuple(pair)

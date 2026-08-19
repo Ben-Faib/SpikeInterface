@@ -211,6 +211,41 @@ def test_state_flags_a_re_sort_under_a_curated_result(tmp_path):
 # --------------------------------------------------------------------------- #
 # Honest surfaces (pure): the report's line, compare's line
 # --------------------------------------------------------------------------- #
+def test_anchor_error_is_the_refusal_apply_raises(tmp_path):
+    """``anchor_error`` is the pure half of the anchor rule: the same sentence
+    ``_check_run_identity`` raises, returnable so a surface can ask BEFORE it
+    offers to write. Every refusal names its next step (DESIGN_UX §1.7)."""
+    record, paths = _record(tmp_path)
+    assert curation.anchor_error(record, SORTER, tmp_path) == ""
+    # No record yet: only the disk side has to be identifiable, because
+    # new_record() anchors a fresh record to exactly that identity.
+    assert curation.anchor_error(None, SORTER, tmp_path) == ""
+
+    # The sort on disk moved under the record (a re-sort renumbers units).
+    paths["run_info"].write_text(json.dumps({**RUN_INFO, "n_units": 7}),
+                                 encoding="utf-8")
+    err = curation.anchor_error(record, SORTER, tmp_path)
+    assert "written against a different" in err and "Next step:" in err
+    # ...and it is exactly what apply refuses with.
+    with pytest.raises(RuntimeError) as exc:
+        curation._check_run_identity(record, SORTER, tmp_path)
+    assert str(exc.value) == err
+
+    # An unidentifiable sort refuses a fresh record too — an all-None anchor
+    # would otherwise "match" every sort, the failure the anchor exists to stop.
+    paths["run_info"].unlink()
+    for rec in (record, None):
+        blank = curation.anchor_error(rec, SORTER, tmp_path)
+        assert "cannot identify the saved" in blank and "Next step:" in blank
+
+
+def test_anchor_error_refuses_a_record_with_no_anchor(tmp_path):
+    record, _paths = _record(tmp_path)
+    record["curates"]["run"] = {}          # written while run_info.json was missing
+    err = curation.anchor_error(record, SORTER, tmp_path)
+    assert "no usable anchor" in err and f"outputs/{SORTER}/" in err
+
+
 def test_report_states_raw_or_curated(tmp_path):
     record, paths = _record(tmp_path)
     curation.add_label(record, 1, "good")

@@ -148,6 +148,11 @@ Paths and state (pure):
          "record_path", "curated_dir", "updated", "curated_units"}
     stale_reason(curated_run, record, raw_run) -> str   why a curated result no
                                                longer describes what is on disk
+    anchor_error(record, sorter, root=None) -> str      why a decision must not be
+                                               written into this record for the
+                                               sort on disk ("" when it may be);
+                                               ``record=None`` asks it of a record
+                                               that does not exist yet
     structural_errors(record) -> list[str]     schema check without SI
     import_phy_labels(sorter, folder=..., root=..., dry_run=False) -> dict
                                                Phy's verdicts -> labelled decisions
@@ -619,6 +624,57 @@ def stale_reason(curated_run: dict, record: "dict | None", raw_run: dict) -> str
     return ""
 
 
+def anchor_error(record: "dict | None", sorter: str, root=None) -> str:
+    """Why a decision must NOT be written into ``record`` for the sort on disk.
+
+    "" when the record is anchored to ``outputs/<sorter>/`` and may be decided on
+    or applied. Pure — json + pathlib, so the menu can ask before offering to
+    label. ``record=None`` asks the same question about a record that does not
+    exist yet: only the disk side has to be identifiable, because ``new_record``
+    anchors a fresh record to exactly that identity.
+
+    An anchor only binds if BOTH sides carry it. All-None compares as "matches
+    everything", which is the exact failure the anchor exists to prevent — so a
+    missing/corrupt run_info.json, or a record written when one was missing, is a
+    refusal, not a pass. Every refusal names its next step (DESIGN_UX §1.7).
+    """
+    want = (record or {}).get("curates", {}).get("run", {})
+    have = _run_identity(read_run_info(sorter, root))
+    KEY = ("sorter", "created", "n_units")
+    blank_disk = [k for k in KEY if have.get(k) is None]
+    if blank_disk:
+        return (
+            f"cannot identify the saved {sorter} sort: "
+            f"{sort_paths(sorter, root)['run_info']} is missing or unreadable "
+            f"(no {', '.join(blank_disk)}). Without it there is nothing to check the "
+            "curation record against, and unit ids are not stable across re-sorts, so "
+            "a decision could silently land on the wrong unit. Next step: restore that "
+            f"run_info.json, or re-sort (uv run python scripts/run_sorting.py --sorter "
+            f"{sorter}) and write a fresh record against the new sort.")
+    if record is None:
+        return ""
+    blank_record = [k for k in KEY if want.get(k) is None]
+    if blank_record:
+        return (
+            f"this curation record has no usable anchor (no {', '.join(blank_record)} "
+            "under 'curates.run'), so it cannot be tied to the sort on disk. It was "
+            "most likely written while run_info.json was missing. Next step: write a "
+            f"fresh record against the sort now in outputs/{sorter}/ — the old record "
+            "stays as the audit trail of what was decided.")
+    mismatch = _identity_mismatch(want, have)
+    if not mismatch:
+        return ""
+    return (
+        f"this curation record was written against a different {sorter} sort — "
+        + "; ".join(mismatch)
+        + ". Unit ids are not stable across re-sorts, so replaying these decisions "
+          "would curate the wrong units. Next step: re-run the comparison against "
+          "this sort and write a fresh record (curation.py split/label/merge on the "
+          f"sort now in outputs/{sorter}/), or restore the sort the record was made "
+          "on. The old record is not deleted — it stays as the audit trail of what "
+          "was decided about that run.")
+
+
 def state(sorter: str, root=None) -> dict:
     """What a surface needs to be honest about curated-vs-raw. No SI import.
 
@@ -1068,43 +1124,9 @@ def _check_run_identity(record: dict, sorter: str, root=None) -> None:
     run's created timestamp, its unit count and its effective window all have to
     match the sort on disk.
     """
-    want = record.get("curates", {}).get("run", {})
-    have = _run_identity(read_run_info(sorter, root))
-    # An anchor only binds if BOTH sides carry it. All-None compares as "matches
-    # everything", which is the exact failure the anchor exists to prevent — so a
-    # missing/corrupt run_info.json, or a record written when one was missing, is
-    # a refusal, not a pass.
-    KEY = ("sorter", "created", "n_units")
-    blank_disk = [k for k in KEY if have.get(k) is None]
-    blank_record = [k for k in KEY if want.get(k) is None]
-    if blank_disk:
-        raise RuntimeError(
-            f"cannot identify the saved {sorter} sort: "
-            f"{sort_paths(sorter, root)['run_info']} is missing or unreadable "
-            f"(no {', '.join(blank_disk)}). Without it there is nothing to check the "
-            "curation record against, and unit ids are not stable across re-sorts, so "
-            "a decision could silently land on the wrong unit. Next step: restore that "
-            f"run_info.json, or re-sort (uv run python scripts/run_sorting.py --sorter "
-            f"{sorter}) and write a fresh record against the new sort.")
-    if blank_record:
-        raise RuntimeError(
-            f"this curation record has no usable anchor (no {', '.join(blank_record)} "
-            "under 'curates.run'), so it cannot be tied to the sort on disk. It was "
-            "most likely written while run_info.json was missing. Next step: write a "
-            f"fresh record against the sort now in outputs/{sorter}/ — the old record "
-            "stays as the audit trail of what was decided.")
-    mismatch = _identity_mismatch(want, have)
-    if not mismatch:
-        return
-    raise RuntimeError(
-        f"this curation record was written against a different {sorter} sort — "
-        + "; ".join(mismatch)
-        + ". Unit ids are not stable across re-sorts, so replaying these decisions "
-          "would curate the wrong units. Next step: re-run the comparison against "
-          "this sort and write a fresh record (curation.py split/label/merge on the "
-          f"sort now in outputs/{sorter}/), or restore the sort the record was made "
-          "on. The old record is not deleted — it stays as the audit trail of what "
-          "was decided about that run.")
+    err = anchor_error(record, sorter, root)
+    if err:
+        raise RuntimeError(err)
 
 
 def _check_out_dir(out, paths: dict, sorter: str) -> None:

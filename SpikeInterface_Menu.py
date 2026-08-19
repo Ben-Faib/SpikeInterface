@@ -763,6 +763,7 @@ _ACTIONS = [
     ("traces",  "Traces",           "scroll raw signal (desktop window)",      True,  "workflow"),
     ("params",  "Edit parameters",  "tune the active sorter (saved)",          False, "manage"),
     ("manage",  "Manage sorters",   "download images · delete · clear sorts",  False, "manage"),
+    ("triage",  "Triage units",     "label the saved sort's units in here",    False, "manage"),
     ("phy",     "Export to Phy",    "saved sort → a Phy folder to curate",     True,  "manage"),
     ("probe",   "Probe geometry",   "pick / edit the electrode geometry",      False, "manage"),
     ("verify",  "Verify install",   "environment smoke test",                  False, "manage"),
@@ -806,6 +807,11 @@ _ACTION_DETAIL = {
                 "needs": ["broadband"], "output": "a desktop window"},
     "compare": {"what": "Build an agreement matrix between two saved sorts.",
                 "needs": ["two_sorts"], "output": "outputs/comparison.html"},
+    "triage":  {"what": "Walk the saved sort's units in the menu — per-unit "
+                        "evidence, and g/m/n/u to label each good / MUA / noise / "
+                        "unsure. The verdicts go into the same curation record "
+                        "every other surface reads.",
+                "needs": ["saved_sort"], "output": "outputs/<sorter>/curation.json"},
     "phy":     {"what": "Export the saved sort to a Phy folder so the hard cases "
                         "can be curated by hand elsewhere — the curated result "
                         "when one exists, else the raw sort. Verdicts come back "
@@ -1121,6 +1127,100 @@ class MenuController:
     def saved_sorters(self) -> list[str]:
         """Sorters that currently have a saved analyzer (for the compare picker)."""
         return [i["name"] for i in self.infos if i.get("present")]
+
+    # -- in-TUI unit triage (W1 slice 4) -------------------------------------- #
+    @staticmethod
+    def _spike_counts(sorting_dir) -> dict:
+        """{unit id (str): n spikes} read off the saved Sorting.
+
+        ``{}`` when it cannot be read, so the triage card shows an honest "–"
+        rather than a number it made up.
+        """
+        try:
+            import spikeinterface.full as si
+
+            sorting = si.load(sorting_dir)
+            return {str(u): int(n) for u, n
+                    in sorting.count_num_spikes_per_unit(outputs="dict").items()}
+        except Exception:  # noqa: BLE001 - unreadable sorting -> "–", never a crash
+            return {}
+
+    def triage_state(self) -> dict:
+        """Everything the in-TUI triage screen needs for the ACTIVE sorter's sort.
+
+        Only what is on disk, never a recomputation: ``summary.json``'s per-unit
+        block (peak channel, V_pp), ``quality_metrics.csv`` exactly as the sort
+        wrote it, and the saved Sorting's spike counts. ``curation.state()`` is
+        the one source for curated-vs-raw + staleness and ``curation.anchor_error``
+        the one source for whether a label may be written at all — this method
+        decides neither.
+
+        The units listed are the RAW sort's: unit ids in the record are the raw
+        sort's ids, so that is where a label lands (``curated/`` is rebuilt from
+        the record by ``curation.py apply``).
+        """
+        sorter = self.active_sorter
+        paths = curation.sort_paths(sorter)
+        st = curation.state(sorter)
+        out = {
+            "sorter": sorter,
+            "line": st["line"],
+            "stale": st["stale"], "stale_reason": st["stale_reason"],
+            "record_path": st["record_path"],
+            "apply_hint": ("uv run python scripts/curation.py apply "
+                           f"--sorter {sorter}"),
+            "units": [], "columns": [], "reviewed": 0, "total": 0,
+            "blocked": "", "empty": "",
+        }
+        summary = sort_summary.load_summary(paths["out"]) or {}
+        per_unit = summary.get("per_unit") or []
+        if not per_unit:
+            out["empty"] = (f"No saved {sorter} sort to triage yet — press 2 on the "
+                            "dashboard to sort, then come back.")
+            return out
+        record = curation.load_record(sorter)
+        # A record anchored to a DIFFERENT sort must not be written into — and its
+        # labels must not be *shown* against these unit ids either, which would be
+        # exactly the wrong-unit confusion the anchor exists to prevent.
+        blocked = curation.anchor_error(record, sorter)
+        metrics = sort_summary.load_quality_metrics(paths["out"])
+        counts = self._spike_counts(paths["sorting"])
+        units = [{
+            "unit": row.get("unit"),
+            "label": None if blocked else curation.label_of(record, row.get("unit")),
+            "label_method": (None if blocked
+                             else curation.label_method_of(record, row.get("unit"))),
+            "peak_channel": row.get("best_channel"),
+            "n_spikes": counts.get(str(row.get("unit"))),
+            "v_pp_uV": row.get("v_pp_uV"),
+            "metrics": metrics.get(str(row.get("unit")), {}),
+        } for row in per_unit]
+        out["blocked"] = blocked
+        out["units"] = units
+        out["columns"] = list(next(iter(metrics.values()), {}))
+        out["total"] = len(units)
+        out["reviewed"] = sum(1 for u in units if u["label"])
+        return out
+
+    def label_unit(self, unit_id, label: str) -> tuple[bool, str]:
+        """Write one TUI triage verdict into the curation record.
+
+        curation.py owns the record — this opens it (creating an empty one against
+        the sort on disk when there is none), asks it whether a decision may be
+        written at all, and calls ``add_label(source="tui")``. A refusal writes
+        nothing and returns the reason verbatim.
+        """
+        sorter = self.active_sorter
+        try:
+            record = curation.open_record(sorter)
+            err = curation.anchor_error(record, sorter)
+            if err:
+                return False, err
+            curation.add_label(record, unit_id, label, source="tui")
+            curation.save_record(record, curation.sort_paths(sorter)["record"])
+        except Exception as e:  # noqa: BLE001 - one honest line, never a crash
+            return False, f"labelling unit {unit_id} failed: {e}"
+        return True, f"unit {unit_id} → {label}"
 
     def action_explain(self, key: str) -> dict:
         """Resolve an action's static metadata against live state.
