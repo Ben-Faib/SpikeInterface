@@ -17,18 +17,19 @@ box) runs alongside everything.
 
 ---
 
-## ▶ NOW — updated 2026-08-18 evening: **THE AUTONOMOUS RUN IS ON** (sealing sessions: update this box FIRST)
+## ▶ NOW — updated 2026-08-18 late: **THE CONDUCTOR RUN IS LIVE** (sealing sessions: update this box FIRST)
 
-- **The autonomous run's first wave is SEALED (evening of 2026-08-18):** D1 dashboard
-  (`18a5279`, Fable review fix-first → all 7 findings fixed incl. the 80×24 layout
-  starvation), D2 engine half (`fc19579`, protocol elapsed/phase_done/result, review
-  ship), P1 probe import (`384884e`, peer session, review ship) — on top of the
-  morning's T1 + M1. Suite: 344 green.
-- **Next in dependency order:** D2 view half (progress modal renders the new timing +
-  result cards; the modal-contract change is pre-agreed in DESIGN_UX §3), then D3
-  report (+ its progress plumbing), D4 flow modals, B1 (now unblocked — D1 released
-  SpikeInterface_Menu.py). P1 handoffs are already routed (editor guard shipped in D1;
-  P3 items recorded in the brief).
+- **Lanes in flight:** PRE1 bad-channel exclusion (builder, main tree — owns
+  run_sorting/sort_summary/report + outputs/, baseline archived before the re-sort),
+  W1 slice 2 curation loop (builder, isolated worktree — mechanism now, post-PRE1
+  validation at integration), debt bundle (builder, isolated worktree — report
+  headers, D2b manifest, label home → blackrock_io, controller dead code, extra-.nev
+  robustness), D6 airy dashboard (peer lane — menu_app main screen + ui + snapshot
+  re-baseline). P2 SEALED (peer, `8af8111`).
+- **Integration order at the conductor:** PRE1 lands first (review → commit → seal),
+  then W2 launches (run_sorting freed) and the debt bundle rebases in; W1s2 lands →
+  W1s3 (Phy) ∥ W1s4 (TUI triage) launch on its record schema. Gated OPEN: P3
+  (adapter map), WD (lab box), W3 (face pick), W4 (lab data).
 
 ## The dependency graph
 
@@ -61,9 +62,12 @@ box) runs alongside everything.
 | 6 | D3 report | `goals/GOAL_D_UIUX.md` | **SEALED 2026-08-18** (`d12ff5c`; visual pass = Ben opening it) |
 | 7 | D4 flow modals | `goals/GOAL_D_UIUX.md` | **SEALED 2026-08-18** (`f115015`) |
 | 8 | T2/T3 journey + honesty tests | `goals/GOAL_T_TESTING.md` | **SEALED 2026-08-18** (peer, `7e6938d`) |
-| 9 | P2 multi-shank · P3 wiring | `goals/GOAL_P_PROBES.md` | after P1; P3 needs adapter map |
-| 10 | W1 curation | `goals/GOAL_W1_CURATION.md` | **slice 1 SEALED 2026-08-18** (rule owner); slices 2-4 (curation loop, Phy, triage) READY — Ben chose this path |
-| 11 | W2 reproducibility | `goals/GOAL_W2_REPRO.md` | after/with late W1 |
+| 9 | P2 multi-shank · P3 wiring | `goals/GOAL_P_PROBES.md` | **P2 SEALED 2026-08-18** (peer, `8af8111`: ProbeGroup imports as probes-as-shanks, wiring pinned verbatim, physical density classing; suite 388 green, canary 3.993 µV, review ship). P3 needs adapter map; three new recorded items in the brief |
+| 10 | W1 curation | `goals/GOAL_W1_CURATION.md` | **slice 1 SEALED 2026-08-18** (rule owner); **slice 2 IN FLIGHT** (worktree lane); slices 3-4 launch on s2's record schema |
+| 11 | W2 reproducibility | `goals/GOAL_W2_REPRO.md` | next after PRE1 lands (run_sorting freed) |
+| PRE1 | bad channels out of the reference (E1's finding; conductor prompt item 1) | prompt below | **IN FLIGHT 2026-08-18** (main-tree lane; baseline archived to outputs/_archive/) |
+| D6 | the airy dashboard (Ben's two mocks, approved in-session) | NORTHSTAR decision 2026-08-18 night | **IN FLIGHT 2026-08-18** (peer lane; menu_app main screen + ui; lands before W1s4 touches the menu) |
+| DEBT | recorded-debt bundle: report headers · D2b manifest · label home · dead code · extra-.nev | conductor prompt item 6 | **IN FLIGHT 2026-08-18** (worktree lane) |
 | 12 | W3 face | `goals/GOAL_W3_FACE.md` | gated: Ben's pick, after D track |
 | 13 | W4 multi-recording | `goals/GOAL_W4_MULTI.md` | gated: W1+W2+lab data |
 | — | WD lab deployment items 1–4 | `goals/GOAL_WD_DEPLOY.md` | gated: lab-box access |

@@ -104,6 +104,17 @@ this Mac never offers it). Every phase's work must hold on Windows, not just mac
   Faibussowitsch in collaboration with Aleece Al-Olimat. This supersedes the original
   W0-first line ordering — the arc section above carries the new structure.
 
+- **2026-08-18 (Ben, night)** — **D6, the airy dashboard**: Ben supplied two reference
+  mocks and approved the synthesis — crest demoted to tall terminals only, borderless
+  whitespace+hairline section language replacing the boxed panels, the DATA line owning a
+  single probe summary, the SORT line keeping its one home but gaining a clickable
+  "change" control plus one dim context sentence (sorter description + fit), action rows
+  gaining inverse-video key chips, manage/help keys merging into one bottom line — with
+  the blank-line air collapsing before content under the existing yield law (80×24 stays
+  fully usable) and a deliberate snapshot re-baseline. Supersedes D5's boxed-panel
+  chrome; §1 language unchanged and binding. Standing intent behind it: make the UI
+  "less annoying to deal with" — discoverability via visible, pressable affordances.
+
 ## Open questions (kept open on purpose — answers land here as dated decisions)
 
 - **What Tracy's lab actually needs first** — users, their fluency, the recordings beyond

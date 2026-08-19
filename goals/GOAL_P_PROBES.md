@@ -22,12 +22,16 @@ correctness — a wrong channel→site map silently corrupts every spatial resul
   provisional), and a data-driven sanity view (per-channel noise/amplitude by claimed
   depth) that helps a researcher spot an implausible wiring. The lab's real adapter map
   (NORTHSTAR open question) closes this properly; the surface must not pretend to certainty
-  the data doesn't give. **Two on-record items from P1's review (2026-08-18, also in
+  the data doesn't give. **On-record items from P1's and P2's reviews (2026-08-18, also in
   probes.py's docstring):** `run_sorting.py --probe-file` (kind `file`) still applies
   identity wiring unconditionally — with the import CLI existing it is now the trap door
-  for wired probes and P3 must close it; and imported tetrode-style geometry
+  for wired probes and P3 must close it; imported tetrode-style geometry
   density-classes as `dense` rather than tetrodes (soft re-rank only — mis-ranking, not
-  mis-sorting).
+  mis-sorting); coincident-probes import error wording is true but unhelpful (two
+  un-offset probes in a ProbeGroup fail as "two contacts share the same position" —
+  name the real cause: overlapping probe origins); and per-shank pitch/density is
+  materialised in imported profiles (`params.per_shank` / `geometry_features`) but no
+  surface renders it yet — the menu probe-UI pass consumes it.
 
 ## Definition of done (per slice)
 
