@@ -2960,6 +2960,9 @@ class SpikeMenuApp(App):
         if width >= 118:
             return ("↑/↓ ↵ · 1-6 run · t sorter · e params · m sorters · p probe · "
                     "v verify · y phy · r reopen · d data · ? help · q quit")
+        if width >= 110:
+            return ("↑/↓ ↵ · 1-6 run · t sorter · e params · m sorters · p probe · "
+                    "v verify · r reopen · d data · ? help · q quit")
         if width >= 100:
             return ("↑/↓ ↵ · 1-6 run · t sorter · e params · m sorters · p probe · "
                     "r reopen · ? help · q quit")
