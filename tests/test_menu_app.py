@@ -2323,3 +2323,44 @@ async def test_triage_reachable_from_the_results_section(make_app):
         await pilot.click("#results")
         await pilot.pause()
         assert isinstance(app.screen, menu_app.UnitTriageScreen)
+
+
+# --- Help + picker navigation (Ben-reported, 2026-08-19) ------------------- #
+async def test_help_topics_navigate_with_arrows(make_app):
+    # The topic list and the body move together: arrows change the topic AND
+    # the body follows. The F2 rewrite lost the highlight handler, freezing the
+    # body on the opening topic while the cursor moved.
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("question_mark")
+        await pilot.pause()
+        body = app.screen.query_one("#helpbody", Static)
+        assert ui.HELP_TOPICS[0][1] in str(body.render())
+        await pilot.press("down")
+        await pilot.pause()
+        assert ui.HELP_TOPICS[1][1] in str(body.render())
+
+
+async def test_picker_cursor_clamps_at_the_ends(make_app):
+    # The picker's list has ends: down at the bottom stays at the bottom
+    # instead of teleporting to the top (the old modulo wrap read as the
+    # cursor "bumping around" a long grouped list).
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        await pilot.press("t")
+        await pilot.pause()
+        ol = app.screen.query_one("#picklist", OptionList)
+        n = ol.option_count
+        for _ in range(n + 3):
+            await pilot.press("down")
+        await pilot.pause()
+        assert ol.highlighted == n - 1
+        await pilot.press("down")
+        await pilot.pause()
+        assert ol.highlighted == n - 1
+        for _ in range(n + 3):
+            await pilot.press("up")
+        await pilot.pause()
+        assert ol.highlighted == 0

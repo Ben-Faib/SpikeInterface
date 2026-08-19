@@ -2468,6 +2468,14 @@ class HelpScreen(ModalScreen):
                 body.append(ln + "\n")
         self.query_one("#helpbody", Static).update(body)
 
+    def on_option_list_option_highlighted(self, event) -> None:
+        # Arrows navigate topics: the body follows the highlight. This handler
+        # was lost in the F2 rewrite, which left the topic list moving over a
+        # frozen body; pinned by test_help_topics_navigate_with_arrows.
+        oid = getattr(event.option, "id", None)
+        if oid:
+            self._show(oid)
+
     def action_close(self) -> None:
         self.dismiss(None)
 
@@ -2626,6 +2634,12 @@ class SorterPickerScreen(ModalScreen):
     SorterPickerScreen #pickfilter { margin: 0 0 1 0; border: round #3a3f47; }
     SorterPickerScreen #pickfilter:focus { border: round $accentcolor; }
     SorterPickerScreen #picklist { height: auto; max-height: 18; border: none; }
+    /* The list is driven from the filter box and never takes focus, so without
+       this it wears the UNFOCUSED highlight (a bare underline) - an invisible
+       cursor on a long grouped list. It gets the focused look unconditionally. */
+    SorterPickerScreen #picklist > .option-list--option-highlighted {
+        background: $accentcolor 25%; color: $foreground; text-style: none;
+    }
     SorterPickerScreen #pickdesc { height: auto; color: $text-muted; padding: 1 0 0 0; }
     """
 
@@ -2702,12 +2716,18 @@ class SorterPickerScreen(ModalScreen):
             collapsed = (group in ("gpu", "unavailable")
                          and group not in self._expanded and not flt)
             label = _GROUP_LABEL[group]
-            suffix = f"  ({len(members)}) — Enter to expand" if collapsed else ""
-            ol.add_option(Option(
-                Text(label + suffix,
-                     style=f"bold {_GROUP_COLOR[group]}" if not collapsed
-                     else f"dim {_GROUP_COLOR[group]}"),
-                id=f"__grp_{group}__", disabled=not collapsed))
+            if collapsed:
+                row = Text(f"{label}  ({len(members)}) · Enter to expand",
+                           style=f"dim {_GROUP_COLOR[group]}")
+            else:
+                # Expanded headings speak the dashboard's hairline language: a
+                # bold label over a short dim rule. Width is capped at build
+                # time; a longer rule would wrap into a second painted row on a
+                # narrow terminal (the OptionList no-wrap trap).
+                row = Text()
+                row.append(label + " ", style=f"bold {_GROUP_COLOR[group]}")
+                row.append("─" * max(0, 44 - len(label)), style="dim")
+            ol.add_option(Option(row, id=f"__grp_{group}__", disabled=not collapsed))
             if collapsed:
                 continue
             for info in members:
@@ -2752,15 +2772,19 @@ class SorterPickerScreen(ModalScreen):
             self._rebuild()
 
     def action_move(self, delta: int) -> None:
+        # The list has ends: the cursor clamps at the first/last enabled row.
+        # The old modulo walk teleported bottom-to-top (and vice versa), which
+        # read as the cursor "bumping around" on a long grouped list.
         ol = self.query_one("#picklist", NavList)
         if ol.option_count == 0:
             return
         i = ol.highlighted if ol.highlighted is not None else 0
-        for _ in range(ol.option_count):
-            i = (i + delta) % ol.option_count
-            if not ol.get_option_at_index(i).disabled:
-                break
-        ol.highlighted = i
+        j = i + delta
+        while 0 <= j < ol.option_count and ol.get_option_at_index(j).disabled:
+            j += delta
+        if not 0 <= j < ol.option_count:
+            return
+        ol.highlighted = j
         self._render_desc()
 
     def _render_desc(self) -> None:
@@ -2774,7 +2798,7 @@ class SorterPickerScreen(ModalScreen):
             desc.update(Text(f"no sorters match ‹{flt}›", style="#d29922"))
             return
         if oid == "__docker__":
-            desc.update(Text("Enter toggles Docker — runs not-installed CPU sorters "
+            desc.update(Text("Enter toggles Docker: runs not-installed CPU sorters "
                              "via containers", style="dim"))
             return
         if oid and oid.startswith("__grp_"):
