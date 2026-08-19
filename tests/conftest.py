@@ -64,6 +64,9 @@ class FakeController:
                         for k, t, h, nd, s, hk in ACTIONS]
         self.last_result = None
         self.reopened = 0
+        # How many (non-accepted) fake units carry the merge advisory. 0 keeps
+        # the dashboard/triage silent, mirroring a sort where nothing fires.
+        self.split_candidates = 0
         self.ran: list[tuple[str, str | None]] = []
         self.ran_compare = None
         self.downloaded: list[str] = []
@@ -219,7 +222,19 @@ class FakeController:
                 "headline": f"{len(accepted)} strong units (ch {'·'.join(contacts)})",
                 "site_line": f"strong at ch {'·'.join(contacts)}",
                 "contact_line": " · ".join(f"contact {c}: 1 accepted" for c in contacts),
-                "has_matches": False, "contacts": [], "units": []}
+                "has_matches": False, "contacts": [], "units": [],
+                # The merge advisory's rollup shape (sort_summary owns the words).
+                "n_split_candidates": self.split_candidates,
+                "split_contacts": [str(u % 16 + 1) for u in
+                                   self._split_units(n_units)],
+                "split_line": (f"{self.split_candidates} units fire at impossible "
+                               "intervals: each likely two cells under one label"
+                               if self.split_candidates else ""),
+                "split_rule_text": "ISI ratio ≥ 1.0 with ≥ 1000 spikes and solid SNR"}
+
+    def _split_units(self, n_units: int) -> list:
+        rest = [u for u in range(n_units) if u not in self._accepted(n_units)]
+        return rest[: self.split_candidates]
 
     def _mark_active(self) -> None:
         for n, info in enumerate(self.infos):
@@ -386,6 +401,10 @@ class FakeController:
                 "verdict_word": "strong" if ok else "sub-threshold",
                 "why": "" if ok else "ISI ratio ≤ 0.5 - is 1.2",
                 "isolation": "clean" if ok else "mostly separate",
+                "split_advice": ("fires at impossible intervals: likely two "
+                                 "cells sharing this contact. Consider "
+                                 "splitting (export to Phy)"
+                                 if u in self._split_units(info["units"]) else ""),
                 # amplitude_cutoff is None: NaN on disk must render as "–", never 0.
                 "metrics": {"firing_rate": 0.5 + u, "snr": 5.0 + u * 0.1,
                             "isi_violations_ratio": 0.0, "presence_ratio": 1.0,

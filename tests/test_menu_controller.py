@@ -582,6 +582,10 @@ def test_triage_state_reads_the_evidence_off_disk(monkeypatch, tmp_path):
     # The rollup's synthesis rides along, so the card states it without deciding.
     assert by_unit[0]["verdict"] is True and by_unit[0]["why"] == ""
     assert st["rule_text"]
+    # The merge advisory rides the same copy: the key is always present, and on
+    # these unknown-spike-count units it is empty (thin or unjudged evidence
+    # never fires it).
+    assert all(u["split_advice"] == "" for u in st["units"])
     # No saved Sorting here -> an honest unknown, never an invented count. And an
     # uncounted pass is HEDGED rather than called strong: the surfaces must not
     # promote a unit on evidence they never looked at.

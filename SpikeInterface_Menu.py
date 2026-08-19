@@ -1300,6 +1300,7 @@ class MenuController:
             "strong": row["strong"],
             "why": row["why"],
             "isolation": row["isolation"],
+            "split_advice": row.get("split_advice", ""),
             "metrics": metrics.get(str(row["unit"]), {}),
         } for row in rollup["units"]]
         out["blocked"] = blocked

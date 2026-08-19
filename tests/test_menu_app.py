@@ -2364,3 +2364,46 @@ async def test_picker_cursor_clamps_at_the_ends(make_app):
             await pilot.press("up")
         await pilot.pause()
         assert ol.highlighted == 0
+
+
+# --- GOAL_PRESENT item 2: the merge advisory's thin menu half --------------- #
+async def test_merge_advisory_reaches_results_and_the_triage_card(make_app):
+    """The advisory computed by sort_summary's rollup reaches the dashboard
+    RESULTS row and the triage card, quoting the one home's words - and the
+    amber row names the real next step (y, the Phy export key)."""
+    app = make_app(present=True)
+    app.c.split_candidates = 2
+    info = app.c.infos[app.c.active_idx]
+    info["rollup"] = app.c._rollup(info["units"])
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        results = app.query_one("#results").render().plain
+        assert "2 units may be 2 cells each" in results
+        assert "y exports to Phy for splitting" in results
+        screen = await _open_triage(pilot, app)
+        # The cursor opens on a strong unit: its card must NOT carry the line.
+        card = screen.query_one("#triagecard").render().plain
+        assert "split?" not in card
+        state = app.c.triage_state()
+        advised = [i for i, u in enumerate(state["units"]) if u["split_advice"]]
+        assert advised, "fixture must advise at least one unit"
+        for _ in range(advised[0]):
+            await pilot.press("down")
+        await pilot.pause()
+        card = screen.query_one("#triagecard").render().plain
+        assert "split?" in card
+        assert "fires at impossible intervals" in card
+
+
+async def test_no_advisory_keeps_results_and_triage_silent(make_app):
+    """Silence stays silence: a rollup with nothing to advise adds no row and
+    no card line (absent evidence is never a reassurance either)."""
+    app = make_app(present=True)  # split_candidates defaults to 0
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        results = app.query_one("#results").render().plain
+        assert "2 cells" not in results
+        assert all(u["split_advice"] == ""
+                   for u in app.c.triage_state()["units"])
+        screen = await _open_triage(pilot, app)
+        assert "split?" not in screen.query_one("#triagecard").render().plain

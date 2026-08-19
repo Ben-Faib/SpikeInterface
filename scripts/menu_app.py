@@ -1968,6 +1968,12 @@ class UnitTriageScreen(ModalScreen):
         if unit.get("isolation"):
             t.append(f"{'isolation':<22}", style=ui.SECONDARY)
             t.append(unit["isolation"] + "\n", style=ui.PRIMARY)
+        # The merge advisory rides the same rollup as the verdict: advisory only,
+        # never a certification, and absent means silent (NaN or thin evidence
+        # yields no advice, not a reassurance).
+        if unit.get("split_advice"):
+            t.append(f"{'split?':<22}", style=ui.SECONDARY)
+            t.append(unit["split_advice"] + "\n", style="#f0883e")
         for name, value in (("peak channel", unit.get("peak_channel")),
                             ("spikes", unit.get("n_spikes")),
                             ("V_pp (µV)", unit.get("v_pp_uV"))):
@@ -3385,6 +3391,15 @@ class SpikeMenuApp(App):
             line().append(other["short"], style=ui.SECONDARY)
         summary = info.get("summary")
         if not compact:
+            # The merge advisory, compactly, from the same rollup home as the
+            # takeaway (advisory only, never a gate): the full sentence with
+            # per-unit evidence belongs to the report and the triage card - this
+            # row names the count and the next step.
+            if rollup and rollup.get("n_split_candidates"):
+                n = rollup["n_split_candidates"]
+                adv = line()
+                adv.append(f"{n} unit{'' if n == 1 else 's'} may be 2 cells each"
+                           " · y exports to Phy for splitting", style="#f0883e")
             metrics = line()
             if summary:
                 row = _ss.headline_row(summary)
