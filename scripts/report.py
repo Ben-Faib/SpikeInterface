@@ -46,11 +46,9 @@ LFP_WINDOW_S = 10.0
 LFP_MAX_CHANNELS = 8
 FOLD_ROWS = 8            # tables longer than this go behind a <details> fold
 
-# "Passes quality" is a rule of thumb for orientation, not curation — the same
-# SNR/ISI rule run_sorting reports at the end of a sort. W1 (curation) owns
-# changing it; the tile always states the rule next to the count.
-PASS_SNR = 5.0
-PASS_ISI_RATIO = 0.5
+# "Passes quality" is a rule of thumb for orientation, not curation. W1 slice 1:
+# the rule has ONE owner — sort_summary (configurable via .si_menu.json
+# `quality_rule`, NaN-honest per unit); the tile states the effective rule.
 
 # Expected post-bandpass + CMR noise floor for this rig: an OBSERVED regression
 # band (3.88-4.02 across every saved sort), not a validated quality threshold.
@@ -498,13 +496,16 @@ def _html_document(title, sections, heading=None, subtitle=None) -> str:
 # Section renderers (each returns inner HTML; wrapped by _safe_section)
 # --------------------------------------------------------------------------- #
 def _pass_quality(analyzer) -> "tuple[int | None, int]":
-    """(n units passing the SNR/ISI rule of thumb, n units). n_pass is None when
-    the metrics needed for the rule are absent."""
+    """(n units passing the quality rule, n units) via the rule's one owner,
+    sort_summary. n_pass is None when nothing was evaluable."""
     n_units = len(analyzer.unit_ids)
     try:
         qm = analyzer.get_extension("quality_metrics").get_data()
-        good = (qm["snr"] >= PASS_SNR) & (qm["isi_violations_ratio"] <= PASS_ISI_RATIO)
-        return int(good.sum()), len(qm)
+        rule = sort_summary.load_quality_rule(bio.REPO_ROOT / ".si_menu.json")
+        n_pass, flags = sort_summary.quality_pass(qm.to_dict("records"), rule)
+        if not len(qm) or all(f is None for f in flags):
+            return None, n_units, 0       # nothing judgeable -> honest unknown
+        return n_pass, len(qm), sum(1 for f in flags if f is None)
     except Exception:  # noqa: BLE001 - metric columns vary; degrade to "unknown"
         return None, n_units
 
@@ -538,12 +539,18 @@ def _render_verdict(analyzer, analyzer_dir, info, sorter_label, status, data_dir
         state="warn" if n_units == 0 else ""))
 
     # 2 — pass-quality count (a rule of thumb, stated on the tile).
-    n_pass, n_scored = _pass_quality(analyzer)
-    rule = f"SNR ≥ {PASS_SNR:g} · ISI violations ≤ {PASS_ISI_RATIO:g} — a rule of thumb, not curation"
+    n_pass, n_scored, n_unjudged = _pass_quality(analyzer)
+    rule = (sort_summary.rule_text(
+        sort_summary.load_quality_rule(bio.REPO_ROOT / ".si_menu.json"))
+        + " — a rule of thumb, not curation")
     if n_pass is None:
-        tiles.append(_tile("pass quality", "–", note="SNR / ISI metrics were not computed for this sort"))
+        tiles.append(_tile("pass quality", "–",
+                           note="quality metrics absent or not evaluable for any unit"))
     else:
-        tiles.append(_tile("pass quality", f'{n_pass}<span class="u"> of {n_scored}</span>', note=rule))
+        val = f'{n_pass}<span class="u"> of {n_scored}</span>'
+        if n_unjudged:
+            rule += f" · {n_unjudged} not judgeable"
+        tiles.append(_tile("pass quality", val, note=rule))
 
     # 3 — noise floor: the number and its expected band, never a pass/fail claim.
     in_uV = bool((summary or {}).get("units_in_uV", True))
@@ -708,9 +715,9 @@ def _render_qc(analyzer) -> str:
     headers = [("unit", True)] + [(html.escape(_QC_COLS.get(c, (c, ".3g"))[0]), True) for c in cols]
     rows = [[f"{int(uid)}"] + [_num(r[c], _QC_COLS.get(c, (c, ".3g"))[1]) for c in cols]
             for uid, r in qm.iterrows()]
-    n_pass, _ = _pass_quality(analyzer)
+    n_pass, _n, _u = _pass_quality(analyzer)
     pass_line = ("" if n_pass is None else
-                 f' — {n_pass} pass the SNR ≥ {PASS_SNR:g} · ISI ≤ {PASS_ISI_RATIO:g} rule of thumb')
+                 f' — {n_pass} pass the quality rule (stated on the verdict tile)')
     fold_summary = (f'Per-unit quality metrics — {len(qm)} units × {len(cols)} metrics{pass_line}. '
                     'Click a column header to sort; "–" = not computable for that unit.')
     table = _fold(fold_summary, _table(headers, rows), open_when=len(qm) <= FOLD_ROWS)

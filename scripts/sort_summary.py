@@ -30,6 +30,101 @@ import csv
 import json
 from pathlib import Path
 
+
+# --------------------------------------------------------------------------- #
+# The unit quality rule (W1 slice 1) — ONE owner for "n of m pass quality".
+#
+# Grounded in common practice (SpikeInterface docs / Allen-style criteria), and
+# a rule of thumb for ORIENTATION, never a substitute for curation. Configurable:
+# a `quality_rule` object in .si_menu.json overrides any subset of the defaults
+# (numeric values only; junk entries are dropped, and rule_text() always states
+# the EFFECTIVE rule so what you read is what ran).
+#
+# Per-unit semantics are NaN-honest: a criterion whose metric is absent or NaN
+# for a unit is SKIPPED for that unit (e.g. presence_ratio is honestly NaN on a
+# 30 s quick sort with 60 s bins); a unit passes if it satisfies every criterion
+# that could be evaluated, and at least one could.
+DEFAULT_QUALITY_RULE = {
+    "snr_min": 4.0,
+    "isi_violations_ratio_max": 0.5,
+    "amplitude_cutoff_max": 0.1,
+    "presence_ratio_min": 0.9,
+}
+# rule key -> (metric column, direction): "min" = value must be >= threshold.
+_RULE_METRICS = {
+    "snr_min": ("snr", "min"),
+    "isi_violations_ratio_max": ("isi_violations_ratio", "max"),
+    "amplitude_cutoff_max": ("amplitude_cutoff", "max"),
+    "presence_ratio_min": ("presence_ratio", "min"),
+}
+
+
+def load_quality_rule(config_path=None) -> dict:
+    """DEFAULT_QUALITY_RULE overlaid with the user's `quality_rule` config.
+
+    ``config_path`` is the .si_menu.json path (callers pass it; this module
+    stays path-agnostic). Unknown keys and non-numeric values are dropped.
+    """
+    rule = dict(DEFAULT_QUALITY_RULE)
+    if config_path:
+        try:
+            user = json.loads(Path(config_path).read_text(encoding="utf-8")
+                              ).get("quality_rule", {})
+        except Exception:  # noqa: BLE001 - no config / unreadable -> defaults
+            user = {}
+        if not isinstance(user, dict):    # "quality_rule": "strict" / 5 / [..] -> defaults
+            user = {}
+        for k, v in user.items():
+            if k in _RULE_METRICS and isinstance(v, (int, float)) and not isinstance(v, bool):
+                rule[k] = float(v)
+    return rule
+
+
+def rule_text(rule=None) -> str:
+    """The effective rule, human-readable — shown wherever the count is shown."""
+    rule = rule or DEFAULT_QUALITY_RULE
+    parts = []
+    labels = {"snr_min": ("SNR ≥ {v:g}"), "isi_violations_ratio_max": ("ISI ratio ≤ {v:g}"),
+              "amplitude_cutoff_max": ("amp cutoff ≤ {v:g}"),
+              "presence_ratio_min": ("presence ≥ {v:g}")}
+    for k in DEFAULT_QUALITY_RULE:
+        if k in rule:
+            parts.append(labels[k].format(v=rule[k]))
+    return " · ".join(parts) + " (NaN criteria skipped)"
+
+
+def quality_pass(rows, rule=None) -> "tuple[int, list]":
+    """(n_pass, per-unit flags) for ``rows`` = iterable of per-unit metric dicts
+    (e.g. a quality-metrics DataFrame's ``to_dict("records")``).
+
+    Flags are TRI-STATE: True = passed every evaluable criterion, False = failed
+    one, **None = no criterion was evaluable for that unit** — "we couldn't judge
+    it" must never masquerade as "it failed" (or as a fake 0-pass headline).
+    """
+    rule = rule or DEFAULT_QUALITY_RULE
+    flags = []
+    for row in rows:
+        evaluable = 0
+        ok = True
+        for key, thr in rule.items():
+            col, direction = _RULE_METRICS.get(key, (None, None))
+            if col is None:
+                continue
+            v = row.get(col)
+            try:
+                v = float(v)
+            except (TypeError, ValueError):
+                continue
+            if v != v:                     # NaN — honestly not evaluable
+                continue
+            evaluable += 1
+            if direction == "min" and v < thr:
+                ok = False
+            elif direction == "max" and v > thr:
+                ok = False
+        flags.append(None if not evaluable else bool(ok))
+    return sum(1 for f in flags if f), flags
+
 # Stable order + display labels for the six headline metrics. Used by the report,
 # the comparison table, the terminal card and the menu so every surface agrees.
 HEADLINE_KEYS = [

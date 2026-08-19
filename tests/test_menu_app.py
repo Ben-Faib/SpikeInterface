@@ -825,7 +825,7 @@ async def test_sort_result_card_shows_numbers_and_durations(make_app):
         _drive_finished_sort(screen)
         await pilot.pause()
         body = screen.query_one("#sortbody").render().plain
-        assert "14 units" in body and "9 high-quality" in body
+        assert "14 units" in body and "9 pass the quality rule" in body
         assert "noise floor 4.02 µV" in body and "expected" in body
         assert "0:15" in body                                   # emitter elapsed
         assert "partial: first 30 s of 132 s" in body           # honest window

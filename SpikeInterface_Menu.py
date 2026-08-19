@@ -297,7 +297,7 @@ def _last_message(action: str, sorter: str, ok: bool) -> str:
         if isinstance(n, int):
             bits.append(f"{n} units")
         if isinstance(hq, int):
-            bits.append(f"{hq} high-quality")
+            bits.append(f"{hq} pass quality rule")
         return f"✓ Sorted {sorter}" + (f" ({', '.join(bits)})" if bits else "")
     verb = {
         "explore": "Saved + opened exploratory figures → outputs/explore.html",

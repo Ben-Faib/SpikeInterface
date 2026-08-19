@@ -228,9 +228,9 @@ placeholder (no two channels neighbours) remains available.
 - Qt binding is **PySide6** under uv, **PyQt5** under the conda fallback — don't install both
   into one env.
 - Local state is git-ignored: `.si_menu.json` (exactly `theme`, `use_docker`, `sorter_params`,
-  `active_probe`, `seen_welcome`, `seen_probe_setup`, `active_sorter`, `last_result` — the
-  last two added by D1 2026-08-18; written from ~10 call sites) and `probes.json` (the user
-  probe library).
+  `active_probe`, `seen_welcome`, `seen_probe_setup`, `active_sorter`, `last_result`,
+  `quality_rule` — the last three added 2026-08-18 by D1/W1; `quality_rule` is READ by
+  sort_summary, never written by the app yet) and `probes.json` (the user probe library).
 - Tests live in `tests/`; the menu is covered by Textual `Pilot` tests. Run the whole suite
   before claiming a menu change works — the view is easy to break in ways only Pilot catches.
   A green suite still isn't the whole story for sort-adjacent changes: the real feedback loop

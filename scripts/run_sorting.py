@@ -145,7 +145,7 @@ class Reporter:
         self._emit({"t": "summary", "card": card, "summary": summary})
 
     def result(self, *, units: int, good, noise_floor_uV, out: str,
-               effective_seconds, total_seconds) -> None:
+               effective_seconds, total_seconds, rule=None) -> None:
         """The finished run's headline numbers, ready for a result card.
 
         Rides ALONGSIDE ``done`` (emitted immediately before it) and never
@@ -158,7 +158,8 @@ class Reporter:
         _f = lambda v: None if v is None else float(v)  # noqa: E731 - numpy-proof
         self._emit({"t": "result", "units": int(units),
                     "good": None if good is None else int(good),
-                    "noise_floor_uV": _f(noise_floor_uV), "out": str(out),
+                    "rule": rule, "noise_floor_uV": _f(noise_floor_uV),
+                    "out": str(out),
                     "effective_seconds": _f(effective_seconds),
                     "total_seconds": _f(total_seconds), "elapsed": self._elapsed()})
 
@@ -551,18 +552,22 @@ def _friendly_sort_error(exc: Exception, use_docker: bool = False) -> str:
     return f"Sorting failed: {text}"
 
 
-def _quality_summary(qm) -> "tuple[int, int | None]":
-    """Rule-of-thumb count of 'good-looking' units: SNR ≥ 5 and few ISI violations.
+def _quality_summary(qm) -> "tuple[int, int | None, str]":
+    """Rule-of-thumb count of units passing the quality rule (W1: the rule has ONE
+    owner, sort_summary — configurable via .si_menu.json `quality_rule`, NaN-honest).
 
-    Returns ``(n_total, n_good)``; ``n_good`` is None if the expected columns are
-    missing. This is a sanity signal to orient a newcomer ("did anything good come
-    out?"), NOT a substitute for manual curation.
+    Returns ``(n_total, n_pass, rule_text)``; ``n_pass`` is None when nothing was
+    evaluable. A sanity signal to orient a newcomer, NOT a substitute for curation.
     """
     try:
-        good = (qm["snr"] >= 5.0) & (qm["isi_violations_ratio"] <= 0.5)
-        return len(qm), int(good.sum())
+        rule = _summary.load_quality_rule(bio.REPO_ROOT / ".si_menu.json")
+        n_pass, flags = _summary.quality_pass(qm.to_dict("records"), rule)
+        n_unknown = sum(1 for f in flags if f is None)
+        if flags and all(f is None for f in flags):
+            return len(qm), None, _summary.rule_text(rule), n_unknown
+        return len(qm), n_pass, _summary.rule_text(rule), n_unknown
     except Exception:  # noqa: BLE001 - metric columns can vary; degrade gracefully
-        return len(qm), None
+        return len(qm), None, _summary.rule_text(), 0
 
 
 def _prepare_docker_image(ui: "ConsoleUI", sorter: str) -> None:
@@ -1166,10 +1171,11 @@ def main() -> int:
                                         for c in qm.columns}}
                         for idx, r in qm.iterrows()]
                 rep.metrics(rows, str(out / "quality_metrics.csv"))
-            n_total, n_high_quality = _quality_summary(qm)
+            n_total, n_high_quality, rule_desc, n_unjudged = _quality_summary(qm)
             if n_high_quality is not None:
-                ui.result(f"{n_high_quality} of {n_total} units look high-quality "
-                          "(SNR ≥ 5 and few ISI violations — a rough signal, not a substitute "
+                unk = f"; {n_unjudged} not judgeable" if n_unjudged else ""
+                ui.result(f"{n_high_quality} of {n_total} units pass the quality rule "
+                          f"({rule_desc}{unk} — a rough signal, not a substitute "
                           "for manual curation)")
             # Array / yield headline summary (the six lab-requested metrics). Its own
             # try/except so a summary hiccup never loses the quality metrics above.
@@ -1201,6 +1207,9 @@ def main() -> int:
     _write_run_info(
         out, args, si_version=si.__version__, sorter=args.sorter,
         n_units=n_units, n_high_quality=n_high_quality, metrics_note=metrics_note,
+        quality_rule=_summary.load_quality_rule(bio.REPO_ROOT / ".si_menu.json"),
+        quality_rule_text=_summary.rule_text(
+            _summary.load_quality_rule(bio.REPO_ROOT / ".si_menu.json")),
         channel_ids=list(rec.get_channel_ids()),
         n_dropped_analog=n_dropped, total_seconds=total_seconds,
         effective_seconds=effective_seconds, freq_min=args.freq_min, freq_max=freq_max,
@@ -1237,7 +1246,10 @@ def main() -> int:
         rep.done_ok(units=0, out=out, good=0)
         return 0
     ui.done(out)
-    rep.result(units=n_units, good=n_high_quality, noise_floor_uV=noise_floor, out=out,
+    rep.result(units=n_units, good=n_high_quality, noise_floor_uV=noise_floor,
+               rule=(_summary.rule_text(_summary.load_quality_rule(
+                   bio.REPO_ROOT / ".si_menu.json")) if n_high_quality is not None
+                   else None), out=out,
                effective_seconds=effective_seconds, total_seconds=total_seconds)
     rep.done_ok(units=n_units, out=out, good=n_high_quality, note=metrics_note)
     if metrics_note:

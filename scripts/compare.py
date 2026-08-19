@@ -382,7 +382,7 @@ def _online_match_table(cmp, online, offline, sorter, delta_ms=ONLINE_DELTA_TIME
                 best_p = None
             if best_p is not None and best_frac > 0:
                 n1 = n_on.get(str(u1), 0) or 1
-                contain = f"{100.0 * (matched or 0) / n1:.0f}%"
+                contain = f"{min(100.0, 100.0 * (matched or 0) / n1):.0f}%"
                 cells = (f"<td>{html.escape(str(best_p))} <span class=\"note\">"
                          f"(below chance)</span></td><td>{best_frac:.3g}</td>"
                          f"<td>{contain}</td>"
@@ -404,7 +404,10 @@ def _online_match_table(cmp, online, offline, sorter, delta_ms=ONLINE_DELTA_TIME
             except Exception:  # noqa: BLE001 - matrix indexing differences
                 matched = None
             n1 = n_on.get(str(u1), 0) or 1
-            contain = (f"{100.0 * matched / n1:.0f}%" if matched is not None else "–")
+            # Cap at 100%: with a wide window and a huge partner unit, several
+            # offline spikes can coincide with one reference spike and over-count.
+            contain = (f"{min(100.0, 100.0 * matched / n1):.0f}%"
+                       if matched is not None else "–")
             cells = (f"<td>{html.escape(str(partner))}</td><td>{frac:.3g}</td>"
                      f"<td>{contain}</td>"
                      f"<td>{n_off.get(str(partner), 0)}</td>")
@@ -415,7 +418,9 @@ def _online_match_table(cmp, online, offline, sorter, delta_ms=ONLINE_DELTA_TIME
                f'match at agreement ≥ {MATCH_SCORE}, {n_any} above chance ({chance:g}); '
                f'a dash means no {html.escape(sorter)} unit reached even chance level. '
                f'delta_time={delta_ms:g} ms (wide on purpose for a crossing-stamped '
-               f'reference vs a peak-aligned sort). Click a header to sort.</p>')
+               f'reference vs a peak-aligned sort; containment is capped at 100% — '
+               f'wide-window multi-coincidences can over-count). '
+               f'Click a header to sort.</p>')
     table = (summary + '<table class="qc"><thead><tr>'
              '<th onclick="sortTable(this.closest(\'table\'),0,false)">online unit (ch#unit)</th>'
              '<th onclick="sortTable(this.closest(\'table\'),1,true)">online spikes</th>'

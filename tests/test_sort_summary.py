@@ -80,3 +80,41 @@ def test_write_then_load_roundtrip(tmp_path):
 def test_load_summary_missing_returns_none(tmp_path):
     assert ss.load_summary(tmp_path) is None
     assert ss.load_summary(tmp_path / "nope") is None
+
+
+# --- W1 slice 1: the quality rule's one owner ------------------------------- #
+def test_quality_pass_tristate_flags():
+    import sort_summary as ss
+    nan = float("nan")
+    rows = [
+        {"snr": 6, "isi_violations_ratio": 0.1},          # passes evaluable subset
+        {"snr": 6, "isi_violations_ratio": 2.0},          # fails ISI
+        {"snr": nan, "isi_violations_ratio": nan},        # nothing judgeable -> None
+        {"snr": 3.0},                                     # fails SNR (>=4)
+    ]
+    n, flags = ss.quality_pass(rows)
+    assert n == 1 and flags == [True, False, None, False]
+
+
+def test_load_quality_rule_overrides_and_drops_junk(tmp_path):
+    import json
+    import sort_summary as ss
+    cfg = tmp_path / ".si_menu.json"
+    cfg.write_text(json.dumps({"quality_rule": {
+        "snr_min": 7, "presence_ratio_min": True, "unknown_key": 1}}))
+    rule = ss.load_quality_rule(cfg)
+    assert rule["snr_min"] == 7.0
+    assert rule["presence_ratio_min"] == 0.9      # bool is junk -> default kept
+    assert "unknown_key" not in rule
+    assert "SNR ≥ 7" in ss.rule_text(rule)
+    # No config at all -> pure defaults.
+    assert ss.load_quality_rule(tmp_path / "missing.json") == ss.DEFAULT_QUALITY_RULE
+
+
+def test_load_quality_rule_survives_non_dict_config(tmp_path):
+    # W1 review F2: "quality_rule": "strict" must not take out the report verdict.
+    import json
+    import sort_summary as ss
+    for bad in ('"strict"', "5", "[1, 2]", "null"):
+        (tmp_path / "cfg.json").write_text('{"quality_rule": %s}' % bad)
+        assert ss.load_quality_rule(tmp_path / "cfg.json") == ss.DEFAULT_QUALITY_RULE

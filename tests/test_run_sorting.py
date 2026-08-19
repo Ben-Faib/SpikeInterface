@@ -79,19 +79,41 @@ def test_friendly_message_local_failure_passthrough():
     assert "Sorting failed" in msg and "kaboom" in msg
 
 
-def test_quality_summary_counts_good_units():
+def test_quality_summary_uses_the_shared_rule(tmp_path, monkeypatch):
+    # W1 slice 1: the rule's one owner is sort_summary — defaults SNR>=4,
+    # ISI ratio<=0.5, amp cutoff<=0.1, presence>=0.9, NaN criteria skipped.
     import pandas as pd
+    import blackrock_io as bio
+    monkeypatch.setattr(bio, "REPO_ROOT", tmp_path)   # no user override present
     qm = pd.DataFrame({
-        "snr": [6.0, 4.0, 9.0, 5.0],                 # >=5: rows 0,2,3
-        "isi_violations_ratio": [0.1, 0.0, 0.9, 0.2]  # <=0.5: rows 0,1,3
+        "snr": [6.0, 3.0, 9.0, 5.0],                  # >=4: rows 0,2,3
+        "isi_violations_ratio": [0.1, 0.0, 0.9, 0.2],  # <=0.5: rows 0,1,3
     })
-    n_total, n_good = rs._quality_summary(qm)         # both: rows 0,3 -> 2
+    n_total, n_good, rule_desc, _unk = rs._quality_summary(qm)   # both: rows 0,3
     assert n_total == 4 and n_good == 2
+    assert "SNR ≥ 4" in rule_desc and "NaN" in rule_desc
 
 
-def test_quality_summary_handles_missing_columns():
+def test_quality_summary_honours_user_rule(tmp_path, monkeypatch):
+    import json as _json
     import pandas as pd
-    n_total, n_good = rs._quality_summary(pd.DataFrame({"firing_rate": [1.0, 2.0]}))
+    import blackrock_io as bio
+    monkeypatch.setattr(bio, "REPO_ROOT", tmp_path)
+    (tmp_path / ".si_menu.json").write_text(_json.dumps(
+        {"quality_rule": {"snr_min": 8.0, "junk": "ignored", "isi_violations_ratio_max": "bad"}}))
+    qm = pd.DataFrame({"snr": [6.0, 9.0], "isi_violations_ratio": [0.1, 0.1]})
+    n_total, n_good, rule_desc, _unk = rs._quality_summary(qm)
+    assert (n_total, n_good) == (2, 1)                 # only snr 9 clears 8
+    assert "SNR ≥ 8" in rule_desc                      # the EFFECTIVE rule is stated
+    assert "ISI ratio ≤ 0.5" in rule_desc              # junk override fell back
+
+
+def test_quality_summary_handles_missing_columns(tmp_path, monkeypatch):
+    import pandas as pd
+    import blackrock_io as bio
+    monkeypatch.setattr(bio, "REPO_ROOT", tmp_path)
+    # No evaluable criterion on any unit -> honest None, never a fake 0-pass.
+    n_total, n_good, _rule, _unk = rs._quality_summary(pd.DataFrame({"firing_rate": [1.0, 2.0]}))
     assert n_total == 2 and n_good is None
 
 

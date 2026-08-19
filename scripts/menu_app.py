@@ -1133,7 +1133,12 @@ class SortProgressScreen(ModalScreen):
             t.append(f"\n✓ {units} units", style="bold #3fb950")
             good = r.get("good", d.get("good"))
             if good is not None:
-                t.append(f" · {good} high-quality (SNR≥5 + ISI rule)", style="")
+                # The rule TEXT rides the result event — the emitting process is
+                # the one that computed `good`, so the label can never lie about
+                # which rule produced the number (W1 review F1).
+                rule = r.get("rule") or "the quality rule"
+                t.append(f" · {good} pass {rule}" if r.get("rule")
+                         else f" · {good} pass the quality rule", style="")
             if r.get("elapsed") is not None:
                 t.append(f" · {self._fmt_mmss(r['elapsed'])}", style="dim")
             t.append("\n")
