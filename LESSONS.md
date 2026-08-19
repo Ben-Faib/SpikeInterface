@@ -8,6 +8,21 @@ process lessons.*
 
 ---
 
+**S8 (2026-08-19) — two conductors can end up running the same slice; message the peer,
+don't assume it died.** Ben started the v3 conductor on the stated premise that the face1
+session had died mid-build. It hadn't: it was alive and folding its own Fable review of
+the same slice — caught only when a builder's first Edit failed with "file modified since
+read" on a tree that had been clean minutes earlier (the S7 first-act ListAgents/ps check
+had fired, but an idle peer can wake). What worked: the builder STOPPED at the first
+mid-run churn and reported instead of re-reading and pushing on; the conductors then
+split the work explicitly over SendMessage — the incumbent finishes and commits its lane
+and stands down, the fresh session owns everything after a verified baton (tip hash +
+gate numbers) — and the two independent reviews turned out complementary, each catching
+a finding the other missed. Lesson: a builder that hits unexpected concurrent edits must
+stop and report, never continue; and the first response to a live peer on shared state is
+a direct message proposing an explicit split, not working around it. Encoded: this entry;
+the v3 prompt's first-act check stays as-is.
+
 **S7 (2026-08-19) — a concurrent session can hard-reset the tree mid-turn.** During the
 conductor close, a peer session (or terminal) ran hard resets at 01:35 and ~01:40 that
 first wiped uncommitted board edits and then dropped a just-made commit — content

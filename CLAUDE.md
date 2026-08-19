@@ -96,7 +96,7 @@ sync with the code, which is why this file does not restate them.
 | `blackrock_io.py` | loading this dataset | open the files with neo/SI directly |
 | `sorters.py` | which sorters exist / are runnable, params, Docker | hardcode a sorter list |
 | `probes.py` | electrode geometry (profiles, active probe, sorter fit) | build a `Probe` inline |
-| `sort_summary.py` | the six array/yield metrics | recompute amplitudes ad hoc |
+| `sort_summary.py` | the six array/yield metrics + the unit rollup (`unit_rollup`: strong / thin-evidence / sub-threshold / not-judged verdicts, plain-words isolation phrases, the takeaway + contact lines every surface quotes) | recompute amplitudes ad hoc, or re-decide "strong" outside the rollup |
 | `curation.py` | the curation record (merge/split/label decisions), applying it to a curated Sorting, and curated-vs-raw state — `preferred_analyzer()` is the one home for "curated wins when it exists" | test for `curated/` folders directly, or re-decide which analyzer a surface shows |
 | `runs.py` | the versioned run store: where runs live, which is current, provenance, regenerate-from-record — `runs.sort_paths()` is the one path resolver (curation.py delegates to it) | build `outputs/<sorter>/...` paths by hand, or read a run dir without the pointer |
 | `sort_progress.py` | the JSON event protocol between `run_sorting` and the TUI | print status for the UI to scrape |

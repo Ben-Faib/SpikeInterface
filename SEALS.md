@@ -30,19 +30,30 @@ A need left only in a chat summary is a need Ben never sees.*
   user-accepted identity mapping — true depth order still waits on the lab's adapter map.
 - **Deployment target is the UPitt lab's Windows+GPU box**; Windows Docker-sort cleanup
   crash fixed 2026-08-18 (`7940f96`); GPU-sorter enablement (kilosort4) not yet started (WD).
-- **Current focus: post-conductor — the face track opened by Ben's directive (2026-08-19
-  night)**: the takeaway surface (per-contact strong-units view + workflow guide) builds
-  in lane-face1; the conductor v2 queue itself is CLOSED (all lanes landed, gates green).
+- **The takeaway surface (face1) is on main** (`8f651f2`, 2026-08-19): every surface —
+  report, dashboard RESULTS, triage — reads ONE rollup (sort_summary.unit_rollup) with
+  tri-state honesty (strong / passes-on-thin-evidence / sub-threshold / not judged), the
+  report leads with the run-stamped strong-units block and the manual-.nev RECOVERY
+  column (both match directions, after a review caught the containment inversion hiding
+  100% recoveries as "no match"), and docs/WORKFLOW.md is the plain-language guide.
+- **Current focus: THE CONDUCTOR v3 (running)** — face2 (dashboard redesign, Ben's
+  binned-rows decisions), then the clean pass on main, unify + push, close.
   Facts of record binding design: E1's premise FALSE in-band (PRE1), tdc2 non-deterministic
-  (14/16/17/18/19 and now 16/17 more, units across identical runs), .nev unit ids are
-  PER-ELECTRODE SLOTS (7 sorted electrode×slot units on 4 electrodes; CSV reconciled
-  row-for-row; cross-electrode same-slot coincidence chance-level), and the recording's
-  accepted-unit picture is 4 strong cells (ch 5·7·7·11) recovered at 93-100%.
+  (14–19 units across identical runs), .nev unit ids are PER-ELECTRODE SLOTS (7 sorted
+  electrode×slot units on 4 electrodes; CSV reconciled row-for-row), and the recording's
+  accepted-unit picture is 4 strong cells (ch 5·7·9·11 electrodes) recovered at 96-100%
+  (measured again on the face1 full run: 99.6% / 100% / 100% / 96.3%).
   Product facts on record: built by Benjamin Faibussowitsch with Aleece Al-Olimat for
   UPitt researchers on industry-standard SpikeInterface.
 
 ## OPEN — needs Ben
 
+- **The quality rule vs this preparation** (evidence: full run `20260819-022506-8daaea`):
+  the four units that recover your manual neurons at 96–100% (ch 5·7·9·11) ALL fail the
+  default ISI ≤ 0.5 at 0.652–0.699 (the known tdc2 merge inflation), and no unit passes
+  the rule on solid evidence — thin-evidence passes are now hedged, but the threshold
+  itself is your call (`.si_menu.json` quality_rule; tunable live, stated verbatim on
+  every surface). *(opened 2026-08-19, face1)*
 - **P3 — the adapter map**: channel→site wiring to make depth order physical; P3 starts
   the day the lab's map arrives. *(long-standing)*
 - **WD — lab-box access**: the Windows+GPU deployment track starts with one session on
@@ -56,6 +67,28 @@ A need left only in a chat summary is a need Ben never sees.*
 ---
 
 ## The ledger (newest first)
+
+**2026-08-19 — face1: the takeaway surface, two reviews folded, landed (`8f651f2`)**
+- Did: landed the takeaway slice — sort_summary.unit_rollup as the one home for
+  strong/thin/sub-threshold/not-judged verdicts with plain-words isolation phrases,
+  the report leading with the run-stamped strong-units block + manual-.nev recovery
+  column, the dashboard RESULTS takeaway, triage strong-first, docs/WORKFLOW.md —
+  with TWO independent Fable reviews folded (this session's and the peer
+  conductor's, coordinated live via a baton handoff after both sessions turned out
+  to be working the same slice; LESSONS S8).
+- Means: the workbench now CONCLUDES instead of just computing — and honestly: the
+  reviews caught the match column inverting the best news (100% recoveries worded
+  "no match above chance") and the headline flattering 30-spike units as "strong",
+  both fixed at the one home so report, dashboard and triage cannot disagree.
+- Moved: suite 646 green on main (625 + 21), canary 4.077 µV on the fresh full
+  sort; the four manual neurons measured recovered at 96.3–100% on run
+  20260819-022506-8daaea; match_manual now pins to the run the report shows.
+- Needs Ben: the quality-rule threshold call now in OPEN (the default buries his
+  four real cells on ISI while nothing passes on solid evidence); an inert stray
+  run dir `outputs/tridesclous2/runs/20260819-022232-4e9932` (peer's accidental
+  main-tree sort, pointer untouched) — delete or keep at leisure.
+- Next: face2 (the binned-rows dashboard redesign) builds now in this session,
+  then the clean pass, unify + push, close.
 
 **2026-08-19 — CONDUCTOR v2 RUN CLOSED: the queue is done (`482d68d` + seals)**
 - Did: landed all three parked lanes plus the gate they opened — W1 s2 (curation
