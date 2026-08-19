@@ -70,6 +70,22 @@ def _effective_params(sorter: str, overrides: dict) -> dict:
     return {k: v for k, v in overrides.items() if k not in defaults or defaults[k] != v}
 
 
+def _param_arg(defaults: dict, key: str, value) -> str:
+    """Encode one override as the VALUE half of run_sorting's ``--param NAME=VALUE``.
+
+    The exact inverse of ``sorters.coerce_param``, which decodes against the
+    DEFAULT's type: a str default is taken raw, everything else goes through JSON.
+    So plain ``str(value)`` is right only for str defaults - a dict/list/None-default
+    value stringified that way is Python repr (single quotes, ``None``, ``True``),
+    which is not JSON, and the child exits with "expected JSON for this parameter"
+    before any sorting starts. An unknown key falls back to ``str``; run_sorting
+    rejects it by name either way.
+    """
+    if key not in defaults or isinstance(defaults[key], str):
+        return str(value)
+    return json.dumps(value)
+
+
 def _write_params_file(overrides: dict) -> "str | None":
     """Write overrides to a temp JSON file for run_sorting --params-file; None if empty."""
     if not overrides:
@@ -1454,8 +1470,13 @@ class MenuController:
             argv += ["--data-dir", str(self.args.data_dir)]
         argv += ["--probe", self.active_probe]
         overrides = self.get_overrides(self.active_sorter)
-        for k, v in overrides.items():
-            argv += ["--param", f"{k}={v}"]
+        if overrides:
+            try:
+                defaults = sorter_registry.default_params(self.active_sorter)
+            except Exception:  # noqa: BLE001 - introspection failure: the child
+                defaults = {}  # calls the same function and fails with its own message
+            for k, v in overrides.items():
+                argv += ["--param", f"{k}={_param_arg(defaults, k, v)}"]
         return argv
 
     def report_command(self) -> list:
