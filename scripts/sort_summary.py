@@ -23,6 +23,11 @@ a.u. and ``units_in_uV`` is False. The noise floor is measured on the *same*
 band-passed + common-median-referenced recording the sort and SNR use, so the
 three are mutually consistent (SNR ≈ V_pp / (2·noise)); it is therefore a
 post-CMR figure, lower than the raw broadband noise.
+
+The **yield denominator is the electrodes actually sorted**, so when the pipeline
+excludes a bad channel the denominator shrinks. That is not silent: pass the
+excluded ids to ``compute_summary(excluded_channels=...)`` and they are persisted
+as ``excluded_channels`` and stated in the yield cell that every surface renders.
 """
 from __future__ import annotations
 
@@ -139,10 +144,15 @@ HEADLINE_LABELS = {
     "units_per_active_ch": "units / active ch",
 }
 # CSV column order (the headline card as a single row, ready to stack across sorters).
+# New columns go on the END: seven summary.csv files written before
+# n_excluded_channels existed are still on disk, and stacking them positionally
+# against a row with a column inserted mid-order silently misaligns every field
+# after it.
 CSV_COLUMNS = [
     "sorter", "n_units", "n_channels", "n_active_channels",
     "v_pp_uV_median", "snr_median", "noise_floor_uV_median",
     "yield_pct", "units_per_channel", "units_per_active_channel",
+    "n_excluded_channels",
 ]
 
 
@@ -194,13 +204,19 @@ def _py(x):
     return x
 
 
-def compute_summary(analyzer, *, sorter: "str | None" = None) -> dict:
+def compute_summary(analyzer, *, sorter: "str | None" = None,
+                    excluded_channels=None) -> dict:
     """Compute the array/yield summary from a SortingAnalyzer.
 
     Requires the ``templates`` and ``noise_levels`` extensions (pre-computed by
     ``run_sorting``; computed on demand otherwise). ``snr`` is read from the
     ``quality_metrics`` extension when present and omitted per-unit otherwise. The
     returned dict is JSON-serialisable and is the schema persisted to summary.json.
+
+    ``excluded_channels`` are the ids the pipeline dropped as bad *before* the
+    analyzer existed — the analyzer cannot know about them, and every count here
+    (``n_channels``, the yield denominator) is over the channels that survived. They
+    are recorded so the surfaces can say so rather than change meaning silently.
     """
     import numpy as np
 
@@ -244,7 +260,8 @@ def compute_summary(analyzer, *, sorter: "str | None" = None) -> dict:
         units_in_uV = False
 
     if n_units == 0:
-        return _empty_summary(sorter, n_channels, units_in_uV, duration_s)
+        return _empty_summary(sorter, n_channels, units_in_uV, duration_s,
+                              excluded_channels=excluded_channels)
 
     _ensure(analyzer, "random_spikes")
     _ensure(analyzer, "waveforms")
@@ -297,6 +314,7 @@ def compute_summary(analyzer, *, sorter: "str | None" = None) -> dict:
         "sorter": sorter,
         "n_units": n_units,
         "n_channels": n_channels,
+        "excluded_channels": [str(c) for c in (excluded_channels or [])],
         "n_active_channels": n_active,
         "duration_s": duration_s,
         "units_in_uV": bool(units_in_uV),
@@ -314,11 +332,13 @@ def compute_summary(analyzer, *, sorter: "str | None" = None) -> dict:
     }
 
 
-def _empty_summary(sorter, n_channels: int, units_in_uV: bool, duration_s=None) -> dict:
+def _empty_summary(sorter, n_channels: int, units_in_uV: bool, duration_s=None,
+                   excluded_channels=None) -> dict:
     """Summary for a sort that found no units (everything zero / None)."""
     empty = {"median": None, "mean": None, "min": None, "max": None}
     return {
         "sorter": sorter, "n_units": 0, "n_channels": n_channels,
+        "excluded_channels": [str(c) for c in (excluded_channels or [])],
         "n_active_channels": 0, "duration_s": duration_s,
         "units_in_uV": bool(units_in_uV), "gain_to_uV": None,
         "v_pp_uV": dict(empty), "snr": dict(empty),
@@ -357,6 +377,7 @@ def csv_row(summary: dict) -> dict:
         "yield_pct": summary.get("yield_pct", 0.0),
         "units_per_channel": summary.get("units_per_channel", 0.0),
         "units_per_active_channel": summary.get("units_per_active_channel", 0.0),
+        "n_excluded_channels": len(summary.get("excluded_channels") or []),
     }
 
 
@@ -385,11 +406,17 @@ def headline_row(summary: dict) -> dict:
     amp = "µV" if summary.get("units_in_uV", True) else "a.u."
     n_active = summary.get("n_active_channels", 0)
     n_ch = summary.get("n_channels", 0)
+    # The denominator is the electrodes that were SORTED. When bad channels were
+    # excluded that is fewer than the array has, so the cell says so — a shrinking
+    # denominator must never quietly inflate the percentage.
+    n_excluded = len(summary.get("excluded_channels") or [])
+    denom = f"{n_active}/{n_ch} sorted; {n_excluded} excluded as bad" if n_excluded \
+        else f"{n_active}/{n_ch}"
     return {
         "V_pp": _fmt(_med(summary, "v_pp_uV"), amp),
         "SNR": _fmt(_med(summary, "snr")),
         "noise floor": _fmt(_med(summary, "noise_floor_uV"), amp),
-        "yield (% active electrodes)": f"{summary.get('yield_pct', 0.0):g}% ({n_active}/{n_ch})",
+        "yield (% active electrodes)": f"{summary.get('yield_pct', 0.0):g}% ({denom})",
         "units / ch": _fmt(summary.get("units_per_channel")),
         "units / active ch": _fmt(summary.get("units_per_active_channel")),
     }

@@ -221,3 +221,197 @@ def test_resolve_probe_file():
 def test_resolve_probe_unknown_returns_none():
     import run_sorting
     assert run_sorting.resolve_probe("definitely-not-a-real-probe", None) is None
+
+
+# --------------------------------------------------------------------------- #
+# Bad-channel detection (PRE1): a bad electrode must leave BEFORE the common
+# median reference, exactly like the analog aux channels.
+# --------------------------------------------------------------------------- #
+def test_parse_bad_channels_splits_trims_and_dedupes():
+    assert rs.parse_bad_channels("3, 7,3 ,,") == ["3", "7"]
+    assert rs.parse_bad_channels(None) == []
+    assert rs.parse_bad_channels("") == []
+
+
+def test_plan_excludes_detected_in_recording_order():
+    ids = [str(i) for i in range(1, 17)]
+    excluded, plan = rs.plan_bad_channels(ids, detected=["3", "1"], manual=[])
+    assert excluded == ["1", "3"]          # recording order, not detection order
+    assert plan["detected"] == ["3", "1"] and plan["excluded"] == ["1", "3"]
+    assert plan["refused_auto"] is False and plan["unknown"] == []
+
+
+def test_plan_unions_manual_with_detected():
+    excluded, plan = rs.plan_bad_channels(list("abcd"), detected=["b"], manual=["d", "b"])
+    assert excluded == ["b", "d"]          # union, no duplicate for the overlap
+    assert plan["manual"] == ["d", "b"]
+
+
+def test_plan_refuses_to_auto_exclude_too_much_of_the_array():
+    # 5 of 16 is past the 25% ceiling: a detector that flags a third of a small
+    # probe is likelier mis-tuned than right, so NOTHING auto-excludes.
+    ids = [str(i) for i in range(1, 17)]
+    excluded, plan = rs.plan_bad_channels(ids, detected=ids[:5], manual=[])
+    assert excluded == [] and plan["refused_auto"] is True
+    assert plan["detected"] == ids[:5]     # still recorded — refused, not forgotten
+
+
+def test_plan_keeps_auto_exclusion_at_the_ceiling():
+    ids = [str(i) for i in range(1, 17)]
+    excluded, plan = rs.plan_bad_channels(ids, detected=ids[:4], manual=[])
+    assert excluded == ids[:4] and plan["refused_auto"] is False
+
+
+def test_plan_manual_channels_survive_the_guard():
+    # The ceiling governs AUTO-detection only; a named channel is the user's call.
+    ids = [str(i) for i in range(1, 17)]
+    excluded, plan = rs.plan_bad_channels(ids, detected=ids[:9], manual=["2"])
+    assert excluded == ["2"] and plan["refused_auto"] is True
+
+
+def test_plan_reports_unknown_manual_ids():
+    excluded, plan = rs.plan_bad_channels(["1", "2"], detected=[], manual=["2", "99"])
+    assert plan["unknown"] == ["99"]       # surfaced, never silently ignored
+    assert excluded == ["2"]
+
+
+N_SYNTH = 16          # this rig's electrode count; the probe profile below is its real one
+
+
+def _synthetic(seed=0):
+    """Plain 5 µV noise on N_SYNTH channels, ids "0".."15" — this rig's shape.
+
+    Ids are 0-based only because ``set_probe`` renames a NumpyRecording's channels
+    to the probe's device indices; the real Blackrock recording keeps its own
+    "1".."16" ids through the same call.
+    """
+    import numpy as np
+    import spikeinterface.full as si
+
+    fs = 30_000.0
+    rng = np.random.default_rng(seed)
+    traces = rng.normal(0.0, 5.0, size=(int(6 * fs), N_SYNTH)).astype("float32")
+    return traces, fs, si, rng
+
+
+def _wrap(traces, fs, si):
+    """The synthetic traces as a Recording carrying the real 100 µm probe geometry."""
+    import numpy as np
+    import probes
+
+    rec = si.NumpyRecording([traces], sampling_frequency=fs,
+                            channel_ids=np.array([str(i) for i in range(N_SYNTH)]))
+    rec.set_channel_gains(1.0)
+    rec.set_channel_offsets(0.0)
+    return rec.set_probe(probes.build(probes.get(probes.DEFAULT_PROBE), N_SYNTH))
+
+
+def test_detect_flags_nothing_on_a_clean_recording():
+    traces, fs, si, _rng = _synthetic()
+    rec = _wrap(traces, fs, si)
+    bad, labels = rs.detect_bad_channels(rec, "mad")
+    assert bad == []
+    assert set(labels.values()) == {"good"} and len(labels) == N_SYNTH
+
+
+def test_detect_finds_a_planted_noisy_channel_and_is_deterministic():
+    traces, fs, si, rng = _synthetic()
+    traces[:, 6] = rng.normal(0.0, 60.0, size=traces.shape[0])   # channel "6", 12x noisier
+    rec = _wrap(traces, fs, si)
+    bad, labels = rs.detect_bad_channels(rec, "mad")
+    assert bad == ["6"] and labels["6"] == "noise"
+    # The seed is pinned, so the same recording flags the same channel every run.
+    assert rs.detect_bad_channels(rec, "mad")[0] == ["6"]
+
+
+def test_excluding_a_bad_channel_keeps_every_other_channel_at_its_own_depth():
+    """The exclusion plumbing: the channel leaves, the geometry does not shift."""
+    import blackrock_io as bio
+
+    traces, fs, si, rng = _synthetic()
+    traces[:, 6] = rng.normal(0.0, 60.0, size=traces.shape[0])
+    rec = _wrap(traces, fs, si)
+    before = {str(c): tuple(loc) for c, loc in
+              zip(rec.get_channel_ids(), rec.get_channel_locations())}
+
+    detected, _labels = rs.detect_bad_channels(rec, "mad")
+    excluded, _plan = rs.plan_bad_channels(rec.get_channel_ids(), detected, manual=[])
+    kept = bio.select_channels(rec, [c for c in rec.get_channel_ids()
+                                     if str(c) not in set(excluded)])
+
+    assert excluded == ["6"]
+    assert [str(c) for c in kept.get_channel_ids()] == [str(i) for i in range(16) if i != 6]
+    after = {str(c): tuple(loc) for c, loc in
+             zip(kept.get_channel_ids(), kept.get_channel_locations())}
+    assert all(before[c] == loc for c, loc in after.items())   # the 600 µm slot stays empty
+    # And the excluded channel is gone from the reference the sort computes.
+    import spikeinterface.preprocessing as spre
+    assert spre.common_reference(kept, reference="global",
+                                 operator="median").get_num_channels() == 15
+
+
+def test_cli_rejects_a_bad_channel_id_the_recording_does_not_have():
+    """CLI wiring: a typo'd --bad-channels fails fast with the real ids listed."""
+    import subprocess
+
+    import blackrock_io as bio
+    try:
+        bio.find_blackrock_base()
+    except FileNotFoundError:
+        pytest.skip("no recording present")
+    res = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "run_sorting.py"),
+         "--no-bad-channel-detection", "--bad-channels", "99"],
+        capture_output=True, encoding="utf-8", errors="replace",
+        stdin=subprocess.DEVNULL, timeout=300, cwd=ROOT)
+    # rich hard-wraps the warning, so compare on whitespace-normalised text.
+    out = " ".join((res.stdout + res.stderr).split())
+    assert res.returncode == 1                        # not argparse's rc 2 — our check
+    assert "doesn't have: 99" in out and "Electrodes here:" in out
+
+
+def test_check_manual_channels_accepts_real_electrodes():
+    assert rs.check_manual_channels(["3", "7"], pool=["3", "7", "9"],
+                                    all_ids=["3", "7", "9"]) is None
+    assert rs.check_manual_channels([], pool=["3"], all_ids=["3"]) is None
+
+
+def test_check_manual_channels_reports_an_id_the_recording_lacks():
+    msg = rs.check_manual_channels(["99"], pool=["1", "2"], all_ids=["1", "2"])
+    assert "doesn't have: 99" in msg and "Electrodes here: 1, 2" in msg
+
+
+def test_check_manual_channels_distinguishes_an_aux_channel_from_a_missing_one():
+    # --keep-analog: 10241 IS in the recording, it just isn't an electrode. Saying
+    # "this recording doesn't have it" would send the user hunting the wrong problem.
+    msg = rs.check_manual_channels(["10241"], pool=["1", "2"],
+                                   all_ids=["1", "2", "10241"])
+    assert "non-neural aux" in msg and "10241" in msg
+    assert "doesn't have" not in msg
+
+
+def test_plan_reports_what_would_be_left():
+    ids = [str(i) for i in range(1, 17)]
+    _excluded, plan = rs.plan_bad_channels(ids, detected=[], manual=ids[:15])
+    assert plan["n_remaining"] == 1                 # below MIN_SORTABLE_CHANNELS
+    _excluded, plan = rs.plan_bad_channels(ids, detected=[], manual=[])
+    assert plan["n_remaining"] == 16
+
+
+def test_cli_refuses_to_leave_the_reference_with_nothing_to_average():
+    """Naming almost every channel must fail loudly, not die inside the sorter."""
+    import subprocess
+
+    import blackrock_io as bio
+    try:
+        bio.find_blackrock_base()
+    except FileNotFoundError:
+        pytest.skip("no recording present")
+    res = subprocess.run(
+        [sys.executable, str(ROOT / "scripts" / "run_sorting.py"),
+         "--no-bad-channel-detection", "--bad-channels", ",".join(str(i) for i in range(1, 16))],
+        capture_output=True, encoding="utf-8", errors="replace",
+        stdin=subprocess.DEVNULL, timeout=300, cwd=ROOT)
+    out = " ".join((res.stdout + res.stderr).split())
+    assert res.returncode == 1
+    assert "would leave 1 electrode(s)" in out and "subtracts that channel from itself" in out

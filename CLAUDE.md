@@ -112,7 +112,7 @@ Things that are wrong-by-default. Preserve them when editing.
 
 ```
 read_broadband(attach_probe=False) → drop non-neural aux channels → set_probe(active probe)
-    → bandpass_filter(300–6000) → common_reference(global, median)
+    → bandpass_filter(300–6000) → detect + drop bad channels → common_reference(global, median)
     → run_sorter → save Sorting, then build SortingAnalyzer + metrics → outputs/<sorter>/
 ```
 
@@ -120,6 +120,16 @@ read_broadband(attach_probe=False) → drop non-neural aux channels → set_prob
   keep them with `--keep-analog`). The ordering *is* the point: aux channels would poison the
   common median reference that every neural channel is referenced against, and make the sorter
   emit spurious units. Any new sort-adjacent code must drop them too.
+- **Bad channels leave before the CMR too** (PRE1, 2026-08-18): `detect_bad_channels`
+  (method `mad`, seed + threshold pinned for determinism) runs post-bandpass; flagged and
+  `--bad-channels`-named channels are excluded from reference AND sort, geometry preserved,
+  recorded in `run_info.json`'s `bad_channels` block and stated on every surface that shows
+  channels/yield. Auto-detection refuses wholesale above 25% of the array; manual names
+  always pass but must leave ≥2 channels. **On this recording nothing is flagged — the E1
+  channel-1 pathology is sub-300 Hz, so the bandpass removes it before the median; that
+  measured negative is the point, not a bug.** Note tridesclous2 is measurably
+  non-deterministic on this recording (14/16/18 units across identical runs) — never treat
+  unit counts/ids as stable across re-sorts.
 - **The sort passes `attach_probe=False`** and applies geometry from the probes layer
   (`probes.build()` → `set_probe()`), *not* `attach_dummy_probe()`.
 - **Quality metrics are non-fatal.** The Sorting is saved *before* metrics run, so a metrics

@@ -82,3 +82,73 @@ def test_show_channels_resolves_probe():
     # explicit name resolves too
     import probes
     assert show_channels._resolve_probe(probes.PLACEHOLDER_PROBE)["name"] == probes.PLACEHOLDER_PROBE
+
+
+# --------------------------------------------------------------------------- #
+# Bad-channel exclusion (PRE1) — the report must say WHICH channels left and,
+# in the provenance line, WHO decided. On this rig detection flags nothing, so
+# the manual-only path is the realistic one and must not credit the detector.
+# --------------------------------------------------------------------------- #
+def _bad(**over):
+    """A run_info `bad_channels` record (the schema run_sorting writes)."""
+    base = {"detected": [], "manual": [], "unknown": [], "excluded": [],
+            "refused_auto": False, "max_fraction": 0.25, "n_remaining": 16,
+            "enabled": True, "method": "mad",
+            "params": {"seed": 0, "std_mad_threshold": 5.0}, "labels": {}}
+    base.update(over)
+    return base
+
+
+def test_provenance_credits_the_detector_when_it_found_them():
+    line = report._bad_channel_provenance(_bad(detected=["3"], excluded=["3"]))
+    assert line == "bad channels excluded: 3 (mad)"
+
+
+def test_provenance_says_manual_when_the_user_named_them():
+    # The regression this pins: attributing a hand-named channel to "(mad)" credits
+    # the detector with a call it never made — and here it never makes any.
+    line = report._bad_channel_provenance(_bad(manual=["3"], excluded=["3"]))
+    assert "named manually" in line and "(mad)" not in line
+
+
+def test_provenance_names_both_sources_when_both_contributed():
+    line = report._bad_channel_provenance(
+        _bad(detected=["3"], manual=["9"], excluded=["3", "9"]))
+    assert "3, 9" in line and "mad + manual" in line
+
+
+def test_provenance_covers_the_three_no_exclusion_states():
+    assert "none flagged" in report._bad_channel_provenance(_bad())
+    assert "disabled" in report._bad_channel_provenance(_bad(enabled=False))
+    refused = report._bad_channel_provenance(
+        _bad(detected=[str(i) for i in range(5)], refused_auto=True))
+    assert "too many to trust" in refused and "5 channels" in refused
+
+
+def test_bad_channel_note_states_the_exclusion_and_is_silent_otherwise():
+    note = report._bad_channel_note(_bad(manual=["3"], excluded=["3"]))
+    assert "excluded as bad" in note and "common median reference" in note
+    assert report._bad_channel_note(_bad()) == ""      # nothing left -> nothing said
+    assert report._bad_channel_note(None) == ""        # a sort predating the feature
+
+
+def test_probe_caveat_carries_the_exclusion():
+    html = report._probe_caveat("independent", 6, _bad(manual=["3"], excluded=["3"]))
+    assert "analog aux channel(s) were excluded" in html   # the aux drop still stated
+    assert "excluded as bad" in html                        # and the bad channel too
+
+
+def test_render_summary_states_the_shrunken_yield_denominator(tmp_path):
+    s = _write_summary(tmp_path)
+    s.update(n_channels=3, excluded_channels=["1"], yield_pct=66.7,
+             noise_floor_uV={**s["noise_floor_uV"], "per_channel": [4.0, 4.2, 4.5]})
+    (tmp_path / "summary.json").write_text(json.dumps(s), encoding="utf-8")
+    html = report._render_summary(StubAnalyzer(["2", "3", "4"]), tmp_path / "analyzer")
+    assert "excluded as bad" in html                        # the yield cell itself
+    assert "neither the denominator nor the chart" in html  # the explaining note
+
+
+def test_render_summary_says_nothing_extra_when_nothing_was_excluded(tmp_path):
+    _write_summary(tmp_path)
+    html = report._render_summary(StubAnalyzer(["1", "2", "3", "4"]), tmp_path / "analyzer")
+    assert "excluded as bad" not in html

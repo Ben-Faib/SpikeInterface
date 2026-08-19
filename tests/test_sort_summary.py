@@ -40,6 +40,32 @@ def test_headline_row_has_six_metrics_in_uV():
     assert row["units / active ch"] == "1.4"
 
 
+def test_yield_cell_states_the_shrunken_denominator_when_channels_were_excluded():
+    # PRE1: excluding a bad channel shrinks the yield denominator. The cell must say
+    # so — a smaller denominator quietly inflating the percentage is the failure mode.
+    row = ss.headline_row(_summary(n_channels=15, n_active_channels=10, yield_pct=66.7,
+                                   excluded_channels=["3"]))
+    assert row["yield (% active electrodes)"] == "66.7% (10/15 sorted; 1 excluded as bad)"
+
+
+def test_yield_cell_is_unchanged_when_nothing_was_excluded():
+    assert ss.headline_row(_summary(excluded_channels=[]))[
+        "yield (% active electrodes)"] == "62.5% (10/16)"
+    # and for a summary written before the field existed at all
+    assert ss.headline_row(_summary())["yield (% active electrodes)"] == "62.5% (10/16)"
+
+
+def test_csv_row_counts_excluded_channels():
+    assert ss.csv_row(_summary(excluded_channels=["3", "9"]))["n_excluded_channels"] == 2
+    assert ss.csv_row(_summary())["n_excluded_channels"] == 0
+
+
+def test_empty_summary_carries_the_exclusion():
+    empty = ss._empty_summary("simple", n_channels=15, units_in_uV=True,
+                              excluded_channels=["3"])
+    assert empty["excluded_channels"] == ["3"] and empty["n_channels"] == 15
+
+
 def test_headline_row_falls_back_to_au_without_gain():
     row = ss.headline_row(_summary(units_in_uV=False))
     assert row["V_pp"].endswith("a.u.")

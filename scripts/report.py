@@ -107,13 +107,16 @@ def _pick_default_analyzer() -> Path:
     return candidates[-1][2]
 
 
-def _probe_caveat(probe, n_drop=0) -> str:
+def _probe_caveat(probe, n_drop=0, bad=None) -> str:
     """Geometry note HTML, conditional on the active probe NAME (or None).
 
     Placeholder/independent → the not-physical warning; a real probe → a calm
-    'geometry: <name>' note (spatial views are then meaningful)."""
+    'geometry: <name>' note (spatial views are then meaningful). ``bad`` is the
+    sort's run_info ``bad_channels`` record, so the exclusion is stated wherever
+    this note appears."""
     drop = (f' {n_drop} non-neural analog aux channel(s) were excluded from the sort.'
             if n_drop else "")
+    drop += _bad_channel_note(bad)
     if probe in (None, "independent"):
         return ('<div class="caveat">Placeholder independent-channel probe — cross-channel '
                 'spatial structure (depth / probe map) is not physical.' + drop + '</div>')
@@ -122,6 +125,49 @@ def _probe_caveat(probe, n_drop=0) -> str:
     label = prof["label"] if prof else str(probe)
     return (f'<div class="note">Probe geometry: <strong>{html.escape(label)}</strong>. '
             'Spatial views reflect this geometry; verify it matches your array.' + drop + '</div>')
+
+
+def _bad_channel_provenance(bad: dict) -> str:
+    """One provenance clause naming WHO excluded each channel, not just that some were.
+
+    An exclusion can come from the detector, from ``--bad-channels``, or from both,
+    and on this rig the detector flags nothing — so attributing a hand-named channel
+    to "(mad)" would credit the detector with a call the user made. run_info keeps
+    ``detected`` and ``manual`` apart; this mirrors that split."""
+    excluded = [str(c) for c in (bad.get("excluded") or [])]
+    method = html.escape(str(bad.get("method", "?")))
+    if excluded:
+        detected = {str(c) for c in (bad.get("detected") or [])}
+        manual = {str(c) for c in (bad.get("manual") or [])}
+        by_detector = bool(detected & set(excluded))
+        by_hand = bool(manual & set(excluded))
+        if by_detector and by_hand:
+            source = f"{method} + manual"
+        elif by_hand:
+            source = "named manually"
+        else:
+            source = method
+        return f'bad channels excluded: {html.escape(", ".join(excluded))} ({source})'
+    if bad.get("refused_auto"):
+        return (f'bad-channel detection ({method}) flagged '
+                f'{len(bad.get("detected") or [])} channels — too many to trust, none excluded')
+    if bad.get("enabled"):
+        return f'bad-channel detection ({method}): none flagged'
+    return 'bad-channel detection disabled'
+
+
+def _bad_channel_note(bad) -> str:
+    """One sentence on the bad-channel exclusion, from run_info's ``bad_channels``.
+
+    Empty for a sort that predates the feature (no record) or one that excluded
+    nothing — the reader is only told about channels that actually left."""
+    excluded = [str(c) for c in ((bad or {}).get("excluded") or [])]
+    if not excluded:
+        return ""
+    ids = html.escape(", ".join(excluded))
+    return (f' {len(excluded)} channel(s) ({ids}) were excluded as bad — out of the common '
+            'median reference and out of the sort — so channel counts and yield below are '
+            'over the electrodes that remained.')
 
 
 def _getting_started_html(data_dir) -> str:
@@ -669,7 +715,8 @@ def _render_sorted(analyzer, sorter_label, info=None, probe=None) -> str:
         f'{tot:.0f}s recording were sorted (e.g. a quick <code>--duration</code> test). The '
         f'recording-context section covers the full recording — unit counts are not comparable '
         f'across different windows.</div>' if partial else "")
-    probe_html = _probe_caveat(probe, info.get("n_dropped_analog") or 0)
+    probe_html = _probe_caveat(probe, info.get("n_dropped_analog") or 0,
+                               info.get("bad_channels"))
     return (f'<p class="note">Sorted with {html.escape(str(sorter_label))} over {dur:.1f}s of data, '
             f'{len(unit_ids)} units. Every figure shares one unit colour. Toggle units via the legend.</p>'
             + partial_html + probe_html
@@ -801,6 +848,14 @@ def _render_summary(analyzer, analyzer_dir) -> str:
             '"Active electrode" = the peak channel of ≥1 sorted unit.</p>'
             if summary.get("units_in_uV", True) else
             '<p class="note">No µV gain on this recording — amplitudes are raw a.u.</p>')
+    # The yield denominator is the electrodes that were sorted; if any were excluded
+    # as bad, say so here rather than let a smaller denominator flatter the number.
+    excluded = [str(c) for c in (summary.get("excluded_channels") or [])]
+    if excluded:
+        note += (f'<p class="note">Yield is over the {summary.get("n_channels", "?")} electrode(s) '
+                 f'actually sorted: {len(excluded)} channel(s) '
+                 f'({html.escape(", ".join(excluded))}) were excluded as bad before the common '
+                 'reference, so they are in neither the denominator nor the chart below.</p>')
     return note + head_table + noise_html + pu_table
 
 
@@ -977,6 +1032,9 @@ def _render_provenance(status, probe=None, info=None) -> str:
         prov.append(f'sorter {html.escape(str(info["sorter"]))}')
     if isinstance(info.get("freq_min"), (int, float)) and isinstance(info.get("freq_max"), (int, float)):
         prov.append(f'bandpass {info["freq_min"]:g}–{info["freq_max"]:g} Hz, common median reference')
+    bad = info.get("bad_channels")
+    if isinstance(bad, dict):
+        prov.append(_bad_channel_provenance(bad))
     if info.get("si_version"):
         prov.append(f'SpikeInterface {html.escape(str(info["si_version"]))} at sort time')
     prov_html = f'<p class="note">Run: {" · ".join(prov)}.</p>' if prov else ""
@@ -991,7 +1049,7 @@ def _render_provenance(status, probe=None, info=None) -> str:
     return ('<p class="note">One row per pipeline stage — PASS means it loaded, '
             'SKIP means optional/absent, FAIL means broken.</p>'
             + table + prov_html
-            + _probe_caveat(probe)
+            + _probe_caveat(probe, 0, info.get("bad_channels"))
             + '<p class="note">The broadband stream mixes 16 neural channels (raw 1–16) '
               'with 6 analog aux channels (analog 1–6); the sort excludes the analog aux '
               'channels by default.</p>'

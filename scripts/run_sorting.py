@@ -6,15 +6,36 @@
     uv run python scripts/run_sorting.py --data-dir /path/to/recording
     uv run python scripts/run_sorting.py --verbosity normal       # step messages + table, no bars
     uv run python scripts/run_sorting.py --verbosity quiet        # only the final result + table
+    uv run python scripts/run_sorting.py --bad-channels 3,7       # name bad electrodes yourself
+    uv run python scripts/run_sorting.py --no-bad-channel-detection   # sort every electrode
 
 Output is clean at every level: progress bars are aligned (uniform width/layout)
 and library/native warnings (probe, OpenMP, numba, resource_tracker) are muted.
 The default 'verbose' shows the aligned progress bars + per-step sorter prints.
 
-Pipeline: read broadband (.ns5) -> attach placeholder independent-channel probe
--> drop non-neural 'analog N' aux channels (keep with --keep-analog) -> bandpass
-300-6000 Hz -> common median reference -> run sorter -> save + (optionally)
-compute quality metrics and the GUI-inspector curation extensions.
+Pipeline: read broadband (.ns5) -> drop non-neural 'analog N' aux channels (keep
+with --keep-analog) -> apply the active probe geometry from probes.py -> bandpass
+300-6000 Hz -> detect + exclude bad channels -> common median reference -> run
+sorter -> save + (optionally) compute quality metrics and the GUI-inspector
+curation extensions.
+
+BAD CHANNELS: a bad electrode left in the recording poisons the common median
+reference every other channel is subtracted against — the same reason the analog
+aux channels are dropped — so detection runs after the bandpass (it must judge
+the sort band, not the LFP the sorter never sees) and before the reference, and
+an excluded channel leaves the recording entirely: out of the reference AND out
+of the sort. Flags:
+
+    --bad-channel-method METHOD     mad (default) | std | coherence+psd | neighborhood_r2
+    --bad-channels 3,7              always exclude these ids (your explicit call)
+    --no-bad-channel-detection      skip auto-detection (--bad-channels still applies)
+
+Detection never removes more than a quarter of the array on its own: past that it
+warns loudly and excludes nothing, because a detector flagging five of sixteen
+electrodes is likelier mis-tuned than right. (Four of sixteen is exactly at the
+quarter and still excludes.) Which channels were detected and which were excluded
+are recorded in run_info.json and stated on every surface that reports a channel
+count or yield.
 
 Outputs (git-ignored) land in outputs/<sorter>/:
     sorter_output/        raw sorter working folder
@@ -25,10 +46,14 @@ Outputs (git-ignored) land in outputs/<sorter>/:
     run_info.json         provenance: sorter, window (effective vs total), band,
                           channels sorted, unit count, versions, timestamp
 
-GEOMETRY CAVEAT: the Blackrock files carry no electrode map, so a placeholder
-"independent channels" probe is attached (see blackrock_io.attach_dummy_probe).
-Per-unit results are valid; cross-channel spatial info is not physical until the
-real probe geometry is supplied.
+GEOMETRY: the Blackrock files carry no electrode map, so the geometry is a user
+choice owned by probes.py. The sort applies the active profile — this rig's real
+NeuroNexus A1x16-3mm-100-703 by default — with --probe/--probe-file to override,
+so spatial views are physical. Only if the DEFAULT profile does not fit the
+recording does it fall back to the "independent channels" placeholder, and it
+says so; in that fallback per-unit results are still valid but cross-channel
+spatial info is not physical. An EXPLICIT --probe that does not fit is an error,
+never a silent fallback.
 
 Installed CPU sorters are tridesclous2 and spykingcircus2 (both bundled with
 spikeinterface[full]; no GPU needed). Kilosort4 etc. would need an NVIDIA GPU +
@@ -376,6 +401,12 @@ class ConsoleUI:
     def summary_card(self, summary: dict) -> None:
         """Render the six-metric array/yield card (always shown when available)."""
         row = _summary.headline_row(summary)
+        # The yield denominator is the electrodes actually sorted, so an exclusion
+        # silently changes what "yield" means unless the card says it out loud.
+        excluded = summary.get("excluded_channels") or []
+        footnote = (f"yield is over the {summary.get('n_channels', '?')} electrode(s) sorted; "
+                    f"{len(excluded)} bad channel(s) ({', '.join(excluded)}) were excluded "
+                    "before the common reference." if excluded else "")
         if self._c is not None:
             from rich import box
             from rich.table import Table
@@ -393,11 +424,15 @@ class ConsoleUI:
                 table.add_row(label, str(value))
             self._c.print()
             self._c.print(table)
+            if footnote:
+                self._c.print(f"[{self.PALETTE['muted']}]{footnote}[/]")
         else:
             _f = sys.stderr if self._stderr else None
             print("\nArray / yield summary (this sort):", flush=True, file=_f)
             for label, value in row.items():
                 print(f"  {label}: {value}", flush=True, file=_f)
+            if footnote:
+                print(f"  {footnote}", flush=True, file=_f)
 
     def done(self, out: Path) -> None:
         self._emit(
@@ -781,6 +816,124 @@ def resolve_probe(name, probe_file):
     return probes.get(name) if name else probes.get(probes.DEFAULT_PROBE)
 
 
+# --------------------------------------------------------------------------- #
+# Bad-channel detection
+# --------------------------------------------------------------------------- #
+# 'mad' is the default for this rig's 16-contact, 100 µm probe, chosen on the
+# evidence rather than on SpikeInterface's default. Measured on
+# PFCM7_d0ephys_Block2 (300–6000 Hz, pre-CMR) the per-channel MAD spread is
+# 0.75–1.6x the median — that spread is real spiking, not noise — so the 5x
+# threshold has ~3x headroom and flags no live electrode, while a planted 60 µV
+# noise channel reads 6.7x and a planted in-band oscillation 31x.
+# 'coherence+psd' (SpikeInterface's default) is IBL-tuned for dense arrays: on
+# this geometry it missed that planted noise channel and labelled a live
+# low-amplitude electrode 'dead'. 'neighborhood_r2' cannot work here at all — its
+# 30 µm neighbour radius is below the 100 µm pitch, so every channel has zero
+# neighbours and nothing can ever be flagged.
+#
+# What 'mad' costs: it is one-sided on HIGH deviation, so it cannot see a dead or
+# flat electrode. That is the failure mode that matters least to a *median*
+# reference — a flat channel barely moves the median, a loud one drags it — and
+# --bad-channel-method coherence+psd is there when dead-channel detection is what
+# you want instead.
+BAD_CHANNEL_METHODS = ("mad", "std", "coherence+psd", "neighborhood_r2")
+DEFAULT_BAD_CHANNEL_METHOD = "mad"
+# Pinned: SpikeInterface estimates from random chunks, so an unpinned seed makes
+# two runs over the same recording able to flag different channels.
+BAD_CHANNEL_SEED = 0
+# SpikeInterface's own default, passed explicitly so run_info.json records the
+# threshold that actually ran rather than "whatever the installed SI defaults to".
+BAD_CHANNEL_STD_MAD_THRESHOLD = 5.0
+# Auto-detection refuses to exclude beyond this fraction of the array.
+BAD_CHANNEL_MAX_FRACTION = 0.25
+# Below this many electrodes there is nothing to reference against: a GLOBAL median
+# over one channel subtracts that channel from itself, so every sample goes to zero
+# and the sorter finds nothing with no hint as to why; over zero channels it dies
+# deep inside the sorter as a generic failure. Auto-detection can never get here
+# (the quarter ceiling leaves 12 of 16), but --bad-channels can.
+MIN_SORTABLE_CHANNELS = 2
+
+
+def detect_bad_channels(recording, method: str = DEFAULT_BAD_CHANNEL_METHOD) -> "tuple[list, dict]":
+    """Run SpikeInterface's detector; returns ``(bad ids, {channel id: label})``.
+
+    Ids come back as plain ``str`` so they compare cleanly against ``--bad-channels``
+    and survive the JSON round-trip into run_info.json.
+    """
+    import spikeinterface.preprocessing as spre
+
+    bad, labels = spre.detect_bad_channels(
+        recording, method=method, seed=BAD_CHANNEL_SEED,
+        std_mad_threshold=BAD_CHANNEL_STD_MAD_THRESHOLD,
+    )
+    ids = [str(c) for c in recording.get_channel_ids()]
+    return [str(c) for c in bad], {c: str(lab) for c, lab in zip(ids, labels)}
+
+
+def parse_bad_channels(raw: "str | None") -> list:
+    """``--bad-channels '3, 7'`` -> ``['3', '7']`` (order kept, blanks/dupes dropped)."""
+    out: list = []
+    for part in (raw or "").split(","):
+        part = part.strip()
+        if part and part not in out:
+            out.append(part)
+    return out
+
+
+def check_manual_channels(manual, pool, all_ids) -> "str | None":
+    """Validate ``--bad-channels`` ids; returns an error message, or None if they fit.
+
+    Two different mistakes deserve two different messages: an id the recording simply
+    does not have, and — under ``--keep-analog`` — an id that IS present but is a
+    non-neural aux input rather than an electrode. Telling someone their channel
+    "doesn't exist" when it plainly does sends them hunting the wrong problem.
+    """
+    manual = [str(c) for c in manual]
+    pool = [str(c) for c in pool]
+    present = {str(c) for c in all_ids}
+    absent = [c for c in manual if c not in present]
+    if absent:
+        return (f"--bad-channels names channel(s) this recording doesn't have: "
+                f"{', '.join(absent)}. Electrodes here: {', '.join(pool)}.")
+    aux = [c for c in manual if c not in pool]
+    if aux:
+        return (f"--bad-channels names non-neural aux channel(s): {', '.join(aux)}. "
+                "Those are not electrodes, so they are never in the common reference — "
+                f"they are dropped by default (see --keep-analog). "
+                f"Electrodes here: {', '.join(pool)}.")
+    return None
+
+
+def plan_bad_channels(channel_ids, detected, manual, *,
+                      max_fraction: float = BAD_CHANNEL_MAX_FRACTION) -> "tuple[list, dict]":
+    """Decide which channels actually leave the recording. Pure — no SpikeInterface.
+
+    Returns ``(excluded, plan)``; ``plan`` is the provenance record that lands in
+    run_info.json. Auto-detected channels are refused **wholesale** once they
+    exceed ``max_fraction`` of the array: wrong-and-loud beats wrong-and-quiet, and
+    a silent four-channel exclusion would quietly move every downstream number.
+    Manually named channels are the user's explicit call and are always honoured;
+    a manual id that is not in the recording is reported in ``unknown``, never
+    silently ignored (``main`` validates them earlier, with a better message).
+    ``n_remaining`` is what would survive, so the caller can refuse to leave the
+    common reference with nothing to average.
+    """
+    ids = [str(c) for c in channel_ids]
+    detected = [str(c) for c in detected]
+    manual = [str(c) for c in manual]
+    refused = len(detected) > max_fraction * len(ids)
+    drop = set(manual) | (set() if refused else set(detected))
+    return [c for c in ids if c in drop], {          # recording order, not CLI order
+        "detected": detected,
+        "manual": manual,
+        "unknown": [c for c in manual if c not in ids],
+        "excluded": [c for c in ids if c in drop],
+        "refused_auto": refused,
+        "max_fraction": max_fraction,
+        "n_remaining": len(ids) - len([c for c in ids if c in drop]),
+    }
+
+
 def resolve_overrides(sorter: str, param_kv: list[str], params_file: "str | None") -> dict:
     """Build the override dict: defaults < --params-file < repeated --param.
 
@@ -866,6 +1019,20 @@ def main() -> int:
         action="store_true",
         help="Keep non-neural 'analog N' aux channels in the sort (default: drop them — "
         "they pollute the common reference and can produce spurious units).",
+    )
+    parser.add_argument(
+        "--bad-channel-method", choices=BAD_CHANNEL_METHODS, default=DEFAULT_BAD_CHANNEL_METHOD,
+        help=f"How to detect bad electrodes (default: {DEFAULT_BAD_CHANNEL_METHOD} — see the "
+        "module docstring for why on this probe).",
+    )
+    parser.add_argument(
+        "--bad-channels", default=None, metavar="ID[,ID...]",
+        help="Always exclude these channel ids, on top of (or instead of) detection.",
+    )
+    parser.add_argument(
+        "--no-bad-channel-detection", action="store_true",
+        help="Don't auto-detect bad electrodes (default: detect them and exclude them from "
+        "the common reference and the sort). --bad-channels still applies.",
     )
     parser.add_argument("--no-metrics", action="store_true", help="Skip the SortingAnalyzer / quality-metrics step.")
     parser.add_argument(
@@ -1013,6 +1180,64 @@ def main() -> int:
     ui.detail(f"{_band_msg} · common median reference")
     rep.detail(_band_msg)
     rec = spre.bandpass_filter(rec, freq_min=args.freq_min, freq_max=freq_max)
+
+    # Bad electrodes leave HERE — after the bandpass so detection judges the band
+    # the sorter actually sees, and before the reference so an excluded channel is
+    # out of the median every other channel is subtracted against. Same ordering
+    # argument as the aux drop, same mechanism (bio.select_channels), and SI channel
+    # slicing keeps each surviving channel's own probe position.
+    detect_bad = not args.no_bad_channel_detection
+    # With --keep-analog the aux channels are still here; they are not electrodes,
+    # so bad-channel selection is scoped to the neural ones either way.
+    bad_pool = bio.neural_channel_ids(rec)
+    manual_bad = parse_bad_channels(args.bad_channels)
+    # Validate the hand-named ids BEFORE paying for a detection pass — a typo should
+    # fail in milliseconds, not after a full scan of the recording.
+    _manual_err = check_manual_channels(manual_bad, bad_pool, rec.get_channel_ids())
+    if _manual_err:
+        ui.warn(_manual_err)
+        rep.error(_manual_err)
+        return 1
+    bad_rec = rec if len(bad_pool) == rec.get_num_channels() else bio.select_channels(rec, bad_pool)
+    detected, labels = [], {}
+    if detect_bad:
+        rep.detail(f"detecting bad channels ({args.bad_channel_method})")
+        detected, labels = detect_bad_channels(bad_rec, args.bad_channel_method)
+    excluded, bad_plan = plan_bad_channels(bad_pool, detected, manual_bad)
+    bad_plan.update(
+        enabled=detect_bad, method=args.bad_channel_method,
+        params={"seed": BAD_CHANNEL_SEED, "std_mad_threshold": BAD_CHANNEL_STD_MAD_THRESHOLD},
+        labels={c: lab for c, lab in labels.items() if lab != "good"},
+    )
+    if bad_plan["n_remaining"] < MIN_SORTABLE_CHANNELS:
+        msg = (f"excluding {len(excluded)} channel(s) ({', '.join(excluded)}) would leave "
+               f"{bad_plan['n_remaining']} electrode(s) to sort. A global common median "
+               f"reference needs at least {MIN_SORTABLE_CHANNELS}: over a single channel it "
+               "subtracts that channel from itself and every sample goes to zero. Name fewer "
+               "channels in --bad-channels.")
+        ui.warn(msg)
+        rep.error(msg)
+        return 1
+    if bad_plan["refused_auto"]:
+        _bad_msg = (f"bad-channel detection flagged {len(detected)} of {len(bad_pool)} electrodes "
+                    f"({', '.join(detected)}) — more than {BAD_CHANNEL_MAX_FRACTION:.0%} of the "
+                    "array, so NOTHING was auto-excluded. Check the recording, or name the bad "
+                    "channels yourself with --bad-channels.")
+        ui.warn(_bad_msg)
+        rep.detail("⚠ " + _bad_msg)
+    if excluded:
+        rec = bio.select_channels(rec, [c for c in rec.get_channel_ids()
+                                        if str(c) not in set(excluded)])
+        _bad_msg = (f"excluded {len(excluded)} bad channel(s) ({', '.join(excluded)}) from the "
+                    f"common reference and the sort → {rec.get_num_channels()} channel(s) left")
+        ui.detail(_bad_msg)
+        rep.detail(_bad_msg)
+    elif detect_bad and not bad_plan["refused_auto"]:
+        _bad_msg = (f"bad-channel detection ({args.bad_channel_method}): none flagged — "
+                    f"all {len(bad_pool)} electrodes kept")
+        ui.detail(_bad_msg)
+        rep.detail(_bad_msg)
+
     rep.detail("common median reference")
     rec = spre.common_reference(rec, reference="global", operator="median")
     if args.duration is not None:
@@ -1180,7 +1405,8 @@ def main() -> int:
             # Array / yield headline summary (the six lab-requested metrics). Its own
             # try/except so a summary hiccup never loses the quality metrics above.
             try:
-                summary = _summary.compute_summary(analyzer, sorter=args.sorter)
+                summary = _summary.compute_summary(analyzer, sorter=args.sorter,
+                                                   excluded_channels=excluded)
                 _summary.write_summary(summary, out)
                 ui.summary_card(summary)
                 if rep.enabled:
@@ -1211,7 +1437,7 @@ def main() -> int:
         quality_rule_text=_summary.rule_text(
             _summary.load_quality_rule(bio.REPO_ROOT / ".si_menu.json")),
         channel_ids=list(rec.get_channel_ids()),
-        n_dropped_analog=n_dropped, total_seconds=total_seconds,
+        n_dropped_analog=n_dropped, bad_channels=bad_plan, total_seconds=total_seconds,
         effective_seconds=effective_seconds, freq_min=args.freq_min, freq_max=freq_max,
         wall_seconds=round(time.monotonic() - _RUN_T0, 1),
     )
