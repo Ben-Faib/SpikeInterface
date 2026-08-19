@@ -45,11 +45,17 @@ of our unit that match accounts for. The report's strong-units block reads it, s
 there is still exactly one matcher in this repo. It returns ``None`` whenever the
 reference is absent or unusable, so a surface drops the column instead of
 guessing at it.
+
+``manual_pair_test(sorter, ...)`` reads the same comparison in the REFERENCE
+direction: how much of each hand-sorted unit a sorter recovered, and THE PAIR
+TEST per electrode that carries two of them (did the sorter split them, or does
+one unit carry both). The sorter sweep page reads it.
 """
 from __future__ import annotations
 
 import argparse
 import html
+import itertools
 import sys
 from pathlib import Path
 
@@ -79,6 +85,18 @@ MATCH_SCORE = 0.5     # min agreement to call two units matched
 # ~0.13 agreement and falls under SI's chance cutoff. Recovery is the direction
 # that answers "did we find the neuron the human found?" (face1 review F1).
 MATCH_RECOVERY = 0.5
+# THE PAIR TEST bar. An electrode carrying two hand-sorted units counts as SPLIT
+# only when two DISTINCT sorter units each recover one of them at this fraction
+# or better. Deliberately far above MATCH_RECOVERY: "mostly that neuron" is
+# enough to call a match, but calling a pair split has to mean each side carries
+# essentially the whole neuron rather than half of one.
+SPLIT_RECOVERY = 0.8
+# The verdicts one pair can get. On this recording "merged" is the tridesclous2
+# baseline everything else is judged against: one unit carries both neurons.
+PAIR_SPLIT = "split"
+PAIR_MERGED = "merged"
+PAIR_ONE = "one of two"
+PAIR_NEITHER = "neither"
 # Two sorts whose durations differ by more than this (seconds) are treated as
 # non-commensurate: comparing them would just measure the window mismatch.
 DURATION_TOLERANCE_S = 1.0
@@ -624,6 +642,39 @@ def _online_compare_html(cmp, online, offline, sorter,
     return framing + caveat + report._fig_html(_heatmap(cmp)) + table
 
 
+def _manual_setup(sorter, data_dir=None, nev_path=None, curated=False, run=None):
+    """The front half every reference judgment shares, or None.
+
+    Resolve the reference ``.nev``, load the saved sort, keep only the
+    online-*sorted* class of the reference, and crop it to the sort's window.
+    Returns ``(reference, offline, meta)`` where ``meta`` names the file, the
+    window and whether the crop bit. Both judgments below build on this, so they
+    refuse in exactly the same cases: no reference file, no saved sort, no
+    readable unit-class labels, or no sorted units in the reference.
+    """
+    if nev_path is None:
+        found = bio.find_reference_nevs(data_dir)
+        if not found:
+            return None
+        nev_path = found[0]
+    offline, window_s = _load(sorter, curated=curated, run=run)
+    if offline is None:
+        return None
+    try:
+        reference = bio.read_spikes(data_dir, nev_path=nev_path)
+    except FileNotFoundError:
+        return None
+    labels = bio.online_unit_labels(reference)
+    if labels is None:
+        return None
+    kept, _accounting = split_online_units(reference, labels)
+    if kept is None:
+        return None
+    cropped, crop_info = crop_online(kept, window_s)
+    return cropped, offline, {"reference": Path(nev_path).name, "window_s": window_s,
+                              "cropped": bool(crop_info["cropped"])}
+
+
 def match_manual(sorter, data_dir=None, nev_path=None, delta_ms=ONLINE_DELTA_TIME_MS,
                  curated=False, run=None) -> "dict | None":
     """Match a saved sort against a manually sorted ``.nev``, as DATA not HTML.
@@ -666,25 +717,11 @@ def match_manual(sorter, data_dir=None, nev_path=None, delta_ms=ONLINE_DELTA_TIM
     agreement, which the density asymmetry defeats, so no surface should word a
     match from it.
     """
-    if nev_path is None:
-        found = bio.find_reference_nevs(data_dir)
-        if not found:
-            return None
-        nev_path = found[0]
-    offline, window_s = _load(sorter, curated=curated, run=run)
-    if offline is None:
+    prepared = _manual_setup(sorter, data_dir=data_dir, nev_path=nev_path,
+                             curated=curated, run=run)
+    if prepared is None:
         return None
-    try:
-        reference = bio.read_spikes(data_dir, nev_path=nev_path)
-    except FileNotFoundError:
-        return None
-    labels = bio.online_unit_labels(reference)
-    if labels is None:
-        return None
-    kept, _accounting = split_online_units(reference, labels)
-    if kept is None:
-        return None
-    cropped, crop_info = crop_online(kept, window_s)
+    cropped, offline, meta = prepared
 
     import spikeinterface.comparison as sc
 
@@ -738,11 +775,142 @@ def match_manual(sorter, data_dir=None, nev_path=None, delta_ms=ONLINE_DELTA_TIM
             # cell from it: it is union-agreement, which this asymmetry defeats.
             "below_chance": below,
         }
-    return {"reference": Path(nev_path).name, "delta_ms": float(delta_ms),
+    return {**meta, "delta_ms": float(delta_ms),
             "n_reference_units": len(cropped.get_unit_ids()),
-            "window_s": window_s, "cropped": bool(crop_info["cropped"]),
             "match_score": MATCH_SCORE, "match_recovery": MATCH_RECOVERY,
             "by_unit": by_unit}
+
+
+def _best_distinct(rows):
+    """The best assignment of DISTINCT sorter units, one per reference unit.
+
+    Scored on the WEAKEST recovery in the assignment: a pair is only split when
+    both sides are carried, so the weaker side is the verdict. Each reference
+    unit needs only its own top-k candidates (k = units sharing the electrode) --
+    if every better candidate is taken by another unit, the k-th is still free.
+    Returns ``(weakest recovery, (sorter unit per reference unit, ...))``, and
+    ``(0.0, ())`` when the sort holds fewer units than the electrode does.
+    """
+    k = len(rows)
+    pool = sorted({u for rec in rows for u in sorted(rec, key=lambda x: -rec[x])[:k]})
+    best = (0.0, ())
+    for combo in itertools.permutations(pool, k):
+        score = min(rec.get(u, 0.0) for rec, u in zip(rows, combo))
+        if not best[1] or score > best[0]:
+            best = (score, combo)
+    return best
+
+
+def manual_pair_test(sorter, data_dir=None, nev_path=None, delta_ms=ONLINE_DELTA_TIME_MS,
+                     curated=False, run=None) -> "dict | None":
+    """Recovery per hand-sorted unit, and THE PAIR TEST per electrode, as data.
+
+    The question the sorter sweep asks: this recording's hand sort puts TWO units
+    on several electrodes, and tridesclous2 merges each of those pairs into one
+    unit. Does any other sorter split them, without a trip through Phy?
+
+    The same matcher :func:`match_manual` uses (there is one matcher here), read
+    in the REFERENCE direction: for every hand-sorted unit, the fraction of its
+    spikes each of our units carries, capped at 1.0 because the wide coincidence
+    window can over-count. ``recovered`` is that fraction for the best of our
+    units; ``recovered_fully`` is it against :data:`SPLIT_RECOVERY`, which is a
+    higher bar than match_manual's ``recovers`` (:data:`MATCH_RECOVERY`).
+
+    One verdict per electrode carrying two or more hand-sorted units:
+
+        split       two DISTINCT sorter units, one per hand-sorted unit, each
+                    recovering its own at SPLIT_RECOVERY or better
+        merged      one sorter unit recovers every unit on the electrode that
+                    well, so that one unit carries both neurons
+        one of two  only one of the electrode's units is recovered at all
+        neither     neither of them is
+
+    Returns None in the same cases match_manual does (see :func:`_manual_setup`),
+    and otherwise::
+
+        {"reference": "PFCM7..._manuallySorted.nev", "delta_ms": 2.0,
+         "split_recovery": 0.8, "window_s": 132.0, "cropped": False,
+         "n_reference_units": 7, "n_sorter_units": 16,
+         "by_reference": [{"unit": "ch5#1", "electrode": 5, "slot": 1,
+                           "n_reference_spikes": 475, "best_unit": "4",
+                           "recovered": 0.989, "recovered_fully": True}, ...],
+         "pairs": [{"electrode": 5, "units": ["ch5#1", "ch5#2"],
+                    "verdict": "merged", "sorter_units": ["4"],
+                    "assignment": [{"unit": "ch5#1", "sorter_unit": "4",
+                                    "recovered": 0.989}, ...],
+                    "distinct_min": 0.287, "carrier": "4",
+                    "carrier_min": 0.989}, ...]}
+
+    ``assignment`` is always the best distinct pairing, whatever the verdict, so
+    a merged pair shows how far the runner-up unit was from carrying the other
+    neuron. ``carrier`` is the single unit that recovers the whole electrode best.
+    """
+    prepared = _manual_setup(sorter, data_dir=data_dir, nev_path=nev_path,
+                             curated=curated, run=run)
+    if prepared is None:
+        return None
+    cropped, offline, meta = prepared
+
+    import spikeinterface.comparison as sc
+
+    cmp = sc.compare_two_sorters(cropped, offline, sorting1_name=ONLINE_NAME,
+                                 sorting2_name=sorter, delta_time=delta_ms,
+                                 match_score=MATCH_SCORE)
+    mec = cmp.match_event_count        # rows: reference units, columns: ours
+    n_ref = {str(u): len(cropped.get_unit_spike_train(u)) for u in cropped.get_unit_ids()}
+    sorter_units = [str(c) for c in mec.columns]
+    recovery = {}
+    for r in mec.index:
+        n = n_ref.get(str(r), 0) or 1
+        recovery[str(r)] = {str(c): min(1.0, float(mec.at[r, c]) / n) for c in mec.columns}
+
+    by_reference, on_electrode = [], {}
+    for label, rec in recovery.items():
+        parsed = bio.parse_unit_label(label)
+        electrode, slot = parsed if parsed else (None, None)
+        best_unit = max(rec, key=lambda u: rec[u]) if rec else None
+        row = {"unit": label, "electrode": electrode, "slot": slot,
+               "n_reference_spikes": n_ref.get(label, 0), "best_unit": best_unit,
+               "recovered": None if best_unit is None else rec[best_unit],
+               "recovered_fully": best_unit is not None and rec[best_unit] >= SPLIT_RECOVERY}
+        by_reference.append(row)
+        on_electrode.setdefault(electrode, []).append(row)
+    by_reference.sort(key=lambda r: (r["electrode"] is None, r["electrode"] or 0,
+                                     r["slot"] or 0))
+
+    pairs = []
+    for electrode in sorted(e for e, rows in on_electrode.items()
+                            if e is not None and len(rows) >= 2):
+        rows = sorted(on_electrode[electrode], key=lambda r: r["slot"] or 0)
+        recs = [recovery[r["unit"]] for r in rows]
+        distinct_min, combo = _best_distinct(recs)
+        carrier, carrier_min = None, 0.0
+        for u in sorter_units:
+            score = min(rec.get(u, 0.0) for rec in recs)
+            if score > carrier_min:
+                carrier, carrier_min = u, score
+        if distinct_min >= SPLIT_RECOVERY:
+            verdict, named = PAIR_SPLIT, list(combo)
+        elif carrier_min >= SPLIT_RECOVERY:
+            verdict, named = PAIR_MERGED, [carrier]
+        else:
+            # Not split and not merged: either exactly one of the electrode's
+            # units was recovered at all, or none was. Both of the recovered
+            # cases above are already taken, so nothing here can be two.
+            recovered = [r for r in rows if r["recovered_fully"]]
+            verdict = PAIR_ONE if recovered else PAIR_NEITHER
+            named = [r["best_unit"] for r in recovered]
+        pairs.append({
+            "electrode": electrode, "units": [r["unit"] for r in rows],
+            "verdict": verdict, "sorter_units": named,
+            "assignment": [{"unit": r["unit"], "sorter_unit": u, "recovered": rec.get(u)}
+                           for r, rec, u in zip(rows, recs, combo)],
+            "distinct_min": distinct_min, "carrier": carrier, "carrier_min": carrier_min,
+        })
+
+    return {**meta, "delta_ms": float(delta_ms), "split_recovery": SPLIT_RECOVERY,
+            "n_reference_units": len(n_ref), "n_sorter_units": len(sorter_units),
+            "by_reference": by_reference, "pairs": pairs}
 
 
 def _caveat_section(sorter, body) -> dict:
