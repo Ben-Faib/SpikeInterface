@@ -22,6 +22,7 @@ sys.path.insert(0, str(ROOT / "scripts"))
 import curation  # noqa: E402
 
 SORTER = "fakesorter"
+RUN_ID = "20260818-100000-a1b2c3"
 UNITS = [0, 2, 5, 7]
 RUN_INFO = {
     "created": "2026-08-18T10:00:00", "command": "run_sorting.py", "sorter": SORTER,
@@ -37,11 +38,23 @@ def _write_tsv(path, header, rows):
         w.writerows(rows)
 
 
-def _sort_on_disk(tmp_path, labels=None):
-    """A saved sort + its record, as curation.py's own CLI would leave them."""
-    paths = curation.sort_paths(SORTER, tmp_path)
+def _sort_on_disk(tmp_path, labels=None, run=RUN_ID):
+    """A saved sort + its record, as curation.py's own CLI would leave them.
+
+    In the RUN STORE by default — a run directory under ``outputs/<sorter>/runs/``
+    with the record and (where a test builds one) the curated result inside it,
+    which is what a post-W2 sort produces. ``run=None`` writes the pre-store
+    layout instead, for the tests that claim to exercise that.
+    """
+    paths = curation.sort_paths(SORTER, tmp_path, run=run)
     paths["out"].mkdir(parents=True, exist_ok=True)
-    paths["run_info"].write_text(json.dumps(RUN_INFO), encoding="utf-8")
+    if run is None:
+        # What makes the pre-store layout resolvable at all is a sort sitting
+        # directly in the sorter directory.
+        paths["analyzer"].mkdir(parents=True, exist_ok=True)
+    paths["run_info"].write_text(
+        json.dumps(RUN_INFO if run is None else {**RUN_INFO, "run_id": run}),
+        encoding="utf-8")
     record = curation.new_record(SORTER, list(UNITS), root=tmp_path)
     for unit, label in (labels or {}).items():
         curation.add_label(record, unit, label)
@@ -117,6 +130,35 @@ def test_import_maps_phy_cluster_ids_back_to_unit_ids(tmp_path):
     assert curation.label_of(record, 2) == "good"
     assert curation.label_of(record, 7) == "noise"
     assert curation.counts(record)["labels"] == 2
+
+
+def test_the_round_trip_lands_inside_the_run_it_curates(tmp_path):
+    """Post-W2 the export, the record and the curated result all live in the run
+    directory, not beside the sorter — so a later sort in its own run directory
+    cannot leave any of them attached to a sort they do not describe."""
+    paths = _sort_on_disk(tmp_path)
+    run = tmp_path / "outputs" / SORTER / "runs" / RUN_ID
+    assert paths["out"] == run
+    assert paths["record"] == run / "curation.json"
+    assert paths["phy"] == run / "phy"
+    assert paths["curated_phy"] == run / "curated" / "phy"
+    # ...and resolving by name (what every surface does) finds the same run.
+    assert curation.sort_paths(SORTER, tmp_path)["record"] == run / "curation.json"
+
+
+def test_the_round_trip_still_works_on_a_pre_store_sort(tmp_path):
+    """A curated sort made before the run store keeps working, read-only: the
+    store resolves outputs/<sorter>/ when no run directory exists, so the record
+    and the Phy folder are found exactly where that sort left them."""
+    paths = _sort_on_disk(tmp_path, run=None)
+    legacy = tmp_path / "outputs" / SORTER
+    assert paths["out"] == legacy
+    assert paths["phy"] == legacy / "phy"
+
+    _phy_folder(tmp_path, groups={1: "good"})
+    result = curation.import_phy_labels(SORTER, root=tmp_path)
+    assert [(e["unit"], e["label"]) for e in result["imported"]] == [(2, "good")]
+    assert curation.label_of(curation.load_record(SORTER, tmp_path), 2) == "good"
 
 
 def test_imported_decisions_carry_phy_provenance(tmp_path):
@@ -365,8 +407,10 @@ def test_import_refuses_a_blank_anchored_manifest(tmp_path):
 
 
 def test_export_refuses_a_sort_with_no_run_anchor(tmp_path):
-    paths = _sort_on_disk(tmp_path)
-    paths["analyzer"].mkdir(parents=True)
+    # The pre-store layout: a sort resolves on its analyzer alone, so it can be
+    # found with no run_info.json at all. (In the store a run without a record is
+    # an unfinished run and does not resolve, so there is nothing to export.)
+    paths = _sort_on_disk(tmp_path, run=None)
     paths["run_info"].unlink()  # the export would carry a blank anchor
     with pytest.raises(RuntimeError, match="cannot identify the saved"):
         curation.export_phy(SORTER, tmp_path, verbose=False)

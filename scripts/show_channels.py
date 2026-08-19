@@ -36,6 +36,7 @@ import numpy as np  # noqa: E402
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import blackrock_io as bio  # noqa: E402
 import probes  # noqa: E402
+import runs  # noqa: E402  (the run store: which saved run is current)
 import sort_summary  # noqa: E402
 
 OUTPUT_DIR = bio.REPO_ROOT / "outputs"
@@ -174,7 +175,8 @@ def main() -> int:
     # Active electrodes + per-channel noise from a saved sort's summary, if asked.
     active, noise = None, None
     if args.sorter:
-        summary = sort_summary.load_summary(OUTPUT_DIR / args.sorter)
+        summary = sort_summary.load_summary(
+            runs.sort_paths(args.sorter, outputs=OUTPUT_DIR)["out"])
         if summary:
             active = summary.get("active_channels") or []
             per_ch = (summary.get("noise_floor_uV") or {}).get("per_channel")

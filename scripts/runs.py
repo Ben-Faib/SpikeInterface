@@ -161,8 +161,10 @@ REGEN_DIRNAME = "regen"
 POINTER_NAME = "current.json"
 RUN_INFO_NAME = "run_info.json"
 LEGACY_RUN_ID = "legacy"
-# Same literals curation.py uses — the record and the curated output ride inside
-# the run directory they curate, so both modules must name them identically.
+# The record and the curated output ride inside the run directory they curate, so
+# this module builds their paths and therefore holds their names. curation.py
+# re-exports these three rather than defining its own (it imports this module;
+# this one must not import it back), so they cannot drift apart.
 CURATED_DIRNAME = "curated"
 RECORD_NAME = "curation.json"
 PHY_DIRNAME = "phy"

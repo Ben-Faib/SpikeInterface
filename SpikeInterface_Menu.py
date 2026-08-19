@@ -158,7 +158,7 @@ def _load_dashboard(data_dir, active: str, sorter_list, docker: bool):
 def _saved_summary(sorter: str, curated: bool = False):
     """(present, units, duration) for a sorter's saved analyzer; best-effort.
 
-    ``curated`` reads outputs/<sorter>/curated/analyzer (the applied curation
+    ``curated`` reads the current run's curated/analyzer (the applied curation
     record) instead of the raw sort. Short-circuits cheaply when there is no
     analyzer dir (the common case), so probing all ~22 sorters stays fast. Never
     raises.
@@ -297,7 +297,7 @@ HEADER = "University of Pittsburgh · SpikeInterface"
 
 
 def _read_run_info(sorter: str) -> dict:
-    """Load outputs/<sorter>/run_info.json (unit counts etc.); {} if unreadable."""
+    """Load the current run's run_info.json (unit counts etc.); {} if unreadable."""
     try:
         return json.loads((_analyzer_dir(sorter).parent / "run_info.json")
                           .read_text(encoding="utf-8"))
@@ -913,7 +913,13 @@ class MenuController:
 
         path = _RESULT_PATHS.get(key)
         if key == "sort":
-            path = f"outputs/{self.active_sorter}/"
+            # The run directory the sort landed in. A sorter has many runs now, so
+            # "outputs/<sorter>/" names a store, not a result.
+            run = _analyzer_dir(self.active_sorter).parent
+            try:
+                path = run.relative_to(bio.REPO_ROOT).as_posix() + "/"
+            except ValueError:      # an --output-dir outside the repo
+                path = run.as_posix() + "/"
         # ISO, not clock-time: the record persists across launches, and "14:18"
         # from last Tuesday must not read as today (D1 review #7). The view
         # formats it relative to the current date.

@@ -41,14 +41,33 @@ def _record(tmp_path, unit_ids=(1, 2, 3)):
 
 
 def test_sort_paths_is_the_single_home(tmp_path):
+    """The resolver is the run store's. With nothing saved it hands back the
+    pre-store layout, so a fresh tree still has somewhere to look."""
     p = curation.sort_paths(SORTER, tmp_path)
     out = tmp_path / "outputs" / SORTER
     assert p["out"] == out
     assert p["record"] == out / "curation.json"
     assert p["curated"] == out / "curated"
     assert p["curated_analyzer"] == out / "curated" / "analyzer"
-    # Every path this module hands out lives under the one output dir.
-    assert all(str(v).startswith(str(tmp_path)) for v in p.values())
+    # Every PATH this module hands out lives under the one output dir. (The store
+    # also returns labels — the sorter name and the run id — which are not paths.)
+    assert all(str(v).startswith(str(tmp_path))
+               for v in p.values() if isinstance(v, Path))
+
+
+def test_sort_paths_puts_the_record_inside_the_run_it_curates(tmp_path):
+    """Once a run exists in the store, the record and the curated result ride
+    inside THAT run directory — the whole point of the re-point."""
+    run = tmp_path / "outputs" / SORTER / "runs" / "20260819-101500-abc123"
+    (run / "analyzer").mkdir(parents=True)
+    (run / "run_info.json").write_text(json.dumps({**RUN_INFO, "run_id": run.name}),
+                                       encoding="utf-8")
+    p = curation.sort_paths(SORTER, tmp_path)
+    assert p["out"] == run
+    assert p["id"] == run.name
+    assert p["record"] == run / "curation.json"
+    assert p["curated_analyzer"] == run / "curated" / "analyzer"
+    assert p["phy"] == run / "phy"
 
 
 def test_record_round_trip_is_pure_python(tmp_path):

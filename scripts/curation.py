@@ -13,7 +13,7 @@ produced**. A sort finds candidate units; the decisions a human (or a scripted
 method) makes about them — merge, split, label — live here, in a record beside
 the sort, and are replayed deterministically to build the curated output.
 
-    outputs/<sorter>/                     the RAW sort (never mutated — the audit trail)
+    outputs/<sorter>/runs/<run_id>/       the RAW sort (never mutated — the audit trail)
         sorting/ analyzer/ run_info.json summary.json quality_metrics.csv
         curation.json                     THE RECORD (this module owns it)
         phy/                              the raw sort exported for Phy
@@ -21,8 +21,12 @@ the sort, and are replayed deterministically to build the curated output.
             sorting/ analyzer/ run_info.json summary.json quality_metrics.csv
             phy/                          the curated result exported for Phy
 
-``sort_paths()`` is the ONE place any of those paths is resolved — W2's versioned
-run store re-plumbs that function and nothing else.
+``sort_paths()`` is the ONE place any of those paths is resolved, and it delegates
+to the versioned run store (``runs.py``), which decides WHICH run those paths
+name. The record and the curated output live inside the run they curate, so a
+re-sort — which lands in a new run directory — leaves them attached to the sort
+they describe. A pre-store ``outputs/<sorter>/`` layout still resolves, read-only,
+so curated results built before the store are still readable where they are.
 
 The record
 ----------
@@ -38,13 +42,13 @@ curates, when each decision was taken, and by what method with what parameters.
       "updated": "2026-08-18T21:52:03",     # last decision written
       "curates": {                          # WHICH sort this record curates
         "sorter": "tridesclous2",
-        "output_dir": "outputs/tridesclous2",        # repo-relative, POSIX
+        "output_dir": "outputs/tridesclous2/runs/<id>",   # repo-relative, POSIX
         "run": {"created": ..., "sorter": ..., "n_units": 17, "si_version": ...,
                 "probe": ..., "effective_seconds": ..., "total_seconds": ...}
       },                  # ^ the ANCHOR. Unit ids are not stable across re-sorts
                           #   (tridesclous2 is non-deterministic on this recording,
-                          #   and run_sorting overwrites outputs/<sorter>/ in place),
-                          #   so apply REFUSES a record whose anchor no longer
+                          #   and a record can be read beside a pre-store layout or
+                          #   a copied run dir), so apply REFUSES a record whose anchor no longer
                           #   matches the sort on disk rather than curating the
                           #   wrong units quietly.
       "tools": {"python": "3.12.9", "spikeinterface": "0.104.3",
@@ -96,7 +100,7 @@ sees. Phy is the path for those: the export goes out, a human decides, the
 verdicts come back into this record.
 
     1. uv run python scripts/curation.py export-phy --sorter tridesclous2
-       Writes ``outputs/<sorter>/phy/`` (or ``curated/phy/`` — the CURATED result
+       Writes the current run's ``phy/`` (or its ``curated/phy/`` — the CURATED result
        is exported when one exists, mirroring the report's rule; ``--raw`` forces
        the raw sort). Labels already in the record are seeded into the export, so
        Phy opens showing what was decided rather than a blank slate.
@@ -111,7 +115,7 @@ verdicts come back into this record.
 Phy's ``cluster_id`` is a 0-based INDEX, not a unit id — SI's exporter writes the
 mapping to ``cluster_si_unit_ids.tsv`` and the import reads verdicts back through
 it. The export drops ``workbench_phy.json`` beside it carrying the run-identity
-anchor, so an import onto a re-sorted ``outputs/<sorter>/`` is refused (unit ids
+anchor, so an import onto a different sort is refused (unit ids
 are not stable across re-sorts) rather than labelling the wrong units.
 
 **Which file is the verdict:** ``cluster_group.tsv`` — the column Phy's own UI
@@ -136,7 +140,9 @@ the raw sort's.
 API
 ---
 Paths and state (pure):
-    sort_paths(sorter, root=None) -> dict     every path for one sorter's run
+    sort_paths(sorter, root=None, run=None) -> dict
+                                               every path for one sorter's run;
+                                               delegates to runs.sort_paths
     load_record(sorter=..., root=..., path=...) -> dict | None
     save_record(record, path) -> Path
     new_record(sorter, unit_ids, run=None, root=None) -> dict
@@ -215,13 +221,18 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import blackrock_io as bio  # noqa: E402  (REPO_ROOT only — no SpikeInterface)
+import runs  # noqa: E402  (the versioned run store: where a run lives, which is current)
 import sort_summary as _summary  # noqa: E402  (the metrics + quality-rule owner)
 
 SCHEMA_VERSION = "1"
 KIND = "spikeinterface-workbench-curation"
-RECORD_NAME = "curation.json"
-CURATED_DIRNAME = "curated"
-PHY_DIRNAME = "phy"
+# The store builds the record's and the curated output's paths, so it holds the
+# literals; they are re-exported here because callers name them through this
+# module (curation.RECORD_NAME, curation.CURATED_DIRNAME). One definition, so a
+# rename cannot leave the record and the path that carries it disagreeing.
+RECORD_NAME = runs.RECORD_NAME
+CURATED_DIRNAME = runs.CURATED_DIRNAME
+PHY_DIRNAME = runs.PHY_DIRNAME
 # SpikeInterface's curation-format version this module writes (0.104 accepts 1|2).
 CURATION_FORMAT_VERSION = "2"
 
@@ -255,38 +266,26 @@ SPLIT_SEED = 0
 
 
 # --------------------------------------------------------------------------- #
-# Paths — the ONE resolver (W2's versioned run store swaps this function)
+# Paths — the ONE resolver, delegated to the versioned run store
 # --------------------------------------------------------------------------- #
-def sort_paths(sorter: str, root=None) -> dict:
+def sort_paths(sorter: str, root=None, *, run=None) -> dict:
     """Every path the curation lifecycle needs for one sorter's saved run.
 
-    ``root`` defaults to the repo root (tests pass a tmp dir). Nothing else in
-    this module — or in the surfaces that read curation state — builds an
-    ``outputs/<sorter>/...`` path by hand.
+    Delegates to ``runs.sort_paths``: the store owns where a run lives and which
+    one is current, and the curation record and the curated output ride INSIDE
+    the run directory they curate — so a re-sort lands in its own directory and
+    can never leave a record beside a sort it does not describe.
+
+    ``root`` defaults to the repo root (tests pass a tmp dir); ``run`` pins an
+    explicit run id or directory instead of the current one. The store's key set
+    is a superset of the keys this module uses, so callers keep reading the same
+    names. A pre-store ``outputs/<sorter>/`` layout still resolves, read-only.
     """
-    base = Path(root) if root is not None else bio.REPO_ROOT
-    out = base / "outputs" / sorter
-    curated = out / CURATED_DIRNAME
-    return {
-        "root": base,
-        "out": out,
-        "sorting": out / "sorting",
-        "analyzer": out / "analyzer",
-        "run_info": out / "run_info.json",
-        "summary": out / "summary.json",
-        "record": out / RECORD_NAME,
-        "phy": out / PHY_DIRNAME,
-        "curated": curated,
-        "curated_sorting": curated / "sorting",
-        "curated_analyzer": curated / "analyzer",
-        "curated_run_info": curated / "run_info.json",
-        "curated_metrics": curated / "quality_metrics.csv",
-        "curated_phy": curated / PHY_DIRNAME,
-    }
+    return runs.sort_paths(sorter, root=root, run=run)
 
 
 def preferred_analyzer_dir(analyzer_dir) -> "tuple[Path, bool]":
-    """(analyzer dir to show, is_curated) for a RAW ``outputs/<sorter>/analyzer``.
+    """(analyzer dir to show, is_curated) for a run's RAW ``analyzer``.
 
     THE "curated wins" RULE, in one place: if a curated analyzer was built beside
     the raw sort, that is the result and the surface says so; otherwise the raw
@@ -351,7 +350,7 @@ def _identity_mismatch(want: dict, have: dict, want_label: str = "record") -> li
 
 
 def read_run_info(sorter: str, root=None) -> dict:
-    """outputs/<sorter>/run_info.json; {} when absent/unreadable. No SI import."""
+    """The current run's run_info.json; {} when absent/unreadable. No SI import."""
     try:
         return json.loads(sort_paths(sorter, root)["run_info"].read_text(encoding="utf-8"))
     except Exception:  # noqa: BLE001 - provenance is best-effort
@@ -859,7 +858,7 @@ def import_phy_labels(sorter: str, folder=None, root=None, *,
                       dry_run: bool = False) -> dict:
     """Bring a curator's Phy verdicts back in as labelled decisions in the record.
 
-    ``folder`` defaults to ``outputs/<sorter>/phy``. The export's manifest is the
+    ``folder`` defaults to the current run's ``phy/``. The export's manifest is the
     contract: it names the sort the folder came from, and this refuses to write
     when that no longer matches the sort on disk (unit ids are not stable across
     re-sorts) or when the folder is a CURATED export (its ids are the curated
@@ -1118,8 +1117,9 @@ def _check_run_identity(record: dict, sorter: str, root=None) -> None:
 
     **Unit ids are not stable across re-sorts here** — tridesclous2 is
     non-deterministic on this recording (repeat full runs have returned 14, 16, 17
-    and 18 units), and run_sorting overwrites outputs/<sorter>/ in place. So a
-    record replayed onto a different sort would merge, split and label the wrong
+    and 18 units), and a record can be read beside a pre-store layout, a copied run
+    directory, or a run the pointer has since moved off. So a record replayed onto
+    a different sort would merge, split and label the wrong
     units, quietly. The record's ``curates.run`` block is the anchor: sorter, the
     run's created timestamp, its unit count and its effective window all have to
     match the sort on disk.
@@ -1133,7 +1133,7 @@ def _check_out_dir(out, paths: dict, sorter: str) -> None:
     """Refuse an output dir that would write the curated result INTO the raw sort.
 
     ``apply`` clears ``<out>/sorting`` and ``<out>/analyzer`` before rebuilding
-    them, so ``--out outputs/<sorter>`` would delete the raw sort — the audit
+    them, so ``--out <the run directory>`` would delete the raw sort — the audit
     trail the whole design rests on. Resolved, so ``.`` / ``..`` / a symlink
     cannot sneak past.
     """
@@ -1153,7 +1153,7 @@ def _check_phy_out_dir(out, paths: dict, sorter: str) -> None:
 
     ``export_phy`` clears its target before SI writes the folder, so ``--out``
     pointed at anything that is not a previous Phy export would delete it —
-    ``outputs/<sorter>`` itself (the raw sort, the audit trail), ``outputs/``,
+    the run directory itself (the raw sort, the audit trail), ``outputs/``,
     or an unrelated directory. Resolved, so ``.``/``..``/symlinks cannot sneak
     past. A non-empty existing target is only cleared when it carries a previous
     export's manifest or ``params.py``.
@@ -1218,7 +1218,7 @@ def _rel(path, root=None) -> str:
 
 def apply_record(record: dict, root=None, *, out_dir=None, verbose: bool = True,
                  n_jobs: int = 1) -> dict:
-    """Apply a validated record to the RAW saved Sorting; write outputs/<sorter>/curated/.
+    """Apply a validated record to the RAW saved Sorting; write the run's curated/.
 
     The raw sort is read, never written. Produces ``curated/sorting`` (saved
     first — the units are the result), then ``curated/analyzer`` with the same
@@ -1491,7 +1491,7 @@ def export_phy(sorter: str, root=None, *, raw: bool = False, out_dir=None,
         "n_units": len(analyzer.unit_ids),
         "labels_seeded": n_seeded,
         # The anchor: which raw sort these cluster ids belong to. An import
-        # against a re-sorted outputs/<sorter>/ is refused on this; a blank
+        # against a different sort is refused on this; a blank
         # anchor was already refused above, so this always binds.
         "run": run_anchor,
         "record_updated": (record or {}).get("updated"),
@@ -1616,21 +1616,21 @@ def main(argv=None) -> int:
     p_split.add_argument("--seed", type=int, default=SPLIT_SEED)
     p_split.add_argument("--note", default="")
     p_apply = _common(sub.add_parser(
-        "apply", help="replay the record onto the raw sort -> outputs/<sorter>/curated/"))
+        "apply", help="replay the record onto the raw sort -> the run's curated/"))
     p_apply.add_argument("--out", default=None, help="write the curated result here "
-                         "instead of outputs/<sorter>/curated/")
+                         "instead of the run's curated/")
     p_apply.add_argument("--n-jobs", type=int, default=1)
     p_export = _common(sub.add_parser(
         "export-phy", help="export the sort for Phy (the curated result when one exists)"))
     p_export.add_argument("--raw", action="store_true",
                           help="export the raw sort even when a curated result exists")
     p_export.add_argument("--out", default=None,
-                          help="write the Phy folder here instead of outputs/<sorter>/phy/")
+                          help="write the Phy folder here instead of the run's phy/")
     p_export.add_argument("--n-jobs", type=int, default=1)
     p_import = _common(sub.add_parser(
         "import-phy", help="import Phy's edited labels back into the record"))
     p_import.add_argument("--from", dest="folder", default=None,
-                          help="the Phy folder to read (default: outputs/<sorter>/phy/)")
+                          help="the Phy folder to read (default: the run's phy/)")
     p_import.add_argument("--dry-run", action="store_true",
                           help="report what would change without writing the record")
     args = ap.parse_args(argv)
