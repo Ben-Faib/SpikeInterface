@@ -8,6 +8,14 @@ process lessons.*
 
 ---
 
+**S9 (2026-08-19) - a repo-wide guard test must be able to scan itself, and its first
+honest run is AFTER it is tracked.** The em-dash pin (`tests/test_no_em_dashes.py`) walks
+`git ls-files`, so while the file was uncommitted it never scanned itself and ran green;
+the moment its commit landed it failed on its own literal needle. Lesson: write
+banned-character needles as escapes (backslash-u-2014, never the character), and treat a ls-files-based guard's
+pre-commit green as unproven - re-run it once tracked. Encoded: the needle comment in the
+test itself and this entry.
+
 **S8 (2026-08-19) - two conductors can end up running the same slice; message the peer,
 don't assume it died.** Ben started the v3 conductor on the stated premise that the face1
 session had died mid-build. It hadn't: it was alive and folding its own Fable review of

@@ -70,6 +70,7 @@ uv run python scripts/verify_install.py     # smoke test: versions + all three l
 uv run python scripts/run_sorting.py --duration 30   # quick sort smoke test (first 30 s)
 uv run python scripts/curation.py show --sorter tridesclous2   # curation record + curated state (label/merge/split/apply)
 uv run python scripts/runs.py list                  # the run store: every saved run + the current pointer (export/regenerate/compare)
+uv run python scripts/sweep_page.py                 # the sorter shootout: outputs/sweep.html from the store's current runs
 ```
 
 Menu actions: `explore | sort | report | gui | traces | compare | verify | phy`
@@ -101,7 +102,9 @@ sync with the code, which is why this file does not restate them.
 | `runs.py` | the versioned run store: where runs live, which is current, provenance, regenerate-from-record - `runs.sort_paths()` is the one path resolver (curation.py delegates to it) | build `outputs/<sorter>/...` paths by hand, or read a run dir without the pointer |
 | `sort_progress.py` | the JSON event protocol between `run_sorting` and the TUI | print status for the UI to scrape |
 | `run_sorting.py` | the sort pipeline + its terminal presentation | |
-| `report.py` | self-contained `outputs/report.html` (Plotly inlined) | |
+| `report.py` | self-contained `outputs/report.html` (Plotly inlined; `CHART_TEMPLATE` is the shared chart theme compare.py applies too) | |
+| `viz_palette.py` | chart colors for EVERY HTML surface + the deck: the validated periwinkle palette (categorical light/dark, ramp, diverging, status, chrome, DECK) with the validation commands in its docstring | hardcode a chart hex, or change a value without re-running the dataviz validator |
+| `sweep_page.py` | the sorter-shootout page (`outputs/sweep.html`): per-sorter pair-test verdicts + recovery vs the manual .nev, judged via compare.py, effective params from run provenance | re-implement matching, or build a second shootout surface |
 | `ui.py` | shared rich styling, themes, fallback-menu widgets | |
 | `menu_app.py` + `SpikeInterface_Menu.py` (root) | Textual dashboard (view) + controller (data/actions) | |
 
@@ -253,6 +256,10 @@ placeholder (no two channels neighbours) remains available.
   scrolling; pinned by the painted-rows/never-clip Pilot tests and the SVG snapshots.
 
 ## Conventions
+
+- **NO EM DASHES (U+2014), anywhere, ever** (Ben, 2026-08-19): code, docs, UI strings,
+  commit messages, board files, the deck. Substitutes: hyphen, colon, period, middot.
+  Pinned repo-wide by `tests/test_no_em_dashes.py` (exempts nothing).
 
 - `matplotlib.use("Agg")` **before** importing pyplot; figures go to `outputs/` (git-ignored).
 - Entry points: `if __name__ == "__main__": raise SystemExit(main())`, with `main()`
