@@ -109,6 +109,28 @@ def test_sort_paths_puts_curation_inside_the_run_it_curates(store):
     assert p["log"] == store.outputs / "tdc2" / "sort.log"
 
 
+# The keys curation.py's own sort_paths() returns on main (scripts/curation.py,
+# after the Phy-export slice). Hardcoded on purpose: this worktree branched
+# before that slice, so importing main's file here would test the wrong tree.
+# runs.sort_paths must stay a SUPERSET — W1's seam re-points at this module at
+# integration, and a key that only curation.py has is a break at that moment.
+CURATION_SORT_PATHS_KEYS = (
+    "root", "out", "sorting", "analyzer", "run_info", "summary", "record", "phy",
+    "curated", "curated_sorting", "curated_analyzer", "curated_run_info",
+    "curated_metrics", "curated_phy",
+)
+
+
+def test_sort_paths_is_a_superset_of_curations(store):
+    store.run("tdc2", "20260818-000001-aaaaaa")
+    p = runs.sort_paths("tdc2", outputs=store.outputs)
+    assert [k for k in CURATION_SORT_PATHS_KEYS if k not in p] == []
+    # ...with the same shapes: the export rides inside the run it exports, and
+    # the curated export inside the curated output.
+    assert p["phy"] == p["out"] / "phy"
+    assert p["curated_phy"] == p["curated"] / "phy"
+
+
 def test_sort_paths_falls_back_to_legacy_paths_when_nothing_is_saved(store):
     p = runs.sort_paths("tdc2", outputs=store.outputs)
     assert p["id"] is None
@@ -341,10 +363,16 @@ PROVENANCE_KEYS = (
 
 
 def _saved_records():
-    out = ROOT / "outputs"
-    if not out.is_dir():
-        return []
-    return [p for p in out.glob("*/runs/*/run_info.json")]
+    """The real saved records, found by ASKING the module that owns the layout.
+
+    A hardcoded ``outputs/*/runs/*/run_info.json`` glob is the exact trap this
+    lane already fell into once: when the layout moved, the glob went empty and
+    the test that guards provenance turned into a silent skip instead of a
+    failure. Legacy runs are excluded — they predate every W2 block.
+    """
+    return [Path(r["dir"]) / runs.RUN_INFO_NAME
+            for sorter in runs.saved_sorters(root=ROOT)
+            for r in runs.list_runs(sorter, root=ROOT, include_legacy=False)]
 
 
 def test_a_real_saved_record_carries_every_provenance_block():
@@ -493,6 +521,11 @@ def _record(**over):
         "preprocessing": {"reference": "global median"},
         "bad_channels": {"excluded": [], "method": "mad", "enabled": True},
         "geometry_hash": "bd6d13d32e1f46f7", "probe_id": "nnx-a1x16-3mm-100",
+        "params": {"effective": {"detect_threshold": 5.0, "peak_sign": "neg",
+                                 "n_pca_features": 6},
+                   "defaults": {}, "overrides": {}},
+        "recording": {"data_dir": None, "base": "PFCM7_d0ephys_Block2",
+                      "sampling_rate_hz": 30000.0},
         "packages": {"spikeinterface": "0.104.3", "numpy": "2.4.6"},
         "git": {"sha": "467ed7ec604b671cd1c8668a0cd5c281c5c3f433"},
         "determinism": runs.determinism_of("tridesclous2"),
@@ -521,8 +554,10 @@ def test_a_clean_pair_regenerates():
     assert report["verdict"] == "REGENERATED — BIT-IDENTICAL SPIKE TRAINS"
     assert report["failed"] == []
     v = _verdicts(report)
+    assert v["recording"] == runs.V_MATCH
     assert v["channels sorted"] == runs.V_MATCH
     assert v["preprocessing chain"] == runs.V_MATCH
+    assert v["sorter params"] == runs.V_MATCH
     assert v["probe geometry"] == runs.V_MATCH
     assert v["noise floor (µV)"] == runs.V_WITHIN
 
@@ -569,6 +604,82 @@ def test_a_different_bad_channel_set_is_a_failure():
         recorded_summary=_summary(), regenerated_summary=_summary(),
         recorded_spikes=SPIKES, regenerated_spikes=SPIKES)
     assert "preprocessing chain" in report["failed"]
+
+
+def test_a_hand_edited_sorter_parameter_is_a_failure_that_names_the_key():
+    """The hole this criterion closes: detect_threshold 5→3 in an exported config
+    changes what the sorter was ASKED, and can still land inside containment and
+    inside every metric band. Without this criterion the report prints
+    REGENERATED and never mentions that the knobs differ."""
+    edited = _record(params={"effective": {"detect_threshold": 3.0, "peak_sign": "neg",
+                                           "n_pca_features": 6}})
+    report = runs.compare_runs(
+        _record(), edited,
+        recorded_summary=_summary(), regenerated_summary=_summary(),
+        recorded_spikes=SPIKES, regenerated_spikes=SPIKES)
+    assert report["verdict"] == "NOT REGENERATED"
+    assert report["failed"] == ["sorter params"]     # everything else matched
+    par = next(c for c in report["criteria"] if c["name"] == "sorter params")
+    assert par["verdict"] == runs.V_DIFFERS
+    assert "detect_threshold" in par["note"] and "5.0" in par["note"] and "3.0" in par["note"]
+    assert "detect_threshold" in runs.format_match_report(report)   # and it prints
+
+
+def test_a_parameter_only_one_side_has_is_named_absent():
+    report = runs.compare_runs(
+        _record(), _record(params={"effective": {"detect_threshold": 5.0,
+                                                 "peak_sign": "neg"}}),
+        recorded_summary=_summary(), regenerated_summary=_summary(),
+        recorded_spikes=SPIKES, regenerated_spikes=SPIKES)
+    par = next(c for c in report["criteria"] if c["name"] == "sorter params")
+    assert par["verdict"] == runs.V_DIFFERS
+    assert "n_pca_features" in par["note"] and "absent" in par["note"]
+
+
+def test_a_record_without_effective_parameters_is_not_compared():
+    report = runs.compare_runs(
+        _record(params={}), _record(),
+        recorded_summary=_summary(), regenerated_summary=_summary(),
+        recorded_spikes=SPIKES, regenerated_spikes=SPIKES)
+    par = next(c for c in report["criteria"] if c["name"] == "sorter params")
+    assert par["verdict"] == runs.V_SKIPPED
+    assert report["failed"] == []
+
+
+def test_a_different_recording_is_a_failure_that_names_itself():
+    """A config re-run against another machine's file set sorts *something*, and
+    every other criterion then fails obliquely. The report must name the cause."""
+    report = runs.compare_runs(
+        _record(), _record(recording={"base": "SomeOtherBlock",
+                                      "sampling_rate_hz": 30000.0}),
+        recorded_summary=_summary(), regenerated_summary=_summary(),
+        recorded_spikes=SPIKES, regenerated_spikes=SPIKES)
+    assert report["verdict"] == "NOT REGENERATED"
+    assert report["failed"] == ["recording"]
+    rec = next(c for c in report["criteria"] if c["name"] == "recording")
+    assert rec["verdict"] == runs.V_DIFFERS and "base name" in rec["note"]
+    assert "SomeOtherBlock" in rec["regenerated"]
+
+
+def test_a_different_sampling_rate_is_a_failure():
+    report = runs.compare_runs(
+        _record(), _record(recording={"base": "PFCM7_d0ephys_Block2",
+                                      "sampling_rate_hz": 20000.0}),
+        recorded_summary=_summary(), regenerated_summary=_summary(),
+        recorded_spikes=SPIKES, regenerated_spikes=SPIKES)
+    rec = next(c for c in report["criteria"] if c["name"] == "recording")
+    assert rec["verdict"] == runs.V_DIFFERS and "sampling rate" in rec["note"]
+
+
+def test_a_record_without_a_recording_block_is_not_compared():
+    """A pre-W2 record carries no recording identity — NOT COMPARED, not a pass."""
+    report = runs.compare_runs(
+        _record(recording={}), _record(),
+        recorded_summary=_summary(), regenerated_summary=_summary(),
+        recorded_spikes=SPIKES, regenerated_spikes=SPIKES)
+    rec = next(c for c in report["criteria"] if c["name"] == "recording")
+    assert rec["verdict"] == runs.V_SKIPPED
+    assert report["failed"] == []
 
 
 def test_a_different_channel_set_is_a_failure():
@@ -629,6 +740,33 @@ def test_containment_gates_the_reverse_direction_too():
     assert report["containment"]["forward"] == 1.0          # forward would pass
     assert report["containment"]["reverse"] == 0.5
     assert contain["verdict"] == runs.V_OUTSIDE
+    assert report["verdict"] == "NOT REGENERATED"
+
+
+def test_two_runs_that_both_found_nothing_regenerate():
+    """Two honest zero-unit sorts found exactly the same thing: nothing.
+    Containment is undefined (NaN) on empty trains and NaN reads as outside
+    tolerance, which used to score identical emptiness NOT REGENERATED."""
+    report = runs.compare_runs(
+        _record(n_units=0), _record(n_units=0),
+        recorded_summary=_summary(), regenerated_summary=_summary(),
+        recorded_spikes=[], regenerated_spikes=[])
+    contain = next(c for c in report["criteria"] if c["name"] == "spike containment")
+    assert contain["verdict"] == runs.V_MATCH
+    assert "found no spikes" in contain["note"]
+    assert report["failed"] == []
+    # ...and "BIT-IDENTICAL SPIKE TRAINS" is not a claim to make about no spikes.
+    assert report["verdict"] == "REGENERATED"
+
+
+def test_an_empty_regeneration_against_a_real_sort_still_fails():
+    """Only BOTH sides empty is a match: a re-run that found nothing where the
+    record has a thousand spikes is exactly the failure this criterion is for."""
+    report = runs.compare_runs(
+        _record(), _record(n_units=0),
+        recorded_summary=_summary(), regenerated_summary=_summary(),
+        recorded_spikes=SPIKES, regenerated_spikes=[])
+    assert "spike containment" in report["failed"]
     assert report["verdict"] == "NOT REGENERATED"
 
 
@@ -747,6 +885,21 @@ def test_config_argv_carries_the_smoke_window_and_the_channel_flags(tmp_path):
     assert argv[argv.index("--n-jobs") + 1] == "4"
     assert argv[argv.index("--bad-channels") + 1] == "3,7"
     assert "--no-bad-channel-detection" in argv
+
+
+def test_the_config_carries_the_docker_fact(tmp_path):
+    """A containerized run regenerated without --docker never starts: run_sorting
+    resolves the sorter natively and exits with "re-run with --docker". The lab's
+    Windows box is where those runs live, so the config has to say so."""
+    config = runs.config_from_record(_record(docker=True))
+    assert config["docker"] is True
+    assert "--docker" in runs.config_argv(config, tmp_path / "out")
+
+
+def test_a_natively_run_sort_does_not_ask_for_docker(tmp_path):
+    config = runs.config_from_record(_record(docker=False))
+    assert config["docker"] is False
+    assert "--docker" not in runs.config_argv(config, tmp_path / "out")
 
 
 def test_config_argv_omits_a_params_file_it_was_not_given(tmp_path):

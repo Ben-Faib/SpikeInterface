@@ -92,8 +92,14 @@ this recording produced 14, 16 and 18 units across three identical runs (PRE1,
 2026-08-18), so unit counts and unit ids are reported as INFORMATIONAL and are
 never a verdict. What is compared, each with its tolerance stated:
 
+    recording            exact base name + sampling rate — a re-run pointed at a
+                         different file set is named as that, not left to show up
+                         indirectly as poor containment
     channels sorted      exact set
     preprocessing chain  exact (band, reference, aux drop, bad channels)
+    sorter params        exact effective parameter dict; DIFFERS names the keys.
+                         The tolerance bands below are wide enough to swallow a
+                         hand-edited knob, so nothing else here would mention it
     probe geometry       exact geometry hash
     environment          exact package versions + git sha (a caveat, not a fail)
     noise floor          +/- NOISE_TOL_UV (a property of the recording, so it is
@@ -159,6 +165,7 @@ LEGACY_RUN_ID = "legacy"
 # the run directory they curate, so both modules must name them identically.
 CURATED_DIRNAME = "curated"
 RECORD_NAME = "curation.json"
+PHY_DIRNAME = "phy"
 
 # Provenance: the packages whose version can change a sort's output.
 PROVENANCE_PACKAGES = ("spikeinterface", "neo", "numpy", "probeinterface", "scipy", "numba")
@@ -204,6 +211,14 @@ CONTAINMENT_DELTA_MS = 0.4
 # would have failed honest regenerations, so the floor is 0.85: ~4 sd below the
 # mean, ~5 pp below the worst observed, and far above the sub-0.5 containment a
 # genuinely different pipeline (wrong band, window or channel set) produces.
+#
+# VALIDITY RANGE of that calibration: it was measured on 132 s (full recording)
+# and 30 s windows only, and the trend across those two is monotone — the worst
+# honest pair, 0.903, is the 30 s one. A shorter window sees fewer spikes per
+# unit, so its runs diverge further, and an honest regeneration of, say, a 5 s
+# window may sit below 0.85 legitimately. Treat a containment failure on a
+# window shorter than 30 s as uncalibrated rather than as evidence, and
+# re-measure before moving this number for it.
 CONTAINMENT_MIN = 0.85
 # Relative tolerance on the headline metrics (V_pp, SNR medians): unit membership
 # shifts between runs, so the medians move more than the noise floor does. Max
@@ -321,11 +336,13 @@ def sort_paths(sorter: str, root=None, outputs=None, run=None) -> dict:
         "summary": out / "summary.json",
         "metrics": out / "quality_metrics.csv",
         "record": out / RECORD_NAME,
+        "phy": out / PHY_DIRNAME,
         "curated": curated,
         "curated_sorting": curated / "sorting",
         "curated_analyzer": curated / "analyzer",
         "curated_run_info": curated / RUN_INFO_NAME,
         "curated_metrics": curated / "quality_metrics.csv",
+        "curated_phy": curated / PHY_DIRNAME,
         "log": sorter_dir(sorter, root, outputs) / "sort.log",
     }
 
@@ -593,6 +610,11 @@ def config_from_record(info: dict) -> dict:
         "freq_min": info.get("freq_min", pre.get("freq_min")),
         "freq_max": info.get("freq_max", pre.get("freq_max")),
         "keep_analog": bool(info.get("keep_analog")),
+        # Whether the sort ACTUALLY ran in a container (run_sorting records the
+        # resolved fact, not the raw flag). Without it the config's claim to
+        # fully describe the re-run is false for every containerized sort — and
+        # the lab's Windows box is where those live.
+        "docker": bool(info.get("docker")),
         "n_jobs": info.get("n_jobs", 1),
         "bad_channel_method": bad.get("method"),
         "bad_channels": list(bad.get("manual") or []),
@@ -611,6 +633,11 @@ def config_argv(config: dict, output_dir, *, params_file=None) -> list:
     """
     argv = [sys.executable, str(Path(__file__).resolve().parent / "run_sorting.py"),
             "--sorter", str(config["sorter"]), "--output-dir", str(output_dir)]
+    if config.get("docker"):
+        # A sorter that only exists in a container needs this before it needs
+        # anything else: without it run_sorting resolves the sorter natively and
+        # exits with "re-run with --docker", so the regeneration never starts.
+        argv += ["--docker"]
     if config.get("probe"):
         argv += ["--probe", str(config["probe"])]
     if params_file is not None:
@@ -696,6 +723,15 @@ def _fmt(value, digits=2) -> str:
     return str(value)
 
 
+def _param_value(params: dict, key: str, limit: int = 20) -> str:
+    """One parameter value, short enough to sit in a report note. A key that is
+    absent says so rather than reading as a recorded ``None``."""
+    if key not in params:
+        return "absent"
+    text = json.dumps(params[key], default=str)
+    return text if len(text) <= limit else text[:limit - 1] + "…"
+
+
 def _chain_signature(info: dict) -> dict:
     """The preprocessing facts two runs must share, flattened for comparison."""
     bad = info.get("bad_channels") or {}
@@ -727,6 +763,21 @@ def compare_runs(recorded: dict, regenerated: dict, *,
     """
     crit = []
 
+    # 0. the recording itself. A config re-run on a machine holding a different
+    #    file set still sorts something, and every other criterion then fails
+    #    obliquely (containment, noise) without naming the actual cause.
+    a_rec = recorded.get("recording") or {}
+    b_rec = regenerated.get("recording") or {}
+    a_base, b_base = a_rec.get("base"), b_rec.get("base")
+    a_fs, b_fs = a_rec.get("sampling_rate_hz"), b_rec.get("sampling_rate_hz")
+    rec_diffs = ([] if a_base == b_base else ["base name"]) + \
+                ([] if a_fs == b_fs else ["sampling rate"])
+    crit.append(_criterion(
+        "recording", "file set base name + sampling rate", "exact",
+        f"{a_base or '?'} @ {_fmt(a_fs, 0)} Hz", f"{b_base or '?'} @ {_fmt(b_fs, 0)} Hz",
+        V_SKIPPED if not a_base or not b_base else (V_MATCH if not rec_diffs else V_DIFFERS),
+        "" if not rec_diffs else "differs: " + ", ".join(rec_diffs)))
+
     # 1. channels sorted — exact set. The sort's own definition of what it saw.
     a_ch = sorted(str(c) for c in (recorded.get("channel_ids") or []))
     b_ch = sorted(str(c) for c in (regenerated.get("channel_ids") or []))
@@ -747,6 +798,33 @@ def compare_runs(recorded: dict, regenerated: dict, *,
         if isinstance(b_pre["freq_min"], (int, float)) else "—",
         V_MATCH if not diffs else V_DIFFERS,
         "" if not diffs else "differs: " + ", ".join(diffs)))
+
+    # 2b. sorter parameters — the knobs, exactly, all ~31 of them. Every other
+    #     criterion is a tolerance band wide enough to swallow a changed
+    #     detect_threshold: a regeneration from a hand-edited config can land
+    #     inside containment AND inside the metric bands and print REGENERATED
+    #     while having asked the sorter a different question. Nothing else in the
+    #     report would say so, which is the one thing it exists not to do.
+    a_par = (recorded.get("params") or {}).get("effective")
+    b_par = (regenerated.get("params") or {}).get("effective")
+    if not isinstance(a_par, dict) or not isinstance(b_par, dict) or not (a_par and b_par):
+        # Named by size, never dumped: a 31-key dict in a table column would push
+        # every other row off the terminal.
+        crit.append(_criterion(
+            "sorter params", "the effective parameter dict", "exact",
+            f"{len(a_par)} keys" if isinstance(a_par, dict) else "—",
+            f"{len(b_par)} keys" if isinstance(b_par, dict) else "—",
+            V_SKIPPED, "no effective parameters recorded on one side"))
+    else:
+        par_diffs = sorted(k for k in set(a_par) | set(b_par) if a_par.get(k) != b_par.get(k))
+        shown = ", ".join(f"{k} {_param_value(a_par, k)}→{_param_value(b_par, k)}"
+                          for k in par_diffs[:6])
+        crit.append(_criterion(
+            "sorter params", "the effective parameter dict", "exact",
+            f"{len(a_par)} keys", f"{len(b_par)} keys",
+            V_MATCH if not par_diffs else V_DIFFERS,
+            "" if not par_diffs else "differs: " + shown
+            + ("" if len(par_diffs) <= 6 else f", and {len(par_diffs) - 6} more")))
 
     # 3. probe geometry — the hash, not the label: a renamed profile with the
     #    same contacts is the same geometry, and vice versa.
@@ -792,19 +870,28 @@ def compare_runs(recorded: dict, regenerated: dict, *,
     else:
         fwd = containment(recorded_spikes, regenerated_spikes, delta_s)
         back = containment(regenerated_spikes, recorded_spikes, delta_s)
-        # BOTH directions gate. Forward alone passes a regeneration that found
-        # every recorded spike AND a pile of new ones — the reverse direction is
-        # the only thing that sees that. Measured, the two directions sit in the
-        # same band (0.925–0.991 over six same-window pairs), so requiring the
-        # smaller of them costs nothing a legitimate re-run needs.
-        ok = fwd == fwd and back == back and min(fwd, back) >= CONTAINMENT_MIN
+        if len(recorded_spikes) == 0 and len(regenerated_spikes) == 0:
+            # Containment is undefined on an empty train (NaN), and NaN reads as
+            # outside tolerance — so two honest zero-unit runs used to be scored
+            # NOT REGENERATED for identically finding nothing. Finding nothing
+            # twice IS the recorded result reproduced.
+            verdict, found, note = V_MATCH, "0 spikes", \
+                "both sorts found no spikes — the empty result was reproduced"
+        else:
+            # BOTH directions gate. Forward alone passes a regeneration that
+            # found every recorded spike AND a pile of new ones — the reverse
+            # direction is the only thing that sees that. Measured, the two sit
+            # in the same band (0.925–0.991 over six same-window pairs), so
+            # requiring the smaller costs nothing a legitimate re-run needs.
+            ok = fwd == fwd and back == back and min(fwd, back) >= CONTAINMENT_MIN
+            verdict = V_WITHIN if ok else V_OUTSIDE
+            found = f"{fwd:.1%} of them" if fwd == fwd else "—"
+            note = (f"reverse containment {back:.1%} ({len(regenerated_spikes)} spikes)"
+                    if back == back else "")
         crit.append(_criterion(
             "spike containment", f"recorded spikes found again (±{delta_ms:g} ms)",
             f"≥{CONTAINMENT_MIN:.0%} both ways", f"{len(recorded_spikes)} spikes",
-            f"{fwd:.1%} of them" if fwd == fwd else "—",
-            V_WITHIN if ok else V_OUTSIDE,
-            f"reverse containment {back:.1%} ({len(regenerated_spikes)} spikes)"
-            if back == back else ""))
+            found, verdict, note))
 
     # 7. headline metrics — medians move as units split/merge, so relative.
     for key, label, digits in (("v_pp_uV", "V_pp median (µV)", 1), ("snr", "SNR median", 2)):
@@ -844,7 +931,11 @@ def compare_runs(recorded: dict, regenerated: dict, *,
     # every spike found a partner inside a +/-0.4 ms window, which two different
     # sorts routinely do. Claiming it on containment alone would be the report
     # telling its strongest lie in its strongest words.
+    # Two EMPTY trains are trivially equal spike for spike; saying "bit-identical
+    # spike trains" about no spikes at all is the same overclaim in a quieter
+    # form, so an empty pair regenerates without the superlative.
     identical = (recorded_spikes is not None and regenerated_spikes is not None
+                 and len(recorded_spikes) > 0
                  and len(recorded_spikes) == len(regenerated_spikes)
                  and all(x == y for x, y in zip(recorded_spikes, regenerated_spikes)))
     if failed:
@@ -987,6 +1078,8 @@ def _print_runs(sorter: str, root=None, outputs=None) -> None:
 def main() -> int:
     import argparse
 
+    bio.use_utf8_stdout()   # this CLI prints ✓ ↳ µ Δ ≥ ±; a redirected run on a
+                            # Windows console would die on the code page instead
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="cmd")
