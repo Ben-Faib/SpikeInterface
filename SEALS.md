@@ -13,22 +13,21 @@ A need left only in a chat summary is a need Ben never sees.*
 - **The pipeline works end to end on the one recording**: load → sort (4 local sorters,
   Docker fallback) → analyzer + six array/yield metrics on four surfaces → report/compare;
   noise-floor canary steady at ~4 µV across all saved sorts.
-- **Science depth is the remaining gap, one notch smaller**: quality metrics are now 12
-  columns (M1, 2026-08-18 — presence, amplitude, PCA isolation added), but the
-  "high-quality" count is still a hardcoded SNR≥5 heuristic, there is no curation loop or
-  Phy export, and runs clobber each other with incomplete provenance — W1→W2 close this.
+- **The curation loop is live** (W1 s2, `cddd677`): merge/split/label decisions persist in
+  an anchored record beside the sort, replay onto a curated Sorting with re-scored metrics,
+  and every surface states curated-vs-raw honestly; records refuse a sort they weren't
+  written against (tdc2 non-determinism makes that refusal load-bearing). Remaining science
+  gaps: Phy export round-trip (s3, in flight), in-TUI triage (s4), and versioned runs with
+  complete provenance (W2, in lane) — this run closes them.
 - **Probe geometry is real** (`nnx-a1x16-3mm-100` default) with channel→site wiring a
   user-accepted identity mapping — true depth order still waits on the lab's adapter map.
 - **Deployment target is the UPitt lab's Windows+GPU box**; Windows Docker-sort cleanup
   crash fixed 2026-08-18 (`7940f96`); GPU-sorter enablement (kilosort4) not yet started (WD).
-- **Current focus: CONDUCTOR RUN, closed mid-flight 2026-08-18 night (Ben: limit) —
-  re-enter with ROADMAP's THE CONDUCTOR v2 prompt.** Sealed in the run: P2 (peer
-  `8af8111`), PRE1 (`c823f55` — premise measured FALSE in-band; tdc2 non-deterministic
-  14/16/18), D6 (peer `98f2645`), DEBT (`0127dac` — extra-.nev discovery was a real
-  latent bug). Parked on branches: W1 s2 (`c1af408`, review fully folded, needs rebase +
-  fresh validation), W1 s3 (`lane-w1s3`, handoff unconfirmed), W2 (`467ed7e`, store +
-  provenance done, regenerate unrun, tests missing, unreviewed). Peer holds W1 s4,
-  gated on s2 reaching main.
+- **Current focus: CONDUCTOR v2 RUN LIVE (2026-08-18 late night)** — W1 s2 landed on main
+  (`cddd677`); W1 s3 recovered (the close-time handoff commit was never made — the work sat
+  uncommitted in a temp worktree) and rebased onto s2; W2 builder lane running its handoff's
+  next-steps list. Then: s4, W2 integration, close. Facts of record binding design: E1's
+  premise FALSE in-band (PRE1), tdc2 non-deterministic (14/16/17/18/19 units now observed).
   Product facts on record: built by Benjamin Faibussowitsch with Aleece Al-Olimat for
   UPitt researchers on industry-standard SpikeInterface.
 
@@ -48,6 +47,24 @@ A need left only in a chat summary is a need Ben never sees.*
 ---
 
 ## The ledger (newest first)
+
+**2026-08-18 — W1 s2: the curation lifecycle, landed and validated fresh (`cddd677`)**
+- Did: rebased the review-folded lane onto main (one semantic conflict: PRE1's bad-channel
+  note + s2's curation provenance now coexist in the report), ran the whole validation
+  chain fresh on the main tree — full 19-unit anchor sort (canary 4.114 µV) → label+split
+  record → apply → curated 20 units re-scored (canary 3.993 µV) → both compare pages
+  against the manual .nev — and added curation.py's ownership row + commands line to
+  CLAUDE.md.
+- Means: a lab member can now save merge/split/label decisions against exactly the sort
+  they made them on, replay them into a first-class curated result, and trust every
+  surface to say which result it is showing — with the anchor refusing a re-sorted tree
+  (the non-determinism evidence made that refusal the design's load-bearing wall).
+- Moved: the fresh sort extended the tdc2 non-determinism record to 14/16/17/18/19 units;
+  s3's unmade handoff commit was recovered from the scratchpad worktree and rebased onto
+  the folded schema (LESSONS S5 vindicated); three follow-ups recorded in the W1 brief
+  (run_sorting seam promotion, import-gui, seeded GMM split).
+- Needs Ben: nothing.
+- Next: s3's live export/import validation + Fable review, then the s4 gate.
 
 **2026-08-18 — CONDUCTOR RUN closed mid-flight at Ben's request: 4 sealed, 3 parked**
 - Did: sealed P2, PRE1, D6 and DEBT with per-slice Fable reviews folded, and parked

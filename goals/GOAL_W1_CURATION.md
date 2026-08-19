@@ -47,3 +47,16 @@ per slice.
 - The menu view still imports no SpikeInterface — curation state reaches the view through
   the controller Protocol like everything else.
 - Windows is a target: no POSIX-only process tricks in any new GUI/export path.
+
+## Recorded follow-ups (from the slice-2 seal, 2026-08-18)
+
+- **run_sorting seam promotion**: `curation.apply_record` rebuilds the curated
+  analyzer+metrics by mirroring run_sorting's steps; promote ONE public
+  analyzer-build+metrics function in run_sorting and call it from both, so the
+  two can't drift.
+- **`curation.py import-gui`** (sigui ingestion): decisions made inside
+  spikeinterface-gui are not yet captured into the record — an explicit scope
+  shift off slice 2; the record schema (source= provenance) is ready for it.
+- **Seeded 3-way GMM split method**: the slice-2 review measured it as an
+  incremental gain over the shipped k-means on the merged pairs (residue still
+  swamps within-unit splits — leverage is upstream); optional, not implemented.

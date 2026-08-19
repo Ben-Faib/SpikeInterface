@@ -17,23 +17,21 @@ box) runs alongside everything.
 
 ---
 
-## ▶ NOW — updated 2026-08-18 night: **CONDUCTOR RUN CLOSED MID-FLIGHT (Ben: limit) — re-enter with THE CONDUCTOR v2 prompt below**
+## ▶ NOW — updated 2026-08-18 late night: **CONDUCTOR v2 RUN LIVE — landing the parked lanes**
 
-- **Sealed this run:** P2 (peer `8af8111`) · PRE1 (`c823f55`, premise re-scoped:
-  zero bad channels in-band; tdc2 non-determinism 14/16/18 measured) · D6 (peer
-  `98f2645`) · DEBT (`0127dac`, extra-.nev latent bug fixed). Main `c580286`,
-  suite 459 green at close.
-- **Parked on branches (verify tips before building):** W1 s2
-  `worktree-agent-ace3305ebf35c6b78` — review fold COMPLETE at `c1af408`, worktree
-  suite 425 green, needs rebase + fresh end-to-end validation only; W1 s3
-  `lane-w1s3` (stacked on s2's `314dc85`; worktree was in session scratchpad —
-  the BRANCH is the persistent artifact; handoff commit requested, unconfirmed);
-  W2 `worktree-agent-a660e788ee8453c5b` — handoff commit `467ed7e`: store +
-  provenance done and exercised, regenerate written-never-run, tests missing;
-  no review yet.
-- **Peer session** (if still open) holds W1 s4, gated: starts only when a conductor
-  confirms s2 is on main. Gated OPEN: P3 (adapter map), WD (lab box), W3 (face
-  pick), W4 (lab data).
+- **Landed so far this run:** W1 s2 on main (`cddd677`, rebased + validated
+  fresh: 488-green suite, 19-unit anchor sort, record → apply → curated canary
+  3.993 µV, honest compare pages; CLAUDE.md curation row added).
+- **In lanes:** W1 s3 (`lane-w1s3`) — the never-made handoff commit was
+  recovered from the scratchpad worktree (`c441ad1`), rebased onto s2's folded
+  tip with the schema reconciled (508 green incl. 21 phy round-trip tests);
+  live export/import validation + Fable review still to run. W2
+  (`worktree-agent-a660e788ee8453c5b`) — builder lane running the handoff's
+  next-steps list (first-run regenerate, calibrate tolerances, write the
+  missing tests, slice-4 decision); review + integration LAST.
+- **Then:** s4 gate opens (peer if present, else a builder lane), W2 integrates
+  with the sort_paths() re-plumb, final suite + launch check, close the run.
+  Gated OPEN: P3 (adapter map), WD (lab box), W3 (face pick), W4 (lab data).
 
 ## The dependency graph
 
@@ -67,7 +65,7 @@ box) runs alongside everything.
 | 7 | D4 flow modals | `goals/GOAL_D_UIUX.md` | **SEALED 2026-08-18** (`f115015`) |
 | 8 | T2/T3 journey + honesty tests | `goals/GOAL_T_TESTING.md` | **SEALED 2026-08-18** (peer, `7e6938d`) |
 | 9 | P2 multi-shank · P3 wiring | `goals/GOAL_P_PROBES.md` | **P2 SEALED 2026-08-18** (peer, `8af8111`: ProbeGroup imports as probes-as-shanks, wiring pinned verbatim, physical density classing; suite 388 green, canary 3.993 µV, review ship). P3 needs adapter map; three new recorded items in the brief |
-| 10 | W1 curation | `goals/GOAL_W1_CURATION.md` | **slice 1 SEALED 2026-08-18** (rule owner); **slice 2 IN FLIGHT** (worktree lane); slices 3-4 launch on s2's record schema |
+| 10 | W1 curation | `goals/GOAL_W1_CURATION.md` | **slices 1+2 SEALED 2026-08-18** (s2 on main `cddd677`: record → apply → re-score, review folded, validated fresh — 19-unit anchor sort, curated canary 3.993 µV, honest compare; follow-ups recorded in the brief); **slice 3 IN FLIGHT** (`lane-w1s3` rebased onto s2, suite 508 green, review pending); **slice 4 gated on s3** |
 | 11 | W2 reproducibility | `goals/GOAL_W2_REPRO.md` | next after PRE1 lands (run_sorting freed) |
 | PRE1 | bad channels out of the reference (E1's finding; conductor prompt item 1) | prompt below | **SEALED 2026-08-18** (`c823f55`) — **premise re-scoped with evidence**: zero channels flagged; ch1's pathology is sub-300 Hz (bandpass removes it pre-CMR; in-band it's the QUIETEST channel and carries a unit); feature kept as insurance + measured tdc2 non-determinism (14/16/18 units) now drives W1 anchoring + W2 tolerances |
 | D6 | the airy dashboard (Ben's two mocks, approved in-session) | NORTHSTAR decision 2026-08-18 night | **SEALED 2026-08-18** (peer, `98f2645`) — hairline sections, crest ≥34 rows, pressable t-chip, key chips, air-yields-first; review fix-first (hairline never painted; resize-under-modal), all folded; suite 441, deliberate double re-baseline |

@@ -68,6 +68,7 @@ uv run python SpikeInterface_Menu.py sort   # ...or dispatch one action directly
 uv run python -m pytest tests/              # Textual Pilot tests for the menu + unit tests
 uv run python scripts/verify_install.py     # smoke test: versions + all three loaders
 uv run python scripts/run_sorting.py --duration 30   # quick sort smoke test (first 30 s)
+uv run python scripts/curation.py show --sorter tridesclous2   # curation record + curated state (label/merge/split/apply)
 ```
 
 Menu actions: `explore | sort | report | gui | traces | compare | verify`.
@@ -93,6 +94,7 @@ sync with the code, which is why this file does not restate them.
 | `sorters.py` | which sorters exist / are runnable, params, Docker | hardcode a sorter list |
 | `probes.py` | electrode geometry (profiles, active probe, sorter fit) | build a `Probe` inline |
 | `sort_summary.py` | the six array/yield metrics | recompute amplitudes ad hoc |
+| `curation.py` | the curation record (merge/split/label decisions), applying it to a curated Sorting, and curated-vs-raw state — `preferred_analyzer()` is the one home for "curated wins when it exists" | test for `curated/` folders directly, or re-decide which analyzer a surface shows |
 | `sort_progress.py` | the JSON event protocol between `run_sorting` and the TUI | print status for the UI to scrape |
 | `run_sorting.py` | the sort pipeline + its terminal presentation | |
 | `report.py` | self-contained `outputs/report.html` (Plotly inlined) | |
