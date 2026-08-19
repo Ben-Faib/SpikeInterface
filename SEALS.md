@@ -59,25 +59,38 @@ A need left only in a chat summary is a need Ben never sees.*
 
 ## OPEN — needs Ben
 
-- **The quality rule vs this preparation** (evidence: full run `20260819-022506-8daaea`):
-  the four units that recover your manual neurons at 96–100% (ch 5·7·9·11) ALL fail the
-  default ISI ≤ 0.5 at 0.652–0.699 (the known tdc2 merge inflation), and no unit passes
-  the rule on solid evidence — thin-evidence passes are now hedged, but the threshold
-  itself is your call (`.si_menu.json` quality_rule; tunable live, stated verbatim on
-  every surface). *(opened 2026-08-19, face1)*
-- **P3 — the adapter map**: channel→site wiring to make depth order physical; P3 starts
-  the day the lab's map arrives. *(long-standing)*
-- **WD — lab-box access**: the Windows+GPU deployment track starts with one session on
+- **WD - lab-box access**: the Windows+GPU deployment track starts with one session on
   that machine. *(opened 2026-08-18)*
-- **W3 — the face pick**: Ben directed the first slice 2026-08-19 (the takeaway surface,
-  in lane); the fuller direction — and the lab-requirements pass that shapes it (users,
-  fluency, curation-vs-batch pain) — is still his call. *(narrowed 2026-08-19)*
-- **W4 — lab recordings**: multi-recording work starts when real lab data arrives (also
-  wants the adapter map for cross-session tracking). *(opened 2026-08-18)*
+- **W3 - the face pick**: the takeaway surface and the binned-rows dashboard are landed;
+  the fuller direction, and the lab-requirements pass that shapes it (users, fluency,
+  curation-vs-batch pain), is still his call. *(narrowed 2026-08-19)*
+- **W4 - lab recordings**: multi-recording work starts when real lab data arrives.
+  *(opened 2026-08-18)*
+
+Resolved by Ben 2026-08-19 (the interview): the QUALITY-RULE item closed as a decision:
+defaults stay; the path is split-the-merges (diagnosis advisory + Phy prep now, Ben
+splits later) with a sorter sweep testing whether another algorithm splits without Phy.
+P3 closed as a STANDING ASSUMPTION: no adapter map is coming; identity wiring is
+accepted; reopen only if a map ever arrives. Both feed THE CONDUCTOR v4 / GOAL_PRESENT.
 
 ---
 
 ## The ledger (newest first)
+
+**2026-08-19 - THE INTERVIEW: Ben's presentation-arc decisions taken on record, v4 filed**
+- Did: ran the structured interview (three rounds) and encoded every decision into
+  `goals/GOAL_PRESENT.md` (the complete spec: merge-diagnosis advisory, five-sorter
+  sweep judged by pair-splitting, sweep-results page with parameters stated, report
+  facelift + content audit, periwinkle palette validated across all surfaces, the
+  ~10 min lab-meeting .pptx with speaker script in notes, the no-em-dash hard
+  boundary) plus THE CONDUCTOR v4 prompt in ROADMAP.
+- Means: the next session opens with zero ambiguity: audience, length, format, demo
+  shape, framing (honest current state + escape routes), palette, and boundaries are
+  all decisions of record, not guesses.
+- Moved: the quality-rule OPEN item resolved (split path, defaults unchanged); P3
+  re-scoped to a standing assumption; the stray run's deletion is queued in v4.
+- Needs Ben: nothing until the v4 run seals; then a dry read of the deck script.
+- Next: paste THE CONDUCTOR v4 from ROADMAP into a fresh session.
 
 **2026-08-19 — CONDUCTOR v3 CLOSED: the clean pass, one branch, pushed**
 - Did: ran the product demo end-to-end on main through the store — fresh full sort

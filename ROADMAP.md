@@ -17,7 +17,22 @@ box) runs alongside everything.
 
 ---
 
-## ▶ NOW — updated 2026-08-19 ~04:00: **CONDUCTOR v3 CLOSED — one clean branch, pushed; the whole board is the four gated items**
+## ▶ NOW - updated 2026-08-19 morning: **paste THE CONDUCTOR v4 (below) into ONE fresh session: the presentation arc**
+
+- **Ben's interview happened (2026-08-19)**: decisions of record and the full spec
+  live in `goals/GOAL_PRESENT.md`. Headlines: split path chosen for the merges
+  (diagnosis advisory + Phy prep; Ben splits later; rule defaults unchanged);
+  sorter sweep (local 3 + mountainsort5 + waveclus) judged by pair-splitting
+  against the manual .nev; new sweep-results HTML page; report facelift + content
+  audit; one periwinkle-anchored validated palette across every surface; a ~10 min
+  lab-meeting .pptx built LAST from finished pieces, speaker script in notes;
+  NO EM DASHES anywhere in the repo, ever (hard boundary, purge + pin first).
+- **v3 delivered and pushed**: face1 + face2 + the clean pass; one branch; demo
+  coherent against run `20260819-035117-c7184d`. See the v3 seal.
+- **Gated OPEN:** WD (lab-box access) · W3 (fuller face pick) · W4 (lab
+  recordings). P3 is now a standing assumption (no map coming), not a wait.
+
+## Previous NOW (v3 close, kept for provenance): **CONDUCTOR v3 CLOSED — one clean branch, pushed**
 
 - **The run delivered**: face1 (the takeaway surface, `8f651f2`, two Fable
   reviews folded via a live baton handoff — LESSONS S8) + face2 (the binned-rows
@@ -135,6 +150,56 @@ Authored with `fable-prompt-builder` **when Ben's veto lands**, against the spec
 — pre-writing them risks quoting a spec line the veto changes. Each will cite
 `goals/GOAL_D_UIUX.md` + the spec sections from DESIGN_UX §7, name the T1 gates
 (deliberate snapshot re-baselining with reviewed diffs), and seal per the contract.
+
+### THE CONDUCTOR v4 - the presentation arc: diagnose, sweep, unify the visuals, then the deck  [READY - paste into a fresh session]
+
+```
+Ben presents this workbench at Tracy's lab meeting (next week or later; no fixed
+date, so build features first and assemble the deck last from finished pieces).
+The talk's story is the product's story: manual spike sorting is slow and
+subjective; SpikeInterface rescues; the workbench judges units honestly; and the
+one honest catch on our own recording (tridesclous2 merges each contact's pair,
+flagged by ISI exactly as designed) has named escape routes. Everything you build
+serves that talk and outlives it as product.
+
+Re-enter from the board, never from memory: CLAUDE.md's Orchestration read order,
+SEALS.md for where things stand, then goals/GOAL_PRESENT.md: it is the complete
+spec for this run (Ben's interview decisions of record, all eight work items in
+dependency order, the deck's slide arc and script requirements, boundaries).
+First acts: confirm no other session is writing to this tree (LESSONS S7/S8:
+check ListAgents and ps for claude processes cwd'd here; a live peer gets a
+SendMessage coordination, never an assumption), then verify main's tip matches
+origin before building.
+
+The queue is GOAL_PRESENT.md's eight items, in its order. The short form:
+em-dash purge + pin and the housekeeping deletions FIRST so all later work
+complies; the merge-diagnosis advisory (sort_summary owns it, every surface
+quotes it); parameter-integrity round-trip verification; the five-sorter sweep
+through the store judged by pair-splitting against the manual .nev; the
+sweep-results HTML page (states current parameters); the report facelift +
+content audit; the periwinkle palette built and VALIDATED with the /dataviz
+skill's validator and applied across all HTML surfaces; the .pptx deck last
+(load the pptx skill; speaker script in notes carries the numbers; backup
+screenshot appendix; no credits).
+
+Done when: every GOAL_PRESENT item is sealed or honestly re-scoped on the board
+with evidence; the suite is green with the em-dash pin and parameter round-trip
+tests in it; the sweep page and facelifted report render from one validated
+palette; the deck opens in PowerPoint with 8-12 slides, notes on every slide,
+and real numbers traceable to the sweep page and report; gates per verify-spike
+(the ~4 uV canary is a verdict across every swept sorter); main pushed.
+
+Method unchanged and law: builders on Opus, reviews on Fable, one fresh-context
+review per substantive slice, findings folded or recorded; explicit-path
+commits; board docs committed in the same breath they are written; CLAUDE.md's
+Invariants that bite bind every edit; raw data never enters git or leaves the
+machine (the deck carries derived figures only); quality-rule defaults do not
+change; NO EM DASHES in anything you write, including commit messages. Docker
+sorters: LESSONS S2 (version skew can fake failure; slow is not hung). A sweep
+sorter that genuinely fails becomes an honest row, not a retry loop. Needs for
+Ben go in SEALS OPEN, batched. If the run stops short, seal partial state per
+the between-run contract; this prompt pattern continues from the board.
+```
 
 ### THE CONDUCTOR v3 — the clean unification: land the face, one branch, pushed  [RUN COMPLETED 2026-08-19 — kept for provenance]
 
