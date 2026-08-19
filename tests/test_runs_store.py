@@ -2,7 +2,7 @@
 resolution, provenance completeness and the regeneration match report.
 
 Every store function takes ``outputs=`` so the whole store can be built in a
-tmp directory — none of this runs a sorter. The two things that cannot be faked
+tmp directory - none of this runs a sorter. The two things that cannot be faked
 are pinned against the real repo instead and skip on a data-less clone: that a
 saved ``run_info.json`` really carries every provenance block, and that a real
 probe's geometry hash is stable.
@@ -112,7 +112,7 @@ def test_sort_paths_puts_curation_inside_the_run_it_curates(store):
 # The keys curation.py's own sort_paths() returns on main (scripts/curation.py,
 # after the Phy-export slice). Hardcoded on purpose: this worktree branched
 # before that slice, so importing main's file here would test the wrong tree.
-# runs.sort_paths must stay a SUPERSET — W1's seam re-points at this module at
+# runs.sort_paths must stay a SUPERSET - W1's seam re-points at this module at
 # integration, and a key that only curation.py has is a break at that moment.
 CURATION_SORT_PATHS_KEYS = (
     "root", "out", "sorting", "analyzer", "run_info", "summary", "record", "phy",
@@ -368,7 +368,7 @@ def _saved_records():
     A hardcoded ``outputs/*/runs/*/run_info.json`` glob is the exact trap this
     lane already fell into once: when the layout moved, the glob went empty and
     the test that guards provenance turned into a silent skip instead of a
-    failure. Legacy runs are excluded — they predate every W2 block.
+    failure. Legacy runs are excluded - they predate every W2 block.
     """
     return [Path(r["dir"]) / runs.RUN_INFO_NAME
             for sorter in runs.saved_sorters(root=ROOT)
@@ -378,7 +378,7 @@ def _saved_records():
 def test_a_real_saved_record_carries_every_provenance_block():
     records = _saved_records()
     if not records:
-        pytest.skip("no saved run in outputs/ — run scripts/run_sorting.py first")
+        pytest.skip("no saved run in outputs/ - run scripts/run_sorting.py first")
     info = json.loads(records[0].read_text(encoding="utf-8"))
     missing = [k for k in PROVENANCE_KEYS if k not in info]
     assert not missing, f"{records[0]} is missing {missing}"
@@ -551,7 +551,7 @@ def test_a_clean_pair_regenerates():
         _record(), _record(run_id="20260818-000002-bbbbbb", n_units=16),
         recorded_summary=_summary(), regenerated_summary=_summary(4.105, 29.8, 5.01, 87.5),
         recorded_spikes=SPIKES, regenerated_spikes=SPIKES)
-    assert report["verdict"] == "REGENERATED — BIT-IDENTICAL SPIKE TRAINS"
+    assert report["verdict"] == "REGENERATED - BIT-IDENTICAL SPIKE TRAINS"
     assert report["failed"] == []
     v = _verdicts(report)
     assert v["recording"] == runs.V_MATCH
@@ -564,7 +564,7 @@ def test_a_clean_pair_regenerates():
 
 def test_a_stochastic_but_honest_re_run_still_regenerates():
     """The measured case: different unit counts, spikes 92% contained, metrics a
-    few percent apart. This must PASS — it is what tridesclous2 does here."""
+    few percent apart. This must PASS - it is what tridesclous2 does here."""
     regen_spikes = [t + 0.0002 for t in SPIKES[:930]] + [50.0 + i / 100.0 for i in range(40)]
     report = runs.compare_runs(
         _record(n_units=15), _record(run_id="r2", n_units=18),
@@ -672,7 +672,7 @@ def test_a_different_sampling_rate_is_a_failure():
 
 
 def test_a_record_without_a_recording_block_is_not_compared():
-    """A pre-W2 record carries no recording identity — NOT COMPARED, not a pass."""
+    """A pre-W2 record carries no recording identity - NOT COMPARED, not a pass."""
     report = runs.compare_runs(
         _record(recording={}), _record(),
         recorded_summary=_summary(), regenerated_summary=_summary(),
@@ -797,7 +797,7 @@ def test_an_unreadable_sorting_is_not_compared():
                                recorded_spikes=None, regenerated_spikes=None)
     contain = next(c for c in report["criteria"] if c["name"] == "spike containment")
     assert contain["verdict"] == runs.V_SKIPPED
-    assert report["verdict"] != "REGENERATED — BIT-IDENTICAL SPIKE TRAINS"
+    assert report["verdict"] != "REGENERATED - BIT-IDENTICAL SPIKE TRAINS"
 
 
 def test_bit_identity_is_only_claimed_when_it_is_observed():
@@ -910,7 +910,7 @@ def test_config_argv_omits_a_params_file_it_was_not_given(tmp_path):
 def test_an_effective_param_dict_survives_run_sortings_own_validation(tmp_path,
                                                                      monkeypatch):
     """The config pins EVERY parameter, so run_sorting must accept the whole
-    effective dict — an unknown key has to fail loudly, not ride along."""
+    effective dict - an unknown key has to fail loudly, not ride along."""
     import sorters
 
     monkeypatch.setattr(sorters, "default_params",

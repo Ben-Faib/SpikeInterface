@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""PFCM7 SpikeInterface workspace — single front-door menu launcher.
+"""PFCM7 SpikeInterface workspace - single front-door menu launcher.
 
     uv run python SpikeInterface_Menu.py            # interactive status + menu
     uv run python SpikeInterface_Menu.py report     # run one action directly, then exit
@@ -12,7 +12,7 @@ off-TTY). Run with an action -> dispatches it directly (handy for scripting).
 Heavy SpikeInterface imports are lazy, so the menu stays responsive.
 
 The dashboard is a state block (DATA/PROBE, SORT, RESULTS) over one list of every
-function the workbench has, grouped into the three stages of the workflow — GET
+function the workbench has, grouped into the three stages of the workflow - GET
 DATA, SORT & CURATE, LOOK & SHARE. Each row prints its own key and says what it
 produces; ↑/↓ + Enter runs the highlighted one. It stays usable at any window
 size and guides you when the recording files are missing. Styling mirrors
@@ -42,10 +42,10 @@ ROOT = Path(__file__).resolve().parent
 SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 import blackrock_io as bio  # noqa: E402
-import curation  # noqa: E402  (curation record + output-path resolver — pure, no SI)
+import curation  # noqa: E402  (curation record + output-path resolver - pure, no SI)
 import report  # noqa: E402
 import runs  # noqa: E402  (the versioned run store: which saved run is current)
-import sort_summary  # noqa: E402  (array/yield headline metrics — pure load/format)
+import sort_summary  # noqa: E402  (array/yield headline metrics - pure load/format)
 import sorters as sorter_registry  # noqa: E402  (registry: discovery/status/params/run)
 import ui  # noqa: E402  (rich styling shared-look with run_sorting.py)
 import probes  # noqa: E402  (probe-geometry registry: profiles/features/build/fit)
@@ -131,7 +131,7 @@ def _analyzer_dir(sorter: str) -> Path:
     fact on the dashboard (RESULTS, INSPECTING, the last-sort line, the GUI and
     compare actions) reads through here, so they can never disagree about which
     of several saved runs is the current one. Its ``.parent`` is that run's
-    directory — where run_info.json / summary.json live.
+    directory - where run_info.json / summary.json live.
     """
     return runs.sort_paths(sorter)["analyzer"]
 
@@ -196,7 +196,7 @@ def _rollup_for(out_dir, spike_counts=None, summary=None):
     """The takeaway rollup for one saved sort, or None if it has no summary.
 
     Pure file reads (summary.json + quality_metrics.csv) judged by the rule's one
-    owner — no SpikeInterface, so this stays cheap enough to run for every saved
+    owner - no SpikeInterface, so this stays cheap enough to run for every saved
     sorter on every dashboard refresh. ``spike_counts`` is passed only where the
     caller already has the Sorting open (triage); without it a unit's spike count
     is honestly unknown rather than estimated, and the rollup hedges the verdict
@@ -235,11 +235,11 @@ def _catalog(active: str, use_docker: bool, profile: dict | None = None) -> list
         present, units, duration = _saved_summary(name)
         # Curation state is a pure JSON/path read (no SpikeInterface). When a
         # curated result exists it is what the report shows, so the dashboard's
-        # RESULTS numbers come from it too — and the fact rides along so the view
+        # RESULTS numbers come from it too - and the fact rides along so the view
         # can say "curated" instead of implying raw sorter output.
         cur = curation.state(name)
         # "Curated wins when it exists" comes from curation.preferred_analyzer
-        # (one rule, one home) — state() reports it as has_curated.
+        # (one rule, one home) - state() reports it as has_curated.
         show_curated = present and cur["has_curated"]
         if show_curated:
             c_present, c_units, c_duration = _saved_summary(name, curated=True)
@@ -266,7 +266,7 @@ def _catalog(active: str, use_docker: bool, profile: dict | None = None) -> list
             # the view as plain data (the view imports no SpikeInterface). Two cheap
             # file reads, and only for a sorter that actually has a saved sort.
             "rollup": _rollup_for(summary_dir) if present else None,
-            # {has_record, has_curated, counts, line, stale, ...} — what the view
+            # {has_record, has_curated, counts, line, stale, ...} - what the view
             # needs to name the result honestly (curation.state, SI-free).
             "curated": cur if show_curated else None,
             # A curated result built on a run that is no longer current: correct
@@ -316,21 +316,21 @@ def _data_report(data_dir) -> dict:
     present = True
     try:
         base = bio.find_blackrock_base(d)
-    except FileNotFoundError as e:  # no file set here — or several, and ambiguous
+    except FileNotFoundError as e:  # no file set here - or several, and ambiguous
         present = False
         err = str(e)
 
     def has(ext: str) -> bool:
         # Scoped to the resolved base so the checklist matches the exact files the
-        # loader would open — a folder-wide glob could falsely mark a *different*
+        # loader would open - a folder-wide glob could falsely mark a *different*
         # recording's file as part of this set (e.g. recA.nev + recB.ns5). With no
         # base resolved there is no set to describe: nothing is ticked, because
         # ticking files the loader just refused to use would contradict ``error``.
         return base is not None and base.with_suffix(ext).exists()
 
     files = [
-        {"ext": ".ns2", "label": "LFP — analog @ 1 kHz", "present": has(".ns2")},
-        {"ext": ".ns5", "label": "Broadband — raw @ 30 kHz (sortable)", "present": has(".ns5")},
+        {"ext": ".ns2", "label": "LFP - analog @ 1 kHz", "present": has(".ns2")},
+        {"ext": ".ns5", "label": "Broadband - raw @ 30 kHz (sortable)", "present": has(".ns5")},
         {"ext": ".nev", "label": "Spike events + digital markers", "present": has(".nev")},
     ]
     return {"present": present, "complete": present and all(f["present"] for f in files),
@@ -378,7 +378,7 @@ def _last_message(action: str, sorter: str, ok: bool) -> str:
         info = _read_run_info(sorter)
         n, hq = info.get("n_units"), info.get("n_high_quality")
         if n == 0:
-            return f"⚠ {sorter}: no units found — lower detect_threshold (Edit parameters) and re-run"
+            return f"⚠ {sorter}: no units found - lower detect_threshold (Edit parameters) and re-run"
         bits = []
         if isinstance(n, int):
             bits.append(f"{n} units")
@@ -479,7 +479,7 @@ def _open_in_browser(uri: str) -> None:
     if sys.stdin.isatty():
         try:
             if not webbrowser.open(uri):
-                ui.note("(could not open a browser automatically — open the link above)")
+                ui.note("(could not open a browser automatically - open the link above)")
         except Exception:  # noqa: BLE001
             pass
 
@@ -493,8 +493,8 @@ def _resolve_report_sorter(args) -> "str | None":
     semantics) > the report module's own pick (the most complete saved sort).
     Deliberately NO recommended-default step between those: it carries no user
     intent and would prefer a leftover 30 s smoke over another sorter's
-    full-recording sort — the case ``_pick_default_analyzer`` exists to displace.
-    Returns None when nothing is saved anywhere — the caller errors honestly.
+    full-recording sort - the case ``_pick_default_analyzer`` exists to displace.
+    Returns None when nothing is saved anywhere - the caller errors honestly.
     """
     if args.sorter:
         return args.sorter
@@ -512,7 +512,7 @@ def _resolve_report_sorter(args) -> "str | None":
 def action_report(args) -> bool:
     sorter = _resolve_report_sorter(args)
     if sorter is None:
-        ui.warn("No saved sort to report on — run a sort first: "
+        ui.warn("No saved sort to report on - run a sort first: "
                 "uv run python scripts/run_sorting.py")
         return False
     ui.note(f"Building the report for {sorter}…")
@@ -522,7 +522,7 @@ def action_report(args) -> bool:
     uri = out.resolve().as_uri()
     ui.done(f"Report written → {out}")
     ui.link("Open it:", uri)
-    if sys.stdin.isatty():          # piped/CI runs never open one — don't claim to
+    if sys.stdin.isatty():          # piped/CI runs never open one - don't claim to
         ui.note("Opening it in your browser…")
     _open_in_browser(uri)
     return True
@@ -531,9 +531,9 @@ def action_report(args) -> bool:
 # Geometry note shown before any spatial view, accurate to how the sort was made
 # (read from run_info.json's 'probe'). A real probe (e.g. the NeuroNexus A1x16)
 # makes the probe-map / depth / multi-channel views physical; the independent-channel
-# placeholder does not — so the user isn't misled either way.
+# placeholder does not - so the user isn't misled either way.
 _GEOMETRY_CAVEAT_PLACEHOLDER = (
-    "Placeholder electrode geometry (independent-channel dummy probe — the "
+    "Placeholder electrode geometry (independent-channel dummy probe - the "
     "Blackrock files carry no map). The probe map, unit-location and depth views "
     "are NOT physical; per-unit metrics, waveforms, correlograms and amplitudes "
     "ARE valid."
@@ -551,7 +551,7 @@ def _geometry_note(active_probe: str) -> str:
         return _GEOMETRY_CAVEAT_PLACEHOLDER
     prof = probes.get(active_probe)
     label = prof["label"] if prof else active_probe
-    return (f"Probe geometry: {active_probe} — {label}. Spatial views (probe map, "
+    return (f"Probe geometry: {active_probe} - {label}. Spatial views (probe map, "
             "unit locations, depth) reflect this geometry; verify it matches your array.")
 
 
@@ -573,7 +573,7 @@ def _sigui_events(data_dir):
     """Convert bio.read_events() into the ``{name: {'times': ...}}`` dict sigui wants.
 
     Returns None (so the event view stays cleanly empty) for a marker-less
-    recording or any read error — the GUI must open regardless.
+    recording or any read error - the GUI must open regardless.
     """
     try:
         evs = bio.read_events(data_dir)
@@ -595,7 +595,7 @@ def _harden_sigui_scatterview() -> None:
     case. A unit whose amplitude/depth/PC values are **empty or all-identical**
     (common for online-detected noise units or very short recordings) reduces an
     empty array → ``ValueError: zero-size array to reduction`` and the whole
-    window dies on construction — but only once the spike_amplitudes /
+    window dies on construction - but only once the spike_amplitudes /
     spike_locations / principal_components extensions exist (which we now compute
     at sort time). Wrap the method so such a unit degrades to a flat single-value
     band (or is skipped if it has no spikes at all). Idempotent; a no-op if the
@@ -615,7 +615,7 @@ def _harden_sigui_scatterview() -> None:
     def _safe_get_unit_data(self, unit_id, segment_index=0):
         try:
             result = _orig(self, unit_id, segment_index=segment_index)
-        except ValueError:  # np.min over empty array — degenerate (empty / all-equal) spike_data
+        except ValueError:  # np.min over empty array - degenerate (empty / all-equal) spike_data
             inds = self.controller.get_spike_indices(unit_id, segment_index=segment_index)
             spike_indices = self.controller.spikes["sample_index"][inds]
             spike_times = self.controller.sample_index_to_time(spike_indices)
@@ -647,12 +647,12 @@ def action_gui(args) -> bool:
     # a saved-analyzer action shares report's resolution semantics exactly.
     args.sorter = _resolve_report_sorter(args)
     if args.sorter is None:
-        ui.warn("No saved sort to inspect — run a sort first: "
+        ui.warn("No saved sort to inspect - run a sort first: "
                 "uv run python scripts/run_sorting.py")
         return False
     analyzer_dir = _analyzer_dir(args.sorter)
     if not analyzer_dir.exists():
-        ui.warn(f"No saved sort for {args.sorter} — run 'sort' first.")
+        ui.warn(f"No saved sort for {args.sorter} - run 'sort' first.")
         return False
     try:
         import spikeinterface.full as si
@@ -674,7 +674,7 @@ def action_gui(args) -> bool:
     ui.warn(_geometry_note(_read_run_info(args.sorter).get("probe") or getattr(args, "probe", None) or "independent"))
     try:
         if mode == "web":
-            ui.say(f"[{ui.ACCENT}]Opening spikeinterface-gui (web mode)[/] — no display "
+            ui.say(f"[{ui.ACCENT}]Opening spikeinterface-gui (web mode)[/] - no display "
                    f"detected; a local browser server will start [{ui.MUTED}](Ctrl-C to return) ...[/]")
             sigui.run_mainwindow(analyzer, mode="web", events=events,
                                  address="localhost", port=0)  # blocks until you stop the server
@@ -704,8 +704,8 @@ def action_traces(args) -> bool:
     except Exception as e:  # noqa: BLE001
         ui.warn(f"Could not import the trace viewer ({e!r}). Try: python scripts/verify_install.py")
         return False
-    if not _has_display():  # ephyviewer is desktop-only — fail with guidance, not a raw Qt error
-        ui.warn("No display detected — the ephyviewer trace browser needs a desktop/X "
+    if not _has_display():  # ephyviewer is desktop-only - fail with guidance, not a raw Qt error
+        ui.warn("No display detected - the ephyviewer trace browser needs a desktop/X "
                 "session. Use X forwarding (ssh -X) or run locally. (The GUI inspector "
                 "has a browser-based web mode; the trace browser does not.)")
         return False
@@ -727,7 +727,7 @@ def action_traces(args) -> bool:
         sw.plot_traces({"broadband": rec}, backend="ephyviewer", show_channel_ids=True)  # blocks
     except Exception as e:  # noqa: BLE001 - actionable hint instead of a raw Qt traceback
         ui.warn(f"The trace browser couldn't open ({type(e).__name__}: {e}). "
-                "It needs a desktop session — run locally or use 'ssh -X'.")
+                "It needs a desktop session - run locally or use 'ssh -X'.")
         return False
     return True
 
@@ -751,8 +751,8 @@ def _compare_pair(args, sorters) -> bool:
                 + ", ".join(f"{s}={d:.1f}s" for s, d in durations.items()) + ".")
         choice = ui.select(
             f"Re-sort both over the first {QUICK_SECONDS}s so the comparison is meaningful?",
-            [("no", "No — just show the window-mismatch caveat", ""),
-             ("yes", f"Yes — re-sort both ({QUICK_SECONDS}s) then compare", "")],
+            [("no", "No - just show the window-mismatch caveat", ""),
+             ("yes", f"Yes - re-sort both ({QUICK_SECONDS}s) then compare", "")],
             default=0)
         if choice == "yes":
             for s in sorters:
@@ -761,14 +761,14 @@ def _compare_pair(args, sorters) -> bool:
                             str(QUICK_SECONDS),
                             *(["--data-dir", args.data_dir] if args.data_dir else []))
                 # These are --duration runs, so the store refuses to make them
-                # current — correctly: a smoke run must never displace a full sort.
+                # current - correctly: a smoke run must never displace a full sort.
                 # The comparison the user asked for is of THESE runs, so it is
                 # pointed at them by name; --make-current is not the answer.
                 made = [r for r in runs.list_runs(s) if r["id"] not in before]
                 if ok and made:
                     fresh[s] = made[0]["dir"]
                 else:
-                    ui.warn(f"{s}: the re-sort produced no new run — the comparison "
+                    ui.warn(f"{s}: the re-sort produced no new run - the comparison "
                             "will show its current sort instead.")
             if fresh:
                 ui.note("Comparing the runs just made: "
@@ -822,22 +822,22 @@ _MENU = [
     ("13", "help",   "Help",                    "what each step does · sorters · Docker · data"),
 ]
 
-# v2 (Textual) action table — (key, title, hint, needs_data, stage, hotkey).
+# v2 (Textual) action table - (key, title, hint, needs_data, stage, hotkey).
 #
 # F2 (2026-08-19, the researcher dashboard): every function the workbench has is a
 # VISIBLE, LABELED ROW carrying its own key, binned into the three workflow stages
-# a researcher moves through — ``data`` (get data) → ``sort`` (sort & curate) →
+# a researcher moves through - ``data`` (get data) → ``sort`` (sort & curate) →
 # ``share`` (look & share). The hint says what the row PRODUCES, not how it works.
 # ``chrome`` rows are housekeeping: they keep their letter keys and live on the
 # footer's key line, not in the list. ``needs_data`` dims the row and blocks it when
 # no recording is present. ``hotkey`` is what the row prints and what the dashboard
-# binds — the 1-6 numbers keep the meanings they have always had, so every existing
+# binds - the 1-6 numbers keep the meanings they have always had, so every existing
 # binding, doc and prompt stays true. ``help``/``quit``/``theme``/``manage``/
 # ``picker``/``data``/``reopen`` are handled in-app, not by DISPATCH.
 _ACTIONS = [
     ("data",    "Data files",            "which files loaded, and where",       False, "data",  "d"),
     ("probe",   "Probe geometry",        "the electrode map every sort uses",   False, "data",  "p"),
-    ("explore", "Explore the recording", "static figures — LFP, events, rates",  True, "data",  "1"),
+    ("explore", "Explore the recording", "static figures - LFP, events, rates",  True, "data",  "1"),
     ("traces",  "Watch the traces",      "scroll the raw signal in a window",    True, "data",  "6"),
     ("verify",  "Check the install",     "every library and loader, pass or fail", False, "data", "v"),
     ("picker",  "Choose the sorter",     "which algorithm finds the units",     False, "sort",  "t"),
@@ -890,24 +890,24 @@ _ACTION_DETAIL = {
                 "needs": ["broadband"], "output": "a desktop window"},
     "compare": {"what": "Build an agreement matrix between two saved sorts.",
                 "needs": ["two_sorts"], "output": "outputs/comparison.html"},
-    "triage":  {"what": "Walk the saved sort's units in the menu — per-unit "
+    "triage":  {"what": "Walk the saved sort's units in the menu - per-unit "
                         "evidence, and g/m/n/u to label each good / MUA / noise / "
                         "unsure. The verdicts go into the same curation record "
                         "every other surface reads.",
                 "needs": ["saved_sort"], "output": "outputs/<sorter>/curation.json"},
     "phy":     {"what": "Export the saved sort to a Phy folder so the hard cases "
-                        "can be curated by hand elsewhere — the curated result "
+                        "can be curated by hand elsewhere - the curated result "
                         "when one exists, else the raw sort. Verdicts come back "
                         "with 'curation.py import-phy'.",
                 "needs": ["saved_sort"], "output": "outputs/<sorter>/phy/"},
     "params":  {"what": "Tune the active sorter's parameters (saved per sorter)."},
-    "picker":  {"what": "Choose which sorting algorithm runs — grouped by what "
+    "picker":  {"what": "Choose which sorting algorithm runs - grouped by what "
                         "this computer can run right now; type to filter."},
     "data":    {"what": "Which recording files were found, where they live, and "
                         "how to point the workbench somewhere else."},
     "reopen":  {"what": "Reopen the page the last action produced."},
     "manage":  {"what": "Download Docker sorter images, delete downloaded images, "
-                        "and clear saved sort outputs — all in one place."},
+                        "and clear saved sort outputs - all in one place."},
     "probe":   {"what": "Choose, edit, add, or remove the electrode-geometry profile. "
                         "Geometry decides which sorters fit and powers the spatial views."},
     "verify":  {"what": "Run an environment smoke test (library versions, loaders)."},
@@ -921,8 +921,8 @@ def _fallback_action_hint(key: str, fallback: str, active_info: dict | None = No
     """Per-action hint for the typed fallback menu.
 
     Surfaces the same plain-language ``what`` the Textual explanation pane shows
-    (falling back to the legacy ``_MENU`` hint), and — for ``sort`` when the active
-    sorter already has a saved sort — appends the destructive re-run caveat so the
+    (falling back to the legacy ``_MENU`` hint), and - for ``sort`` when the active
+    sorter already has a saved sort - appends the destructive re-run caveat so the
     typed menu still warns before overwriting. This is intentionally NON-parity with
     the Textual app (no accordion / explanation pane): a richer one-line hint only.
     """
@@ -958,7 +958,7 @@ class MenuController:
         self.sorter_params = dict(cfg.get("sorter_params", {}))
         self.sorters = sorter_registry.runnable(self.use_docker) or [sorter_registry.default_sorter()]
         # Explicit --sorter wins; otherwise the last session's persisted choice
-        # (DESIGN_UX §2 — the active sorter survives relaunch); then the default.
+        # (DESIGN_UX §2 - the active sorter survives relaunch); then the default.
         want = (args.sorter or cfg.get("active_sorter")
                 or sorter_registry.default_sorter())
         self.active_sorter = want if want in self.sorters else self.sorters[0]
@@ -987,7 +987,7 @@ class MenuController:
 
     def record_result(self, key: str, ok: bool) -> None:
         """Remember the newest action outcome for the dashboard's LAST RESULT line
-        (persisted — results must not evaporate on the next keystroke, DESIGN_UX §1)."""
+        (persisted - results must not evaporate on the next keystroke, DESIGN_UX §1)."""
         import datetime
 
         path = _RESULT_PATHS.get(key)
@@ -1018,7 +1018,7 @@ class MenuController:
             return False, f"{lr.get('key', 'last action')} has no page to reopen"
         target = bio.REPO_ROOT / path
         if not target.exists():
-            return False, f"{path} is gone — rebuild it"
+            return False, f"{path} is gone - rebuild it"
         _open_in_browser(target.resolve().as_uri())
         return True, f"Reopened {path}"
 
@@ -1070,7 +1070,7 @@ class MenuController:
         _save_config(self.cfg)
         if self.use_docker:
             # Re-probe the daemon so a Docker started (by us or externally) after
-            # launch is picked up at once — otherwise runnable() reads the stale
+            # launch is picked up at once - otherwise runnable() reads the stale
             # "down" cache and shows zero container sorters despite Docker being up.
             sorter_registry.docker_state(refresh=True)
         prev = self.active_sorter
@@ -1135,7 +1135,7 @@ class MenuController:
 
         Returns the NEURAL channel count when the broadband detail distinguishes
         neural from aux (e.g. '16 neural + 6 aux ch, ...'), otherwise falls back
-        to the total channel count.  Advisory only — the real count is validated by
+        to the total channel count.  Advisory only - the real count is validated by
         probes.build at sort time."""
         import re
         bb = next((r for r in self.pipeline if "Broadband" in r.get("stage", "")), None)
@@ -1246,7 +1246,7 @@ class MenuController:
         block (peak channel, V_pp), ``quality_metrics.csv`` exactly as the sort
         wrote it, and the saved Sorting's spike counts. ``curation.state()`` is
         the one source for curated-vs-raw + staleness and ``curation.anchor_error``
-        the one source for whether a label may be written at all — this method
+        the one source for whether a label may be written at all - this method
         decides neither.
 
         The units listed are the RAW sort's: unit ids in the record are the raw
@@ -1269,18 +1269,18 @@ class MenuController:
         summary = sort_summary.load_summary(paths["out"]) or {}
         per_unit = summary.get("per_unit") or []
         if not per_unit:
-            out["empty"] = (f"No saved {sorter} sort to triage yet — press 2 on the "
+            out["empty"] = (f"No saved {sorter} sort to triage yet - press 2 on the "
                             "dashboard to sort, then come back.")
             return out
         record = curation.load_record(sorter)
-        # A record anchored to a DIFFERENT sort must not be written into — and its
+        # A record anchored to a DIFFERENT sort must not be written into - and its
         # labels must not be *shown* against these unit ids either, which would be
         # exactly the wrong-unit confusion the anchor exists to prevent.
         blocked = curation.anchor_error(record, sorter)
         metrics = sort_summary.load_quality_metrics(paths["out"])
         counts = self._spike_counts(paths["sorting"])
         # Strong-first is the DEFAULT order, and it is the same ranking the report's
-        # strong-units block uses because it is the same rollup — a triage pass
+        # strong-units block uses because it is the same rollup - a triage pass
         # should meet the units most likely to be real before the tail. summary is
         # handed over rather than re-read: it was loaded three lines above.
         rollup = _rollup_for(paths["out"], spike_counts=counts,
@@ -1308,7 +1308,7 @@ class MenuController:
         out["total"] = len(units)
         out["reviewed"] = sum(1 for u in units if u["label"])
         # The rule VERBATIM: the screen prints a verdict word per unit, so it has
-        # to say which rule produced it. (There was a `headline` here too — the
+        # to say which rule produced it. (There was a `headline` here too - the
         # view never rendered it, so it was payload nobody read; it is gone.)
         out["rule_text"] = rollup.get("rule_text", "")
         return out
@@ -1316,7 +1316,7 @@ class MenuController:
     def label_unit(self, unit_id, label: str) -> tuple[bool, str]:
         """Write one TUI triage verdict into the curation record.
 
-        curation.py owns the record — this opens it (creating an empty one against
+        curation.py owns the record - this opens it (creating an empty one against
         the sort on disk when there is none), asks it whether a decision may be
         written at all, and calls ``add_label(source="tui")``. A refusal writes
         nothing and returns the reason verbatim.
@@ -1350,7 +1350,7 @@ class MenuController:
         # Resolvers are LAZY (each value is a thunk) so a need's live check runs only
         # when an action actually lists it. This matters for 'sort_docker': its check
         # reaches the ~1 s installed()/Docker probe via active_blocked_on_docker(), and
-        # only the 'sort' action ever needs it — eager evaluation here paid that cost on
+        # only the 'sort' action ever needs it - eager evaluation here paid that cost on
         # *every* action highlight (per-keystroke latency). See perf measurement.
         resolvers = {
             "data":       lambda: ("recording files", present),
@@ -1378,9 +1378,9 @@ class MenuController:
             out["caveat"] = (f"Re-running replaces the saved {info['name']} sort "
                              f"({info['units']}u).")
         if key == "gui" and not info.get("present"):
-            out["caveat"] = "No saved sort yet — run Sort first."
+            out["caveat"] = "No saved sort yet - run Sort first."
         if key in ("gui", "traces") and self.active_probe in (None, probes.PLACEHOLDER_PROBE):
-            geo = ("Placeholder probe geometry — probe-map / unit-location / depth "
+            geo = ("Placeholder probe geometry - probe-map / unit-location / depth "
                    "views are NOT physical; per-unit metrics are valid.")
             out["caveat"] = f"{out['caveat']} {geo}" if out.get("caveat") else geo
         return out
@@ -1423,18 +1423,18 @@ class MenuController:
         # delete often reuses most/all of them (Docker dedupes by content hash).
         pulled, cached = summary["pulled"], summary["cached"]
         if pulled == 0 and cached == 0:
-            # No layers transferred and none even listed — Docker satisfied the pull
+            # No layers transferred and none even listed - Docker satisfied the pull
             # entirely from its on-disk layer cache (it keeps blobs after `rmi`), so
             # the image is restored instantly with no download. This is why a
             # just-deleted image can "re-download" in a blink.
-            return True, (f"{img} ready instantly — Docker restored it from its "
+            return True, (f"{img} ready instantly - Docker restored it from its "
                           f"layer cache (no download needed)")
         if pulled == 0 and cached:
             plural = "s" if cached != 1 else ""
-            return True, (f"{img} ready — reused {cached} cached layer{plural} "
+            return True, (f"{img} ready - reused {cached} cached layer{plural} "
                           f"(shared with your other sorters; nothing to re-download)")
         if cached:
-            return True, (f"Downloaded {img} — {pulled} layer"
+            return True, (f"Downloaded {img} - {pulled} layer"
                           f"{'s' if pulled != 1 else ''} fetched, {cached} reused from cache")
         return True, f"Downloaded {img}"
 
@@ -1445,7 +1445,7 @@ class MenuController:
         return sorter_registry.delete_docker_image(img)
 
     def clear_saved_sort(self, name: str) -> tuple[bool, str]:
-        """Delete this sorter's whole run store — every saved run, the pointer and
+        """Delete this sorter's whole run store - every saved run, the pointer and
         any legacy layout. Robust to locks."""
         import shutil
 
@@ -1481,13 +1481,13 @@ class MenuController:
 
     def report_command(self) -> list:
         """argv for report.py in JSON-progress mode, for the in-UI report modal
-        (D3b). Mirrors sort_command; the child never opens a browser — the app
+        (D3b). Mirrors sort_command; the child never opens a browser - the app
         reopens via the LAST RESULT path after the modal closes.
 
         --sorter is passed only when the active sorter actually HAS a saved
-        analyzer — otherwise the child's default pick (the most complete saved
+        analyzer - otherwise the child's default pick (the most complete saved
         sort) serves, instead of a ✓ over an empty page (D3b review F2). --probe
-        is always passed: the geometry caveat must tell the truth (F1 — the same
+        is always passed: the geometry caveat must tell the truth (F1 - the same
         compensation the menu makes for the sort, per the CLAUDE.md gotcha)."""
         argv = [sys.executable, str(SCRIPTS / "report.py"), "--progress", "json"]
         if _analyzer_dir(self.active_sorter).is_dir():
@@ -1498,7 +1498,7 @@ class MenuController:
         return argv
 
     def report_log_path(self) -> Path:
-        """Where the in-UI report build's stderr is captured (crash diagnosis —
+        """Where the in-UI report build's stderr is captured (crash diagnosis -
         D3b review F3, mirroring the sort modal's log)."""
         return bio.REPO_ROOT / "outputs" / "report_build.log"
 
@@ -1584,7 +1584,7 @@ def _edit_params_typed(sorter: str, cfg: dict) -> None:
     descs = sorter_registry.param_descriptions(sorter) if hasattr(sorter_registry, "param_descriptions") else {}
     while True:
         opts = [(k, k, f"{overrides.get(k, defaults[k])}") for k in defaults]
-        opts.append(("__done__", "Done — save & return", ""))
+        opts.append(("__done__", "Done - save & return", ""))
         key = ui.select(f"Edit which parameter of {sorter}?", opts, default=len(opts) - 1)
         if key in (None, "__done__"):
             break
@@ -1616,7 +1616,7 @@ def _pick_compare_pair(data_dir):
 
     found = compare.saved_sorters()
     if len(found) < 2:
-        ui.warn("Need two saved sorts to compare — run 'sort' for two sorters first.")
+        ui.warn("Need two saved sorts to compare - run 'sort' for two sorters first.")
         return None
     first = ui.select("Compare which sorter?", [(s, s, "") for s in found], default=0)
     if first is None:
@@ -1631,7 +1631,7 @@ def _pick_compare_pair(data_dir):
 def _probe_typed(cfg: dict) -> None:
     """Typed 'Set probe geometry' helper: list available probe profiles, then
     activate one.  Mirrors the Textual ProbeManager in plain text (one round-trip
-    — intentionally non-parity, no editor, just pick & activate)."""
+    - intentionally non-parity, no editor, just pick & activate)."""
     lib = probes.library()
     active_name = cfg.get("active_probe", probes.DEFAULT_PROBE)
     rows = [
@@ -1645,7 +1645,7 @@ def _probe_typed(cfg: dict) -> None:
     ]
     ui.print_probes(rows)
     opts = [(p["name"], p["name"], probes.summary(p)) for p in lib]
-    opts.append(("__done__", "Done — back to menu", ""))
+    opts.append(("__done__", "Done - back to menu", ""))
     default_idx = next((i for i, (n, _, _) in enumerate(opts) if n == active_name), 0)
     name = ui.select("Set which probe?", opts, default=default_idx)
     if name not in (None, "__done__"):
@@ -1658,7 +1658,7 @@ def _manage_sorters_typed(args, use_docker: bool) -> None:
     """Typed 'Manage sorters' hub: list each sorter's install / image-download /
     saved-sort state, then download an image (blocking, simple progress), delete a
     downloaded image, or clear a saved sort. Mirrors the Textual ManageSorters hub
-    in plain text (intentionally non-parity — no live list, one round-trip pick)."""
+    in plain text (intentionally non-parity - no live list, one round-trip pick)."""
     catalog = _catalog(args.sorter or sorter_registry.default_sorter(), use_docker)
 
     def _state_line(info: dict) -> str:
@@ -1677,7 +1677,7 @@ def _manage_sorters_typed(args, use_docker: bool) -> None:
 
     while True:
         opts = [(info["name"], info["name"], _state_line(info)) for info in catalog]
-        opts.append(("__done__", "Done — back to menu", ""))
+        opts.append(("__done__", "Done - back to menu", ""))
         name = ui.select("Manage which sorter?", opts, default=len(opts) - 1)
         if name in (None, "__done__"):
             return
@@ -1694,7 +1694,7 @@ def _manage_sorters_typed(args, use_docker: bool) -> None:
         if info.get("present"):
             ops.append(("clear", f"Clear the saved sort ({info['units']}u)", ""))
         ops.append(("__back__", "Back", ""))
-        op = ui.select(f"{name} — {_state_line(info)}", ops, default=len(ops) - 1)
+        op = ui.select(f"{name} - {_state_line(info)}", ops, default=len(ops) - 1)
         if op in (None, "__back__"):
             continue
         if op == "download":
@@ -1844,7 +1844,7 @@ def _menu_fallback(args, cfg: dict, theme: str) -> int:
             continue
         if action == "manage":
             _manage_sorters_typed(args, use_docker)
-            # State may have changed (image deleted / saved sort cleared) — refresh.
+            # State may have changed (image deleted / saved sort cleared) - refresh.
             pipeline, infos = _load_dashboard(args.data_dir, args.sorter, sorter_list, use_docker)
             active_idx = sorter_list.index(args.sorter) if args.sorter in sorter_list else 0
             last = "Managed sorters"
@@ -1856,7 +1856,7 @@ def _menu_fallback(args, cfg: dict, theme: str) -> int:
         if action == "help":
             topics = [(k, t, "") for k, t, _b in ui.HELP_TOPICS]
             while True:
-                topic = ui.select("Help — choose a topic", topics + [("__done__", "Back", "")],
+                topic = ui.select("Help - choose a topic", topics + [("__done__", "Back", "")],
                                   default=0)
                 if topic in (None, "__done__"):
                     break
@@ -1882,7 +1882,7 @@ def _menu_fallback(args, cfg: dict, theme: str) -> int:
         if action == "sort":
             span = ui.select("Sort how much?",
                              [("full", "Full recording", ""),
-                              ("quick", f"Quick test — first {QUICK_SECONDS}s", "")],
+                              ("quick", f"Quick test - first {QUICK_SECONDS}s", "")],
                              default=0)
             if span is None:  # cancelled -> back to the menu without sorting
                 last = "Sort cancelled"

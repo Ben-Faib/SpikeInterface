@@ -65,7 +65,7 @@ def test_friendly_message_when_docker_not_running(monkeypatch):
 
 def test_friendly_message_does_not_misblame_docker_when_running(monkeypatch):
     # Regression: an error that merely mentions "docker" must NOT be reported as
-    # "Docker isn't running" when the daemon is up — that substring match masked a
+    # "Docker isn't running" when the daemon is up - that substring match masked a
     # real failure (a missing SDK / sorter crash) and sent users to a dead end.
     monkeypatch.setattr(sorters, "docker_available", lambda *a, **k: True)
     msg = rs._friendly_sort_error(
@@ -80,7 +80,7 @@ def test_friendly_message_local_failure_passthrough():
 
 
 def test_quality_summary_uses_the_shared_rule(tmp_path, monkeypatch):
-    # W1 slice 1: the rule's one owner is sort_summary — defaults SNR>=4,
+    # W1 slice 1: the rule's one owner is sort_summary - defaults SNR>=4,
     # ISI ratio<=0.5, amp cutoff<=0.1, presence>=0.9, NaN criteria skipped.
     import pandas as pd
     import blackrock_io as bio
@@ -253,7 +253,7 @@ def test_plan_refuses_to_auto_exclude_too_much_of_the_array():
     ids = [str(i) for i in range(1, 17)]
     excluded, plan = rs.plan_bad_channels(ids, detected=ids[:5], manual=[])
     assert excluded == [] and plan["refused_auto"] is True
-    assert plan["detected"] == ids[:5]     # still recorded — refused, not forgotten
+    assert plan["detected"] == ids[:5]     # still recorded - refused, not forgotten
 
 
 def test_plan_keeps_auto_exclusion_at_the_ceiling():
@@ -279,7 +279,7 @@ N_SYNTH = 16          # this rig's electrode count; the probe profile below is i
 
 
 def _synthetic(seed=0):
-    """Plain 5 µV noise on N_SYNTH channels, ids "0".."15" — this rig's shape.
+    """Plain 5 µV noise on N_SYNTH channels, ids "0".."15" - this rig's shape.
 
     Ids are 0-based only because ``set_probe`` renames a NumpyRecording's channels
     to the probe's device indices; the real Blackrock recording keeps its own
@@ -366,7 +366,7 @@ def test_cli_rejects_a_bad_channel_id_the_recording_does_not_have():
         stdin=subprocess.DEVNULL, timeout=300, cwd=ROOT)
     # rich hard-wraps the warning, so compare on whitespace-normalised text.
     out = " ".join((res.stdout + res.stderr).split())
-    assert res.returncode == 1                        # not argparse's rc 2 — our check
+    assert res.returncode == 1                        # not argparse's rc 2 - our check
     assert "doesn't have: 99" in out and "Electrodes here:" in out
 
 

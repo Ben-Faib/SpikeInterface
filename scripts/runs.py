@@ -21,7 +21,7 @@ The layout
 ::
 
     outputs/<sorter>/
-        current.json                    THE POINTER — {"run_id": ...}, never a copy
+        current.json                    THE POINTER - {"run_id": ...}, never a copy
         runs/<run_id>/                  ONE RUN, self-contained
             sorting/ analyzer/ sorter_output/
             run_info.json               the run record (provenance; see below)
@@ -30,13 +30,13 @@ The layout
         regen/<run_id>/                 regeneration checks (never current)
         sort.log                        the in-UI sort's stderr (per sorter, not per run)
 
-A run id is ``YYYYmmdd-HHMMSS-<6 hex>`` — sortable by time, unique by the
+A run id is ``YYYYmmdd-HHMMSS-<6 hex>`` - sortable by time, unique by the
 discriminator, and recorded in the run's own ``run_info.json`` as ``run_id``, so
 a directory that is moved or copied still says which run it is.
 
 Runs never overwrite each other: a second sort of the same sorter lands in its
 own directory and both stay readable. The **pointer** is what changes, and it is
-a small JSON file replaced with ``os.replace`` (atomic on Windows and POSIX) —
+a small JSON file replaced with ``os.replace`` (atomic on Windows and POSIX) -
 no symlinks, which need an elevated account or developer mode on Windows.
 
 Resolution order (``resolve()``), documented because the lab has saved sorts
@@ -45,7 +45,7 @@ predating the store:
 1. ``current.json``, when it names a run that still exists (``"legacy"`` is a
    valid pointer target, meaning the pre-store layout).
 2. the newest **full** run under ``runs/``.
-3. the **legacy** layout — ``outputs/<sorter>/analyzer`` + ``sorting`` written
+3. the **legacy** layout - ``outputs/<sorter>/analyzer`` + ``sorting`` written
    directly in the sorter directory, read-only: nothing writes there any more.
 4. the newest run under ``runs/`` of any kind (i.e. a smoke run, when that is
    all there is).
@@ -54,7 +54,7 @@ The smoke rule
 --------------
 A run made with ``--duration`` is a **smoke** run (``run_info["smoke"]``). A
 smoke run **never** displaces a full run as current. ``set_current`` refuses it,
-says so loudly, and *pins the incumbent* by writing the pointer to it — so the
+says so loudly, and *pins the incumbent* by writing the pointer to it - so the
 refusal survives even step 2 of the resolution order. ``--force``
 (``run_sorting.py --make-current``) is the only override, and it is recorded in
 the pointer's ``reason``. A smoke run may become current when there is no full
@@ -62,17 +62,17 @@ run to displace; a full run always may.
 
 The run record
 --------------
-``run_info.json`` is the run's identity — ``curation.json`` anchors on its
+``run_info.json`` is the run's identity - ``curation.json`` anchors on its
 fields, so this module only ever *adds* keys. Beyond what the sort already
 wrote (sorter, window, band, channels, unit count, ``bad_channels``), the record
 carries what regeneration needs:
 
     run_id, run_dir, smoke, schema_version
     params      {"effective": {...}, "defaults": {...}, "overrides": {...}}
-                the EFFECTIVE dict, copied at run time — defaults + the
+                the EFFECTIVE dict, copied at run time - defaults + the
                 overrides actually applied, never a reference to .si_menu.json
     seed        {"key", "value", "pinned"} where the sorter accepts one
-    determinism {"class", "note"} — measured-stochastic sorters say so here
+    determinism {"class", "note"} - measured-stochastic sorters say so here
     probe_id / probe_label / probe_kind / geometry_hash / probe_fallback
     preprocessing  the ordered chain: aux drop, probe, bandpass, bad channels,
                 common median reference, frame slice
@@ -84,15 +84,15 @@ carries what regeneration needs:
 Regeneration
 ------------
 ``regenerate`` rebuilds ``run_sorting.py``'s argv from the record alone
-(``config_argv``), re-runs it into ``outputs/<sorter>/regen/<id>/`` — never into
-``runs/``, so a check cannot change what is current — and prints a match report.
+(``config_argv``), re-runs it into ``outputs/<sorter>/regen/<id>/`` - never into
+``runs/``, so a check cannot change what is current - and prints a match report.
 
 Criteria are chosen to be **stable under a stochastic sorter**. tridesclous2 on
 this recording produced 14, 16 and 18 units across three identical runs (PRE1,
 2026-08-18), so unit counts and unit ids are reported as INFORMATIONAL and are
 never a verdict. What is compared, each with its tolerance stated:
 
-    recording            exact base name + sampling rate — a re-run pointed at a
+    recording            exact base name + sampling rate - a re-run pointed at a
                          different file set is named as that, not left to show up
                          indirectly as poor containment
     channels sorted      exact set
@@ -103,14 +103,14 @@ never a verdict. What is compared, each with its tolerance stated:
     probe geometry       exact geometry hash
     environment          exact package versions + git sha (a caveat, not a fail)
     noise floor          +/- NOISE_TOL_UV (a property of the recording, so it is
-                         the strongest single check — and the ~4 uV canary)
+                         the strongest single check - and the ~4 uV canary)
     spike containment    BOTH directions: the fraction of each sort's spikes the
                          other also found within CONTAINMENT_DELTA_MS
     metric ranges        V_pp / SNR / yield within stated relative tolerance
 
 Bit-identity is never claimed unless observed: the report says "BIT-IDENTICAL"
 only when the two pooled spike trains are equal spike for spike. Containment
-1.0 in both directions is not enough — two different sorts routinely find every
+1.0 in both directions is not enough - two different sorts routinely find every
 spike within the coincidence window without agreeing on a single timestamp.
 
 API
@@ -152,7 +152,7 @@ from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-import blackrock_io as bio  # noqa: E402  (REPO_ROOT only — no SpikeInterface)
+import blackrock_io as bio  # noqa: E402  (REPO_ROOT only - no SpikeInterface)
 
 SCHEMA_VERSION = "1"
 OUTPUTS_DIRNAME = "outputs"
@@ -173,7 +173,7 @@ PHY_DIRNAME = "phy"
 PROVENANCE_PACKAGES = ("spikeinterface", "neo", "numpy", "probeinterface", "scipy", "numba")
 
 # Sorters measured on THIS recording rather than assumed. Anything absent is
-# "unverified" — the record must not claim determinism nobody checked.
+# "unverified" - the record must not claim determinism nobody checked.
 DETERMINISM = {
     "tridesclous2": ("measured-stochastic",
                      "14, 16 and 18 units across three identical full-pipeline runs on "
@@ -201,13 +201,13 @@ SEED_KEYS = ("seed", "random_seed", "rng_seed")
 # ~2x that, and ~12x narrower than the ~3 uV a double-scaling bug moves it.
 NOISE_TOL_UV = 0.25
 # Coincidence window for "the same spike". 0.4 ms is compare.py's offline-vs-
-# offline window — both sides here are peak-aligned offline sorts.
+# offline window - both sides here are peak-aligned offline sorts.
 CONTAINMENT_DELTA_MS = 0.4
 # Fraction of one sort's spikes that reappear in the other. A stochastic sorter
 # splits and merges units between runs, but the SPIKES it finds are stable, so
 # this is the criterion that survives that. Measured over fourteen directed
 # comparisons (seven same-window pairs): mean 0.954, sd 0.025, worst 0.903. The
-# worst case is a 30 s smoke window — a short window sees fewer spikes per unit,
+# worst case is a 30 s smoke window - a short window sees fewer spikes per unit,
 # so its runs diverge more than full-recording runs do (those sit 0.925–0.991).
 # A first-run floor of 0.90 was measured at 0.903 on that smoke pair, i.e. it
 # would have failed honest regenerations, so the floor is 0.85: ~4 sd below the
@@ -215,7 +215,7 @@ CONTAINMENT_DELTA_MS = 0.4
 # genuinely different pipeline (wrong band, window or channel set) produces.
 #
 # VALIDITY RANGE of that calibration: it was measured on 132 s (full recording)
-# and 30 s windows only, and the trend across those two is monotone — the worst
+# and 30 s windows only, and the trend across those two is monotone - the worst
 # honest pair, 0.903, is the 30 s one. A shorter window sees fewer spikes per
 # unit, so its runs diverge further, and an honest regeneration of, say, a 5 s
 # window may sit below 0.85 legitimately. Treat a containment failure on a
@@ -228,7 +228,7 @@ CONTAINMENT_MIN = 0.85
 # still ~4x narrower than the 75% a re-applied channel gain would produce.
 METRIC_REL_TOL = 0.20
 # Yield is a percentage, so it gets an absolute tolerance in percentage points.
-# Max measured 6.3 pp — exactly one electrode of sixteen. 15 pp is ~2.4x that.
+# Max measured 6.3 pp - exactly one electrode of sixteen. 15 pp is ~2.4x that.
 YIELD_TOL_PP = 15.0
 
 # Verdict vocabulary. One of these is printed for every criterion.
@@ -278,7 +278,7 @@ def run_dir(sorter: str, run_id: str, root=None, outputs=None) -> Path:
 
 
 def new_run_id(when=None, discriminator=None) -> str:
-    """``YYYYmmdd-HHMMSS-<6 hex>`` — time-sortable, collision-proof within a second."""
+    """``YYYYmmdd-HHMMSS-<6 hex>`` - time-sortable, collision-proof within a second."""
     when = when or datetime.now()
     disc = discriminator or secrets.token_hex(3)
     return f"{when:%Y%m%d-%H%M%S}-{disc}"
@@ -304,7 +304,7 @@ def sorter_for_dir(path) -> str:
 
 
 def sort_paths(sorter: str, root=None, outputs=None, run=None) -> dict:
-    """Every path for one sorter's run — the ONE resolver every surface uses.
+    """Every path for one sorter's run - the ONE resolver every surface uses.
 
     ``run`` is a run id, a run directory, or None for the current run. When
     nothing resolves (no sort yet) the legacy paths come back, so callers can
@@ -350,7 +350,7 @@ def sort_paths(sorter: str, root=None, outputs=None, run=None) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# The store — listing, the pointer, resolution
+# The store - listing, the pointer, resolution
 # --------------------------------------------------------------------------- #
 def read_json(path) -> dict:
     """Read a JSON object; {} when missing or unreadable (records are best-effort)."""
@@ -385,7 +385,7 @@ def list_runs(sorter: str, root=None, outputs=None, include_legacy: bool = True)
     """Every run for ``sorter``, newest first; the legacy layout last when present.
 
     A run directory without ``run_info.json`` is an unfinished run (the sort died
-    before the record was written) — it is skipped here but left on disk, because
+    before the record was written) - it is skipped here but left on disk, because
     its ``sorter_output/`` is the only evidence of what went wrong.
     """
     out = []
@@ -405,8 +405,8 @@ def list_runs(sorter: str, root=None, outputs=None, include_legacy: bool = True)
 
 def unfinished_runs(sorter: str, root=None, outputs=None) -> list:
     """Run directories with no ``run_info.json``: a sort that died before it could
-    write its record. ``list_runs`` cannot include them — there is no record to
-    read — so without this they exist on disk and are named by nothing.
+    write its record. ``list_runs`` cannot include them - there is no record to
+    read - so without this they exist on disk and are named by nothing.
 
     Nothing deletes them automatically: their ``sorter_output/`` is the only
     evidence of what went wrong. ``runs.py list`` names them so the disk is not
@@ -427,7 +427,7 @@ def read_pointer(sorter: str, root=None, outputs=None) -> dict:
 
 def write_pointer(sorter: str, run_id: str, root=None, outputs=None, reason: str = "") -> Path:
     """Point ``sorter`` at ``run_id``. Atomic: write a sibling temp file, then
-    ``os.replace`` — which is atomic on Windows too, unlike a symlink swap."""
+    ``os.replace`` - which is atomic on Windows too, unlike a symlink swap."""
     path = pointer_path(sorter, root, outputs)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {"run_id": run_id, "updated": datetime.now().isoformat(timespec="seconds"),
@@ -440,7 +440,7 @@ def write_pointer(sorter: str, run_id: str, root=None, outputs=None, reason: str
 
 def resolve(sorter: str, root=None, outputs=None) -> "dict | None":
     """The current run for ``sorter`` (see the module docstring's resolution
-    order), plus ``how`` — which rule chose it. None when nothing is saved."""
+    order), plus ``how`` - which rule chose it. None when nothing is saved."""
     runs = list_runs(sorter, root, outputs)
     if not runs:
         return None
@@ -454,7 +454,7 @@ def resolve(sorter: str, root=None, outputs=None) -> "dict | None":
     legacy = [r for r in runs if r["legacy"]]
     if legacy:
         return {**legacy[0], "how": "legacy layout"}
-    return {**runs[0], "how": "newest run (smoke — no full run saved)"}
+    return {**runs[0], "how": "newest run (smoke - no full run saved)"}
 
 
 def current_dir(sorter: str, root=None, outputs=None) -> "Path | None":
@@ -513,7 +513,7 @@ def set_current(sorter: str, run_id: str, root=None, outputs=None, *,
 # Provenance collectors
 # --------------------------------------------------------------------------- #
 def package_versions(names=PROVENANCE_PACKAGES) -> dict:
-    """Installed versions by distribution metadata — no imports, so collecting
+    """Installed versions by distribution metadata - no imports, so collecting
     provenance never drags SpikeInterface into a view process."""
     from importlib import metadata
 
@@ -545,7 +545,7 @@ def _git(root: Path, *args: str) -> "str | None":
 def git_info(root=None) -> dict:
     """``{"sha", "branch", "dirty"}`` for this repo; values None when git can't
     answer (no git on the lab box, an exported tree). ``dirty`` counts tracked
-    modifications — a sort from an edited tree is not the sort the sha names."""
+    modifications - a sort from an edited tree is not the sort the sha names."""
     base = Path(root) if root is not None else bio.REPO_ROOT
     sha = _git(base, "rev-parse", "HEAD")
     status = _git(base, "status", "--porcelain", "--untracked-files=no")
@@ -593,7 +593,7 @@ def determinism_of(sorter: str) -> dict:
 
 
 # --------------------------------------------------------------------------- #
-# Config-as-code — the committable description of a run
+# Config-as-code - the committable description of a run
 # --------------------------------------------------------------------------- #
 def config_from_record(info: dict) -> dict:
     """The small, committable subset of a run record that fully describes how to
@@ -614,7 +614,7 @@ def config_from_record(info: dict) -> dict:
         "keep_analog": bool(info.get("keep_analog")),
         # Whether the sort ACTUALLY ran in a container (run_sorting records the
         # resolved fact, not the raw flag). Without it the config's claim to
-        # fully describe the re-run is false for every containerized sort — and
+        # fully describe the re-run is false for every containerized sort - and
         # the lab's Windows box is where those live.
         "docker": bool(info.get("docker")),
         "n_jobs": info.get("n_jobs", 1),
@@ -628,7 +628,7 @@ def config_from_record(info: dict) -> dict:
 def config_argv(config: dict, output_dir, *, params_file=None) -> list:
     """argv for ``run_sorting.py`` that reproduces ``config``.
 
-    The EFFECTIVE parameter dict is passed through ``--params-file`` — pinning
+    The EFFECTIVE parameter dict is passed through ``--params-file`` - pinning
     every value, not just the overrides, so a change in the installed sorter's
     defaults cannot silently ride along. An unknown key then fails loudly in
     ``resolve_overrides``, which is the honest outcome.
@@ -717,7 +717,7 @@ def _criterion(name, compared, tolerance, recorded, regenerated, verdict, note="
 
 def _fmt(value, digits=2) -> str:
     if value is None:
-        return "—"
+        return "-"
     if isinstance(value, float):
         return f"{value:.{digits}f}"
     if isinstance(value, (list, tuple, set)):
@@ -780,7 +780,7 @@ def compare_runs(recorded: dict, regenerated: dict, *,
         V_SKIPPED if not a_base or not b_base else (V_MATCH if not rec_diffs else V_DIFFERS),
         "" if not rec_diffs else "differs: " + ", ".join(rec_diffs)))
 
-    # 1. channels sorted — exact set. The sort's own definition of what it saw.
+    # 1. channels sorted - exact set. The sort's own definition of what it saw.
     a_ch = sorted(str(c) for c in (recorded.get("channel_ids") or []))
     b_ch = sorted(str(c) for c in (regenerated.get("channel_ids") or []))
     crit.append(_criterion(
@@ -789,19 +789,19 @@ def compare_runs(recorded: dict, regenerated: dict, *,
         f"{len(b_ch)}: {', '.join(b_ch) if len(b_ch) <= 6 else b_ch[0] + '…' + b_ch[-1]}",
         V_MATCH if a_ch and a_ch == b_ch else (V_SKIPPED if not a_ch or not b_ch else V_DIFFERS)))
 
-    # 2. preprocessing chain — band, reference, aux drop, bad channels, window.
+    # 2. preprocessing chain - band, reference, aux drop, bad channels, window.
     a_pre, b_pre = _chain_signature(recorded), _chain_signature(regenerated)
     diffs = [k for k in a_pre if a_pre[k] != b_pre[k]]
     crit.append(_criterion(
         "preprocessing chain", "band · reference · aux drop · bad channels · window", "exact",
         f"{a_pre['freq_min']:g}–{a_pre['freq_max']:g} Hz, {a_pre['reference']}"
-        if isinstance(a_pre["freq_min"], (int, float)) else "—",
+        if isinstance(a_pre["freq_min"], (int, float)) else "-",
         f"{b_pre['freq_min']:g}–{b_pre['freq_max']:g} Hz, {b_pre['reference']}"
-        if isinstance(b_pre["freq_min"], (int, float)) else "—",
+        if isinstance(b_pre["freq_min"], (int, float)) else "-",
         V_MATCH if not diffs else V_DIFFERS,
         "" if not diffs else "differs: " + ", ".join(diffs)))
 
-    # 2b. sorter parameters — the knobs, exactly, all ~31 of them. Every other
+    # 2b. sorter parameters - the knobs, exactly, all ~31 of them. Every other
     #     criterion is a tolerance band wide enough to swallow a changed
     #     detect_threshold: a regeneration from a hand-edited config can land
     #     inside containment AND inside the metric bands and print REGENERATED
@@ -814,8 +814,8 @@ def compare_runs(recorded: dict, regenerated: dict, *,
         # every other row off the terminal.
         crit.append(_criterion(
             "sorter params", "the effective parameter dict", "exact",
-            f"{len(a_par)} keys" if isinstance(a_par, dict) else "—",
-            f"{len(b_par)} keys" if isinstance(b_par, dict) else "—",
+            f"{len(a_par)} keys" if isinstance(a_par, dict) else "-",
+            f"{len(b_par)} keys" if isinstance(b_par, dict) else "-",
             V_SKIPPED, "no effective parameters recorded on one side"))
     else:
         par_diffs = sorted(k for k in set(a_par) | set(b_par) if a_par.get(k) != b_par.get(k))
@@ -828,16 +828,16 @@ def compare_runs(recorded: dict, regenerated: dict, *,
             "" if not par_diffs else "differs: " + shown
             + ("" if len(par_diffs) <= 6 else f", and {len(par_diffs) - 6} more")))
 
-    # 3. probe geometry — the hash, not the label: a renamed profile with the
+    # 3. probe geometry - the hash, not the label: a renamed profile with the
     #    same contacts is the same geometry, and vice versa.
     a_g, b_g = recorded.get("geometry_hash"), regenerated.get("geometry_hash")
     crit.append(_criterion(
         "probe geometry", "geometry hash (positions · shanks · wiring)", "exact",
-        f"{recorded.get('probe_id') or '?'} / {a_g or '—'}",
-        f"{regenerated.get('probe_id') or '?'} / {b_g or '—'}",
+        f"{recorded.get('probe_id') or '?'} / {a_g or '-'}",
+        f"{regenerated.get('probe_id') or '?'} / {b_g or '-'}",
         V_SKIPPED if not a_g or not b_g else (V_MATCH if a_g == b_g else V_DIFFERS)))
 
-    # 4. environment — a caveat, not a failure: a different SI version can change
+    # 4. environment - a caveat, not a failure: a different SI version can change
     #    the answer legitimately, and the reader must be told which it was.
     a_env = {**(recorded.get("packages") or {}), "git": (recorded.get("git") or {}).get("sha")}
     b_env = {**(regenerated.get("packages") or {}), "git": (regenerated.get("git") or {}).get("sha")}
@@ -849,7 +849,7 @@ def compare_runs(recorded: dict, regenerated: dict, *,
         V_MATCH if not env_diffs else V_INFO,
         "" if not env_diffs else "differs: " + ", ".join(sorted(env_diffs))))
 
-    # 5. noise floor — a property of the recording after bandpass + CMR, so it is
+    # 5. noise floor - a property of the recording after bandpass + CMR, so it is
     #    the strongest single number here (and the ~4 uV double-scaling canary).
     a_n = ((recorded_summary or {}).get("noise_floor_uV") or {}).get("median")
     b_n = ((regenerated_summary or {}).get("noise_floor_uV") or {}).get("median")
@@ -862,11 +862,11 @@ def compare_runs(recorded: dict, regenerated: dict, *,
                            f"±{NOISE_TOL_UV:g} µV absolute", _fmt(a_n, 3), _fmt(b_n, 3),
                            verdict, note))
 
-    # 6. spike containment — the unit-blind reproduction check.
+    # 6. spike containment - the unit-blind reproduction check.
     delta_s = delta_ms / 1000.0
     if recorded_spikes is None or regenerated_spikes is None:
         crit.append(_criterion("spike containment", f"recorded spikes found again (±{delta_ms:g} ms)",
-                               f"≥{CONTAINMENT_MIN:.0%} both ways", "—", "—", V_SKIPPED,
+                               f"≥{CONTAINMENT_MIN:.0%} both ways", "-", "-", V_SKIPPED,
                                "a sorting could not be read"))
         fwd = back = None
     else:
@@ -874,20 +874,20 @@ def compare_runs(recorded: dict, regenerated: dict, *,
         back = containment(regenerated_spikes, recorded_spikes, delta_s)
         if len(recorded_spikes) == 0 and len(regenerated_spikes) == 0:
             # Containment is undefined on an empty train (NaN), and NaN reads as
-            # outside tolerance — so two honest zero-unit runs used to be scored
+            # outside tolerance - so two honest zero-unit runs used to be scored
             # NOT REGENERATED for identically finding nothing. Finding nothing
             # twice IS the recorded result reproduced.
             verdict, found, note = V_MATCH, "0 spikes", \
-                "both sorts found no spikes — the empty result was reproduced"
+                "both sorts found no spikes - the empty result was reproduced"
         else:
             # BOTH directions gate. Forward alone passes a regeneration that
-            # found every recorded spike AND a pile of new ones — the reverse
+            # found every recorded spike AND a pile of new ones - the reverse
             # direction is the only thing that sees that. Measured, the two sit
             # in the same band (0.925–0.991 over six same-window pairs), so
             # requiring the smaller costs nothing a legitimate re-run needs.
             ok = fwd == fwd and back == back and min(fwd, back) >= CONTAINMENT_MIN
             verdict = V_WITHIN if ok else V_OUTSIDE
-            found = f"{fwd:.1%} of them" if fwd == fwd else "—"
+            found = f"{fwd:.1%} of them" if fwd == fwd else "-"
             note = (f"reverse containment {back:.1%} ({len(regenerated_spikes)} spikes)"
                     if back == back else "")
         crit.append(_criterion(
@@ -895,7 +895,7 @@ def compare_runs(recorded: dict, regenerated: dict, *,
             f"≥{CONTAINMENT_MIN:.0%} both ways", f"{len(recorded_spikes)} spikes",
             found, verdict, note))
 
-    # 7. headline metrics — medians move as units split/merge, so relative.
+    # 7. headline metrics - medians move as units split/merge, so relative.
     for key, label, digits in (("v_pp_uV", "V_pp median (µV)", 1), ("snr", "SNR median", 2)):
         a_v = ((recorded_summary or {}).get(key) or {}).get("median")
         b_v = ((regenerated_summary or {}).get(key) or {}).get("median")
@@ -922,14 +922,14 @@ def compare_runs(recorded: dict, regenerated: dict, *,
                                f"±{YIELD_TOL_PP:g} percentage points", _fmt(a_y, 1), _fmt(b_y, 1),
                                V_SKIPPED))
 
-    # 8. units — reported, never a criterion. This is the PRE1 evidence in force.
+    # 8. units - reported, never a criterion. This is the PRE1 evidence in force.
     det = recorded.get("determinism") or determinism_of(recorded.get("sorter", ""))
     crit.append(_criterion("unit count", "units in each sort", "NOT A CRITERION",
                            _fmt(recorded.get("n_units")), _fmt(regenerated.get("n_units")),
                            V_INFO, det.get("note", "")))
 
     failed = [c for c in crit if c["verdict"] in _FAILING]
-    # Bit-identity means the trains ARE the same, sample for sample — not that
+    # Bit-identity means the trains ARE the same, sample for sample - not that
     # every spike found a partner inside a +/-0.4 ms window, which two different
     # sorts routinely do. Claiming it on containment alone would be the report
     # telling its strongest lie in its strongest words.
@@ -943,7 +943,7 @@ def compare_runs(recorded: dict, regenerated: dict, *,
     if failed:
         verdict = "NOT REGENERATED"
     elif identical:
-        verdict = "REGENERATED — BIT-IDENTICAL SPIKE TRAINS"
+        verdict = "REGENERATED - BIT-IDENTICAL SPIKE TRAINS"
     elif any(c["verdict"] == V_INFO and c["name"] == "environment" for c in crit):
         verdict = "REGENERATED WITH CAVEATS"
     else:
@@ -956,7 +956,7 @@ def compare_runs(recorded: dict, regenerated: dict, *,
 
 def format_match_report(report: dict, *, recorded_dir=None, regenerated_dir=None) -> str:
     """The honest match report, as printed by ``runs.py regenerate``."""
-    lines = [f"Regeneration match report — {report.get('sorter')}",
+    lines = [f"Regeneration match report - {report.get('sorter')}",
              f"  recorded    {report.get('recorded_run') or '?'}"
              + (f"   {recorded_dir}" if recorded_dir else ""),
              f"  regenerated {report.get('regenerated_run') or '?'}"
@@ -977,10 +977,10 @@ def format_match_report(report: dict, *, recorded_dir=None, regenerated_dir=None
         lines.append("  failed: " + ", ".join(report["failed"]))
     det = report.get("determinism") or {}
     if det.get("class") == "measured-stochastic":
-        lines.append(f"  {report.get('sorter')} is measured NON-DETERMINISTIC here — "
+        lines.append(f"  {report.get('sorter')} is measured NON-DETERMINISTIC here - "
                      f"{det.get('note')}")
     else:
-        lines.append(f"  determinism: {det.get('class', 'unverified')} — {det.get('note', '')}")
+        lines.append(f"  determinism: {det.get('class', 'unverified')} - {det.get('note', '')}")
     return "\n".join(lines)
 
 
@@ -988,7 +988,7 @@ def regenerate(sorter=None, run=None, config=None, root=None, outputs=None,
                out=None, stream=None) -> dict:
     """Re-run a sort from its record alone and compare. Returns the match report.
 
-    Writes into ``outputs/<sorter>/regen/<id>/`` — never ``runs/`` — so checking
+    Writes into ``outputs/<sorter>/regen/<id>/`` - never ``runs/`` - so checking
     a run can never change which run is current.
     """
     import sort_summary as _summary
@@ -1004,7 +1004,7 @@ def regenerate(sorter=None, run=None, config=None, root=None, outputs=None,
     else:
         sorter = config.get("sorter")
         # A config file names the run it came from, and THAT is what a re-run has
-        # to be scored against — never whatever happens to be current, which is a
+        # to be scored against - never whatever happens to be current, which is a
         # different sort entirely. A config with no source run, or one whose run
         # lives on another machine (it travelled through git), gets no comparison.
         want = run or config.get("from_run")
@@ -1025,7 +1025,7 @@ def regenerate(sorter=None, run=None, config=None, root=None, outputs=None,
     # is nothing to capture (its record on disk is what we compare).
     rc = subprocess.run(argv).returncode
     if rc != 0:
-        raise SystemExit(f"regeneration sort failed (rc {rc}) — see the output above")
+        raise SystemExit(f"regeneration sort failed (rc {rc}) - see the output above")
 
     regenerated = read_json(dest / RUN_INFO_NAME)
     if not recorded:
@@ -1043,7 +1043,7 @@ def regenerate(sorter=None, run=None, config=None, root=None, outputs=None,
         regenerated_spikes=pooled_spike_times(dest / "analyzer"),
     )
     # The regenerated sort is written with --output-dir, so it is outside the
-    # store and carries no run id — name it by its directory instead of "?".
+    # store and carries no run id - name it by its directory instead of "?".
     report["regenerated_run"] = regenerated.get("run_id") or dest.name
     return {"report": report, "config": config, "argv": argv, "out": dest,
             "recorded_dir": paths["out"], "rc": rc}
@@ -1073,7 +1073,7 @@ def _print_runs(sorter: str, root=None, outputs=None) -> None:
     # Corpses: directories from sorts that died before writing a record. Nothing
     # else names them, so without this line they accumulate unseen.
     for d in dead:
-        print(f"  ! {d.name:<26} unfinished — the sort died before writing its record; "
+        print(f"  ! {d.name:<26} unfinished - the sort died before writing its record; "
               f"kept for {d.name}/sorter_output")
 
 
@@ -1115,14 +1115,14 @@ def main() -> int:
         if getattr(args, "sorter", None):
             names = [args.sorter]
         else:
-            # Sorters with a resolvable run PLUS any whose only runs are corpses —
+            # Sorters with a resolvable run PLUS any whose only runs are corpses -
             # a sorter that has never finished a sort must still be listable.
             base = outputs_dir()
             names = sorted(set(saved_sorters()) | {
                 p.name for p in (sorted(base.iterdir()) if base.is_dir() else [])
                 if p.is_dir() and unfinished_runs(p.name)})
         if not names:
-            print("no saved sorts yet — run: uv run python scripts/run_sorting.py")
+            print("no saved sorts yet - run: uv run python scripts/run_sorting.py")
             return 0
         for name in names:
             _print_runs(name)

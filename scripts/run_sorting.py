@@ -21,8 +21,8 @@ sorter -> save + (optionally) compute quality metrics and the GUI-inspector
 curation extensions.
 
 BAD CHANNELS: a bad electrode left in the recording poisons the common median
-reference every other channel is subtracted against — the same reason the analog
-aux channels are dropped — so detection runs after the bandpass (it must judge
+reference every other channel is subtracted against - the same reason the analog
+aux channels are dropped - so detection runs after the bandpass (it must judge
 the sort band, not the LFP the sorter never sees) and before the reference, and
 an excluded channel leaves the recording entirely: out of the reference AND out
 of the sort. Flags:
@@ -39,7 +39,7 @@ are recorded in run_info.json and stated on every surface that reports a channel
 count or yield.
 
 Outputs (git-ignored) land in a NEW per-run directory under
-outputs/<sorter>/runs/<run_id>/ — runs never overwrite each other, and
+outputs/<sorter>/runs/<run_id>/ - runs never overwrite each other, and
 outputs/<sorter>/current.json points at the one every surface reads (the store is
 owned by runs.py; see its docstring for the layout, the resolution order and the
 pointer semantics):
@@ -55,13 +55,13 @@ pointer semantics):
                           repo's git sha, platform, timestamp
 
 A --duration run is a SMOKE run: it is saved like any other, but it never
-becomes the current sort while a full run exists — it says so and leaves the
+becomes the current sort while a full run exists - it says so and leaves the
 pointer alone (--make-current overrides). --output-dir bypasses the store
 entirely and writes exactly where you say.
 
 GEOMETRY: the Blackrock files carry no electrode map, so the geometry is a user
-choice owned by probes.py. The sort applies the active profile — this rig's real
-NeuroNexus A1x16-3mm-100-703 by default — with --probe/--probe-file to override,
+choice owned by probes.py. The sort applies the active profile - this rig's real
+NeuroNexus A1x16-3mm-100-703 by default - with --probe/--probe-file to override,
 so spatial views are physical. Only if the DEFAULT profile does not fit the
 recording does it fall back to the "independent channels" placeholder, and it
 says so; in that fallback per-unit results are still valid but cross-channel
@@ -96,12 +96,12 @@ import sorters  # noqa: E402  (sorter registry: discovery / status / params / ru
 
 VERBOSITY_LEVELS = ["quiet", "normal", "verbose"]
 
-# Wall clock for run_info's wall_seconds — import time ≈ run start for this CLI
+# Wall clock for run_info's wall_seconds - import time ≈ run start for this CLI
 # (it is always invoked as a fresh process), so the sort-span modal can say
 # "~M:SS last time" from provenance alone.
 _RUN_T0 = time.monotonic()
 
-# The pipeline's phase checklist, in order — an emitter constant (the progress
+# The pipeline's phase checklist, in order - an emitter constant (the progress
 # protocol pins neither the count nor the titles). "Analyze + metrics" is skipped
 # by --no-metrics, so the phase total is derived from this list, not hardcoded.
 PHASES = ("Read broadband", "Preprocess", "Sort", "Save sorting", "Analyze + metrics")
@@ -138,8 +138,8 @@ class Reporter:
         return round(time.monotonic() - self._t0, 2)
 
     # ``_open`` is main-thread-confined: the cross-thread emitters (tee reader,
-    # heartbeat, AlignedTqdm) call only detail/heartbeat/bar — never the phase
-    # lifecycle — so only the line WRITE needs the lock, not ``_open``.
+    # heartbeat, AlignedTqdm) call only detail/heartbeat/bar - never the phase
+    # lifecycle - so only the line WRITE needs the lock, not ``_open``.
     def _close_phase(self) -> None:
         """Emit ``phase_done`` for the phase now running (a no-op if none is)."""
         if self._open is None:
@@ -150,7 +150,7 @@ class Reporter:
                     "secs": round(time.monotonic() - started, 2)})
 
     def abandon_phase(self) -> None:
-        """Forget the running phase WITHOUT emitting ``phase_done`` — for a phase
+        """Forget the running phase WITHOUT emitting ``phase_done`` - for a phase
         that failed: a dead phase did not finish, so it gets no duration (the
         terminal event closes the checklist visually)."""
         self._open = None
@@ -231,17 +231,17 @@ _REPORTER: "Reporter | None" = None
 # fill lines up in the same column. 34 fits all but the longest SI/sorter job
 # names; longer ones are truncated with an ellipsis.
 _TQDM_DESC_WIDTH = 34
-# Fixed bar width (chars). A fixed width — rather than stretching to the terminal
-# edge — keeps the bars compact and visually uniform.
+# Fixed bar width (chars). A fixed width - rather than stretching to the terminal
+# edge - keeps the bars compact and visually uniform.
 _TQDM_BAR_WIDTH = 28
 # Colour of the bar fill (any tqdm-accepted name or hex). Matches the cyan used
 # for the phase headers in ConsoleUI for a consistent palette.
 _TQDM_BAR_COLOUR = "cyan"
-# Drop SpikeInterface's parallelisation suffix from the description — it is the
+# Drop SpikeInterface's parallelisation suffix from the description - it is the
 # same on (almost) every bar and only pushes the bar start to the right.
 _TQDM_DESC_SUFFIX = re.compile(r"\s*\((?:no parallelization|workers:[^)]*)\)\s*$")
 # Uniform bar layout: padded desc · 3-wide percentage · fixed-width bar · a
-# consistent counts/timing tail. No brackets around the bar — the colour fill
+# consistent counts/timing tail. No brackets around the bar - the colour fill
 # already delimits it cleanly.
 _TQDM_BAR_FORMAT = (
     "{desc} {percentage:3.0f}%  {bar:" + str(_TQDM_BAR_WIDTH) + "}  "
@@ -255,7 +255,7 @@ def _install_aligned_tqdm() -> None:
     Must run *before* ``import spikeinterface`` so that the libraries' own
     ``from tqdm.auto import tqdm`` picks up the patched class. The subclass strips
     the noisy parallelisation suffix, pads the description to a fixed width and
-    draws a fixed-width coloured bar via a single ``bar_format`` — so every bar
+    draws a fixed-width coloured bar via a single ``bar_format`` - so every bar
     has an identical, compact layout instead of stretching to the terminal edge.
     """
     import tqdm as _tqdm
@@ -343,7 +343,7 @@ class ConsoleUI:
             from rich.console import Console
 
             self._c = Console(stderr=stderr, highlight=False)
-        except Exception:  # rich missing — fall back to plain text
+        except Exception:  # rich missing - fall back to plain text
             self._c = None
 
     def _emit(self, markup: str, plain: str) -> None:
@@ -385,7 +385,7 @@ class ConsoleUI:
         self._emit(f"    [bold]{text}[/]", f"    {text}")
 
     def warn(self, text: str) -> None:
-        """A safety/caution line. Shown at *every* level (even quiet) — these flag
+        """A safety/caution line. Shown at *every* level (even quiet) - these flag
         things like overwriting a previous sort, which the user must not miss."""
         self._emit(f"[{self.PALETTE['warn']}]! {text}[/]", f"! {text}")
 
@@ -409,7 +409,7 @@ class ConsoleUI:
                 cells = [str(idx)]
                 for col in df.columns:
                     v = row[col]
-                    if v != v:  # NaN — honest gap, not "nan"
+                    if v != v:  # NaN - honest gap, not "nan"
                         cells.append("–")
                     else:
                         cells.append(str(int(v)) if "count" in col else f"{v:.3f}")
@@ -471,7 +471,7 @@ def configure_output(level: str, *, json_mode: bool = False, reporter: "Reporter
     Call this *before* importing spikeinterface so the env vars and the tqdm
     patch are in place before OpenMP/Numba/the sorters initialise. ``show_bars``
     is True only for ``verbose``; ``normal``/``quiet`` keep the high-level step
-    messages but draw no progress bars. Warnings are muted at every level — they
+    messages but draw no progress bars. Warnings are muted at every level - they
     are clutter that breaks up the clean formatting, not the verbose signal.
 
     When ``json_mode`` the aligned-tqdm patch is installed even with bars off, so
@@ -480,7 +480,7 @@ def configure_output(level: str, *, json_mode: bool = False, reporter: "Reporter
     """
     global _REPORTER
     _REPORTER = reporter
-    # UTF-8 stdout/stderr first, before rich/tqdm/SI build any console — so the
+    # UTF-8 stdout/stderr first, before rich/tqdm/SI build any console - so the
     # ✓ / → / … glyphs below never raise UnicodeEncodeError on a legacy Windows
     # console code page (cp1252/cp437) when output is redirected or piped. Then
     # mute OpenMP/Numba/probe/resource-tracker noise before the heavy imports.
@@ -502,7 +502,7 @@ def _robust_rmtree(path: Path, attempts: int = 5, delay: float = 0.5) -> None:
     SpikeInterface writes ``sorting``/``analyzer`` as memory-mapped binary
     folders. On Windows a just-closed ``spikeinterface-gui``/ephyviewer can leave
     a lagging handle, so deleting the folder to overwrite it raises
-    ``PermissionError`` (WinError 32) — POSIX unlinks an open file silently, so
+    ``PermissionError`` (WinError 32) - POSIX unlinks an open file silently, so
     this only bites on Windows. Retry with a gc sweep + short backoff; re-raise
     if the lock never clears.
     """
@@ -524,7 +524,7 @@ def _robust_rmtree(path: Path, attempts: int = 5, delay: float = 0.5) -> None:
 # Without these precomputed, those inspector panels open blank. They are cheap on
 # this dataset (~5 s on the full 132 s recording) so we compute them at sort time.
 _CURATION_EXTENSIONS = [
-    "unit_locations",        # probe / unit-position view (placeholder geometry — see caveat)
+    "unit_locations",        # probe / unit-position view (placeholder geometry - see caveat)
     "correlograms",
     "isi_histograms",
     "spike_locations",
@@ -535,7 +535,7 @@ _CURATION_EXTENSIONS = [
 # amplitude_median need spike_amplitudes; the PCA metrics (mahalanobis -> isolation
 # distance + L-ratio, d_prime, nearest_neighbor) need principal_components. Each is
 # still best-effort: a failure drops only its dependent metrics, never the metrics
-# phase — thin metrics beat no metrics.
+# phase - thin metrics beat no metrics.
 _METRIC_DEP_EXTENSIONS = [
     "spike_amplitudes",
     "principal_components",
@@ -545,14 +545,14 @@ _METRIC_DEP_EXTENSIONS = [
 def _ext_compute(analyzer, ext: str):
     """Return a 0-arg closure that computes one analyzer extension by name.
 
-    A named function (not an inline lambda) so the captured ``ext`` binds eagerly —
+    A named function (not an inline lambda) so the captured ``ext`` binds eagerly -
     avoids the classic late-binding-loop bug when building a list of these.
     """
     return lambda: analyzer.compute(ext)
 
 
 def _write_run_info(out: Path, args, **fields) -> None:
-    """Write the run's ``run_info.json`` — the record that makes it regenerable.
+    """Write the run's ``run_info.json`` - the record that makes it regenerable.
 
     It carries the sorter, the effective vs total window, the whole preprocessing
     chain, the channels actually sorted and the unit count (so a short
@@ -584,7 +584,7 @@ def _write_run_info(out: Path, args, **fields) -> None:
 
 
 def _repo_relative(path: Path) -> str:
-    """``outputs/tdc2/runs/<id>`` — POSIX and repo-relative, so a record read on
+    """``outputs/tdc2/runs/<id>`` - POSIX and repo-relative, so a record read on
     another machine still names the run. Absolute when it lives outside the repo."""
     try:
         return path.resolve().relative_to(bio.REPO_ROOT.resolve()).as_posix()
@@ -601,7 +601,7 @@ def _recording_base(data_dir) -> "str | None":
 
 
 def _note_current_run(sorter: str, run_id: "str | None", ui: "ConsoleUI") -> None:
-    """Say which run is current before this one starts — nothing is overwritten.
+    """Say which run is current before this one starts - nothing is overwritten.
 
     Runs land in their own directory now, so the old "overwriting a previous
     sort" warning has no subject. What a user still needs to know is which run
@@ -617,26 +617,26 @@ def _note_current_run(sorter: str, run_id: "str | None", ui: "ConsoleUI") -> Non
     eff = info.get("effective_seconds")
     span = f"{eff:.0f}s" if isinstance(eff, (int, float)) else "?s"
     ui.detail(f"current {sorter} sort: {found['id']} ({info.get('n_units', '?')} units over "
-              f"{span}, sorted {info.get('created', '?')}) — kept; this run saves as {run_id}")
+              f"{span}, sorted {info.get('created', '?')}) - kept; this run saves as {run_id}")
 
 
 def _friendly_sort_error(exc: Exception, use_docker: bool = False) -> str:
     """Turn a sort failure into a one-line, actionable message (no traceback)."""
     text = str(exc)
     # Decide "Docker is down" by asking the daemon, not by string-matching the
-    # message — the old substring check mislabelled unrelated failures (e.g. a
+    # message - the old substring check mislabelled unrelated failures (e.g. a
     # missing SDK or a sorter crash that merely mentions "docker") as a dead daemon.
     if use_docker and not sorters.docker_available(refresh=True):
-        return "Docker isn't running — open Docker Desktop and try again."
+        return "Docker isn't running - open Docker Desktop and try again."
     if use_docker:
-        return ("Docker sort failed — the sorter's container image may be "
+        return ("Docker sort failed - the sorter's container image may be "
                 f"incompatible, or still downloading. Details:\n{text}")
     return f"Sorting failed: {text}"
 
 
 def _quality_summary(qm) -> "tuple[int, int | None, str]":
     """Rule-of-thumb count of units passing the quality rule (W1: the rule has ONE
-    owner, sort_summary — configurable via .si_menu.json `quality_rule`, NaN-honest).
+    owner, sort_summary - configurable via .si_menu.json `quality_rule`, NaN-honest).
 
     Returns ``(n_total, n_pass, rule_text)``; ``n_pass`` is None when nothing was
     evaluable. A sanity signal to orient a newcomer, NOT a substitute for curation.
@@ -656,7 +656,7 @@ def _prepare_docker_image(ui: "ConsoleUI", sorter: str) -> None:
     """Pre-download the sorter's Docker image with a live progress bar.
 
     Otherwise the first containerised run fetches ~1-2 GB behind a single terse
-    'pulling image' line and a long silent gap — so it looks hung. Pulling it
+    'pulling image' line and a long silent gap - so it looks hung. Pulling it
     ourselves first turns that into a real progress bar (bytes + % + elapsed).
     Best-effort: on any hiccup we fall back to letting SpikeInterface pull it.
     """
@@ -664,10 +664,10 @@ def _prepare_docker_image(ui: "ConsoleUI", sorter: str) -> None:
     if not image:
         return
     if sorters.docker_image_present(image):
-        ui.detail(f"Docker image already downloaded ({image}) — using the cached copy.")
+        ui.detail(f"Docker image already downloaded ({image}) - using the cached copy.")
         return
     ui.detail(f"Downloading the {sorter} Docker image: {image}")
-    ui.detail("One-time ~1–2 GB download — this can take a few minutes.")
+    ui.detail("One-time ~1–2 GB download - this can take a few minutes.")
     console = getattr(ui, "_c", None)
     if console is None or ui.quiet:
         ok = sorters.pull_docker_image(image)        # no bar (rich missing / quiet)
@@ -685,7 +685,7 @@ def _prepare_docker_image(ui: "ConsoleUI", sorter: str) -> None:
             task = prog.add_task("downloading", total=None)
 
             def on_progress(done, total, is_bytes=True):
-                # is_bytes=False means (done,total) are layer counts (cached pull) —
+                # is_bytes=False means (done,total) are layer counts (cached pull) -
                 # drop the byte-oriented total so DownloadColumn doesn't show "3 B".
                 prog.update(task, completed=done,
                             total=(total or None) if is_bytes else None)
@@ -697,11 +697,11 @@ def _prepare_docker_image(ui: "ConsoleUI", sorter: str) -> None:
     if ok:
         ui.result("✓ image downloaded")
     else:
-        ui.detail("Couldn't pre-download with a progress bar — "
+        ui.detail("Couldn't pre-download with a progress bar - "
                   "SpikeInterface will fetch the image during the run.")
 
 
-# A line that is just a tqdm bar (or carriage-return progress spam) — not an
+# A line that is just a tqdm bar (or carriage-return progress spam) - not an
 # informative sorter print worth mirroring as a 'detail' event. tqdm bars carry a
 # "%|" gauge or an "it/s]" rate tail; lone carriage returns are redraw spam.
 _TQDM_LINE = re.compile(r"%\||it/s\]|\d+\.\d+s/it\]")
@@ -726,7 +726,7 @@ class _StdoutTee:
     Instead we point fd 1 at an ``os.pipe()`` and run a daemon reader thread that,
     for every line, (a) echoes it to the **real stderr** (so the human terminal is
     unchanged) and (b) emits an informative, non-tqdm line as a ``detail`` event via
-    ``reporter`` — so the UI sees the sorter's progress prints live. tqdm bars still
+    ``reporter`` - so the UI sees the sorter's progress prints live. tqdm bars still
     go to fd 2 (the real stderr) untouched; the event channel stays pure JSON.
 
     A no-op (``enabled=False``) outside JSON mode, so plain-CLI behaviour is
@@ -818,7 +818,7 @@ class _Heartbeat:
     def _run(self) -> None:
         while not self._stop.wait(self.every):
             el = int(time.monotonic() - self._t0)
-            self.ui.detail(f"… {self.label} — still working ({el // 60}m{el % 60:02d}s elapsed)")
+            self.ui.detail(f"… {self.label} - still working ({el // 60}m{el % 60:02d}s elapsed)")
             if self.reporter is not None:
                 self.reporter.heartbeat(self.label, el)
 
@@ -840,7 +840,7 @@ def resolve_sorter(name: str, use_docker: bool) -> str:
     st = sorters.status(name)
     reason = {
         "gpu": "needs an NVIDIA GPU (not available here)",
-        "docker": "is a container sorter — re-run with --docker (and start Docker)",
+        "docker": "is a container sorter - re-run with --docker (and start Docker)",
         "unavailable": "is not installed and has no usable container image",
         "local": "is installed",  # unreachable (would be in runnable)
     }.get(st, "is not available")
@@ -869,18 +869,18 @@ def resolve_probe(name, probe_file):
 # 'mad' is the default for this rig's 16-contact, 100 µm probe, chosen on the
 # evidence rather than on SpikeInterface's default. Measured on
 # PFCM7_d0ephys_Block2 (300–6000 Hz, pre-CMR) the per-channel MAD spread is
-# 0.75–1.6x the median — that spread is real spiking, not noise — so the 5x
+# 0.75–1.6x the median - that spread is real spiking, not noise - so the 5x
 # threshold has ~3x headroom and flags no live electrode, while a planted 60 µV
 # noise channel reads 6.7x and a planted in-band oscillation 31x.
 # 'coherence+psd' (SpikeInterface's default) is IBL-tuned for dense arrays: on
 # this geometry it missed that planted noise channel and labelled a live
-# low-amplitude electrode 'dead'. 'neighborhood_r2' cannot work here at all — its
+# low-amplitude electrode 'dead'. 'neighborhood_r2' cannot work here at all - its
 # 30 µm neighbour radius is below the 100 µm pitch, so every channel has zero
 # neighbours and nothing can ever be flagged.
 #
 # What 'mad' costs: it is one-sided on HIGH deviation, so it cannot see a dead or
 # flat electrode. That is the failure mode that matters least to a *median*
-# reference — a flat channel barely moves the median, a loud one drags it — and
+# reference - a flat channel barely moves the median, a loud one drags it - and
 # --bad-channel-method coherence+psd is there when dead-channel detection is what
 # you want instead.
 BAD_CHANNEL_METHODS = ("mad", "std", "coherence+psd", "neighborhood_r2")
@@ -931,7 +931,7 @@ def check_manual_channels(manual, pool, all_ids) -> "str | None":
     """Validate ``--bad-channels`` ids; returns an error message, or None if they fit.
 
     Two different mistakes deserve two different messages: an id the recording simply
-    does not have, and — under ``--keep-analog`` — an id that IS present but is a
+    does not have, and - under ``--keep-analog`` - an id that IS present but is a
     non-neural aux input rather than an electrode. Telling someone their channel
     "doesn't exist" when it plainly does sends them hunting the wrong problem.
     """
@@ -945,7 +945,7 @@ def check_manual_channels(manual, pool, all_ids) -> "str | None":
     aux = [c for c in manual if c not in pool]
     if aux:
         return (f"--bad-channels names non-neural aux channel(s): {', '.join(aux)}. "
-                "Those are not electrodes, so they are never in the common reference — "
+                "Those are not electrodes, so they are never in the common reference - "
                 f"they are dropped by default (see --keep-analog). "
                 f"Electrodes here: {', '.join(pool)}.")
     return None
@@ -953,7 +953,7 @@ def check_manual_channels(manual, pool, all_ids) -> "str | None":
 
 def plan_bad_channels(channel_ids, detected, manual, *,
                       max_fraction: float = BAD_CHANNEL_MAX_FRACTION) -> "tuple[list, dict]":
-    """Decide which channels actually leave the recording. Pure — no SpikeInterface.
+    """Decide which channels actually leave the recording. Pure - no SpikeInterface.
 
     Returns ``(excluded, plan)``; ``plan`` is the provenance record that lands in
     run_info.json. Auto-detected channels are refused **wholesale** once they
@@ -1021,7 +1021,7 @@ def resolve_overrides(sorter: str, param_kv: list[str], params_file: "str | None
 def print_sorter_table() -> None:
     """Print the availability of every SpikeInterface sorter, then return."""
     rows = sorters.status_table()
-    label = {"local": "local", "docker": "docker", "gpu": "GPU-only", "unavailable": "—"}
+    label = {"local": "local", "docker": "docker", "gpu": "GPU-only", "unavailable": "-"}
     print("Sorters known to SpikeInterface (status on this machine):\n")
     for r in rows:
         print(f"  {r['name']:18} {label.get(r['status'], r['status']):9} "
@@ -1031,7 +1031,7 @@ def print_sorter_table() -> None:
     n_gpu = sum(r["status"] == "gpu" for r in rows)
     print(f"\n{n_local} local · {n_dock} container-capable · {n_gpu} GPU-only.")
     if not sorters.docker_available():
-        print("(Docker not detected — container sorters need Docker running.)")
+        print("(Docker not detected - container sorters need Docker running.)")
 
 
 def main() -> int:
@@ -1070,12 +1070,12 @@ def main() -> int:
     parser.add_argument(
         "--keep-analog",
         action="store_true",
-        help="Keep non-neural 'analog N' aux channels in the sort (default: drop them — "
+        help="Keep non-neural 'analog N' aux channels in the sort (default: drop them - "
         "they pollute the common reference and can produce spurious units).",
     )
     parser.add_argument(
         "--bad-channel-method", choices=BAD_CHANNEL_METHODS, default=DEFAULT_BAD_CHANNEL_METHOD,
-        help=f"How to detect bad electrodes (default: {DEFAULT_BAD_CHANNEL_METHOD} — see the "
+        help=f"How to detect bad electrodes (default: {DEFAULT_BAD_CHANNEL_METHOD} - see the "
         "module docstring for why on this probe).",
     )
     parser.add_argument(
@@ -1099,12 +1099,12 @@ def main() -> int:
     parser.add_argument(
         "--progress", choices=["plain", "json"], default="plain",
         help="plain CLI output (default) or newline-delimited JSON events on stdout "
-        "(human/rich output then goes to stderr) — used by the in-UI sort screen.",
+        "(human/rich output then goes to stderr) - used by the in-UI sort screen.",
     )
     args = parser.parse_args()
 
-    # Validate args up front — before the heavy SpikeInterface import and the
-    # 174 MB broadband read — so a typo fails in milliseconds, not minutes.
+    # Validate args up front - before the heavy SpikeInterface import and the
+    # 174 MB broadband read - so a typo fails in milliseconds, not minutes.
     if args.freq_min >= args.freq_max:
         parser.error(f"--freq-min ({args.freq_min:g}) must be below --freq-max ({args.freq_max:g})")
     if args.duration is not None and args.duration <= 0:
@@ -1133,7 +1133,7 @@ def main() -> int:
     # In JSON mode stdout must be a *pure* event channel, but sorters/libraries
     # write status lines straight to stdout (fd 1, bypassing sys.stdout). So we
     # dup the real stdout aside for the Reporter to emit events on, then point
-    # fd 1 (and sys.stdout) at stderr for the rest of the run — any other write
+    # fd 1 (and sys.stdout) at stderr for the rest of the run - any other write
     # to stdout then lands on stderr, off the event channel.
     event_stream = sys.stdout
     if json_mode:
@@ -1167,7 +1167,7 @@ def main() -> int:
 
     # Each run gets its own directory in the store, so a re-sort never overwrites
     # the last one. --output-dir stays literal: it writes exactly there and takes
-    # no part in the store (no run id, no pointer) — the hermetic escape hatch.
+    # no part in the store (no run id, no pointer) - the hermetic escape hatch.
     run_id = None if args.output_dir else runs.new_run_id()
     out = (Path(args.output_dir) if args.output_dir
            else runs.run_dir(args.sorter, run_id))
@@ -1227,7 +1227,7 @@ def main() -> int:
             return 1
         rec = bio.attach_dummy_probe(rec)
         probe_profile = probes.get(probes.PLACEHOLDER_PROBE)
-        _probe_msg = (f"default probe didn't match this recording ({e}) — using the "
+        _probe_msg = (f"default probe didn't match this recording ({e}) - using the "
                       "independent-channel placeholder; pass --probe to set geometry.")
         ui.warn(_probe_msg)
     if applied:
@@ -1257,7 +1257,7 @@ def main() -> int:
     rep.detail(_band_msg)
     rec = spre.bandpass_filter(rec, freq_min=args.freq_min, freq_max=freq_max)
 
-    # Bad electrodes leave HERE — after the bandpass so detection judges the band
+    # Bad electrodes leave HERE - after the bandpass so detection judges the band
     # the sorter actually sees, and before the reference so an excluded channel is
     # out of the median every other channel is subtracted against. Same ordering
     # argument as the aux drop, same mechanism (bio.select_channels), and SI channel
@@ -1267,7 +1267,7 @@ def main() -> int:
     # so bad-channel selection is scoped to the neural ones either way.
     bad_pool = bio.neural_channel_ids(rec)
     manual_bad = parse_bad_channels(args.bad_channels)
-    # Validate the hand-named ids BEFORE paying for a detection pass — a typo should
+    # Validate the hand-named ids BEFORE paying for a detection pass - a typo should
     # fail in milliseconds, not after a full scan of the recording.
     _manual_err = check_manual_channels(manual_bad, bad_pool, rec.get_channel_ids())
     if _manual_err:
@@ -1296,7 +1296,7 @@ def main() -> int:
         return 1
     if bad_plan["refused_auto"]:
         _bad_msg = (f"bad-channel detection flagged {len(detected)} of {len(bad_pool)} electrodes "
-                    f"({', '.join(detected)}) — more than {BAD_CHANNEL_MAX_FRACTION:.0%} of the "
+                    f"({', '.join(detected)}) - more than {BAD_CHANNEL_MAX_FRACTION:.0%} of the "
                     "array, so NOTHING was auto-excluded. Check the recording, or name the bad "
                     "channels yourself with --bad-channels.")
         ui.warn(_bad_msg)
@@ -1309,7 +1309,7 @@ def main() -> int:
         ui.detail(_bad_msg)
         rep.detail(_bad_msg)
     elif detect_bad and not bad_plan["refused_auto"]:
-        _bad_msg = (f"bad-channel detection ({args.bad_channel_method}): none flagged — "
+        _bad_msg = (f"bad-channel detection ({args.bad_channel_method}): none flagged - "
                     f"all {len(bad_pool)} electrodes kept")
         ui.detail(_bad_msg)
         rep.detail(_bad_msg)
@@ -1331,22 +1331,22 @@ def main() -> int:
     ui.phase(PHASES[2], _sort_sub)
     rep.phase(PHASES[2], _sort_sub)
     if args.docker and not use_container:
-        ui.detail(f"{args.sorter} is installed — running it natively (no Docker needed)")
+        ui.detail(f"{args.sorter} is installed - running it natively (no Docker needed)")
     if overrides:
         ui.detail("overrides: " + ", ".join(f"{k}={v}" for k, v in overrides.items()))
     if use_container:
         try:
             _prepare_docker_image(ui, args.sorter)
         except Exception:  # noqa: BLE001 - pre-pull is best-effort; SI will pull if needed
-            ui.detail("(couldn't pre-download with a progress bar — SpikeInterface "
+            ui.detail("(couldn't pre-download with a progress bar - SpikeInterface "
                       "will fetch the image during the run.)")
         ui.detail("Starting the container and running the sorter. On the first run "
                   "SpikeInterface also installs itself inside the container "
-                  "(1–3 min, little output) — the lines below come from it.")
+                  "(1–3 min, little output) - the lines below come from it.")
     # A heartbeat reassures during long silent stretches: always for Docker (the
     # sort runs out-of-process in the container), for a native sort whenever
     # progress bars are off (normal/quiet), and always in JSON mode (the consumer
-    # gets no tqdm bars for the silent sorter steps, so it needs the pulse) — so a
+    # gets no tqdm bars for the silent sorter steps, so it needs the pulse) - so a
     # multi-minute sort never looks hung.
     if use_container:
         hb = _Heartbeat(ui, f"{args.sorter} in Docker", reporter=rep)
@@ -1393,7 +1393,7 @@ def main() -> int:
     if not args.no_metrics and n_units > 0:
         ui.phase(PHASES[4], "(SortingAnalyzer)")
         rep.phase(PHASES[4], "(SortingAnalyzer)")
-        # In JSON mode tee the analyzer's fd-1 prints into 'detail' events too — the
+        # In JSON mode tee the analyzer's fd-1 prints into 'detail' events too - the
         # ~8 compute sub-steps otherwise run silently on the event channel.
         metrics_tee = _StdoutTee(rep, enabled=rep.enabled)
         # JSON mode only: the consumer gets no tqdm bars for the silent compute
@@ -1410,7 +1410,7 @@ def main() -> int:
                 # sparse=False (dense): SpikeInterface defaults to sparse=True, which keeps
                 # only the channels within ~100 µm of each unit's peak. The placeholder probe
                 # (attach_dummy_probe) spaces channels 250 µm apart so NO channel is within that
-                # radius — sparsity would collapse every unit to its single peak channel and the
+                # radius - sparsity would collapse every unit to its single peak channel and the
                 # spikeinterface-gui inspector could then only ever show one channel per unit.
                 # With this small array (16 ch) dense is cheap and always shows the full layout;
                 # it is the honest choice while geometry is a placeholder, and harmless once a
@@ -1434,7 +1434,7 @@ def main() -> int:
                 n_steps = len(base_steps) + len(dep_steps) + 1 + len(curation_steps)
                 for i, (name, fn) in enumerate(base_steps, start=1):
                     rep.substep(name, i, n_steps)
-                    fn()  # core extension — a failure here is caught below (non-fatal)
+                    fn()  # core extension - a failure here is caught below (non-fatal)
                 deps_ok: set = set()
                 for j, (name, fn) in enumerate(dep_steps, start=len(base_steps) + 1):
                     rep.substep(name, j, n_steps)
@@ -1442,10 +1442,10 @@ def main() -> int:
                         fn()
                         deps_ok.add(name)
                     except Exception as e:  # noqa: BLE001 - drop dependent metrics, keep the rest
-                        ui.detail(f"  skipped {name} ({type(e).__name__}) — its metrics dropped")
+                        ui.detail(f"  skipped {name} ({type(e).__name__}) - its metrics dropped")
                         # Mirror onto the JSON event channel: a menu user must see WHY
                         # the metrics table came back thinner (stderr detail is invisible there).
-                        rep.detail(f"⚠ skipped {name} — its quality metrics dropped")
+                        rep.detail(f"⚠ skipped {name} - its quality metrics dropped")
                 metric_names = ["firing_rate", "snr", "isi_violation", "presence_ratio"]
                 if "spike_amplitudes" in deps_ok:
                     metric_names += ["amplitude_cutoff", "amplitude_median"]
@@ -1477,7 +1477,7 @@ def main() -> int:
             if n_high_quality is not None:
                 unk = f"; {n_unjudged} not judgeable" if n_unjudged else ""
                 ui.result(f"{n_high_quality} of {n_total} units pass the quality rule "
-                          f"({rule_desc}{unk} — a rough signal, not a substitute "
+                          f"({rule_desc}{unk} - a rough signal, not a substitute "
                           "for manual curation)")
             # Array / yield headline summary (the six lab-requested metrics). Its own
             # try/except so a summary hiccup never loses the quality metrics above.
@@ -1496,9 +1496,9 @@ def main() -> int:
             import traceback
             traceback.print_exc()  # full traceback -> stderr (captured to the sort log)
             metrics_note = f"quality metrics failed: {type(e).__name__}: {e}"
-            ui.warn(metrics_note + " — the sort itself is saved; re-run metrics later.")
+            ui.warn(metrics_note + " - the sort itself is saved; re-run metrics later.")
             rep.detail("⚠ " + metrics_note)
-            # The metrics phase DIED — it must not get a phase_done/duration from
+            # The metrics phase DIED - it must not get a phase_done/duration from
             # the later result()/done_ok() close (review 2026-08-18 finding #1).
             rep.abandon_phase()
             # Don't leave half-built / stale derived artifacts that downstream surfaces
@@ -1507,7 +1507,7 @@ def main() -> int:
             for stale in ("quality_metrics.csv", "summary.json", "summary.csv"):
                 (out / stale).unlink(missing_ok=True)
 
-    # The preprocessing chain, in the order it ran — the thing a regeneration has
+    # The preprocessing chain, in the order it ran - the thing a regeneration has
     # to match, and the thing a reader has to be able to check.
     preprocessing = {
         "reference": "global median",
@@ -1555,7 +1555,7 @@ def main() -> int:
                    "total_seconds": round(total_seconds, 3)},
     )
 
-    # The pointer moves LAST, once the run directory is complete — and a smoke run
+    # The pointer moves LAST, once the run directory is complete - and a smoke run
     # never takes it from a full run (runs.set_current pins the incumbent instead).
     if run_id is not None:
         ok, msg = runs.set_current(args.sorter, run_id, force=args.make_current)
@@ -1568,12 +1568,12 @@ def main() -> int:
     # The container-only binary copy of the recording is no longer needed. Cache
     # cleanup must never fail a run whose results are already saved: if a Windows
     # lock outlives the retries (e.g. an Explorer/antivirus handle), leave the
-    # folder — the next Docker sort rebuilds it — and say so instead of raising.
+    # folder - the next Docker sort rebuilds it - and say so instead of raising.
     try:
         _robust_rmtree(out / "recording_for_docker")
     except PermissionError:
         note = (f"couldn't remove the Docker recording cache "
-                f"({out / 'recording_for_docker'}) — a file in it is still open. "
+                f"({out / 'recording_for_docker'}) - a file in it is still open. "
                 "Your sort is saved; delete the folder manually if it lingers.")
         ui.warn(note)
         rep.detail("⚠ " + note)
@@ -1583,13 +1583,13 @@ def main() -> int:
     noise_floor = (summary or {}).get("noise_floor_uV", {}).get("median")
 
     if n_units == 0:
-        # Don't leave a previous run's analyzer/metrics behind — they'd report a
+        # Don't leave a previous run's analyzer/metrics behind - they'd report a
         # stale unit count while the saved sorting says 0 (sidebar/report read them).
         _robust_rmtree(out / "analyzer")
         (out / "quality_metrics.csv").unlink(missing_ok=True)
         (out / "summary.json").unlink(missing_ok=True)
         (out / "summary.csv").unlink(missing_ok=True)
-        ui.warn(f"Saved to {out}, but no units were found — adjust parameters and re-run.")
+        ui.warn(f"Saved to {out}, but no units were found - adjust parameters and re-run.")
         rep.result(units=0, good=0, noise_floor_uV=noise_floor, out=out,
                    effective_seconds=effective_seconds, total_seconds=total_seconds)
         rep.done_ok(units=0, out=out, good=0)
@@ -1602,21 +1602,21 @@ def main() -> int:
                effective_seconds=effective_seconds, total_seconds=total_seconds)
     rep.done_ok(units=n_units, out=out, good=n_high_quality, note=metrics_note)
     if metrics_note:
-        ui.detail("saved: sorting/  (analyzer + quality metrics not written — see the "
+        ui.detail("saved: sorting/  (analyzer + quality metrics not written - see the "
                   "warning above; the units themselves are safe)")
     else:
         ui.detail("saved: sorting/ · analyzer/ · quality_metrics.csv · summary.json")
     ui.detail("next: build a report, open the inspector GUI, or compare sorters "
               "(from the menu, or scripts/make_report.py).")
     if args.duration is not None:
-        ui.detail(f"note: this sorted only the first {args.duration:g}s — "
+        ui.detail(f"note: this sorted only the first {args.duration:g}s - "
                   "re-run without --duration for the full recording.")
     return 0
 
 
 if __name__ == "__main__":
     # Last-resort guard: any exception that escapes main() (outside the sort/metrics
-    # try/excepts — e.g. a bad read, a save error) would otherwise exit non-zero with
+    # try/excepts - e.g. a bad read, a save error) would otherwise exit non-zero with
     # only a traceback on stderr, which the in-UI sort screen discards → the unhelpful
     # "sort exited (1) without finishing". Emit a real error event first (so the modal
     # shows the actual cause) and still print the traceback to stderr for the log.
