@@ -13,7 +13,9 @@ import sys
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
-EM_DASH = "—"
+# The needle stays an escape so this file passes its own scan (it was untracked
+# on its first green run, so `git ls-files` never showed it its own literal).
+EM_DASH = "\u2014"
 
 
 def test_no_em_dash_in_any_tracked_file():
