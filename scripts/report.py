@@ -727,7 +727,13 @@ def _run_stamp(info, analyzer_dir, display_label) -> str:
     window it covers.
     """
     info = info or {}
-    run_id = info.get("run_id") or info.get("curated_from_run")
+    run_id = info.get("run_id")
+    if not run_id:
+        # A curated result names the RAW run it was built from. curated_from is
+        # that run's path; curated_from_run is the anchor DICT — never printable.
+        src = Path(str(info.get("curated_from", "")))
+        if src.parent.name == "runs":
+            run_id = src.name
     if not run_id:
         try:
             run_id = runs.sort_paths(runs.sorter_for_dir(Path(analyzer_dir)))["id"]

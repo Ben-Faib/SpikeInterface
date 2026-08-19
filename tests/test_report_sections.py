@@ -152,3 +152,30 @@ def test_render_summary_says_nothing_extra_when_nothing_was_excluded(tmp_path):
     _write_summary(tmp_path)
     html = report._render_summary(StubAnalyzer(["1", "2", "3", "4"]), tmp_path / "analyzer")
     assert "excluded as bad" not in html
+
+
+def test_run_stamp_on_a_curated_result_names_the_raw_run_not_the_anchor_dict():
+    # A curated run_info has no run_id; it has curated_from (the raw run's PATH)
+    # and curated_from_run (the anchor DICT). The first curated pass through the
+    # strong-units block printed the dict repr in the stamp (clean-pass find).
+    info = {
+        "curated": True,
+        "curated_from": "outputs/tridesclous2/runs/20260819-035117-c7184d",
+        "curated_from_run": {"created": "2026-08-19T03:51:51", "n_units": 16},
+        "created": "2026-08-19T03:54:03",
+        "effective_seconds": 132.0, "total_seconds": 132.0,
+    }
+    stamp = report._run_stamp(info, "outputs/tridesclous2/runs/x/curated/analyzer",
+                              "tridesclous2 · curated")
+    assert "20260819-035117-c7184d" in stamp
+    assert "{" not in stamp and "created" not in stamp
+
+
+def test_run_stamp_on_a_legacy_curated_result_never_prints_the_sorter_as_a_run():
+    # Legacy curated results live at outputs/<sorter>/curated — the path's name
+    # is the sorter, which must not masquerade as a run id.
+    info = {"curated": True, "curated_from": "outputs/tridesclous2",
+            "created": "2026-08-18T20:00:00"}
+    stamp = report._run_stamp(info, "outputs/tridesclous2/curated/analyzer",
+                              "tridesclous2 · curated")
+    assert "run <code>tridesclous2</code>" not in stamp
