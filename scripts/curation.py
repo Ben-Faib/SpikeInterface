@@ -1387,7 +1387,7 @@ def export_phy(sorter: str, root=None, *, raw: bool = False, out_dir=None,
         "exported": _now(),
         "sorter": sorter,
         "curated": curated,
-        "analyzer": str(analyzer_dir),
+        "analyzer": _rel(analyzer_dir, root),
         "n_units": len(analyzer.unit_ids),
         "labels_seeded": n_seeded,
         # The anchor: which raw sort these cluster ids belong to. An import
