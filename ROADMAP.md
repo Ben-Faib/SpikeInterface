@@ -62,7 +62,7 @@ box) runs alongside everything.
 | 7 | D4 flow modals | `goals/GOAL_D_UIUX.md` | **SEALED 2026-08-18** (`f115015`) |
 | 8 | T2/T3 journey + honesty tests | `goals/GOAL_T_TESTING.md` | **SEALED 2026-08-18** (peer, `7e6938d`) |
 | 9 | P2 multi-shank · P3 wiring | `goals/GOAL_P_PROBES.md` | after P1; P3 needs adapter map |
-| 10 | W1 curation (4 slices) | `goals/GOAL_W1_CURATION.md` | after M1; slice 4 after D1 |
+| 10 | W1 curation | `goals/GOAL_W1_CURATION.md` | **slice 1 SEALED 2026-08-18** (rule owner); slices 2-4 (curation loop, Phy, triage) READY — Ben chose this path |
 | 11 | W2 reproducibility | `goals/GOAL_W2_REPRO.md` | after/with late W1 |
 | 12 | W3 face | `goals/GOAL_W3_FACE.md` | gated: Ben's pick, after D track |
 | 13 | W4 multi-recording | `goals/GOAL_W4_MULTI.md` | gated: W1+W2+lab data |

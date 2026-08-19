@@ -49,6 +49,21 @@ A need left only in a chat summary is a need Ben never sees.*
 
 ## The ledger (newest first)
 
+**2026-08-18 — W1 slice 1: the quality rule, owned and honest (+ Option A adjudicated)**
+- Did: replaced the hardcoded SNR≥5 headline with a configurable, NaN-honest,
+  provenance-recorded quality rule owned by sort_summary and stated verbatim on every
+  surface that shows the count, with its review's seven findings folded (including the
+  result card claiming the old rule over new-rule numbers).
+- Means: the "N look high-quality" signal is now defensible and tunable
+  (.si_menu.json quality_rule), and "couldn't judge" can never masquerade as "failed".
+- Moved: Ben chose the curation path; Option A self-resolved — spykingcircus2 smears
+  units across channels on this data, so tridesclous2 + curation is confirmed; the
+  manual .nev export is the validation reference for slice 2.
+- Needs Ben: nothing — slice 2 (the curation loop: save merge/split/label decisions,
+  apply, re-score) is next and is a full-session build.
+- Next: W1 slice 2 in a fresh session from the board; the run's 17 seals stand.
+
+
 **2026-08-18 — D5 + C2: the actions-first screen, and the manual sort answered (`63fe05c`, `4ffcfda`)**
 - Did: rebuilt the main screen to Ben's late directive (actions primary, sorter list
   behind a filtering t-picker, RESULTS section, MANAGE line) with its review's two
