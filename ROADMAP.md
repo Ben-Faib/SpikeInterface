@@ -68,6 +68,7 @@ box) runs alongside everything.
 | 13 | W4 multi-recording | `goals/GOAL_W4_MULTI.md` | gated: W1+W2+lab data |
 | — | WD lab deployment items 1–4 | `goals/GOAL_WD_DEPLOY.md` | gated: lab-box access |
 | B1 | BUG: bare `report` action crashes | prompt below | **SEALED 2026-08-18** (peer, `b43869e`) |
+| E1 | Explore overhaul: same-clock view + honest labels (Ben flag, 2026-08-19) | **SEALED** — and it surfaced: **channel 1 is pathological** (pure oscillation, inside the CMR) → first target for the queued bad-channel/preprocessing slice | **SEALED 2026-08-19** |
 | C1 | NEV online-vs-sorted comparison (Ben, 2026-08-18 eve) | engine **SEALED** (`39ca919`) — FINDING: the original .nev has ZERO online-sorted units | **SEALED** |
 | C2 | Manual-sort comparison (`--nev`/`--delta-ms`, containment column) | **SEALED** (`4ffcfda`) — all 7 manual units 97-100% contained in tdc2's merges; ~0.6 ms crossing-vs-peak offset measured | **SEALED 2026-08-18** |
 | D5 | Actions-first main screen (Ben, 2026-08-18 late) | NORTHSTAR decision of record | **SEALED 2026-08-18** (`63fe05c`) |
