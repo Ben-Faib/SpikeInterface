@@ -221,7 +221,10 @@ def test_evidence_section_shows_what_the_advisory_cites(built_report):
     assert "plotly-graph-div" in ev, "the advisory fired but drew no evidence"
     assert "refractory" in ev.lower()
     for unit in advised:
-        assert f"unit {unit} ·" in ev, f"advised unit {unit} has no evidence panel"
+        # Panel titles reach the HTML inside plotly's JSON, where the middot is
+        # escaped - the raw form never appears (review F2), so accept either.
+        assert (f"unit {unit} \\u00b7" in ev or f"unit {unit} ·" in ev), \
+            f"advised unit {unit} has no evidence panel"
 
 
 @pytest.fixture(scope="module")

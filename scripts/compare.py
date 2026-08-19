@@ -187,7 +187,7 @@ def _heatmap(cmp) -> go.Figure:
         # Magnitude wears the one periwinkle ramp (viz_palette, via report's chart
         # theme), so these pages read as the same system as report.html.
         colorscale=report.RAMP_SCALE, zmin=0, zmax=1, colorbar=dict(title="agreement")))
-    fig.update_layout(template=report._TEMPLATE,
+    fig.update_layout(template=report.CHART_TEMPLATE,
                       title="Agreement scores (Hungarian-ordered)",
                       xaxis_title=f"{cmp.sorting2_name} unit",
                       yaxis_title=f"{cmp.sorting1_name} unit",

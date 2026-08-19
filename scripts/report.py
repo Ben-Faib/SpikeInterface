@@ -413,6 +413,9 @@ _TEMPLATE = go.layout.Template(layout=dict(
     hoverlabel=dict(font=dict(family=_FONT, size=12)),
     margin=dict(t=46, b=46, l=58, r=24),
 ))
+# The one shared chart theme, public: the comparison pages apply it too, so the
+# HTML surfaces read as one system (do not reach for the underscore name).
+CHART_TEMPLATE = _TEMPLATE
 
 
 def _style(fig, title=None, height=None, **layout):
@@ -434,8 +437,10 @@ def _unit_dashes(unit_ids) -> dict:
     """{str(unit id): line dash} - the second identity channel for line charts.
 
     Slot 9 reuses slot 1's hue (see UNIT_PALETTE); on a line chart, where colour
-    is what a reader traces, the repeat is carried by the dash instead so two
-    units never draw identically.
+    is what a reader traces, the repeat is carried by the dash instead. That
+    holds hue+dash unique through lap 3 (24 units); past that the last dash
+    clamps and repeats - acceptable only because every line chart here also
+    labels units directly, and 24+ units on one overlay is its own defect.
     """
     return {str(u): _LAP_DASH[min(i // len(UNIT_PALETTE), len(_LAP_DASH) - 1)]
             for i, u in enumerate(unit_ids)}
@@ -1035,7 +1040,7 @@ def _panel_units(rollup, limit=EVIDENCE_MAX_PANELS) -> list:
     picked = [u for u in rollup["units"] if u.get("split_advice")]
     seen = {str(u["unit"]) for u in picked}
     picked += [u for u in rollup["units"] if u["strong"] and str(u["unit"]) not in seen]
-    return picked[:limit]
+    return picked if limit is None else picked[:limit]
 
 
 def _panel_note(rollup) -> str:
@@ -1058,6 +1063,25 @@ def _panel_grid(titles):
         note.font.size = 12.5
         note.font.color = INK["ink"]
     return fig, rows, cols
+
+
+def _finish_panel_axes(fig, n, rows, cols, x_title):
+    """Ghost-cell hygiene for a partly filled grid (review F5).
+
+    make_subplots draws every axis it allocated, so with n not a multiple of
+    cols the empty bottom-row cells render bare axes - and a per-column
+    bottom-row title loop would label those ghosts while the data-bearing cell
+    above went untitled. Hide the unused axes and title each column's
+    bottom-most FILLED cell instead.
+    """
+    for col in range(1, cols + 1):
+        filled = [r for r in range(1, rows + 1) if (r - 1) * cols + col <= n]
+        for r in range(1, rows + 1):
+            if r not in filled:
+                fig.update_xaxes(visible=False, row=r, col=col)
+                fig.update_yaxes(visible=False, row=r, col=col)
+        if filled:
+            fig.update_xaxes(title_text=x_title, row=filled[-1], col=col)
 
 
 def _isi_panels(analyzer, units, qrows, refractory_ms):
@@ -1092,8 +1116,7 @@ def _isi_panels(analyzer, units, qrows, refractory_ms):
                                                  width=1.2, dash="dash"),
                       row=row, col=col)
     fig.update_xaxes(range=[0.0, ISI_WINDOW_MS], showgrid=False)
-    for col in range(1, cols + 1):
-        fig.update_xaxes(title_text="interval (ms)", row=rows, col=col)
+    _finish_panel_axes(fig, len(units), rows, cols, "interval (ms)")
     for row in range(1, rows + 1):
         fig.update_yaxes(title_text="spike pairs", row=row, col=1)
     return _style(fig, title=(f"Inter-spike intervals · {_plural(len(units), 'unit')} · "
@@ -1107,22 +1130,29 @@ def _amplitude_panels(analyzer, units, amps_by_unit, bimodality, amp_unit):
     for u in units:
         score = bimodality.get(str(u["unit"]))
         titles.append(f'unit {u["unit"]} · ch {u["contact"]}'
-                      + (f" · bimodality {float(score):.2f}" if score is not None else ""))
+                      + (f" · bimodality {float(score):.3f}" if score is not None else ""))
     fig, rows, cols = _panel_grid(titles)
     for i, u in enumerate(units):
         row, col = i // cols + 1, i % cols + 1
         amps = amps_by_unit.get(str(u["unit"]))
         if amps is None:
+            # A titled-but-blank cell would read as a render failure (F7): say
+            # what the gap IS instead.
+            fig.add_annotation(text="no amplitudes saved for this unit",
+                               xref="x domain", yref="y domain", x=0.5, y=0.5,
+                               row=row, col=col, showarrow=False,
+                               font=dict(size=11, color=INK["ink_muted"]))
             continue
         # Already in the recording's amplitude unit: the analyzer returns µV, and
         # re-applying the gain here is the double-scaling trap (CLAUDE.md).
         fig.add_trace(go.Histogram(x=np.asarray(amps, dtype=float), nbinsx=AMP_BINS,
                                    marker_color=MARK, marker_line_width=0,
                                    name=f'unit {u["unit"]}',
-                                   hovertemplate="%{x:.1f}<br>%{y} spikes<extra></extra>"),
+                                   hovertemplate=("unit " + str(u["unit"])
+                                                  + "<br>%{x:.1f} " + amp_unit
+                                                  + "<br>%{y} spikes<extra></extra>")),
                       row=row, col=col)
-    for col in range(1, cols + 1):
-        fig.update_xaxes(title_text=f"amplitude ({amp_unit})", row=rows, col=col)
+    _finish_panel_axes(fig, len(units), rows, cols, f"amplitude ({amp_unit})")
     for row in range(1, rows + 1):
         fig.update_yaxes(title_text="spikes", row=row, col=1)
     return _style(fig, title=f"Spike-amplitude distribution · {_plural(len(units), 'unit')}",
@@ -1138,16 +1168,28 @@ def _advisory_map(rollup, qrows):
     """
     isi_line = sort_summary.split_isi_threshold(rollup["rule"])
     floor = sort_summary.SPLIT_MIN_SPIKES
+
+    def _num(v):
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return None
+        return f if f == f else None
+
     series, dropped = {True: [], False: []}, []
     for u in rollup["units"]:
-        ratio = (qrows.get(str(u["unit"])) or {}).get("isi_violations_ratio")
-        try:
-            ratio, spikes = float(ratio), float(u["n_spikes"])
-        except (TypeError, ValueError):
-            dropped.append(str(u["unit"]))
+        ratio = _num((qrows.get(str(u["unit"])) or {}).get("isi_violations_ratio"))
+        spikes = _num(u["n_spikes"])
+        if ratio is None or spikes is None:
+            # Unknown is a different fact from zero: the caption must not claim
+            # "zero violations" for a unit whose ratio was never measured (F3).
+            dropped.append({"unit": str(u["unit"]), "why": "unmeasured",
+                            "n_spikes": spikes})
             continue
         if not (ratio > 0 and spikes > 0):
-            dropped.append(str(u["unit"]))
+            dropped.append({"unit": str(u["unit"]),
+                            "why": "zero" if ratio <= 0 and spikes > 0 else "unmeasured",
+                            "n_spikes": spikes})
             continue
         series[bool(u.get("split_advice"))].append((spikes, ratio, str(u["unit"])))
     fig = go.Figure()
@@ -1165,17 +1207,19 @@ def _advisory_map(rollup, qrows):
                           "ISI ratio %{y:.2f}<extra></extra>"))
     line = dict(color=INK["baseline"], width=1, dash="dot")
     note = dict(size=11, color=INK["ink_secondary"])
-    fig.add_hline(y=isi_line, line=line, annotation_text=f"ISI ratio {isi_line:g}",
-                  annotation_position="top left", annotation_font=note)
+    fig.add_hline(y=isi_line, line=line)
     fig.add_vline(x=floor, line=line)
-    # The label is added separately, in LOG space: on a log axis plotly.js converts
-    # a shape's data coordinate but not an annotation's, so a vline's own
-    # annotation_text silently lands at 10**floor and never renders (verified on
-    # the pinned plotly<6). The horizontal line's label needs no such care - it
-    # rides "x domain".
+    # BOTH labels are added separately, in LOG space: on a log axis plotly.js
+    # converts a shape's data coordinate but not an annotation's, so a line's own
+    # annotation_text silently lands at 10**value (verified on the pinned
+    # plotly<6) - the hline's y is "yref: y" and needs the same care as the
+    # vline's x (review F1: the ISI label rendered a decade above its line).
     fig.add_annotation(x=float(np.log10(floor)), y=0.02, xref="x", yref="y domain",
                        text=f"{floor:,} spikes", showarrow=False, font=note,
                        xanchor="left", yanchor="bottom")
+    fig.add_annotation(x=0.02, xref="x domain", y=float(np.log10(isi_line)),
+                       yref="y", text=f"ISI ratio {isi_line:g}", showarrow=False,
+                       font=note, xanchor="left", yanchor="bottom")
     _style(fig, title="Why these units: both gates, every unit", height=430,
            xaxis_title="spikes in this unit", yaxis_title="ISI violations ratio",
            # Decades only: log minor labels turn the axis into a wall of digits.
@@ -1226,10 +1270,28 @@ def _render_evidence(analyzer, roll) -> str:
                'divides by the spike count squared, so a 30-spike unit with three '
                'violations outscores a real merge many times over.')
     if dropped:
-        caption += (f' {len(dropped)} unit(s) are not on this chart ('
-                    + html.escape(", ".join(dropped))
-                    + '): a log axis has no place for a unit with zero ISI '
-                    'violations, and none of them clears the spike floor either.')
+        # Every clause is derived from the dropped units themselves (F3): the
+        # zero-violation case and the never-measured case are different facts,
+        # and a high-count unit with zero violations is the IDEAL unit, not a
+        # hidden failure.
+        ids = html.escape(", ".join(d["unit"] for d in dropped))
+        n_zero = sum(1 for d in dropped if d["why"] == "zero")
+        n_unmeasured = len(dropped) - n_zero
+        parts = []
+        if n_zero:
+            parts.append(f'{n_zero} of them fired zero ISI violations, which a log '
+                         'axis has no place for')
+        if n_unmeasured:
+            parts.append(f'{n_unmeasured} have no measured ISI ratio at all')
+        over = sum(1 for d in dropped
+                   if d["n_spikes"] is not None
+                   and d["n_spikes"] >= sort_summary.SPLIT_MIN_SPIKES)
+        floor_clause = ('none of them clears the spike floor either'
+                        if not over else
+                        f'{over} of them clear(s) the spike floor with zero '
+                        'violations, the ideal case: nothing to advise')
+        caption += (f' {_plural(len(dropped), "unit")} are not on this chart ({ids}): '
+                    + "; ".join(parts) + f'; {floor_clause}.')
     body += _figure(fig, "Scatter of ISI violations ratio against spike count for every "
                          "unit, on log axes, with the advisory's ISI line and spike floor "
                          "drawn; advised units are highlighted.")
@@ -1242,9 +1304,19 @@ def _render_evidence(analyzer, roll) -> str:
                        'called strong, so there is no per-unit panel to draw. The '
                        'chart above still places every unit against both gates.</p>')
 
-    n_more = rollup["n_split_candidates"] + rollup["n_strong"] - len(units)
-    more = (f' The remaining {n_more} stay in the tables above rather than doubling '
-            'the chart count.' if n_more > 0 else "")
+    # The full evidence set is the DEDUPED advised-union-strong in the same
+    # selection order as the capped list; counting the two rollup tallies
+    # overstated the remainder where a unit is both (F4).
+    full = _panel_units(rollup, limit=None)
+    cut = full[len(units):]
+    n_cut_advised = sum(1 for u in cut if u.get("split_advice"))
+    more = ""
+    if cut:
+        adv_clause = (f", including {_plural(n_cut_advised, 'ADVISED unit')} "
+                      "(their evidence is in the tables, not drawn)"
+                      if n_cut_advised else "")
+        more = (f' The remaining {len(cut)}{adv_clause} stay in the tables above '
+                'rather than doubling the chart count.')
     body += ('<h3>Impossible intervals, unit by unit</h3>'
              + _figure(_isi_panels(analyzer, units, qrows, refractory),
                        f"Small-multiples grid of inter-spike-interval histograms for "
@@ -1270,7 +1342,7 @@ def _render_evidence(analyzer, roll) -> str:
                        f"Small-multiples grid of spike-amplitude histograms for "
                        f"{len(units)} units, amplitude in {amp_unit}.")
              + '<p class="note">Two cells under one label often leave two humps here. '
-               f'The score is the bimodality coefficient; {sort_summary.SPLIT_BIMODALITY_MIN:.2f} '
+               f'The score is the bimodality coefficient; {sort_summary.SPLIT_BIMODALITY_MIN:.3f} '
                'is what a flat distribution scores, so above it a sample is more '
                'two-humped than flat and the advisory says so. Below it means '
                'nothing either way: two similar cells merge into one hump, which is '
