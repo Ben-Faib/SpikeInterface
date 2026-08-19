@@ -29,12 +29,18 @@ error at sort time: ``run_sorting.py --probe <name>`` refuses a count mismatch).
 Wiring: a full-permutation ``device_channel_indices`` in the file is preserved
 and applied; absent wiring means the identity mapping (contact i ↔ channel i);
 partial wiring (unconnected ``-1`` contacts) is refused until P3's wiring
-surfaces land. Multi-probe files (ProbeGroups) are refused until P2.
+surfaces land. Multi-shank (P2): a probe with shank ids, or a multi-probe
+ProbeGroup (probes = shanks), imports as ONE profile — shank labels and
+per-shank pitch/density are materialised alongside the global geometry, and a
+group's wiring must be one permutation across all its contacts. Density
+classing stays physical: the global min contact distance sets the sorter-fit
+class (proximity shares waveforms whatever the shank label); per-shank classes
+are carried for display.
 
-Known limits (on record for P2/P3): ``run_sorting.py --probe-file`` (the
-one-off ``file`` kind) still applies identity wiring unconditionally — use the
-import CLI for a probe that carries wiring. Imported geometry is density-classed
-by min contact pitch only, so a tetrode-style import ranks as a dense array
+Known limits (on record for P3): ``run_sorting.py --probe-file`` (the one-off
+``file`` kind) still applies identity wiring unconditionally — use the import
+CLI for a probe that carries wiring. Imported geometry is density-classed by
+min contact pitch only, so a tetrode-style import ranks as a dense array
 rather than tetrodes (soft re-rank only; it never blocks a sort).
 """
 from __future__ import annotations
@@ -166,16 +172,26 @@ def save_profile(profile, path=PROBES_PATH) -> None:
     # surface) must not strip it — carry the stored geometry (and provenance note)
     # forward, and refuse outright when there is nothing to carry (a rename that
     # orphans the geometry must fail loud, not save a broken probe).
-    if rec["kind"] == "imported" and not rec["params"].get("positions"):
+    if rec["kind"] == "imported":
         prev = next((p for p in store["profiles"] if p.get("name") == rec["name"]), None)
         prev_params = (prev or {}).get("params", {})
-        if not prev_params.get("positions"):
-            raise ValueError(
-                f"Refusing to save imported probe '{rec['name']}' without its geometry — "
-                "re-import it from the source file instead (probes.py import).")
-        rec["params"] = {**prev_params, **rec["params"]}
-        if not rec["note"]:
-            rec["note"] = (prev or {}).get("note", "")
+        if not rec["params"].get("positions"):
+            if not prev_params.get("positions"):
+                raise ValueError(
+                    f"Refusing to save imported probe '{rec['name']}' without its geometry "
+                    "— re-import it from the source file instead (probes.py import).")
+            rec["params"] = {**prev_params, **rec["params"]}
+            if not rec["note"]:
+                rec["note"] = (prev or {}).get("note", "")
+        elif prev_params:
+            # An upsert that carries positions but omits other materialised keys
+            # must not silently strip them — wiring reverting to identity would be
+            # a silent scientific failure. (A wiring carried onto CHANGED positions
+            # fails loudly at build if lengths mismatch — never silently.)
+            for key in ("min_pitch_um", "layout", "radius_um", "source", "format",
+                        "shank_ids", "per_shank", "device_channel_indices"):
+                if key not in rec["params"] and key in prev_params:
+                    rec["params"][key] = prev_params[key]
     profiles = [p for p in store["profiles"] if p.get("name") != rec["name"]]
     profiles.append(rec)
     store["profiles"] = profiles
@@ -219,11 +235,12 @@ def import_probe_file(src, name=None, label=None, path=PROBES_PATH) -> dict:
 
     Reads ``src`` (probeinterface ``.json``, or ``.prb``) once and materialises
     the geometry into a self-contained ``imported`` profile: contact positions,
-    min pitch, layout class, contact radius, and — when the file carries a full
-    permutation — the channel wiring. Saves to ``path`` and returns the stored
-    profile. Raises ``ValueError`` naming the exact problem on anything
-    unsupported (multi-probe files, 3-D geometry, partial wiring, name
-    collisions, unreadable files); nothing is written on failure.
+    min pitch, layout class, contact radius, shank labels (a multi-probe group
+    imports as ONE profile with probes-as-shanks), and — when the file carries a
+    full permutation — the channel wiring. Saves to ``path`` and returns the
+    stored profile. Raises ``ValueError`` naming the exact problem on anything
+    unsupported (3-D geometry, partial or mixed wiring, name collisions,
+    unreadable files); nothing is written on failure.
     """
     import numpy as np
     import probeinterface as pi
@@ -249,26 +266,45 @@ def import_probe_file(src, name=None, label=None, path=PROBES_PATH) -> dict:
             f"Unsupported probe file type '{src.suffix}' — supported: "
             ".json (probeinterface), .prb")
 
-    n_probes = len(group.probes)
-    if n_probes == 0:
+    if len(group.probes) == 0:
         raise ValueError(f"{src.name} contains no probes.")
-    if n_probes > 1:
-        raise ValueError(
-            f"{src.name} carries {n_probes} probes (a ProbeGroup) — multi-probe import "
-            "lands with multi-shank support (P2); export a single probe for now.")
-    probe = group.probes[0]
-    if getattr(probe, "ndim", 2) != 2:
-        raise ValueError(f"{src.name}: {probe.ndim}-D probe geometry isn't supported (2-D only).")
-    pos = np.asarray(probe.contact_positions, dtype=float)
+    for pr in group.probes:
+        if getattr(pr, "ndim", 2) != 2:
+            raise ValueError(
+                f"{src.name}: {pr.ndim}-D probe geometry isn't supported (2-D only).")
+
+    # Concatenate the group into ONE profile (P2): a multi-probe group's probes
+    # are shanks (or arrays sharing one recording). Shank labels: the probe's own
+    # shank ids for a single probe; per-probe (or probe.shank) labels for a group.
+    pos_parts, shank_labels = [], []
+    for idx, pr in enumerate(group.probes):
+        p_pos = np.asarray(pr.contact_positions, dtype=float)
+        pos_parts.append(p_pos)
+        raw = pr.shank_ids                       # None until a file/probe sets them
+        local = [str(s) for s in raw] if raw is not None else ["0"] * len(p_pos)
+        local_uniq = list(dict.fromkeys(local))
+        if len(group.probes) == 1:
+            shank_labels.extend(local)
+        elif len(local_uniq) <= 1:
+            shank_labels.extend([str(idx)] * len(local))
+        else:  # a multi-shank probe inside a multi-probe group
+            shank_labels.extend(f"{idx}.{s}" for s in local)
+    pos = np.vstack(pos_parts) if pos_parts else np.empty((0, 2))
     n = int(pos.shape[0])
     if n == 0:
         raise ValueError(f"{src.name}: the probe has no contacts.")
+    n_shanks = len(dict.fromkeys(shank_labels))
 
-    # Wiring: honour a full permutation, refuse partial wiring, default identity.
+    # Wiring: honour ONE full permutation across the whole group, refuse partial
+    # or mixed wiring, default identity (in concatenation order).
     wiring = None
-    dci = probe.device_channel_indices
-    if dci is not None:
-        dci = np.asarray(dci)
+    dcis = [pr.device_channel_indices for pr in group.probes]
+    if any(d is not None for d in dcis):
+        if any(d is None for d in dcis):
+            raise ValueError(
+                f"{src.name}: some probes in the group carry device_channel_indices and "
+                "some don't — wire every contact or strip the wiring entirely.")
+        dci = np.concatenate([np.asarray(d) for d in dcis])
         if len(dci) != n:
             raise ValueError(
                 f"{src.name}: device_channel_indices has {len(dci)} entries for {n} contacts.")
@@ -279,28 +315,50 @@ def import_probe_file(src, name=None, label=None, path=PROBES_PATH) -> dict:
                 "contact or strip the wiring from the file.")
         if sorted(int(i) for i in dci) != list(range(n)):
             raise ValueError(
-                f"{src.name}: device_channel_indices isn't a permutation of 0..{n - 1} — "
-                "the contacts can't be mapped to channels honestly. Renumber the wiring "
-                "to 0-based consecutive channels, or strip it to use the identity mapping.")
+                f"{src.name}: device_channel_indices isn't a permutation of 0..{n - 1} "
+                "across the group — the contacts can't be mapped to channels honestly. "
+                "Renumber the wiring to 0-based consecutive channels, or strip it to use "
+                "the identity mapping.")
         if not np.array_equal(dci, np.arange(n)):
             wiring = [int(i) for i in dci]
 
-    if n == 1:
-        min_pitch = None
-    else:
-        d2 = ((pos[:, None, :] - pos[None, :, :]) ** 2).sum(-1)
+    # Density is physics, not labels: the global min pairwise distance is the
+    # honest neighbor-availability measure (two contacts 20 µm apart share
+    # waveforms whatever shank they sit on). Per-shank pitches are materialised
+    # alongside for display ("density classing per shank").
+    def _min_pitch(points) -> "float | None":
+        if len(points) < 2:
+            return None
+        d2 = ((points[:, None, :] - points[None, :, :]) ** 2).sum(-1)
         np.fill_diagonal(d2, np.inf)
-        min_pitch = float(np.sqrt(d2.min()))
-        if min_pitch == 0.0:
-            raise ValueError(f"{src.name}: two contacts share the same position.")
+        return float(np.sqrt(d2.min()))
+
+    min_pitch = _min_pitch(pos)
+    if min_pitch == 0.0:
+        raise ValueError(f"{src.name}: two contacts share the same position.")
+    per_shank = None
+    if n_shanks > 1:
+        per_shank = {}
+        labels_arr = np.asarray(shank_labels)
+        for lab in dict.fromkeys(shank_labels):
+            sh_pos = pos[labels_arr == lab]
+            sh_pitch = _min_pitch(sh_pos)
+            # A one-contact shank has no neighbours: honestly "independent",
+            # not density_class(None)'s neutral "sparse".
+            per_shank[lab] = {"n": int(len(sh_pos)), "min_pitch_um": sh_pitch,
+                              "density_class": (density_class(sh_pitch) if sh_pitch
+                                                else "independent")}
     centered = pos - pos.mean(axis=0)
-    layout = "linear" if n == 1 or np.linalg.matrix_rank(centered, tol=1e-3) < 2 else "grid2d"
+    if n_shanks > 1:
+        layout = "multishank"
+    else:
+        layout = "linear" if n == 1 or np.linalg.matrix_rank(centered, tol=1e-3) < 2 else "grid2d"
 
     radius = 5.0
     try:  # uniform circular contacts keep their real radius; anything else -> default
-        shapes = list(probe.contact_shapes)
-        params = list(probe.contact_shape_params)
-        radii = {float(sp["radius"]) for s, sp in zip(shapes, params) if s == "circle"}
+        shapes = [s for pr in group.probes for s in pr.contact_shapes]
+        sparams = [sp for pr in group.probes for sp in pr.contact_shape_params]
+        radii = {float(sp["radius"]) for s, sp in zip(shapes, sparams) if s == "circle"}
         if len(shapes) == n and all(s == "circle" for s in shapes) and len(radii) == 1:
             radius = radii.pop()
     except Exception:  # noqa: BLE001 - shape metadata is optional
@@ -323,6 +381,9 @@ def import_probe_file(src, name=None, label=None, path=PROBES_PATH) -> dict:
     params_out = {"positions": [[float(x), float(y)] for x, y in pos],
                   "min_pitch_um": min_pitch, "layout": layout, "radius_um": radius,
                   "source": src.name, "format": fmt}
+    if n_shanks > 1:
+        params_out["shank_ids"] = list(shank_labels)
+        params_out["per_shank"] = per_shank
     if wiring:
         params_out["device_channel_indices"] = wiring
     profile = {"name": name,
@@ -412,9 +473,15 @@ def geometry_features(profile) -> dict:
         pitch = p.get("min_pitch_um")
         pitch = float(pitch) if pitch else None
         dc = density_class(pitch)
-        layout = p.get("layout") if p.get("layout") in ("linear", "grid2d") else "unknown"
-        return {"n": contact_count(profile), "layout": layout,
-                "min_pitch_um": pitch, "density_class": dc, "klass": dc}
+        layout = (p.get("layout")
+                  if p.get("layout") in ("linear", "grid2d", "multishank") else "unknown")
+        out = {"n": contact_count(profile), "layout": layout,
+               "min_pitch_um": pitch, "density_class": dc, "klass": dc}
+        shanks = p.get("shank_ids")
+        if shanks:
+            out["n_shanks"] = len(dict.fromkeys(shanks))
+            out["per_shank"] = p.get("per_shank") or {}
+        return out
     # library / file: unknown without building -> neutral sparse class.
     return {"n": None, "layout": "unknown", "min_pitch_um": None,
             "density_class": "sparse", "klass": "sparse"}
@@ -428,13 +495,17 @@ def summary(profile) -> str:
     n = f["n"]
     layout = {"independent": "independent channels", "linear": "linear",
               "grid2d": "2-D grid", "tetrode": "tetrodes",
+              "multishank": "multi-shank",
               "unknown": profile.get("kind", "probe")}[f["layout"]]
     bits = []
     if profile.get("kind") == "independent":
         bits.append("auto-sizes to the recording")
     elif n:
         bits.append(f"{n} contacts")
-    bits.append(layout)
+    if f.get("n_shanks", 1) > 1:
+        bits.append(f"{f['n_shanks']} shanks")   # says multi-shank on its own
+    else:
+        bits.append(layout)
     if f["min_pitch_um"]:
         bits.append(f"{f['min_pitch_um']:g} µm pitch")
     return " · ".join(bits)
@@ -488,7 +559,11 @@ def build(profile, n_channels):
         probe = pi.Probe(ndim=2)
         probe.set_contacts(positions=pos, shapes="circle",
                            shape_params={"radius": float(p.get("radius_um", 5.0))})
-        probe.create_auto_shape("tip")
+        shanks = p.get("shank_ids")
+        if shanks:
+            probe.set_shank_ids(np.asarray([str(s) for s in shanks]))
+        # A tip outline lies about a multi-shank array; a rectangle doesn't.
+        probe.create_auto_shape("rect" if shanks else "tip")
     elif k == "library":
         probe = pi.get_probe(p["manufacturer"], p["model"])
     elif k == "file":

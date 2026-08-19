@@ -140,16 +140,20 @@ def test_non_permutation_wiring_refused(tmp_path):
 # Honest errors
 # --------------------------------------------------------------------------- #
 
-def test_multiprobe_file_refused(tmp_path):
+def test_multiprobe_file_imports_since_p2(tmp_path):
+    # P1 refused ProbeGroups; P2 imports them as one multi-shank profile
+    # (probes = shanks). The refusal contract was retired deliberately.
     import probeinterface as pi
 
     pg = pi.ProbeGroup()
-    for _ in range(2):
-        pg.add_probe(pi.generate_linear_probe(num_elec=4, ypitch=50.0))
+    for k in range(2):
+        p = pi.generate_linear_probe(num_elec=4, ypitch=50.0)
+        p.move([k * 150.0, 0.0])
+        pg.add_probe(p)
     src = tmp_path / "two.json"
     pi.write_probeinterface(src, pg)
-    with pytest.raises(ValueError, match=r"2 probes.*P2"):
-        probes.import_probe_file(src, path=tmp_path / "probes.json")
+    prof = probes.import_probe_file(src, path=tmp_path / "probes.json")
+    assert probes.geometry_features(prof)["n_shanks"] == 2
 
 
 def test_unreadable_and_unsupported_files(tmp_path):
@@ -266,6 +270,167 @@ def test_duplicate_copies_imported_geometry(tmp_path):
     dup = probes.duplicate("orig", "orig-copy", path=store)
     assert probes.contact_count(dup) == 4
     assert probes.build(probes.get("orig-copy", path=store), 4).get_contact_count() == 4
+
+
+# --------------------------------------------------------------------------- #
+# P2 — multi-shank / ProbeGroup
+# --------------------------------------------------------------------------- #
+
+def _write_group_json(path, n_probes=2, n=8, pitch=100.0, spacing=150.0, wiring="global"):
+    """A ProbeGroup file: probes-as-shanks, moved apart on x. wiring: 'global'
+    (one permutation across the group), 'mixed' (only the first probe wired),
+    or None."""
+    import probeinterface as pi
+
+    pg = pi.ProbeGroup()
+    for k in range(n_probes):
+        p = pi.generate_linear_probe(num_elec=n, ypitch=pitch)
+        p.move([k * spacing, 0.0])
+        if wiring == "global" or (wiring == "mixed" and k == 0):
+            p.set_device_channel_indices(list(range(k * n, k * n + n)))
+        pg.add_probe(p)
+    pi.write_probeinterface(path, pg)
+    return path
+
+
+def test_probegroup_imports_as_one_multishank_profile(tmp_path):
+    src = _write_group_json(tmp_path / "group.json")
+    store = tmp_path / "probes.json"
+    prof = probes.import_probe_file(src, path=store)
+    f = probes.geometry_features(prof)
+    assert f["n"] == 16 and f["n_shanks"] == 2 and f["layout"] == "multishank"
+    assert f["min_pitch_um"] == pytest.approx(100.0)
+    assert f["density_class"] == "sparse"
+    assert set(f["per_shank"]) == {"0", "1"}
+    assert f["per_shank"]["0"]["density_class"] == "sparse"
+    assert "2 shanks" in probes.summary(prof)
+    assert probes.contact_count(prof) == 16
+
+
+def test_multishank_build_roundtrip_outlives_source(tmp_path):
+    src = _write_group_json(tmp_path / "gone_group.json")
+    store = tmp_path / "probes.json"
+    prof = probes.import_probe_file(src, path=store)
+    src.unlink()
+    probe = probes.build(probes.get(prof["name"], path=store), 16)
+    assert probe.get_contact_count() == 16
+    assert sorted(set(probe.shank_ids.tolist())) == ["0", "1"]
+    assert sorted(set(probe.contact_positions[:, 0].tolist())) == [0.0, 150.0]
+    assert probe.device_channel_indices.tolist() == list(range(16))
+
+
+def test_native_multishank_probe_and_density_is_physical(tmp_path):
+    # A single Probe carrying its own shank ids; dense within-shank contacts far
+    # apart across shanks must class DENSE (proximity is physics, not labels).
+    import probeinterface as pi
+
+    p = pi.generate_multi_shank(num_shank=2, shank_pitch=[300, 0], num_columns=1,
+                                num_contact_per_column=8, ypitch=25.0)
+    pg = pi.ProbeGroup()
+    pg.add_probe(p)
+    src = tmp_path / "native.json"
+    pi.write_probeinterface(src, pg)
+    prof = probes.import_probe_file(src, path=tmp_path / "probes.json")
+    f = probes.geometry_features(prof)
+    assert f["n_shanks"] == 2 and f["density_class"] == "dense"
+    assert probes.fit("kilosort4", prof)["rank"] == "good"
+
+
+def test_group_wiring_must_be_one_permutation(tmp_path):
+    store = tmp_path / "probes.json"
+    # mixed: some probes wired, some not -> refused
+    mixed = _write_group_json(tmp_path / "mixed.json", wiring="mixed")
+    with pytest.raises(ValueError, match="some probes in the group"):
+        probes.import_probe_file(mixed, path=store)
+    # overlapping indices across probes -> refused with the reason named.
+    # probeinterface's reader catches this case itself ("not unique across
+    # probes") and the import wraps it honestly; the import's own permutation
+    # check stays as the defense for paths the reader doesn't validate.
+    dup = _write_group_json(tmp_path / "dup.json", n=4, wiring="global")
+    doc = json.loads(dup.read_text(encoding="utf-8"))
+    doc["probes"][1]["device_channel_indices"] = [0, 1, 2, 3]   # duplicates probe 0
+    dup.write_text(json.dumps(doc), encoding="utf-8")
+    with pytest.raises(ValueError, match="not unique across probes|permutation"):
+        probes.import_probe_file(dup, path=store)
+    # per-probe blocks in concatenation order ARE the global identity -> not stored
+    good = _write_group_json(tmp_path / "wired.json", wiring="global")
+    prof = probes.import_probe_file(good, path=store)
+    assert "device_channel_indices" not in prof["params"]
+    assert probes.build(prof, 16).device_channel_indices.tolist() == list(range(16))
+
+
+def test_group_nonidentity_wiring_is_honoured(tmp_path):
+    # The highest-stakes path: reversed per-probe blocks (probe 0 -> channels
+    # 8..15, probe 1 -> 0..7) must survive import + build verbatim, so a
+    # specific CHANNEL provably lands on a specific shank and position. A
+    # regression that reorders probes or renormalises indices scrambles every
+    # cross-shank channel->site association — this pins it.
+    import probeinterface as pi
+
+    pg = pi.ProbeGroup()
+    for k, blk in enumerate([range(8, 16), range(0, 8)]):
+        p = pi.generate_linear_probe(num_elec=8, ypitch=100.0)
+        p.move([k * 150.0, 0.0])
+        p.set_device_channel_indices(list(blk))
+        pg.add_probe(p)
+    src = tmp_path / "rev_group.json"
+    pi.write_probeinterface(src, pg)
+    prof = probes.import_probe_file(src, path=tmp_path / "probes.json")
+    expect = list(range(8, 16)) + list(range(0, 8))
+    assert prof["params"]["device_channel_indices"] == expect
+    probe = probes.build(prof, 16)
+    assert probe.device_channel_indices.tolist() == expect
+    # channel 0 = the first contact of probe 1: shank "1", x = 150, y = 0
+    idx = probe.device_channel_indices.tolist().index(0)
+    assert probe.shank_ids[idx] == "1"
+    assert probe.contact_positions[idx].tolist() == [150.0, 0.0]
+
+
+def test_save_profile_guard_preserves_wiring_and_shanks(tmp_path):
+    # An upsert that carries positions but omits the other materialised keys
+    # must not silently strip shank labels or revert wiring to identity.
+    import probeinterface as pi
+
+    store = tmp_path / "probes.json"
+    pg = pi.ProbeGroup()
+    for k in range(2):
+        p = pi.generate_linear_probe(num_elec=4, ypitch=50.0)
+        p.move([k * 150.0, 0.0])
+        p.set_device_channel_indices(list(range((1 - k) * 4, (1 - k) * 4 + 4)))
+        pg.add_probe(p)
+    src = tmp_path / "wired2.json"
+    pi.write_probeinterface(src, pg)
+    prof = probes.import_probe_file(src, path=store)
+    probes.save_profile({"name": prof["name"], "label": "edited", "kind": "imported",
+                         "params": {"positions": prof["params"]["positions"]}},
+                        path=store)
+    kept = probes.get(prof["name"], path=store)
+    assert kept["params"]["device_channel_indices"] == prof["params"]["device_channel_indices"]
+    assert kept["params"]["shank_ids"] == prof["params"]["shank_ids"]
+
+
+def test_prb_channel_groups_become_shanks(tmp_path):
+    prb = tmp_path / "two_shank.prb"
+    prb.write_text(
+        "channel_groups = {\n"
+        " 0: {'channels': [0, 1, 2, 3],\n"
+        "     'geometry': {0: [0.0, 0.0], 1: [0.0, 100.0], 2: [0.0, 200.0], 3: [0.0, 300.0]}},\n"
+        " 1: {'channels': [4, 5, 6, 7],\n"
+        "     'geometry': {4: [150.0, 0.0], 5: [150.0, 100.0], 6: [150.0, 200.0], 7: [150.0, 300.0]}},\n"
+        "}\n", encoding="utf-8")
+    prof = probes.import_probe_file(prb, path=tmp_path / "probes.json")
+    f = probes.geometry_features(prof)
+    assert f["n"] == 8 and f["n_shanks"] == 2 and f["layout"] == "multishank"
+
+
+def test_single_shank_import_shape_unchanged(tmp_path):
+    # P1 backward compatibility: a plain single probe stores no shank keys and
+    # keeps its P1 layout classing.
+    src = _write_linear_json(tmp_path / "plain.json", n=16, pitch=100.0)
+    prof = probes.import_probe_file(src, path=tmp_path / "probes.json")
+    assert "shank_ids" not in prof["params"] and "per_shank" not in prof["params"]
+    f = probes.geometry_features(prof)
+    assert f["layout"] == "linear" and "n_shanks" not in f
 
 
 # --------------------------------------------------------------------------- #
