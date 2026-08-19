@@ -115,6 +115,13 @@ you're ready.
 No activation step — every command is just `uv run …` (or, on Windows,
 double-click `run.bat`).
 
+> **New here, or want the whole loop in one place?** Read
+> **[docs/WORKFLOW.md](docs/WORKFLOW.md)** — sort → read the strong-units block →
+> triage → apply → Phy for the hard cases → import verdicts → benchmark against
+> the manual `.nev` → regenerate from the record, each step with its exact
+> command and where its output lands, plus a glossary and a table of which
+> surface answers which question.
+
 ### Quick start — the menu
 
 The simplest way in is the single launcher at the repo root:
