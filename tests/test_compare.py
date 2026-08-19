@@ -85,6 +85,37 @@ def test_split_returns_none_when_every_unit_is_unsorted():
     assert (by_key["unsorted"]["n_units"], by_key["unsorted"]["n_spikes"]) == (2, 3)
 
 
+def test_electrode_breakdown_preserves_per_electrode_slots():
+    # Two sorted units on the SAME electrode must stay two rows — the exact
+    # structure a reader needs to reconcile Trellis's per-electrode labels
+    # with the page's unit count.
+    sorting = _sorting({0: [1, 2, 3], 1: [10, 20], 2: [30], 3: [40, 50]})
+    labels = ["ch5#2", "ch5#1", "ch5#0", "ch7#255"]
+
+    rows = compare.electrode_breakdown(sorting, labels)
+
+    assert [(r["electrode"], r["slot"]) for r in rows] == \
+        [(5, 0), (5, 1), (5, 2), (7, 255)]                      # sorted by electrode, slot
+    by_label = {r["label"]: r for r in rows}
+    assert by_label["ch5#1"]["kept"] and by_label["ch5#2"]["kept"]
+    assert (by_label["ch5#1"]["n_spikes"], by_label["ch5#2"]["n_spikes"]) == (2, 3)
+    assert not by_label["ch5#0"]["kept"] and not by_label["ch7#255"]["kept"]
+
+
+def test_reference_section_states_the_actual_unit_count():
+    sorting = _sorting({0: [1, 2], 1: [10], 2: [30], 3: [40]})
+    labels = ["ch5#1", "ch5#2", "ch9#1", "ch3#0"]
+    kept, accounting = compare.split_online_units(sorting, labels)
+    breakdown = compare.electrode_breakdown(sorting, labels)
+
+    section = compare._reference_section(accounting, breakdown=breakdown)
+
+    assert "3 sorted units on 2 electrodes" in section["html"]  # the actual count, plainly
+    assert "e5 ×2" in section["html"] and "e9 ×1" in section["html"]
+    assert "per-electrode slot" in section["html"]              # slot ≠ global identity
+    assert "ch5#1" in section["html"] and "ch5#2" in section["html"]
+
+
 # --------------------------------------------------------------------------- #
 # Window crop
 # --------------------------------------------------------------------------- #

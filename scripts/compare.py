@@ -295,6 +295,29 @@ def split_online_units(sorting, labels):
     return kept, accounting
 
 
+def electrode_breakdown(sorting, labels):
+    """One row per .nev spike channel: which electrode, which per-electrode slot.
+
+    A .nev unit id is a per-electrode SLOT, not a global identity — Trellis
+    labels each electrode's units independently, so "unit 1" on e5 and "unit 1"
+    on e7 are different neurons sharing a slot number. This table is what lets
+    the page state the actual number of distinct sorted units (electrode × slot
+    combinations) instead of leaving the reader to reconcile slot numbers.
+    """
+    rows = []
+    for u, label in zip(sorting.get_unit_ids(), labels):
+        parsed = bio.parse_unit_label(label)
+        electrode, slot = parsed if parsed else (None, None)
+        cls = bio.unit_class(label)
+        rows.append({"electrode": electrode, "slot": slot, "label": label,
+                     "class": cls,
+                     "n_spikes": len(sorting.get_unit_spike_train(u)),
+                     "kept": cls == "sorted"})
+    rows.sort(key=lambda r: (r["electrode"] is None, r["electrode"] or 0,
+                             r["slot"] or 0))
+    return rows
+
+
 def _span_frames(sorting) -> int:
     """Last spike frame + 1. A bare .nev Sorting has no recording registered, so
     get_total_duration() is unavailable — the spikes themselves are the span."""
@@ -346,8 +369,39 @@ def _crop_note(info) -> str:
     return note
 
 
-def _reference_section(accounting, crop_note="") -> dict:
+def _reference_section(accounting, crop_note="", breakdown=None) -> dict:
     """What the online reference is, and exactly what was left out of it."""
+    headline = per_e_table = ""
+    kept_rows = [r for r in (breakdown or []) if r["kept"]]
+    if kept_rows:
+        electrodes = sorted({r["electrode"] for r in kept_rows})
+        per_e = ", ".join(
+            f"e{e} ×{sum(1 for r in kept_rows if r['electrode'] == e)}"
+            for e in electrodes)
+        headline = (
+            f'<p><strong>This .nev carries {len(kept_rows)} sorted '
+            f'unit{"s" if len(kept_rows) != 1 else ""} on {len(electrodes)} '
+            f'electrode{"s" if len(electrodes) != 1 else ""}</strong> ({per_e}). '
+            'A .nev unit number is a per-electrode slot — Trellis labels each '
+            'electrode independently, so "unit 1" on one electrode and "unit 1" '
+            'on another are different neurons. The unit count above counts '
+            'electrode × slot combinations, which is why it can exceed the '
+            'number of unit labels seen in Trellis.</p>')
+    if breakdown:
+        cells = ""
+        for r in breakdown:
+            e = f'e{r["electrode"]}' if r["electrode"] is not None else "?"
+            slot = ({0: "unsorted (slot 0)", 255: "noise (slot 255)"}
+                    .get(r["slot"], f'unit {r["slot"]}')
+                    if r["slot"] is not None else "?")
+            used = "used here" if r["kept"] else "dropped"
+            cells += (f'<tr><td>{e}</td><td>{html.escape(slot)}</td>'
+                      f'<td><code>{html.escape(r["label"])}</code></td>'
+                      f'<td>{r["n_spikes"]}</td><td>{used}</td></tr>')
+        per_e_table = (
+            '<table class="qc"><thead><tr><th>electrode</th><th>Trellis label'
+            '</th><th>neo name</th><th>spikes</th><th>in this comparison</th>'
+            f'</tr></thead><tbody>{cells}</tbody></table>')
     rows = ""
     for c in accounting:
         used = "used here" if c["kept"] else "dropped"
@@ -363,7 +417,8 @@ def _reference_section(accounting, crop_note="") -> dict:
             'sort at all. The other classes are counted below and left out.</p>')
     n_kept = sum(c["n_units"] for c in accounting if c["kept"])
     return {"id": "online", "title": "The online (.nev) reference",
-            "html": note + table + crop_note, "state": "ok" if n_kept else "warn"}
+            "html": headline + per_e_table + note + table + crop_note,
+            "state": "ok" if n_kept else "warn"}
 
 
 def _online_match_table(cmp, online, offline, sorter, delta_ms=ONLINE_DELTA_TIME_MS):
@@ -550,10 +605,12 @@ def build_online_comparison(sorter, data_dir=None, out_path=None, nev_path=None,
             '<code>uv run python scripts/compare.py</code>.'))])
 
     kept, accounting = split_online_units(online, labels)
+    breakdown = electrode_breakdown(online, labels)
     if kept is None:
         dropped = sum(c["n_spikes"] for c in accounting if not c["kept"])
         channels = sum(c["n_units"] for c in accounting if not c["kept"])
-        return _write([_reference_section(accounting), _caveat_section(sorter, (
+        return _write([_reference_section(accounting, breakdown=breakdown),
+                       _caveat_section(sorter, (
             '<strong>This recording has no online-sorted units, so there is nothing to '
             f'compare against.</strong> Its .nev holds {dropped} spikes across {channels} '
             'unit-id-0/255 group(s): the rig detected threshold crossings but never assigned '
@@ -569,7 +626,7 @@ def build_online_comparison(sorter, data_dir=None, out_path=None, nev_path=None,
                                  sorting2_name=sorter, delta_time=delta_ms,
                                  match_score=MATCH_SCORE)
     return _write([
-        _reference_section(accounting, _crop_note(crop_info)),
+        _reference_section(accounting, _crop_note(crop_info), breakdown=breakdown),
         {"id": "compare", "title": f"{sorter} vs {ONLINE_NAME}",
          "html": which + _online_compare_html(cmp, cropped, offline, sorter,
                                               delta_ms=delta_ms)},

@@ -427,3 +427,18 @@ def unit_class(label: str) -> str:
     if unit == NOISE_UNIT_ID:
         return "noise"
     return "sorted"
+
+
+def parse_unit_label(label: str) -> "tuple[int, int] | None":
+    """(electrode number, blackrock unit id) from a ``ch<n>#<unit>`` label, else None.
+
+    The split matters because a .nev unit id is a PER-ELECTRODE slot — Trellis
+    stores each electrode's unit labels independently, so "unit 1" on ch5 and
+    "unit 1" on ch7 are different neurons that happen to share a slot number
+    (measured on this recording's manual sort: cross-electrode same-slot spike
+    coincidence is chance-level, 0.2–5.6% at ±0.5 ms). Counting distinct sorted
+    units means counting electrode × slot combinations; this parse is the one
+    home for reading them.
+    """
+    m = _UNIT_LABEL_RE.match(label)
+    return (int(m.group(1)), int(m.group(2))) if m else None
