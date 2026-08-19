@@ -78,6 +78,31 @@ accepted; reopen only if a map ever arrives. Both feed THE CONDUCTOR v4 / GOAL_P
 
 ## The ledger (newest first)
 
+**2026-08-19 - CONDUCTOR v4 mid-run: purge sealed, advisory + params reviewed, sweep measured**
+- Did: sealed GOAL_PRESENT items 1-4 - the em-dash purge (4 waves, ~3160
+  occurrences, 7 snapshots deliberately re-baselined, repo-wide pin test
+  `tests/test_no_em_dashes.py`, stray run deleted, P3 reworded as the standing
+  assumption), the merge advisory (sort_summary owns it: >= 1000 spikes + solid
+  SNR + ISI >= 2x the rule's ceiling, bimodality corroborates; report callout,
+  triage card line, dashboard RESULTS chip - Fable review folded, its HIGH
+  finding fixed by recording n_spikes/bimodality in summary.json at sort time
+  with saved runs backfilled), parameter integrity (round trip verified; two
+  real defects found and fixed: repr-vs-JSON argv encoding and the editor's
+  None-default rendering; 18 tests; review: ship), and the five-sorter sweep
+  through the store (all six full runs canary 4.00-4.09 uV).
+- Means: the workbench now tells a researcher WHEN to split (on novel data, in
+  plain words, from one home), parameter editing provably runs what it shows,
+  and the shootout question is answered with measurements: ZERO splits in 18
+  pair verdicts - no swept sorter separates the pairs tridesclous2 merges
+  (spykingcircus2/lupin/simple/mountainsort5/waveclus all merge or miss), so
+  the Phy and GPU routes carry the untangling story, exactly the deck's arc.
+- Moved: suite 713 green at the fold; the periwinkle palette is built and
+  machine-validated in both modes (scripts/viz_palette.py, the one home);
+  the sweep page's Fable review and the report facelift build run now.
+- Needs Ben: nothing yet - the batch lands at the run close.
+- Next: fold the sweep review, land the facelift + its review, then the deck
+  from finished pieces, board close, push.
+
 **2026-08-19 - THE INTERVIEW: Ben's presentation-arc decisions taken on record, v4 filed**
 - Did: ran the structured interview (three rounds) and encoded every decision into
   `goals/GOAL_PRESENT.md` (the complete spec: merge-diagnosis advisory, five-sorter

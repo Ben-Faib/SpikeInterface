@@ -17,7 +17,18 @@ box) runs alongside everything.
 
 ---
 
-## ▶ NOW - updated 2026-08-19 morning: **paste THE CONDUCTOR v4 (below) into ONE fresh session: the presentation arc**
+## ▶ NOW - updated 2026-08-19 morning: **CONDUCTOR v4 RUNNING (this session): items 1-4 sealed, page + facelift + deck in flight**
+
+- Sealed so far: em-dash purge + repo pin (item 1), merge advisory reviewed +
+  folded (item 2), parameter round trip verified, two real fixes (item 3), the
+  five-sorter sweep - all six full runs, canary 4.00-4.09 uV, ZERO splits in 18
+  pair verdicts (item 4). Palette built + validated (scripts/viz_palette.py).
+- In flight: sweep-page Fable review, report facelift + content audit builder.
+- Then: comparison-page palette check, the .pptx deck from finished pieces,
+  board close, push. The v4 prompt below remains the re-entry pattern if this
+  session stops short.
+
+## Previous NOW (kept until the v4 close): **paste THE CONDUCTOR v4 (below) into ONE fresh session: the presentation arc**
 
 - **Ben's interview happened (2026-08-19)**: decisions of record and the full spec
   live in `goals/GOAL_PRESENT.md`. Headlines: split path chosen for the merges
