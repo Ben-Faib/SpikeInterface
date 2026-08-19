@@ -140,6 +140,21 @@ def find_blackrock_base(data_dir: "Path | str | None" = None) -> Path:
     return _one(sorted({p.with_suffix("") for p in nev}), ".nev file set")
 
 
+def find_reference_nevs(data_dir: "Path | str | None" = None) -> "list[Path]":
+    """The ``.nev`` files beside the recording that are NOT the recording's own.
+
+    The flip side of :func:`find_blackrock_base`: a stem carrying only a ``.nev``
+    and no analog ``.nsX`` is a derived export — this repo's folder holds a
+    manually re-exported ``…_manuallySorted.nev`` — and those are the files a
+    surface can use as a sorted *reference*. Sorted by name; ``[]`` when the
+    folder holds none, so a caller drops the comparison instead of guessing.
+    Never raises: a folder with no recording at all simply has no references.
+    """
+    data_dir = Path(data_dir) if data_dir is not None else REPO_ROOT
+    nsx_stems = {p.with_suffix("") for p in data_dir.glob("*.ns[1-6]")}
+    return sorted(p for p in data_dir.glob("*.nev") if p.with_suffix("") not in nsx_stems)
+
+
 def list_streams(data_dir: "Path | str | None" = None):
     """List the analog (nsX) streams available for the file set.
 

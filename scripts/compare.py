@@ -38,6 +38,13 @@ online-*sorted* class is used — Blackrock encodes the class in the unit id, an
 their spike counts stated on the page. The .nev always spans the whole recording,
 so unlike the sorter-vs-sorter mode (which refuses a window mismatch) this mode
 crops the reference to the saved sort's window and says so loudly.
+
+``match_manual(sorter, ...)`` is that same machinery returned as DATA rather than
+a page — per unit of *our* sort, the reference unit it best matches and how much
+of our unit that match accounts for. The report's strong-units block reads it, so
+there is still exactly one matcher in this repo. It returns ``None`` whenever the
+reference is absent or unusable, so a surface drops the column instead of
+guessing at it.
 """
 from __future__ import annotations
 
@@ -169,6 +176,25 @@ def _partner_id(v):
     except (TypeError, ValueError):
         return None
     return None if iv == -1 else iv
+
+
+def _unmatched(value) -> bool:
+    """True when a best-match cell means "no partner reached chance level".
+
+    The sentinel varies by direction and dtype: "" (the 2->1 case in 0.104.3),
+    -1, None, or NaN. Everything else IS a partner id — and in the 2->1 direction
+    those ids are the REFERENCE's own labels (``ch7#1``), not integers, so they
+    must not be int()-parsed away the way :func:`_partner_id` does for 1->2.
+    """
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return False                   # a non-numeric, non-string id is still an id
+    return v != v or int(v) == -1      # v != v -> NaN
 
 
 def _match_table(cmp) -> str:
@@ -589,6 +615,100 @@ def _online_compare_html(cmp, online, offline, sorter,
                   'no unit. Worth a look at the raw traces before trusting either — start with '
                   'the channels of the online units listed below.</div>')
     return framing + caveat + report._fig_html(_heatmap(cmp)) + table
+
+
+def match_manual(sorter, data_dir=None, nev_path=None, delta_ms=ONLINE_DELTA_TIME_MS,
+                 curated=False, run=None) -> "dict | None":
+    """Match a saved sort against a manually sorted ``.nev``, as DATA not HTML.
+
+    The same machinery ``build_online_comparison`` renders — ``split_online_units``
+    to keep only the online-*sorted* class, ``crop_online`` to put both sides on
+    the same window, and SpikeInterface's ``compare_two_sorters`` — harvested for
+    the OTHER direction: for each unit of *our* sort, the reference unit it best
+    matches. That is what a per-unit takeaway table needs, and it is why this
+    exists instead of a second matcher (there is one matcher, here).
+
+    ``nev_path`` names the reference explicitly; without it the first derived
+    ``.nev`` export beside the recording is used (``bio.find_reference_nevs``).
+
+    Returns ``None`` — never a guess — when there is no reference file, no saved
+    sort, no readable unit-class labels, or no online-sorted units in the .nev to
+    match against. Otherwise::
+
+        {"reference": "PFCM7…_manuallySorted.nev", "delta_ms": 2.0,
+         "n_reference_units": 7, "window_s": 132.0, "cropped": False,
+         "by_unit": {"4": {"unit": "ch5#1", "containment": 0.97,
+                           "agreement": 0.61, "n_matched": 5701,
+                           "n_spikes": 5863, "below_chance": False}}}
+
+    ``containment`` is the fraction of **our** unit's spikes that the matched
+    reference unit also carries — "did a human find these spikes too?" — capped
+    at 1.0, because a wide coincidence window lets several reference spikes
+    coincide with one of ours and over-count.
+    """
+    if nev_path is None:
+        found = bio.find_reference_nevs(data_dir)
+        if not found:
+            return None
+        nev_path = found[0]
+    offline, window_s = _load(sorter, curated=curated, run=run)
+    if offline is None:
+        return None
+    try:
+        reference = bio.read_spikes(data_dir, nev_path=nev_path)
+    except FileNotFoundError:
+        return None
+    labels = bio.online_unit_labels(reference)
+    if labels is None:
+        return None
+    kept, _accounting = split_online_units(reference, labels)
+    if kept is None:
+        return None
+    cropped, crop_info = crop_online(kept, window_s)
+
+    import spikeinterface.comparison as sc
+
+    cmp = sc.compare_two_sorters(cropped, offline, sorting1_name=ONLINE_NAME,
+                                 sorting2_name=sorter, delta_time=delta_ms,
+                                 match_score=MATCH_SCORE)
+    n_ours = {str(u): len(offline.get_unit_spike_train(u)) for u in offline.get_unit_ids()}
+    by_unit = {}
+    # best_match_21: OUR unit -> the reference unit it best matches. Below SI's
+    # chance cutoff it reports no partner; the best-anything row is still the
+    # honest answer (an offline unit can sit inside a much larger reference unit),
+    # so it is reported and MARKED below chance rather than dropped silently.
+    for u2, u1 in cmp.best_match_21.items():
+        below = _unmatched(u1)
+        partner = u1
+        if below:
+            try:
+                row = cmp.agreement_scores[u2]      # our unit is the COLUMN here
+                partner = row.idxmax()
+                if not float(row.max()):
+                    continue
+            except Exception:  # noqa: BLE001 - no scores at all for this unit
+                continue
+        try:
+            agreement = float(cmp.agreement_scores.at[partner, u2])
+        except Exception:  # noqa: BLE001 - matrix indexing differences
+            agreement = None
+        try:
+            n_matched = float(cmp.match_event_count.at[partner, u2])
+        except Exception:  # noqa: BLE001
+            n_matched = None
+        mine = n_ours.get(str(u2), 0) or 1
+        by_unit[str(u2)] = {
+            "unit": str(partner),
+            "containment": None if n_matched is None else min(1.0, n_matched / mine),
+            "agreement": agreement,
+            "n_matched": None if n_matched is None else int(n_matched),
+            "n_spikes": n_ours.get(str(u2), 0),
+            "below_chance": below,
+        }
+    return {"reference": Path(nev_path).name, "delta_ms": float(delta_ms),
+            "n_reference_units": len(cropped.get_unit_ids()),
+            "window_s": window_s, "cropped": bool(crop_info["cropped"]),
+            "match_score": MATCH_SCORE, "by_unit": by_unit}
 
 
 def _caveat_section(sorter, body) -> dict:

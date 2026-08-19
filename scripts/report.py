@@ -557,6 +557,15 @@ h3 { font-size: 16px; margin: 32px 0 6px; }
 .tile.warn { background: var(--amber-bg); border-color: var(--amber-line); }
 .tile.warn .rule { color: var(--amber); }
 
+/* --- strong units: the takeaway block, first thing in the verdict ---------- */
+.takeaway { margin: 4px 0 22px; }
+.takeaway .stamp { color: var(--muted); font-size: 12.5px; margin: 0 0 10px; }
+.takeaway .rollup { font-size: 15px; margin: 14px 0 6px; line-height: 1.75; }
+.takeaway .rollup strong { font-weight: 600; }
+td .why { color: var(--muted); font-size: 12.5px; display: block; }
+td .yes { color: var(--green); font-weight: 600; }
+td .no { color: var(--muted); }
+
 /* --- tables ---------------------------------------------------------------- */
 .tbl-wrap { max-height: 520px; overflow: auto; border: 1px solid var(--line); border-radius: var(--radius); }
 table { border-collapse: separate; border-spacing: 0; width: 100%; font-size: 13.5px; }
@@ -684,8 +693,160 @@ def _pass_quality(analyzer) -> "tuple[int | None, int]":
         return None, n_units
 
 
+def _quality_metric_rows(analyzer) -> dict:
+    """{unit id (str): {metric: value}} from the analyzer's quality-metrics
+    extension — the same single source the rest of this report reads. ``{}`` when
+    the sort has none (metrics are non-fatal), and then every unit is honestly
+    "not judged" rather than silently failed."""
+    try:
+        qm = analyzer.get_extension("quality_metrics").get_data()
+        return {str(u): row for u, row in qm.to_dict("index").items()}
+    except Exception:  # noqa: BLE001 - absent extension / column shape -> no metrics
+        return {}
+
+
+def _spike_counts(analyzer) -> dict:
+    """{unit id (str): n spikes} off the analyzer's Sorting; {} if unreadable."""
+    try:
+        return {str(u): int(n) for u, n
+                in analyzer.sorting.count_num_spikes_per_unit(outputs="dict").items()}
+    except Exception:  # noqa: BLE001 - counts are context, never a crash
+        return {}
+
+
+def _run_stamp(info, analyzer_dir, display_label) -> str:
+    """Which result, from which run, over which window — one line, escaped.
+
+    A takeaway nobody can trace back to a run is a takeaway nobody can check, so
+    the block is stamped with the run store's own identity: the run id (a curated
+    result names the raw run it was built from), the sort's timestamp, and the
+    window it covers.
+    """
+    info = info or {}
+    run_id = info.get("run_id") or info.get("curated_from_run")
+    if not run_id:
+        try:
+            run_id = runs.sort_paths(runs.sorter_for_dir(Path(analyzer_dir)))["id"]
+        except Exception:  # noqa: BLE001 - a directory outside the store
+            run_id = None
+    bits = [f"<strong>{html.escape(str(display_label))}</strong>"]
+    bits.append(f"run <code>{html.escape(str(run_id))}</code>" if run_id
+                else "run id not recorded")
+    stamp = str(info.get("created", "")).replace("T", " ")[:16]
+    if stamp:
+        bits.append(html.escape(stamp))
+    eff, tot = info.get("effective_seconds"), info.get("total_seconds")
+    if isinstance(eff, (int, float)) and isinstance(tot, (int, float)) and eff < tot - 1.0:
+        bits.append(f"{eff:.0f} s of the {tot:.0f} s recording")
+    elif isinstance(eff, (int, float)):
+        bits.append(f"{eff:.0f} s window")
+    return '<p class="stamp">' + " · ".join(bits) + "</p>"
+
+
+def _match_cell(match) -> str:
+    """One "matches <reference unit> · <containment>" cell, or an honest gap.
+
+    A best-anything pairing that never reached SpikeInterface's chance level is
+    NOT a match and must not be worded as one — it is reported as the closest
+    thing found, so the number is visible without the claim.
+    """
+    if not match:
+        return "–"
+    who = html.escape(str(match.get("unit")))
+    pct = match.get("containment")
+    share = f" · {100.0 * float(pct):.0f}%" if pct is not None else ""
+    if match.get("below_chance"):
+        return (f'no match above chance<span class="why">closest: '
+                f'{who}{share}</span>')
+    return f"matches <code>{who}</code>{share}"
+
+
+def _unit_rows(units, with_match: bool) -> list:
+    """Table rows for the strong-units block, in the rollup's ranked order."""
+    rows = []
+    for u in units:
+        verdict = html.escape(sort_summary.VERDICT_WORDS[u["verdict"]])
+        cls = "yes" if u["verdict"] else "no"
+        cell = f'<span class="{cls}">{verdict}</span>'
+        if u["why"]:
+            cell += f'<span class="why">{html.escape(u["why"])}</span>'
+        row = [f'<code>{html.escape(str(u["unit"]))}</code>',
+               html.escape(str(u["contact"])),
+               _num(u["snr"], ".3g"),
+               _num(u["n_spikes"], ",.0f"),
+               html.escape(u["isolation"]),
+               cell]
+        if with_match:
+            row.append(_match_cell(u.get("match")))
+        rows.append(row)
+    return rows
+
+
+def _render_strong_units(rollup, stamp_html, matches_meta) -> str:
+    """The takeaway: which units look real, at which contact (DESIGN_UX §1.3/§4.1).
+
+    The synthesis the workbench used to compute everywhere and conclude nowhere.
+    Every verdict, phrase and ranking here comes from ``sort_summary.unit_rollup``
+    — this function only lays it out.
+    """
+    with_match = bool(rollup["has_matches"])
+    headers = [("unit", False), ("contact", False), ("SNR", True), ("spikes", True),
+               ("isolation", False), ("verdict", False)]
+    if with_match:
+        headers.append(("best manual match", False))
+    accepted = [u for u in rollup["units"] if u["verdict"]]
+    tail = [u for u in rollup["units"] if not u["verdict"]]
+
+    rule_note = (f'<p class="note"><strong>“Strong” means the quality rule passed:</strong> '
+                 f'{html.escape(rollup["rule_text"])}. A rule of thumb for orientation, '
+                 'tunable through <code>quality_rule</code> in <code>.si_menu.json</code> — '
+                 'never a certification that a unit is one neuron. Isolation phrases come '
+                 'from the PCA metrics (nearest-neighbour hit rate, L-ratio, isolation '
+                 'distance); a unit with too few spikes for those to mean anything says so '
+                 'rather than scoring well by accident.</p>')
+    if with_match:
+        m = matches_meta or {}
+        rule_note += (
+            f'<p class="note">The manual column matches each unit against '
+            f'<code>{html.escape(str(m.get("reference", "")))}</code> '
+            f'({m.get("n_reference_units", 0)} sorted reference units, coincidence window '
+            f'{m.get("delta_ms", 0):g} ms). The percentage is how much of <em>our</em> '
+            'unit the matched reference unit also carries — a reference, not ground '
+            'truth.</p>')
+
+    body = stamp_html
+    if not rollup["n_units"]:
+        return body + ('<div class="caveat"><strong>No units in this sort.</strong> '
+                       'Lower <code>detect_threshold</code> in Edit parameters and '
+                       're-run the sort.</div>')
+    if accepted:
+        body += ('<p class="rollup"><strong>'
+                 + html.escape(sort_summary.headline_takeaway(
+                     len(accepted), rollup["accepted_contacts"], max_contacts=len(accepted)))
+                 + '</strong><br>' + html.escape(rollup["contact_line"]) + '</p>')
+        body += _table(headers, _unit_rows(accepted, with_match))
+    else:
+        body += ('<div class="caveat"><strong>No unit passes the quality rule</strong> ('
+                 + html.escape(rollup["rule_text"]) + '). The sort found '
+                 f'{rollup["n_units"]} candidate'
+                 f'{"" if rollup["n_units"] == 1 else "s"}; they are listed below. Next '
+                 'step: judge them by hand — <code>uv run python '
+                 'SpikeInterface_Menu.py</code>, then <code>u</code> for triage — or '
+                 'loosen <code>quality_rule</code> in <code>.si_menu.json</code> if the '
+                 'thresholds are wrong for this preparation.</div>')
+    if tail:
+        n_un = rollup["n_unjudged"]
+        unjudged = (f" ({n_un} of them could not be judged at all)" if n_un else "")
+        body += _fold(
+            f'{len(tail)} sub-threshold candidate{"" if len(tail) == 1 else "s"}'
+            f'{unjudged} — the same columns, same ranking',
+            _table(headers, _unit_rows(tail, with_match)),
+            open_when=not accepted)
+    return f'<div class="takeaway">{body}{rule_note}</div>'
+
+
 def _render_verdict(analyzer, analyzer_dir, info, sorter_label, status, data_dir=None,
-                    cur=None) -> str:
+                    cur=None, matches=None) -> str:
     """The answer first: four stat tiles (DESIGN_UX §4.1).
 
     When no raw data loaded at all (fresh clone / wrong folder) this is also the
@@ -707,6 +868,25 @@ def _render_verdict(analyzer, analyzer_dir, info, sorter_label, status, data_dir
 
     summary = sort_summary.load_summary(Path(analyzer_dir).parent) if analyzer_dir else None
     n_units = len(analyzer.unit_ids)
+
+    # The takeaway leads (Ben, 2026-08-19: "at contact 5 we want to know how many
+    # neurons we think we found"). It is built from what the sort saved, judged by
+    # the rule's one owner, and rendered above the stat tiles — a failure here
+    # degrades to a note rather than taking the whole verdict section with it.
+    try:
+        rollup = sort_summary.unit_rollup(
+            summary or {}, _quality_metric_rows(analyzer),
+            rule=sort_summary.load_quality_rule(bio.REPO_ROOT / ".si_menu.json"),
+            spike_counts=_spike_counts(analyzer),
+            matches=(matches or {}).get("by_unit") if matches else None)
+        shown = (f"{sorter_label} · curated" if (cur or {}).get("curated")
+                 else sorter_label)
+        lead += _render_strong_units(
+            rollup, _run_stamp(info, analyzer_dir, shown), matches)
+    except Exception as e:  # noqa: BLE001 - the tiles below still answer the basics
+        lead += ('<p class="skip">Strong-units rollup unavailable: '
+                 f'{html.escape(repr(e))}</p>')
+
     tiles = []
 
     # 1 — units.
@@ -1284,10 +1464,25 @@ def build_report(data_dir=None, analyzer_dir=None, out_path=None, sorter_label=N
                  else "ok" if any(r["status"] == "PASS" for r in ctx_rows) else "skip")
     prov_state = "warn" if any(r["status"] == "FAIL" for r in status) else "ok"
 
+    # The manual .nev is a REFERENCE the strong-units block names per unit, and it
+    # is the one part of that block that needs a second file and a real
+    # comparison. Absent or unusable -> None, and the column is honestly absent
+    # rather than guessed. compare imports this module, so the import is local.
+    _p("Match the manual reference")
+    matches = None
+    if analyzer is not None:
+        try:
+            import compare
+
+            matches = compare.match_manual(
+                sorter_label, data_dir=data_dir, curated=cur["curated"])
+        except Exception:  # noqa: BLE001 - a reference is a bonus, never a gate
+            matches = None
+
     _p("Render figures")
     sections = [
         _safe_section("verdict", "Verdict", _render_verdict, analyzer, analyzer_dir, info,
-                      sorter_label, status, data_dir, cur, state=sorted_state),
+                      sorter_label, status, data_dir, cur, matches, state=sorted_state),
         _safe_section("sorted", f"Sorted units ({display_label})", _render_sorted, analyzer,
                       display_label, info, probe, state=sorted_state),
         _safe_section("qc", "Quality metrics", _render_qc, analyzer, state=sorted_state),
@@ -1387,7 +1582,7 @@ def main() -> int:
                   "secs": round(time.monotonic() - started, 2)})
         state["i"] += 1
         state["open"] = (state["i"], title, time.monotonic())
-        emit({"t": "phase", "i": state["i"], "n": 3, "title": title,
+        emit({"t": "phase", "i": state["i"], "n": 4, "title": title,
               "elapsed": round(time.monotonic() - t0, 2)})
 
     try:

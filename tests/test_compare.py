@@ -383,3 +383,80 @@ def test_online_comparison_against_this_repo(tmp_path):
     assert "unsorted threshold crossings (unit id 0)" in text
     # Either a matrix or a named next step — never an empty page.
     assert ("online-sorted unit(s)" in text) or ("nothing to compare against" in text)
+
+
+# --------------------------------------------------------------------------- #
+# match_manual: the same matching machinery, returned as data for the report's
+# strong-units block. It must refuse to guess whenever the reference is unusable.
+# --------------------------------------------------------------------------- #
+@pytest.fixture
+def manual_match(tmp_path, monkeypatch):
+    """Run match_manual over injected sortings; returns its dict (or None)."""
+    def _run(offline=None, window_s=30.0, reference=None, labels=None,
+             nev_path="manual.nev", refs=None, exc=None):
+        monkeypatch.setattr(compare, "_load",
+                            lambda s, curated=False, run=None: (offline, window_s))
+
+        def _read_spikes(data_dir=None, **kw):
+            if exc is not None:
+                raise exc
+            return reference
+
+        monkeypatch.setattr(compare.bio, "read_spikes", _read_spikes)
+        monkeypatch.setattr(compare.bio, "online_unit_labels", lambda s: labels)
+        monkeypatch.setattr(compare.bio, "find_reference_nevs",
+                            lambda d=None: list(refs if refs is not None else []))
+        return compare.match_manual("tridesclous2", nev_path=nev_path)
+
+    return _run
+
+
+def test_match_manual_reports_our_units_best_reference_match(manual_match):
+    # offline unit 0 is the reference's ch1#1; offline unit 1 is ours alone.
+    reference = _sorting({0: [1000, 2000, 3000], 1: [500_000]})
+    offline = _sorting({0: [1001, 1999, 3000], 1: [900_000]})
+    got = manual_match(offline=offline, reference=reference, labels=["ch1#1", "ch2#1"])
+
+    assert got["reference"] == "manual.nev"
+    assert got["delta_ms"] == compare.ONLINE_DELTA_TIME_MS
+    assert got["n_reference_units"] == 2
+    m0 = got["by_unit"]["0"]
+    assert m0["unit"] == "ch1#1" and m0["below_chance"] is False
+    assert m0["containment"] == 1.0 and m0["n_matched"] == 3
+
+
+def test_match_manual_containment_is_capped_and_marks_below_chance(manual_match):
+    reference = _sorting({0: [1000, 2000, 3000, 4000, 5000, 6000, 7000, 8000]})
+    offline = _sorting({0: [1000], 1: [900_000]})
+    got = manual_match(offline=offline, reference=reference, labels=["ch1#1"])
+    m0 = got["by_unit"]["0"]
+    assert 0.0 < m0["containment"] <= 1.0
+    # Unit 1 shares nothing with the reference: no entry, or an explicit
+    # below-chance one — never a fabricated match.
+    assert got["by_unit"].get("1", {"below_chance": True})["below_chance"] is True
+
+
+def test_match_manual_returns_none_rather_than_guessing(manual_match):
+    online = _sorting({0: [1000]})
+    offline = _sorting({0: [1000]})
+    # no reference .nev at all (and none discoverable)
+    assert manual_match(offline=offline, reference=online, labels=["ch1#1"],
+                        nev_path=None) is None
+    # no saved sort
+    assert manual_match(offline=None, reference=online, labels=["ch1#1"]) is None
+    # the loader cannot find the file it was pointed at
+    assert manual_match(offline=offline, exc=FileNotFoundError("nope")) is None
+    # unit-class labels unreadable -> sorted and unsorted cannot be told apart
+    assert manual_match(offline=offline, reference=online, labels=None) is None
+    # the reference holds only unsorted (id 0) crossings -> nothing to match
+    assert manual_match(offline=offline, reference=online, labels=["ch1#0"]) is None
+
+
+def test_find_reference_nevs_skips_the_recordings_own_nev(tmp_path):
+    (tmp_path / "rec.nev").touch()
+    (tmp_path / "rec.ns5").touch()
+    (tmp_path / "rec_manuallySorted.nev").touch()
+    found = bio.find_reference_nevs(tmp_path)
+    assert [p.name for p in found] == ["rec_manuallySorted.nev"]
+    # A folder with no .nev at all is an empty list, never an exception.
+    assert bio.find_reference_nevs(tmp_path / "nothing-here") == []

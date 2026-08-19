@@ -163,3 +163,120 @@ def test_load_quality_rule_survives_non_dict_config(tmp_path):
     for bad in ('"strict"', "5", "[1, 2]", "null"):
         (tmp_path / "cfg.json").write_text('{"quality_rule": %s}' % bad)
         assert ss.load_quality_rule(tmp_path / "cfg.json") == ss.DEFAULT_QUALITY_RULE
+
+
+# --------------------------------------------------------------------------- #
+# The per-contact rollup (the takeaway) — one home for "which units look real".
+# --------------------------------------------------------------------------- #
+def _rollup_summary():
+    """Four units on three contacts; two share contact 7."""
+    return _summary(n_units=4, per_unit=[
+        {"unit": 0, "v_pp_uV": 20.0, "snr": 4.5, "best_channel": "5"},
+        {"unit": 1, "v_pp_uV": 80.0, "snr": 9.0, "best_channel": "7"},
+        {"unit": 2, "v_pp_uV": 30.0, "snr": 6.0, "best_channel": "7"},
+        {"unit": 3, "v_pp_uV": 25.0, "snr": 5.0, "best_channel": "11"},
+    ])
+
+
+_CLEAN = {"nn_hit_rate": 0.95, "l_ratio": 0.02, "isolation_distance": 60.0}
+_POOR = {"nn_hit_rate": 0.3, "l_ratio": 0.6, "isolation_distance": 5.0}
+
+
+def test_rollup_ranks_accepted_first_by_snr_then_the_tail():
+    metrics = {
+        # unit 1 has the best SNR but fails the ISI criterion -> it is TAIL.
+        "0": dict(snr=4.5, isi_violations_ratio=0.0, presence_ratio=1.0, **_CLEAN),
+        "1": dict(snr=9.0, isi_violations_ratio=2.0, presence_ratio=1.0, **_CLEAN),
+        "2": dict(snr=6.0, isi_violations_ratio=0.0, presence_ratio=1.0, **_CLEAN),
+        "3": dict(snr=5.0, isi_violations_ratio=9.0, presence_ratio=1.0, **_CLEAN),
+    }
+    r = ss.unit_rollup(_rollup_summary(), metrics,
+                       spike_counts={"0": 900, "1": 5000, "2": 4000, "3": 800})
+    assert [u["unit"] for u in r["units"]] == [2, 0, 1, 3]   # accepted 6.0,4.5 then 9.0,5.0
+    assert r["n_accepted"] == 2 and r["n_units"] == 4 and r["n_unjudged"] == 0
+    assert r["accepted_contacts"] == ["7", "5"]
+    assert r["headline"] == "2 strong units (ch 7·5)"
+    # The rule is stated verbatim wherever the count is.
+    assert r["rule_text"] == ss.rule_text(ss.DEFAULT_QUALITY_RULE)
+
+
+def test_rollup_states_why_a_unit_is_sub_threshold_in_the_rules_words():
+    metrics = {"1": {"snr": 9.0, "isi_violations_ratio": 2.0, "presence_ratio": 1.0}}
+    r = ss.unit_rollup(_rollup_summary(), metrics)
+    why = next(u["why"] for u in r["units"] if u["unit"] == 1)
+    assert "ISI ratio ≤ 0.5" in why and "is 2" in why
+
+
+def test_rollup_nan_never_masquerades_as_failure():
+    # Every criterion NaN/absent -> "not judged", NOT a failure and NOT a pass.
+    r = ss.unit_rollup(_rollup_summary(), {"0": {"snr": float("nan")}})
+    u0 = next(u for u in r["units"] if u["unit"] == 0)
+    assert u0["verdict"] is None and u0["verdict_word"] == "not judged"
+    assert r["n_accepted"] == 0 and r["n_unjudged"] == 4
+    assert "no criterion could be evaluated" in u0["why"]
+
+
+def test_rollup_per_contact_counts_and_line():
+    metrics = {
+        "0": dict(snr=4.5, isi_violations_ratio=0.0, presence_ratio=1.0),
+        "1": dict(snr=9.0, isi_violations_ratio=0.0, presence_ratio=1.0),
+        "2": dict(snr=6.0, isi_violations_ratio=9.0, presence_ratio=1.0),
+        "3": dict(snr=5.0, isi_violations_ratio=9.0, presence_ratio=1.0),
+    }
+    r = ss.unit_rollup(_rollup_summary(), metrics)
+    by = {c["contact"]: c for c in r["contacts"]}
+    assert by["7"]["n_accepted"] == 1 and by["7"]["n_other"] == 1
+    assert by["5"]["n_accepted"] == 1 and by["5"]["n_other"] == 0
+    assert by["11"]["n_accepted"] == 0 and by["11"]["n_other"] == 1
+    assert "contact 7: 1 accepted + 1 sub-threshold candidate" in r["contact_line"]
+    assert "contact 5: 1 accepted" in r["contact_line"]
+    # A contact with no accepted unit is summarised, never dropped.
+    assert "1 further contact" in r["contact_line"] and "no accepted unit" in r["contact_line"]
+
+
+def test_isolation_phrase_thresholds_and_honesty_gates():
+    # Too few spikes: the PCA metrics cannot mean anything, and it says so.
+    assert ss.isolation_phrase(_CLEAN, n_spikes=10) == "too few spikes to judge"
+    # SpikeInterface's degenerate isolation_distance is discarded, not believed.
+    assert ss.isolation_phrase({"isolation_distance": 1e15},
+                               n_spikes=5000) == "no isolation metrics — cannot judge"
+    assert ss.isolation_phrase(_CLEAN, n_spikes=5000) == "clean"
+    assert ss.isolation_phrase({"nn_hit_rate": 0.7}, n_spikes=5000) == "mostly separate"
+    # Poor + a co-located unit names the neighbour it overlaps.
+    assert ss.isolation_phrase(_POOR, n_spikes=5000, contact="7",
+                               shares_contact_with=1) == "overlaps another unit on ch 7"
+    assert ss.isolation_phrase(_POOR, n_spikes=5000, contact="7",
+                               shares_contact_with=2) == "overlaps 2 other units on ch 7"
+    # Poor but alone on its contact: no neighbour is named, because none is known.
+    assert ss.isolation_phrase(_POOR, n_spikes=5000, contact="7") == \
+        "not clearly separate from the other units"
+    # Unknown spike count must not fabricate the too-few gate.
+    assert ss.isolation_phrase(_CLEAN) == "clean"
+
+
+def test_rollup_match_column_is_absent_not_guessed():
+    r = ss.unit_rollup(_rollup_summary(), {})
+    assert r["has_matches"] is False
+    assert all(u["match"] is None for u in r["units"])
+    r2 = ss.unit_rollup(_rollup_summary(), {},
+                        matches={"1": {"unit": "ch7#1", "containment": 0.97}})
+    assert r2["has_matches"] is True
+    assert next(u["match"] for u in r2["units"] if u["unit"] == 1)["unit"] == "ch7#1"
+    assert next(u["match"] for u in r2["units"] if u["unit"] == 0) is None
+
+
+def test_rollup_on_a_sort_with_no_units():
+    r = ss.unit_rollup(_summary(n_units=0, per_unit=[]), {})
+    assert r["units"] == [] and r["n_accepted"] == 0
+    assert r["headline"] == "0 strong units"
+    assert r["contact_line"] == "no units on any contact"
+
+
+def test_rule_detail_and_quality_pass_agree():
+    rows = [{"snr": 9.0, "isi_violations_ratio": 0.0},
+            {"snr": 1.0, "isi_violations_ratio": 0.0},
+            {"snr": float("nan")}]
+    n, flags = ss.quality_pass(rows)
+    assert (n, flags) == (1, [True, False, None])
+    assert [ss.rule_detail(r)["flag"] for r in rows] == flags
+    assert ss.rule_detail(rows[1])["failed"][0][0] == "SNR ≥ 4"
