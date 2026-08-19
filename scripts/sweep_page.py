@@ -66,7 +66,7 @@ VERDICT_STYLE = {
     compare.PAIR_SPLIT: ("Split", "good"),
     compare.PAIR_MERGED: ("Merged", "warning"),
     compare.PAIR_ONE: ("One of two", "serious"),
-    compare.PAIR_NEITHER: ("Neither found", "critical"),
+    compare.PAIR_NEITHER: ("Neither cleanly found", "critical"),
 }
 # Recovery buckets for the grid: (upper bound, ramp step, light text?).
 RECOVERY_BUCKETS = ((0.50, 150, False), (0.80, 250, False), (0.95, 400, False),
@@ -149,8 +149,16 @@ def sorter_row(sorter, *, data_dir=None, nev_path=None,
                        "nothing to recover and no pair to split.")
         return row
 
-    test = compare.manual_pair_test(sorter, data_dir=data_dir, nev_path=nev_path,
-                                    delta_ms=delta_ms)
+    try:
+        test = compare.manual_pair_test(sorter, data_dir=data_dir, nev_path=nev_path,
+                                        delta_ms=delta_ms)
+    except Exception as exc:  # noqa: BLE001 - a corrupt or version-skewed saved
+        # analyzer must become an honest row, never kill the whole page build
+        # (the "never raises" contract this docstring promises).
+        row["status"] = S_NO_SORT
+        row["note"] = (f"run {found['id']}'s saved sort could not be loaded for judging "
+                       f"({exc.__class__.__name__}: {exc}).")
+        return row
     if test is None:
         row["status"] = S_NO_REFERENCE
         row["note"] = ("the manually sorted .nev reference could not be read, so this sort "
@@ -204,7 +212,8 @@ def verdict(data: dict) -> dict:
                 "state": "serious", "splitters": []}
     if splitters:
         names = ", ".join(splitters)
-        return {"headline": f"{names} splits the pairs.",
+        verb = "splits" if len(splitters) == 1 else "split"
+        return {"headline": f"{names} {verb} the pairs.",
                 "lede": f"Of {n_pairs} pair verdicts across {len(judged)} sorters, "
                         f"{n_split} came back split: two distinct units, each carrying one "
                         f"of the electrode's two hand-sorted neurons at "
@@ -212,12 +221,28 @@ def verdict(data: dict) -> dict:
                         "which electrode, which units, and how clean each unit's firing "
                         "intervals are.",
                 "state": "good", "splitters": splitters}
-    return {"headline": "No sorter splits the pairs.",
-            "lede": f"All {len(judged)} sorters were judged on the same {n_electrodes} "
+    # A partial sweep must not over-claim: the headline says how many were
+    # actually judged, and the tridesclous2 clause renders only when it was.
+    partial = len(judged) < len(data["rows"])
+    tdc2_judged = any(r["sorter"] == "tridesclous2" for r in judged)
+    if not partial:
+        opening = (f"All {len(judged)} sorters were judged"
+                   if len(judged) != 1 else "The single swept sorter was judged")
+        headline = "No sorter splits the pairs."
+    else:
+        n_rows = len(data["rows"])
+        opening = (f"Only {len(judged)} of {n_rows} sorters could be judged (the rows "
+                   f"below say why the rest were not); "
+                   + ("they were judged" if len(judged) != 1 else "it was judged"))
+        headline = (f"None of the {len(judged)} judged sorters splits the pairs."
+                    if len(judged) != 1 else "The one judged sorter does not split the pairs.")
+    return {"headline": headline,
+            "lede": f"{opening} on the same {n_electrodes} "
                     f"electrodes that carry two hand-sorted neurons each, {n_pairs} pair "
                     "verdicts in total, and not one of them came back split. Where a sorter "
-                    "finds the neurons at all it hands back a single unit carrying both, "
-                    "which is exactly what tridesclous2 does. Untangling these pairs stays a "
+                    "finds the neurons at all it hands back a single unit carrying both"
+                    + (", which is exactly what tridesclous2 does" if tdc2_judged else "")
+                    + ". Untangling these pairs stays a "
                     "job for Phy (the export is one key away in the dashboard) or for a GPU "
                     "sorter on the lab's Windows box.",
             "state": "warning", "splitters": []}
@@ -312,9 +337,13 @@ def pair_matrix_svg(data: dict) -> str:
     width = pad + label_w + len(electrodes) * (cell_w + gap) - gap + pad
     height = top + len(rows) * cell_h + 54
     window = data["window_s"]
+    # A smoke run forced current would make "the whole recording" a lie; say so.
+    any_smoke = any(r["smoke"] for r in rows)
+    window_clause = ("" if not isinstance(window, (int, float))
+                     else " · mixed windows - see each row" if any_smoke
+                     else f" · the whole {window:.0f} s recording")
     provenance = (f"Reference {data['reference']} · raw sorter output, before any curation"
-                  + (f" · the whole {window:.0f} s recording"
-                     if isinstance(window, (int, float)) else "")
+                  + window_clause
                   ) if data["reference"] else "Nothing judged yet: no reference to judge on."
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" '
            f'width="{width}" height="{height}" role="img" '
@@ -343,6 +372,7 @@ def pair_matrix_svg(data: dict) -> str:
         name = row["sorter"] + (" (baseline)" if row["baseline"] else "")
         out.append(_text(pad, y + 30, name, size=15, weight="600"))
         detail = (f"{row['n_units']} units · {_unit(row['window_s'], '.0f', ' s')}"
+                  + (" · smoke run" if row["smoke"] else "")
                   if row["status"] == S_JUDGED else row["status"])
         out.append(_text(pad, y + 50, detail, size=12, fill=ink["ink_muted"]))
         out.append(f'<line x1="{pad}" y1="{y + cell_h - 6}" x2="{width - pad}" '
@@ -417,8 +447,11 @@ def recovery_grid_svg(data: dict) -> str:
                                  fill=ink["ink_muted"], anchor="middle"))
                 continue
             fill, text_fill = _ramp_step(recovered)
+            # The gridline stroke keeps the two lightest ramp steps legible as
+            # marks against the surface (the palette's ordinal floor starts at
+            # step 300; buckets below it lean on this ring + the printed number).
             out.append(f'<rect x="{x}" y="{y}" width="{cell_w}" height="{cell_h}" '
-                       f'rx="6" fill="{fill}"/>')
+                       f'rx="6" fill="{fill}" stroke="{ink["gridline"]}"/>')
             out.append(_text(x + cell_w / 2, y + cell_h / 2 - 1, _pct(recovered), size=15,
                              weight="600", fill=text_fill, anchor="middle"))
             out.append(_text(x + cell_w / 2, y + cell_h / 2 + 14, f"unit {got['best_unit']}",
@@ -617,7 +650,13 @@ def _params_section(data: dict) -> str:
         else:
             lede = ("No overrides were passed, so the sorter ran on its own defaults, listed "
                     "in full below.")
-        if row["docker"]:
+        if row["docker"] and overrides:
+            lede += (f" This sort ran in a Docker image; the {len(overrides)} override(s) "
+                     f"WERE passed into the container, and every non-overridden value came "
+                     f"from the container's own SpikeInterface. The values below were read "
+                     f"on this machine ({_e(si)}): where the image ships a different "
+                     f"SpikeInterface version, its defaults are the ones that actually ran.")
+        elif row["docker"]:
             lede += (f" This sort ran in a Docker image, and nothing was passed into it, so "
                      f"the container's own SpikeInterface supplied the defaults it used. The "
                      f"values below were read on this machine ({_e(si)}): that is what the "

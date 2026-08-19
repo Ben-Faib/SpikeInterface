@@ -293,3 +293,18 @@ def test_a_docker_row_says_where_its_parameter_values_came_from(store):
     html = sweep_page._params_section(data)
     assert "ran in a Docker image" in html
     assert "0.104.3" in html            # what the record can honestly state
+
+
+def test_a_partial_sweep_does_not_overclaim(store):
+    """Review F4: with unjudged rows in the roster the headline names how many
+    sorters were actually judged instead of claiming "no sorter"."""
+    _run_dir(store, "tridesclous2", "20260819-050000-aaaaaa", units=16)
+    data = sweep_page.sweep(["tridesclous2", "kilosort4"])
+    v = sweep_page.verdict(data)
+    assert v["headline"] == "The one judged sorter does not split the pairs."
+    assert "1 of 2 sorters could be judged" in v["lede"]
+    assert "exactly what tridesclous2 does" in v["lede"]
+
+    data_no_tdc2 = sweep_page.sweep(["kilosort4"])
+    v2 = sweep_page.verdict(data_no_tdc2)
+    assert v2["headline"] == "Nothing to judge yet."
