@@ -78,7 +78,10 @@ A need left only in a chat summary is a need Ben never sees.*
 
 ## OPEN - needs Ben
 
-- **V2 - the Windows run**: follow `docs/WINDOWS_TEST.md` on the lab box (uv setup,
+- **V2 - the Windows audit**: branch `Version-2`; `START_HERE_WINDOWS.md` is the handoff
+  (three steps + a prompt for a Claude Code session on the lab box, which audits
+  functionally and visually and commits a report to `docs/audits/`). Or by hand:
+  follow `docs/WINDOWS_TEST.md` on the lab box (uv setup,
   `scripts\check_workbench.py`, ten minutes in the app) and send back the harness output
   plus a screenshot of anything wrong. First look on this Mac:
   `uv run python SpikeInterface_Menu.py`. *(opened 2026-09-27)*

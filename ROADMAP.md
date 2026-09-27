@@ -22,8 +22,9 @@ box) runs alongside everything.
 - Spike 2.0 (`goals/GOAL_V2.md`): `2c43891` build · `a45749d` the sandboxed end-to-end
   harness (`scripts/check_workbench.py`) · `24bb8b7` the fix-first review folded. Suite 675
   green, 16 snapshots, harness 16 PASS / 0 FAIL / 1 MANUAL on the real data (canary ~4 µV).
-- **Next: Ben runs `docs/WINDOWS_TEST.md` on the lab box** (setup, the harness, a ten-minute
-  look). UX2 slices 0, A, B, C and D are absorbed by v2; UX2-E (the HTML pages as one site)
+- **Next: the Windows audit** - branch `Version-2`, handoff `START_HERE_WINDOWS.md` (a
+  Claude Code session on the lab box audits functionally + visually, report in
+  `docs/audits/`). UX2 slices 0, A, B, C and D are absorbed by v2; UX2-E (the HTML pages as one site)
   stays open.
 
 ## Previous NOW (2026-09-27, early): housekeeping sealed; UX2 planned

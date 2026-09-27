@@ -2,6 +2,8 @@
 
 Guidance for Claude Code when working in this repository.
 
+**On Windows, asked to audit Spike 2.0? The task and its scope are in `START_HERE_WINDOWS.md`.**
+
 ## What this is
 
 A single-recording SpikeInterface workspace: loaders, analysis scripts, and a

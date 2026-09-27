@@ -1,5 +1,9 @@
 # SpikeInterface workspace - PFCM7 LFP + spike events
 
+> **Spike 2.0 is on the `Version-2` branch, awaiting its Windows audit: start with
+> [START_HERE_WINDOWS.md](START_HERE_WINDOWS.md)** (three steps, then one prompt to paste
+> into Claude Code on the lab machine).
+
 A ready-to-run [SpikeInterface](https://spikeinterface.readthedocs.io/en/stable/)
 setup for analysing the Blackrock/Ripple recording in this repo. Works on
 **macOS and Windows** (and Linux).
