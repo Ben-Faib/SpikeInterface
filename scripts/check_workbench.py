@@ -708,9 +708,17 @@ def check_app(ctx):
 
     async def drive(w, h) -> list:
         bad = []
-        app = spike_app.SpikeApp(ctx.c, splash=False)
+        # As _menu() builds it: splash ON, left to leave on its own timer - the path a
+        # real launch takes (a keypress skips it; it once crashed only there).
+        app = spike_app.SpikeApp(ctx.c, splash=True)
         async with app.run_test(size=(w, h)) as pilot:
             await pilot.pause()
+            for _ in range(int((spike_app.SplashScreen.SECONDS + 3) / 0.1)):
+                await pilot.pause(0.1)
+                if not isinstance(app.screen, spike_app.SplashScreen):
+                    break
+            if isinstance(app.screen, spike_app.SplashScreen):
+                bad.append(f"splash never left @ {w}x{h}")
             for n, pane in enumerate(spike_app.SpikeApp.PANE_IDS):
                 await pilot.press("escape")
                 app._msg = None

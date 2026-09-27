@@ -6,7 +6,7 @@ description: Use when asked to run, launch, start, smoke-test, or verify that th
 # Run the SpikeInterface menu
 
 The front door is `SpikeInterface_Menu.py` (repo root). Bare, it opens a
-full-screen **Textual** TUI dashboard; with an action arg it dispatches directly.
+full-screen **Textual** app, Spike 2.0; with an action arg it dispatches directly.
 The environment is **uv**-managed (Python 3.12 + `uv.lock`). Follow the verified
 path below - every command here has been run and confirmed on this machine.
 
@@ -29,13 +29,14 @@ nor `uv` until you do the above. Conda fallback: `conda env create -f environmen
 ## 2. Launch (interactive)
 
 ```powershell
-uv run python SpikeInterface_Menu.py           # the TUI dashboard
+uv run python SpikeInterface_Menu.py           # Spike 2.0 (the TUI)
 uv run python SpikeInterface_Menu.py report    # or one action directly: explore|sort|report|gui|traces|compare|verify
 ```
 
-The dashboard opens with a red **"no recording"** banner until the
-`PFCM7_d0ephys_Block2.{ns2,ns5,nev}` set is in the repo root - the raw files are
-git-ignored, so this is normal on a clean tree (press `d` in-app for the checklist).
+The app opens with **1 Data** marked `!` and "Add the recording" as the next step
+until the `PFCM7_d0ephys_Block2.{ns2,ns5,nev}` set is in the repo root (or the data
+folder set in Settings) - the raw files are git-ignored, so this is normal on a clean
+tree (press `1` in-app for the checklist).
 
 ## 3. Verify it launches (headless - no real terminal needed)
 
@@ -45,14 +46,15 @@ Two headless checks actually mount the app:
 
 ```powershell
 uv run python -m pytest tests/ -q                              # 255+ Pilot/unit tests
-uv run python .claude/skills/run-spikeinterface/verify_launch.py   # drives the REAL SpikeMenuApp
+uv run python .claude/skills/run-spikeinterface/verify_launch.py   # drives the REAL Spike 2.0 app
 ```
 
-`verify_launch.py` mounts `SpikeMenuApp` via Textual's Pilot, dismisses the
-first-run modal, snapshots every panel (title / data banner / sorters / actions /
-footer) to `outputs/menu_launch_capture.txt` + an SVG, exercises navigation, and
-exits non-zero if the menu fails to mount. Read the capture file to eyeball the
-rendered dashboard.
+`verify_launch.py` mounts `spike_app.SpikeApp` exactly as a real launch does (splash
+on, left to leave on its own timer - the path a keypress skips), visits every stage,
+Settings, the palette and help, writes the header / rail / next step / key line to
+`outputs/menu_launch_capture.txt` + an SVG, and exits non-zero if anything fails to
+draw. Read the capture file to eyeball the rendered app. For the last word, launch it
+in a real terminal too.
 
 ## Known gotchas (all hit on this machine)
 

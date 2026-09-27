@@ -612,3 +612,20 @@ async def test_help_lists_the_live_data_files(make_app):
         await pilot.pause()
         body = app.screen.query_one("#helpbody", Static).render().plain
         assert "DATA FILES" in body and "✗ missing" in body and "/data/recordings" in body
+
+
+async def test_splash_leaves_on_its_own_timer(monkeypatch):
+    # A real launch hit ScreenError when the timer fired (the key path had been
+    # the only one tested): the splash must dismiss itself cleanly, then a late
+    # key must not dismiss twice.
+    from conftest import FakeController
+
+    monkeypatch.setattr(spike_app.SplashScreen, "SECONDS", 0.1)
+    app = spike_app.SpikeApp(FakeController(), splash=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        assert isinstance(app.screen, spike_app.SplashScreen)
+        assert await _wait(pilot, lambda: not isinstance(app.screen, spike_app.SplashScreen))
+        await pilot.press("space")
+        await pilot.pause()
+        assert app.is_running and app._stage == 0

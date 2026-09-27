@@ -3,11 +3,12 @@
 
 The front door (``SpikeInterface_Menu.py`` with no action) is a full-screen
 Textual TUI, so it can't be "just run" from a non-interactive shell to confirm it
-works - it needs a real terminal, or a driver. This drives the *real*
-``SpikeMenuApp`` through Textual's Pilot harness: it mounts the app, dismisses any
-first-run modal, snapshots the key dashboard panels + an SVG, exercises
-navigation, and confirms a clean exit. A non-zero exit here means the menu does
-not launch.
+works - it needs a real terminal, or a driver. This drives the *real* Spike 2.0
+app (``spike_app.SpikeApp``) exactly as ``_menu()`` builds it - splash ON - through
+Textual's Pilot harness: it lets the splash leave on its OWN timer (the path a real
+launch takes and a keypress skips; it crashed once, 2026-09-27), visits every stage,
+Settings, the palette and help, snapshots Home + an SVG, and confirms a clean exit.
+A non-zero exit here means the app does not launch.
 
     uv run python .claude/skills/run-spikeinterface/verify_launch.py
 
@@ -25,9 +26,9 @@ sys.path.insert(0, str(ROOT))
 sys.path.insert(0, str(ROOT / "scripts"))
 
 import SpikeInterface_Menu as launcher  # noqa: E402
-import menu_app  # noqa: E402
+import spike_app  # noqa: E402
 from rich.console import Console  # noqa: E402
-from textual.widgets import Static, OptionList  # noqa: E402
+from textual.widgets import Static  # noqa: E402
 
 OUT = ROOT / "outputs"
 
@@ -43,71 +44,53 @@ def _text(widget) -> str:
     return console.file.getvalue().rstrip("\n")
 
 
-def _optionlist_text(ol) -> str:
-    lines = []
-    for opt in ol._options:  # Textual OptionList internal Option list
-        console = Console(file=io.StringIO(), width=100, no_color=True)
-        console.print(opt.prompt)
-        lines.append(console.file.getvalue().rstrip("\n"))
-    return "\n".join(lines)
-
-
 async def drive(data_dir: "str | None") -> bool:
     args = argparse.Namespace(action=None, data_dir=data_dir, sorter=None, probe=None,
                               duration=None, docker=False, gui_mode="auto")
     cfg = launcher._load_config()
     launcher._apply_saved_theme(cfg)
     controller = launcher.MenuController(args, cfg)
-    app = menu_app.SpikeMenuApp(controller)
+    app = spike_app.SpikeApp(controller, splash=True)      # as _menu() builds it
 
     buf, svg_len = [], 0
     # Textual owns stdout while the app runs, and its capture is cp1252 on Windows -
     # so collect everything and write it out (UTF-8) AFTER the app closes.
     async with app.run_test(size=(120, 42)) as pilot:
         await pilot.pause()
-        for _ in range(4):  # dismiss any first-run Welcome / Probe-setup modal
-            if len(app.screen_stack) > 1:
-                await pilot.press("escape")
-                await pilot.pause()
-            else:
+        assert type(app.screen).__name__ == "SplashScreen", "no launch splash"
+        for _ in range(int((spike_app.SplashScreen.SECONDS + 3) / 0.1)):
+            await pilot.pause(0.1)                 # let the splash leave on its own
+            if type(app.screen).__name__ != "SplashScreen":
                 break
-        await pilot.pause()
-
-        panels = [
-            ("TITLEBAR", "#titlebar"), ("DATABAR", "#databar"), ("SORTBAR", "#sortbar"),
-            ("RESULTBAR", "#resultbar"), ("FOOTER", "#footer"),
-        ]
-        for name, sel in panels:
+        assert type(app.screen).__name__ != "SplashScreen", "the splash never left"
+        for name, sel in (("HEADER", "#header"), ("RAIL", "#rail"), ("KEYS", "#keys")):
             buf.append(f"=== {name} ===")
             buf.append(_text(app.query_one(sel, Static)))
-        buf.append("=== ACTIONS ===")
-        buf.append(_optionlist_text(app.query_one("#actions", OptionList)))
-        buf.append("=== RESULTS ===")
-        buf.append(_text(app.query_one("#results", Static)))
+        buf.append("=== NEXT STEP ===")
+        buf.append(_text(app.query_one("#home #card", Static)))
+        for key in ("1", "2", "3", "4", "5", "6", "escape"):
+            await pilot.press(key)
+            await pilot.pause(0.3)
+            status = _text(app.query_one("#status", Static))
+            assert "couldn't draw" not in status, f"stage {key}: {status}"
+        for key, screen in (("comma", "SettingsScreen"), ("slash", "PaletteScreen"),
+                            ("question_mark", "HelpScreen")):
+            await pilot.press(key)
+            await pilot.pause()
+            assert type(app.screen).__name__ == screen, f"{key} opened {type(app.screen).__name__}"
+            await pilot.press("escape")
+            await pilot.pause()
+        buf.append("=== after every stage + Settings/palette/help ===")
+        buf.append(_text(app.query_one("#status", Static)))
 
-        # Exercise navigation (D5): move in the actions list, then open + close
-        # the sorter picker - must not crash.
-        await pilot.press("down")
-        await pilot.pause()
-        await pilot.press("t")
-        await pilot.pause()
-        buf.append("=== PICKER open? ===")
-        buf.append(type(app.screen).__name__)
-        assert type(app.screen).__name__ == "SorterPickerScreen", \
-            f"t did not open the sorter picker (got {type(app.screen).__name__})"
-        await pilot.press("escape")
-        await pilot.pause()
-        buf.append("=== FOOTER after down,t,esc ===")
-        buf.append(_text(app.query_one("#footer", Static)))
-
-        svg = app.export_screenshot(title="SpikeInterface Menu")
+        svg = app.export_screenshot(title="Spike 2.0")
         OUT.mkdir(exist_ok=True)
         (OUT / "menu_launch.svg").write_text(svg, encoding="utf-8")
         svg_len = len(svg)
 
     (OUT / "menu_launch_capture.txt").write_text("\n".join(buf), encoding="utf-8")
     ok = svg_len > 0 and app.return_code in (None, 0)
-    status = ("OK: menu mounted, rendered, navigated, exited cleanly. "
+    status = ("OK: Spike 2.0 launched (splash left on its timer), every stage drew, exited cleanly. "
               f"SVG bytes={svg_len}. See outputs/menu_launch_capture.txt\n"
               if ok else f"FAIL: return_code={app.return_code!r} svg_bytes={svg_len}\n")
     sys.stdout.buffer.write(status.encode("ascii", "replace"))

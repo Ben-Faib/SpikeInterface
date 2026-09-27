@@ -540,14 +540,24 @@ class SplashScreen(Screen):
         return t
 
     def on_mount(self) -> None:
-        self.set_timer(self.SECONDS, lambda: self.dismiss(None))
+        self._left = False
+        self.set_timer(self.SECONDS, self._leave)
+
+    def _leave(self) -> None:
+        """Dismiss once, returning nothing: a timer awaits whatever its callback
+        returns, and awaiting dismiss() from this screen's own handler raises
+        ScreenError (the crash a real launch hit when the timer fired)."""
+        if self._left:
+            return
+        self._left = True
+        self.dismiss(None)
 
     def on_key(self, event) -> None:
         event.stop()
-        self.dismiss(None)
+        self._leave()
 
     def on_click(self, _event) -> None:
-        self.dismiss(None)
+        self._leave()
 
 
 class HelpScreen(Screen):
