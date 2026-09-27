@@ -1,7 +1,7 @@
 # SpikeInterface workspace - PFCM7 LFP + spike events
 
 > **Spike 2.0 is on the `Version-2` branch, awaiting its Windows audit: start with
-> [START_HERE_WINDOWS.md](START_HERE_WINDOWS.md)** (three steps, then one prompt to paste
+> [START_HERE_WINDOWS.html](START_HERE_WINDOWS.html)** (or the [.md](START_HERE_WINDOWS.md): three steps, then one prompt to paste
 > into Claude Code on the lab machine).
 
 A ready-to-run [SpikeInterface](https://spikeinterface.readthedocs.io/en/stable/)

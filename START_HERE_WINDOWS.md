@@ -2,7 +2,8 @@
 
 Spike 2.0 lives on the branch **`Version-2`**. It has passed every automatic check on a
 Mac; nothing has run on Windows yet. This page hands the whole Windows audit to a Claude
-Code session on the lab machine.
+Code session on the lab machine. `START_HERE_WINDOWS.html` is the same content with copy buttons
+(built from this file).
 
 ## Ben: three steps
 
