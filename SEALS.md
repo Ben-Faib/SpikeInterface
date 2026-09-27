@@ -48,6 +48,11 @@ A need left only in a chat summary is a need Ben never sees.*
   at 97.5–100%; 8 unsure; 4 noise - three evidence-keyed rules, every decision
   audit-trailed with source=tui) → applied (curated re-score, canary 4.03 µV) → report,
   dashboard and compare all reading that one run id, curated-stated.
+- **Spike 2.0 is the app** (2026-09-27, `goals/GOAL_V2.md`): a rail of six stages over one
+  next step and a pane per stage; every setting editable in place and passed to every sort;
+  per-unit evidence on 4 Judge; any run re-run from its recipe with a match report;
+  `scripts/check_workbench.py` proves every function end to end in a sandbox (the Windows
+  acceptance test, not yet run on the lab box).
 - **The presentation arc is delivered** (CONDUCTOR v4, 2026-08-19): the em-dash purge is
   total and pinned (`tests/test_no_em_dashes.py`); the merge advisory answers "do I need
   to split?" on novel data from ONE home (sort_summary: >= 1000 spikes + solid SNR + ISI
@@ -73,10 +78,10 @@ A need left only in a chat summary is a need Ben never sees.*
 
 ## OPEN - needs Ben
 
-- **UX2 - pick the slices**: `goals/GOAL_UX2.md` lists six; recommended 0 (one command
-  that drives all fourteen functions on the real data) → A (surfaces that currently say
-  untrue things, incl. the report naming the wrong probe) → B (apply curation in-app).
-  *(opened 2026-09-27)*
+- **V2 - the Windows run**: follow `docs/WINDOWS_TEST.md` on the lab box (uv setup,
+  `scripts\check_workbench.py`, ten minutes in the app) and send back the harness output
+  plus a screenshot of anything wrong. Also worth a look on this Mac: `run.bat`-free,
+  `uv run python SpikeInterface_Menu.py`. *(opened 2026-09-27)*
 - **DECK - the dry read**: open `outputs/lab_meeting_deck.pptx` in PowerPoint and read
   the notes script aloud once (the file passes the validator and renders cleanly in
   LibreOffice, but a headless session cannot click through PowerPoint itself); two
@@ -101,6 +106,13 @@ accepted; reopen only if a map ever arrives. Both feed THE CONDUCTOR v4 / GOAL_P
 ---
 
 ## The ledger (newest first)
+
+**2026-09-27 - Spike 2.0: built, tested end to end, reviewed**
+- Did: built the v2.0 mockups as the app (rail of six stages, one next step, a pane per stage, Settings for every value, palette, Runs + reproduce, unit evidence on 4 Judge), a sandboxed harness that drives every function on the real data, and folded a fix-first review (15 findings, incl. stale evidence after a re-sort, NaN input crashes, a Docker toggle that switched itself off).
+- Means: a researcher can see where the recording stands and what to do next, change any setting in place, judge units by their waveforms, and re-run any sort from its recipe to check its values - and one command proves all of it works.
+- Moved: `2c43891` + `a45749d` + `24bb8b7`; suite 675 green, 16 snapshots, harness 16 PASS / 0 FAIL / 1 MANUAL (canary ~4 µV, reproduce REGENERATED); UX2 0/A-D absorbed.
+- Needs Ben: the Windows acceptance run (OPEN: V2), and a first look at the app on this Mac.
+- Next: UX2-E (the HTML pages as one site) or the lab-box GPU track (WD), after the Windows run reports back.
 
 **2026-09-27 - housekeeping + the UX2 plan**
 - Did: resolved the 2026-07-13 audit worklist (flagless CLI sorts follow the menu's active probe, `return_in_uV` pinned, dead code removed, honest docstrings), cleaned pyflakes findings, rewrote the stale README/Instructions.html menu and sort sections, and wrote `goals/GOAL_UX2.md` from a code-checked sweep of 24 open UX follow-ups plus a look at every surface.
