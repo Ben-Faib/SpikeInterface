@@ -73,6 +73,10 @@ A need left only in a chat summary is a need Ben never sees.*
 
 ## OPEN - needs Ben
 
+- **UX2 - pick the slices**: `goals/GOAL_UX2.md` lists six; recommended 0 (one command
+  that drives all fourteen functions on the real data) → A (surfaces that currently say
+  untrue things, incl. the report naming the wrong probe) → B (apply curation in-app).
+  *(opened 2026-09-27)*
 - **DECK - the dry read**: open `outputs/lab_meeting_deck.pptx` in PowerPoint and read
   the notes script aloud once (the file passes the validator and renders cleanly in
   LibreOffice, but a headless session cannot click through PowerPoint itself); two
@@ -97,6 +101,13 @@ accepted; reopen only if a map ever arrives. Both feed THE CONDUCTOR v4 / GOAL_P
 ---
 
 ## The ledger (newest first)
+
+**2026-09-27 - housekeeping + the UX2 plan**
+- Did: resolved the 2026-07-13 audit worklist (flagless CLI sorts follow the menu's active probe, `return_in_uV` pinned, dead code removed, honest docstrings), cleaned pyflakes findings, rewrote the stale README/Instructions.html menu and sort sections, and wrote `goals/GOAL_UX2.md` from a code-checked sweep of 24 open UX follow-ups plus a look at every surface.
+- Means: the docs describe the tool that exists, and the usability pass has one ranked, sized plan instead of follow-ups scattered across six briefs.
+- Moved: `e1d9d0f` + `2f2140e` + this seal; suite 724 green, 30 s smoke canary 3.938 uV, verify_install all good; ROADMAP markers made true.
+- Needs Ben: the UX2 slice pick (OPEN).
+- Next: UX2-0, the one-command harness over all fourteen functions, then UX2-A (surfaces that say untrue things, incl. the report naming the menu's probe rather than the sort's).
 
 **2026-08-19 - CONDUCTOR v4 CLOSED: the presentation arc, all eight items sealed, pushed**
 - Did: closed the run: the sweep page (review: ship, seven findings folded including the

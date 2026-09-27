@@ -17,7 +17,16 @@ box) runs alongside everything.
 
 ---
 
-## ▶ NOW - updated 2026-08-19: **CONDUCTOR v4 CLOSED - the presentation arc delivered, main pushed**
+## ▶ NOW - updated 2026-09-27: **housekeeping sealed; UX2 usability pass planned, waiting on Ben's pick**
+
+- Housekeeping (`e1d9d0f`, `2f2140e`): the 2026-07-13 audit worklist resolved (a flagless
+  CLI sort now follows the menu's active probe; `return_in_uV` pinned; dead code gone),
+  README / Instructions.html / CLAUDE.md made true again. Suite 724 green, canary 3.938 uV.
+- **Next: `goals/GOAL_UX2.md`** - six slices (0 the confidence harness, A true words,
+  B curation inside the app, C one meaning per key, D timeliness, E the HTML pages as one
+  site). Ben picks; recommended order 0 → A → B. Prompts get authored at pick time.
+
+## Previous NOW (2026-08-19): **CONDUCTOR v4 CLOSED - the presentation arc delivered, main pushed**
 
 - All eight GOAL_PRESENT items sealed with three Fable reviews folded: em-dash
   purge + repo-wide pin · merge advisory (one home, every surface) · parameter
@@ -65,6 +74,7 @@ box) runs alongside everything.
 | 13 | W4 multi-recording | `goals/GOAL_W4_MULTI.md` | gated: W1+W2+lab data |
 | - | WD lab deployment items 1–4 | `goals/GOAL_WD_DEPLOY.md` | gated: lab-box access |
 | P8 | GOAL_PRESENT: the presentation arc (all eight items) | `goals/GOAL_PRESENT.md` | **SEALED 2026-08-19** (CONDUCTOR v4, this session): purge+pin `3b699cb` · advisory `5a106ea`+`11462fa`+fold `4917b7c` · params `c46773d`+`cb98780` · sweep judgment/page `98ff77b`+folds `a90edf0`/`288b48e` · facelift `07e5815`+fold `cb4735a` · palette `46a04d7` · deck `d748381`; three Fable reviews folded; suite 723 green |
+| UX2 | usability pass: harness · true words · curation in-app · keys · timeliness · HTML site | `goals/GOAL_UX2.md` | **PLANNED 2026-09-27** - awaiting Ben's slice pick |
 | B1 | BUG: bare `report` action crashes | prompt below | **SEALED 2026-08-18** (peer, `b43869e`) |
 | E1 | Explore overhaul: same-clock view + honest labels (Ben flag, 2026-08-19) | **SEALED** - and it surfaced: **channel 1 is pathological** (pure oscillation, inside the CMR) → first target for the queued bad-channel/preprocessing slice | **SEALED 2026-08-19** |
 | C1 | NEV online-vs-sorted comparison (Ben, 2026-08-18 eve) | engine **SEALED** (`39ca919`) - FINDING: the original .nev has ZERO online-sorted units | **SEALED** |
