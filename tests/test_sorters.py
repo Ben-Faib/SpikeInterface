@@ -337,7 +337,6 @@ def test_group_of_uses_live_installed_when_omitted(monkeypatch):
     assert sorters.group_of("mountainsort5") == "docker"
 
 
-import subprocess as _subprocess
 
 
 class _Ret:

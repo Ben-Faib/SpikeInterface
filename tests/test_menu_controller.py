@@ -315,7 +315,7 @@ def test_catalog_has_fit_and_reranks_for_dense_probe(monkeypatch, tmp_path):
 
 
 def test_geometry_caveat_conditional(monkeypatch, tmp_path):
-    c = _controller(monkeypatch, tmp_path, use_docker=False, cfg={})
+    _controller(monkeypatch, tmp_path, use_docker=False, cfg={})
     assert M._geometry_note("independent").startswith("Placeholder")
     real = M._geometry_note("linear-16-50um")
     assert "Placeholder" not in real and "linear-16-50um" in real

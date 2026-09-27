@@ -1327,7 +1327,8 @@ def apply_record(record: dict, root=None, *, out_dir=None, verbose: bool = True,
         _sort._robust_rmtree(out / "analyzer")
         analyzer = si.create_sorting_analyzer(
             curated, recording, folder=str(out / "analyzer"),
-            format="binary_folder", overwrite=True, sparse=False)
+            format="binary_folder", overwrite=True, sparse=False,
+            return_in_uV=True)  # pinned, as in run_sorting: never ride SI's default
         for ext in ("random_spikes", "waveforms", "templates", "noise_levels"):
             analyzer.compute(ext)
         deps_ok = set()

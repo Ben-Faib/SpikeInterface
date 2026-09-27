@@ -1,7 +1,7 @@
 """Spike-sort the raw broadband recording (.ns5 @ ~30 kHz).
 
     uv run python scripts/run_sorting.py                          # tridesclous2, full recording
-    uv run python scripts/run_sorting.py --sorter spykingcircus2  # the other installed sorter
+    uv run python scripts/run_sorting.py --sorter spykingcircus2  # or lupin / simple (all installed)
     uv run python scripts/run_sorting.py --duration 30            # quick test: first 30 s only
     uv run python scripts/run_sorting.py --data-dir /path/to/recording
     uv run python scripts/run_sorting.py --verbosity normal       # step messages + table, no bars
@@ -854,13 +854,14 @@ def resolve_probe(name, probe_file):
     """Resolve --probe/--probe-file to a probe profile dict.
 
     --probe-file wins (a one-off file profile); else a named library profile; else
-    the active default profile (nnx-a1x16-3mm-100)."""
+    the ACTIVE probe (the menu's saved choice, else nnx-a1x16-3mm-100 - see
+    probes.active_name), so a bare CLI sort uses the geometry the menu shows."""
     import probes
 
     if probe_file:
         return {"name": "file", "label": probe_file, "kind": "file",
                 "params": {"path": probe_file}, "builtin": False, "note": ""}
-    return probes.get(name) if name else probes.get(probes.DEFAULT_PROBE)
+    return probes.get(name) if name else probes.get(probes.active_name())
 
 
 # --------------------------------------------------------------------------- #
@@ -1159,7 +1160,6 @@ def main() -> int:
 
     import spikeinterface.full as si
     import spikeinterface.preprocessing as spre
-    import spikeinterface.sorters as ss
 
     # Drive SI's own tqdm bars when drawing them OR in JSON mode (so the patched
     # tqdm fires bar events); in JSON mode they render on stderr, off the channel.
@@ -1204,9 +1204,9 @@ def main() -> int:
 
     # Apply the chosen probe geometry to the kept neural channels. 'independent'
     # reproduces the old placeholder; a real profile gives physical geometry. An
-    # EXPLICIT --probe/--probe-file that doesn't fit is an error; the DEFAULT probe
-    # not fitting (e.g. a different recording) falls back to the placeholder so a
-    # default run never hard-fails on geometry.
+    # EXPLICIT --probe/--probe-file that doesn't fit is an error; the ACTIVE probe
+    # (saved choice or default) not fitting (e.g. a different recording) falls back
+    # to the placeholder so a flagless run never hard-fails on geometry.
     import probes
     explicit = bool(args.probe or args.probe_file)
     if probe_profile is None:   # explicit --probe name not in the library
@@ -1227,7 +1227,7 @@ def main() -> int:
             return 1
         rec = bio.attach_dummy_probe(rec)
         probe_profile = probes.get(probes.PLACEHOLDER_PROBE)
-        _probe_msg = (f"default probe didn't match this recording ({e}) - using the "
+        _probe_msg = (f"active probe didn't match this recording ({e}) - using the "
                       "independent-channel placeholder; pass --probe to set geometry.")
         ui.warn(_probe_msg)
     if applied:
@@ -1418,6 +1418,7 @@ def main() -> int:
                 analyzer = si.create_sorting_analyzer(
                     sorting, rec, folder=str(out / "analyzer"), format="binary_folder",
                     overwrite=True, sparse=False,
+                    return_in_uV=True,  # pinned: sort_summary's µV gate must not ride SI's default
                 )
                 # One compute per extension so each shows a named 'substep' the moment it
                 # starts; i/n span the whole metrics phase (base + metrics + curation).

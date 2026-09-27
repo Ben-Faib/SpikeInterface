@@ -158,7 +158,6 @@ def test_load_quality_rule_overrides_and_drops_junk(tmp_path):
 
 def test_load_quality_rule_survives_non_dict_config(tmp_path):
     # W1 review F2: "quality_rule": "strict" must not take out the report verdict.
-    import json
     import sort_summary as ss
     for bad in ('"strict"', "5", "[1, 2]", "null"):
         (tmp_path / "cfg.json").write_text('{"quality_rule": %s}' % bad)

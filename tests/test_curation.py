@@ -513,7 +513,7 @@ def test_apply_refuses_when_the_sort_cannot_be_identified(synthetic, tmp_path):
 
 
 def test_apply_refuses_a_record_written_against_another_sort(synthetic):
-    root, paths, unit_ids = synthetic["root"], synthetic["paths"], synthetic["unit_ids"]
+    root, _paths, unit_ids = synthetic["root"], synthetic["paths"], synthetic["unit_ids"]
     record = curation.new_record(SORTER, unit_ids, root=root)
     curation.add_label(record, unit_ids[0], "good")
     record["curates"]["run"]["created"] = "2020-01-01T00:00:00"

@@ -45,15 +45,8 @@ IDLE_COLOR = "#8b949e"
 
 
 def _resolve_probe(name: "str | None"):
-    """The requested probe profile, else the menu's active probe, else the default."""
-    if name:
-        return probes.get(name)
-    try:  # the menu persists the active probe in .si_menu.json
-        import json
-        cfg = json.loads((bio.REPO_ROOT / ".si_menu.json").read_text(encoding="utf-8"))
-        return probes.get(cfg.get("active_probe") or probes.DEFAULT_PROBE) or probes.get(probes.DEFAULT_PROBE)
-    except Exception:  # noqa: BLE001 - no config -> default
-        return probes.get(probes.DEFAULT_PROBE)
+    """The requested probe profile, else the active probe (probes.active_name)."""
+    return probes.get(name) if name else probes.get(probes.active_name())
 
 
 def _sorted_recording(data_dir, probe_profile):

@@ -55,6 +55,8 @@ import blackrock_io as bio
 # NeuroNexus A1x16-3mm-100-703; analog 1–6 are aux and dropped before sorting).
 DEFAULT_PROBE = "nnx-a1x16-3mm-100"
 PROBES_PATH = bio.REPO_ROOT / "probes.json"
+# Where the menu persists which profile is active (its `active_probe` key).
+MENU_CONFIG_PATH = bio.REPO_ROOT / ".si_menu.json"
 # Kept as a constant so the placeholder is still addressable by name everywhere.
 PLACEHOLDER_PROBE = "independent"
 
@@ -154,6 +156,19 @@ def library(path=PROBES_PATH) -> list[dict]:
 
 def get(name, path=PROBES_PATH) -> "dict | None":
     return next((p for p in library(path) if p["name"] == name), None)
+
+
+def active_name(config_path=None, path=PROBES_PATH) -> str:
+    """The ACTIVE probe's name: the menu's saved ``active_probe`` when it names a
+    profile in the library, else :data:`DEFAULT_PROBE`. Every surface that has no
+    explicit --probe resolves through here, so the menu, the probe map and a bare
+    CLI sort all agree on geometry."""
+    try:
+        cfg = Path(config_path or MENU_CONFIG_PATH).read_text(encoding="utf-8")
+        name = json.loads(cfg).get("active_probe")
+    except Exception:  # noqa: BLE001 - no/unreadable config -> the default
+        name = None
+    return name if name and get(name, path) is not None else DEFAULT_PROBE
 
 
 def _is_builtin(name) -> bool:

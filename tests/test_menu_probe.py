@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import menu_app
 from conftest import FakeController
-from textual.widgets import OptionList, Static
+from textual.widgets import OptionList
 
 
 def _app(**kw):

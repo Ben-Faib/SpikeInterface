@@ -199,11 +199,25 @@ def test_reporter_substep_disabled_noop():
     assert buf.getvalue() == ""
 
 
-def test_resolve_probe_defaults_to_active_default():
+def test_resolve_probe_defaults_to_active_default(monkeypatch, tmp_path):
     import run_sorting, probes
+    monkeypatch.setattr(probes, "MENU_CONFIG_PATH", tmp_path / "absent.json")
     p = run_sorting.resolve_probe(None, None)
     assert p["name"] == probes.DEFAULT_PROBE == "nnx-a1x16-3mm-100"
     assert p["kind"] == "linear"
+
+
+def test_resolve_probe_flagless_follows_the_menus_active_probe(monkeypatch, tmp_path):
+    # A bare CLI sort uses the probe the menu saved (audit finding 1); a saved
+    # name the library no longer has falls back to the default, never to None.
+    import run_sorting, probes
+    cfg = tmp_path / ".si_menu.json"
+    monkeypatch.setattr(probes, "MENU_CONFIG_PATH", cfg)
+    cfg.write_text('{"active_probe": "linear-16-50um"}', encoding="utf-8")
+    assert run_sorting.resolve_probe(None, None)["name"] == "linear-16-50um"
+    assert run_sorting.resolve_probe(probes.PLACEHOLDER_PROBE, None)["name"] == probes.PLACEHOLDER_PROBE
+    cfg.write_text('{"active_probe": "deleted-user-probe"}', encoding="utf-8")
+    assert run_sorting.resolve_probe(None, None)["name"] == probes.DEFAULT_PROBE
 
 
 def test_resolve_probe_named():

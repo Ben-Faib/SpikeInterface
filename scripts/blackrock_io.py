@@ -181,8 +181,9 @@ def read_lfp(
 
     base = find_blackrock_base(data_dir)
     if stream_id is None and stream_name is None:
-        # Resolve to a single stream id; leave stream_name None so we never
-        # pass both selectors to read_blackrock (which rejects receiving both).
+        # Resolve to a single stream id and leave stream_name None: pass exactly
+        # one selector. (SI only asserts at least one is given; with both,
+        # stream_name silently wins, which would hide a mismatched stream_id.)
         _name, stream_id = list_streams(data_dir)[0]
     recording = se.read_blackrock(
         str(base),
@@ -232,45 +233,6 @@ def attach_dummy_probe(recording, pitch_um: float = 250.0):
     n = recording.get_num_channels()
     probe = generate_linear_probe(num_elec=n, ypitch=pitch_um)
     probe.set_device_channel_indices(np.arange(n))
-    return recording.set_probe(probe)
-
-
-# Number of recording sites on the real array used for this dataset.
-A1X16_N_CONTACTS = 16
-A1X16_PITCH_UM = 100.0
-
-
-def attach_a1x16_probe(recording, pitch_um: float = A1X16_PITCH_UM):
-    """Attach the **real** NeuroNexus A1x16-3mm-100-703 geometry.
-
-    This recording was made with a NeuroNexus **A1x16-3mm-100-703**: a single
-    shank with **16 sites in one column, 100 µm apart** (span 1500 µm). Unlike
-    :func:`attach_dummy_probe` (a placeholder that spaces channels 250 µm apart so
-    none are neighbours), this is the true layout, so cross-channel spatial
-    information - neighbours, depth, drift, multi-channel templates - is physical,
-    and the ``spikeinterface-gui`` inspector shows each unit across all 16 sites.
-
-    Wiring is **sequential / identity**: recording channel *i* → site *i*
-    (tip→top), matching ``attach_dummy_probe``. The geometry and pitch are exact
-    for this part; the physical depth *order* depends on the probe→Ripple adapter,
-    which is not in the data - flip the mapping here if a real adapter map says so.
-
-    Requires exactly :data:`A1X16_N_CONTACTS` channels (drop the analog aux inputs
-    with :func:`neural_channel_ids` first). Returns a new recording (no mutation).
-    """
-    import numpy as np
-    from probeinterface import generate_linear_probe
-
-    n = recording.get_num_channels()
-    if n != A1X16_N_CONTACTS:
-        raise ValueError(
-            f"A1x16 probe has {A1X16_N_CONTACTS} sites but the recording has {n} "
-            "channels - drop the non-neural analog aux channels first "
-            "(neural_channel_ids), or use attach_dummy_probe for a different array."
-        )
-    probe = generate_linear_probe(num_elec=A1X16_N_CONTACTS, ypitch=pitch_um)
-    probe.set_device_channel_indices(np.arange(A1X16_N_CONTACTS))
-    probe.annotate(name="A1x16-3mm-100-703", manufacturer="neuronexus")
     return recording.set_probe(probe)
 
 
@@ -371,11 +333,13 @@ def read_spikes(
 
 
 def read_events(data_dir: "Path | str | None" = None):
-    """Best-effort read of digital/serial event markers stored in the ``.nev``.
+    """Read the digital/serial event markers stored in the ``.nev``.
 
     Returns a list of dicts ``{"name", "times", "labels"}`` (one per event
-    channel), where ``times`` is in seconds. Returns an empty list if the file
-    has no event channels.
+    channel), where ``times`` is in seconds. Returns an empty list only when the
+    file genuinely has no event channels. A neo parse failure PROPAGATES: callers
+    wrap this (report's stage, the menu's sigui events, verify_install) so a
+    failure is reported as a failure rather than disguised as "no events".
     """
     from neo.rawio import BlackrockRawIO
 

@@ -349,11 +349,11 @@ def pair_matrix_svg(data: dict) -> str:
     out = [f'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 {width} {height}" '
            f'width="{width}" height="{height}" role="img" '
            f'aria-labelledby="pm-title pm-desc" class="figure">',
-           f'<title id="pm-title">Pair test: does any sorter split the two hand-sorted '
-           f'neurons on an electrode</title>',
-           f'<desc id="pm-desc">One row per sorter, one column per electrode carrying two '
-           f'hand-sorted units. Each cell states the verdict in words, the units involved, '
-           f'and their ISI violation ratios.</desc>',
+           '<title id="pm-title">Pair test: does any sorter split the two hand-sorted '
+           'neurons on an electrode</title>',
+           '<desc id="pm-desc">One row per sorter, one column per electrode carrying two '
+           'hand-sorted units. Each cell states the verdict in words, the units involved, '
+           'and their ISI violation ratios.</desc>',
            f'<rect width="{width}" height="{height}" fill="{ink["surface"]}"/>',
            _text(pad, 44, "Does any sorter split the pairs?", size=25, weight="600"),
            _text(pad, 70, f"Split = two distinct sorter units, each recovering one of the "

@@ -275,44 +275,6 @@ class ChoiceModal(ModalScreen):
         self.dismiss(None)
 
 
-class DataSetupScreen(ModalScreen):
-    """Getting-started help: which recording files are expected, which are
-    present/missing, and exactly where they belong. Escape (or Enter) closes."""
-
-    DEFAULT_CSS = """
-    DataSetupScreen { align: center middle; }
-    DataSetupScreen > #dialog {
-        width: 86; max-width: 96%; height: 90%; max-height: 32;
-        border: round $accentcolor; background: $surface; padding: 1 2;
-    }
-    DataSetupScreen #setuptitle { text-style: bold; color: $accentcolor; height: 1; }
-    DataSetupScreen #setupscroll { height: 1fr; }       /* body scrolls; title + hint stay pinned */
-    DataSetupScreen #setupbody { height: auto; }
-    DataSetupScreen #setupfoot { color: $text-muted; height: 1; padding: 1 0 0 0; }
-    """
-
-    BINDINGS = [
-        Binding("escape", "close", "Close"),
-        Binding("enter", "close", "Close", show=False),
-        Binding("q", "close", "Close", show=False),
-    ]
-
-    def __init__(self, report: dict, accent: str):
-        super().__init__()
-        self._report = report
-        self._accent = accent
-
-    def compose(self) -> ComposeResult:
-        with Vertical(id="dialog"):
-            yield Static("Recording files - setup & status", id="setuptitle")
-            with VerticalScroll(id="setupscroll"):
-                yield Static(_setup_body(self._report, self._accent), id="setupbody")
-            yield Static("Press Esc to close", id="setupfoot")
-
-    def action_close(self) -> None:
-        self.dismiss(None)
-
-
 class DataFolderScreen(ModalScreen):
     """Point the dashboard at a different recording folder without relaunching -
     so a wrong-folder start is fixable in-app instead of quit-and-relaunch.
@@ -2526,7 +2488,7 @@ def _setup_body(report: dict, accent: str, pipeline=None) -> Text:
         if info:                                   # ch/rate/duration for a loaded stream
             t.append(f"      {info}\n", style="dim")
     t.append("\nWhere to put them\n", style=f"bold {accent}")
-    t.append(f"  Drop the file set into:  ")
+    t.append("  Drop the file set into:  ")
     t.append(f"{data_dir}\n", style="bold")
     t.append("  (or press ", style="dim")
     t.append("f", style="bold")

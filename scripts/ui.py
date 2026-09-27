@@ -12,7 +12,6 @@ from __future__ import annotations
 import re
 import shutil
 import sys
-from collections import namedtuple
 
 # Selectable accent themes for the UI chrome (headers, tabs, pointer, rules).
 # The blue+gold shield is fixed and not affected. Picked via the menu's Theme

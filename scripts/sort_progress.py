@@ -35,7 +35,6 @@ from __future__ import annotations
 
 import json
 import sys
-from typing import Any
 
 EVENT_TYPES = frozenset(
     {"plan", "phase", "phase_done", "detail", "substep", "bar", "heartbeat", "metrics",
