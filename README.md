@@ -127,19 +127,22 @@ double-click `run.bat`).
 The simplest way in is the single launcher at the repo root:
 
 ```bash
-uv run python SpikeInterface_Menu.py        # full-screen status dashboard + menu
+uv run python SpikeInterface_Menu.py        # Spike 2.0: the full-screen workbench
 ```
 
 On **Windows** you can instead double-click **`run.bat`** (or run `run.bat` /
 `.\run.ps1` from a terminal) - it wraps the same command.
 
-This opens the dashboard: a state block on top (DATA and PROBE · SORT · RESULTS -
-which files loaded, the probe geometry, the active sorter and its saved sort, and
-the headline result) over **one list of every function**, grouped as GET DATA ·
-SORT & CURATE · LOOK & SHARE. Each row prints its own key: press it, or move with
-**↑/↓** and press **Enter**. The footer keys are **m** (sorters & Docker),
-**c** (colour theme), **?** (help) and **q** (quit); **Esc** deliberately does
-nothing, so a reflexive back-press never exits. If a recording file is missing the menu says so and shows exactly which
+This opens **Spike 2.0**. The rail across the top is the whole journey -
+**1 Data · 2 Probe · 3 Sort · 4 Judge · 5 Apply · 6 Share** - each stage marked
+✓ done, ! needs you, or · not started. **Home** shows the one thing to do next
+(press **Enter**), where things stand, and every unit drawn at its contact on the
+probe. The number keys jump to a stage; each stage prints its own keys at the
+bottom of the screen. Everywhere: **Esc** back to Home (it never quits), **/**
+find any action by name, **,** Settings (every value the next sort uses, each
+editable in place), **?** help, **q** quit. 4 Judge shows each unit's waveform,
+spike-interval histogram and amplitude so you can label it by eye, and 6 Share can
+re-run any sort from its recipe and compare its values. If a recording file is missing the menu says so and shows exactly which
 file goes where. It resizes from a wide desktop down to a short editor pane, and
 falls back to a plain typed menu when [Textual](https://textual.textualize.io) is
 absent or output isn't a terminal.
@@ -196,7 +199,7 @@ By default they read the repo root; pass `data_dir="..."` to point elsewhere.
 ├── uv.lock              # locked, reproducible resolution
 ├── environment.yml      # conda environment (fallback)
 ├── run.bat / run.ps1    # Windows launchers (uv run …)
-├── SpikeInterface_Menu.py # ⭐ single front door: dashboard + menu, or `… <action>`
+├── SpikeInterface_Menu.py # ⭐ single front door: Spike 2.0, or `… <action>`
 ├── scripts/
 │   ├── blackrock_io.py    # reusable loaders (read_lfp / read_broadband / read_spikes / read_events)
 │   ├── verify_install.py  # smoke test
@@ -205,8 +208,14 @@ By default they read the repo root; pass `data_dir="..."` to point elsewhere.
 │   ├── report.py          # build the self-contained interactive HTML report
 │   ├── compare.py         # two-sorter agreement matrix -> outputs/comparison.html
 │   ├── make_report.py     # thin shim -> the menu's `report` action
-│   ├── menu_app.py        # the Textual v2 dashboard (SpikeMenuApp)
-│   └── ui.py              # shared rich styling, the Pitt shield + theme palette
+│   ├── spike_app.py       # Spike 2.0: the rail, Home, the six stage panes, Settings
+│   ├── menu_app.py        # the modal screens Spike 2.0 reuses (sort, report, editors)
+│   ├── journey.py         # stage marks, the next step, output freshness, runs
+│   ├── settings.py        # every editable setting and the sort flags it becomes
+│   ├── unit_evidence.py   # waveform / spike-interval / amplitude data for 4 Judge
+│   ├── runs.py            # the versioned run store, recipes, reproduce
+│   ├── check_workbench.py # drives every function against the real data (sandboxed)
+│   └── ui.py              # shared rich styling, help text, theme palette
 ├── tests/                 # Textual Pilot tests for the menu (uv run python -m pytest)
 ├── notebooks/
 │   ├── 01_explore_lfp_and_spikes.ipynb

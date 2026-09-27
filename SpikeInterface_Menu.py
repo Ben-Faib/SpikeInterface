@@ -6,17 +6,17 @@
     uv run python SpikeInterface_Menu.py --help
     REM Windows: double-click run.bat (or: run.bat report)
 
-Run with no action -> opens a responsive full-screen dashboard (the Textual app
-in scripts/menu_app.py; a typed menu is the fallback when Textual is absent or
-off-TTY). Run with an action -> dispatches it directly (handy for scripting).
-Heavy SpikeInterface imports are lazy, so the menu stays responsive.
+Run with no action -> opens Spike 2.0 (the Textual app in scripts/spike_app.py; a
+typed menu is the fallback when Textual is absent or off-TTY). Run with an action ->
+dispatches it directly (handy for scripting). Heavy SpikeInterface imports are lazy.
 
-The dashboard is a state block (DATA/PROBE, SORT, RESULTS) over one list of every
-function the workbench has, grouped into the three stages of the workflow - GET
-DATA, SORT & CURATE, LOOK & SHARE. Each row prints its own key and says what it
-produces; ↑/↓ + Enter runs the highlighted one. It stays usable at any window
-size and guides you when the recording files are missing. Styling mirrors
-scripts/run_sorting.py (see scripts/ui.py).
+Spike 2.0 is a journey rail - 1 Data · 2 Probe · 3 Sort · 4 Judge · 5 Apply · 6 Share,
+each stage marked done / needs you / not started - over Home (the one next step, where
+things stand, units on the probe) and one pane per stage; Settings (",") edits every
+value the next sort uses and Runs re-runs any sort from its recipe. This module is the
+controller: MenuController turns disk state into the plain data the app paints (the
+journey decisions themselves live in scripts/journey.py, the settings schema in
+scripts/settings.py) and runs every action through the same paths as the direct CLI.
 
 Actions:
     explore   quick static figures (LFP + .nev) via scripts/explore_data.py
@@ -49,6 +49,8 @@ import sort_summary  # noqa: E402  (array/yield headline metrics - pure load/for
 import sorters as sorter_registry  # noqa: E402  (registry: discovery/status/params/run)
 import ui  # noqa: E402  (rich styling shared-look with run_sorting.py)
 import probes  # noqa: E402  (probe-geometry registry: profiles/features/build/fit)
+import journey  # noqa: E402  (the rail, the next step, output freshness, runs overview)
+import settings as user_settings  # noqa: E402  (every editable setting + its sort flags)
 
 QUICK_SECONDS = 30
 ACTIONS = ["explore", "sort", "report", "gui", "traces", "compare", "verify", "phy"]
@@ -455,6 +457,10 @@ def action_sort(args) -> bool:
         flags += ["--data-dir", args.data_dir]
     if getattr(args, "probe", None):
         flags += ["--probe", args.probe]
+    # The saved Settings (band-pass, bad channels, aux, CPU workers): a sort started
+    # from Spike - dashboard or `SpikeInterface_Menu.py sort` - runs with what the
+    # Settings screen shows, stated explicitly in the argv run_info.json records.
+    flags += user_settings.sort_flags(_load_config())
     return _shell("run_sorting.py", *flags)
 
 
@@ -516,7 +522,10 @@ def action_report(args) -> bool:
                 "uv run python scripts/run_sorting.py")
         return False
     ui.note(f"Building the report for {sorter}…")
-    _probe = _read_run_info(sorter).get("probe") or getattr(args, "probe", None)
+    _info = _read_run_info(sorter)
+    # The geometry the SORT used (probe_id; "probe" is only the raw --probe argument,
+    # None on a flagless sort), before the menu's current choice.
+    _probe = _info.get("probe_id") or _info.get("probe") or getattr(args, "probe", None)
     out = report.build_report(data_dir=args.data_dir, analyzer_dir=_analyzer_dir(sorter),
                               sorter_label=sorter, probe=_probe)
     uri = out.resolve().as_uri()
@@ -671,7 +680,9 @@ def action_gui(args) -> bool:
 
     analyzer = si.load_sorting_analyzer(analyzer_dir)
     events = _sigui_events(args.data_dir)  # .nev markers -> the GUI's event view
-    ui.warn(_geometry_note(_read_run_info(args.sorter).get("probe") or getattr(args, "probe", None) or "independent"))
+    _info = _read_run_info(args.sorter)
+    ui.warn(_geometry_note(_info.get("probe_id") or _info.get("probe")
+                           or getattr(args, "probe", None) or "independent"))
     try:
         if mode == "web":
             ui.say(f"[{ui.ACCENT}]Opening spikeinterface-gui (web mode)[/] - no display "
@@ -822,40 +833,8 @@ _MENU = [
     ("13", "help",   "Help",                    "what each step does · sorters · Docker · data"),
 ]
 
-# v2 (Textual) action table - (key, title, hint, needs_data, stage, hotkey).
-#
-# F2 (2026-08-19, the researcher dashboard): every function the workbench has is a
-# VISIBLE, LABELED ROW carrying its own key, binned into the three workflow stages
-# a researcher moves through - ``data`` (get data) → ``sort`` (sort & curate) →
-# ``share`` (look & share). The hint says what the row PRODUCES, not how it works.
-# ``chrome`` rows are housekeeping: they keep their letter keys and live on the
-# footer's key line, not in the list. ``needs_data`` dims the row and blocks it when
-# no recording is present. ``hotkey`` is what the row prints and what the dashboard
-# binds - the 1-6 numbers keep the meanings they have always had, so every existing
-# binding, doc and prompt stays true. ``help``/``quit``/``theme``/``manage``/
-# ``picker``/``data``/``reopen`` are handled in-app, not by DISPATCH.
-_ACTIONS = [
-    ("data",    "Data files",            "which files loaded, and where",       False, "data",  "d"),
-    ("probe",   "Probe geometry",        "the electrode map every sort uses",   False, "data",  "p"),
-    ("explore", "Explore the recording", "static figures - LFP, events, rates",  True, "data",  "1"),
-    ("traces",  "Watch the traces",      "scroll the raw signal in a window",    True, "data",  "6"),
-    ("verify",  "Check the install",     "every library and loader, pass or fail", False, "data", "v"),
-    ("picker",  "Choose the sorter",     "which algorithm finds the units",     False, "sort",  "t"),
-    ("params",  "Sorter settings",       "the parameters the next sort uses",   False, "sort",  "e"),
-    ("sort",    "Sort the recording",    "finds units in the broadband signal",  True, "sort",  "2"),
-    ("triage",  "Judge the units",       "good / MUA / noise, one key per unit", False, "sort", "u"),
-    ("phy",     "Export to Phy",         "a folder to curate the hard cases",    True, "sort",  "y"),
-    ("report",  "Build the report",      "one HTML page: units, quality, provenance", True, "share", "3"),
-    ("gui",     "Inspect in the GUI",    "waveforms + correlograms in a window",  True, "share", "4"),
-    ("compare", "Compare two sorts",     "how much two saved sorts agree",        True, "share", "5"),
-    ("reopen",  "Reopen last result",    "the page you built most recently",    False, "share", "r"),
-    ("manage",  "Manage sorters",        "download images · delete · clear sorts", False, "chrome", "m"),
-    ("theme",   "Colour theme",          "pick an accent colour (saved)",       False, "chrome", "c"),
-    ("help",    "Help",                  "which question · which surface · which key", False, "chrome", "?"),
-    ("quit",    "Quit",                  "exit the menu (or press q)",          False, "chrome", "q"),
-]
-# Keys that need a recording present (so the fallback menu can refuse them cleanly).
-_DATA_ACTIONS = {k for k, _t, _h, needs, _s, _hk in _ACTIONS if needs}
+_ACTIONS = journey.ACTIONS
+_DATA_ACTIONS = {k for k, _t, _h, needs, _s in _ACTIONS if needs} | {"sort", "explore"}
 
 # Artifact each action leaves behind, for the dashboard's LAST RESULT line and its
 # ``r`` reopen key. Only browser-openable artifacts get a reopen path.
@@ -863,7 +842,11 @@ _RESULT_PATHS = {
     "explore": "outputs/explore.html",
     "report": "outputs/report.html",
     "compare": "outputs/comparison.html",
+    "sweep": "outputs/sweep.html",
 }
+# Outputs whose freshness the Share stage tracks: record_result stamps which run
+# (and which curation) each one was built from.
+_BUILT_KEYS = {"report", "compare", "explore", "sweep"}
 
 # Rich per-action explanation for the dashboard's explanation pane. ``needs`` keys
 # are requirement names resolved against live state in
@@ -941,15 +924,19 @@ class MenuController:
     CLI, so behaviour matches ``python SpikeInterface_Menu.py <action>`` exactly.
     """
 
-    quick_seconds = QUICK_SECONDS
-
     def __init__(self, args, cfg: dict):
         self.args = args
         self.cfg = cfg
+        # The data folder is a Setting now (remembered across launches); an explicit
+        # --data-dir still wins for this session.
+        if not getattr(args, "data_dir", None) and cfg.get("data_dir"):
+            args.data_dir = cfg["data_dir"]
+        self._evidence = {}
+        self._evidence_key = None
         self.header = HEADER
         self.themes = dict(ui.THEMES)
-        self.actions = [dict(key=k, title=t, hint=h, needs_data=nd, stage=s, hotkey=hk)
-                        for k, t, h, nd, s, hk in _ACTIONS]
+        self.actions = [dict(key=k, title=t, hint=h, needs_data=nd, stage=st)
+                        for k, t, h, nd, st in _ACTIONS]
         self.theme_name = cfg.get("theme", ui.DEFAULT_THEME)
         if self.theme_name not in ui.THEMES:
             self.theme_name = ui.DEFAULT_THEME
@@ -1006,6 +993,12 @@ class MenuController:
                             "when": datetime.datetime.now().isoformat(timespec="minutes"),
                             "path": path}
         self.cfg["last_result"] = self.last_result
+        if ok and key in _BUILT_KEYS:
+            snap = getattr(self, "journey", {}) or {}
+            self.cfg.setdefault("built", {})[key] = {
+                "when": self.last_result["when"], "sorter": self.active_sorter,
+                "run": (snap.get("run") or {}).get("id"),
+                "curation_updated": (snap.get("curation") or {}).get("updated")}
         _save_config(self.cfg)
 
     def reopen_last(self) -> tuple[bool, str]:
@@ -1052,6 +1045,30 @@ class MenuController:
         self._mark_active()
         self.data_report = _data_report(self.args.data_dir)
         self.probe_info = self.active_probe_info()
+        self._refresh_journey()
+
+    def refresh_journey(self) -> None:
+        """Cheap re-read of the journey only (after a label): no catalog reload."""
+        self._refresh_journey()
+
+    def _refresh_journey(self) -> None:
+        """The rail, the next step, the probe map and the Share rows - journey.py
+        decides all of it from disk; the view only paints what lands here."""
+        try:
+            snap = journey.snapshot(
+                self.active_sorter, data_report=self.data_report, pipeline=self.pipeline,
+                probe_info=self.probe_info, built=self.cfg.get("built"),
+                rule=sort_summary.load_quality_rule(CONFIG_PATH))
+            self.journey = snap
+            self.stages = journey.stage_status(snap)
+            self.steps = journey.next_steps(snap)
+            self.probe_map = journey.probe_map(snap)
+            self.recent = journey.recent(snap)
+            self.share_rows = journey.outputs(snap)
+        except Exception as e:  # noqa: BLE001 - a bad record must not stop the app
+            ui.warn(f"journey state unavailable: {e!r}")
+            self.journey, self.stages, self.steps = {}, [], []
+            self.probe_map, self.recent, self.share_rows = {"contacts": [], "units": {}}, [], []
 
     def set_data_dir(self, path: "str | None") -> bool:
         """Point the dashboard at a different recording folder and reload.
@@ -1464,12 +1481,13 @@ class MenuController:
         argv = [sys.executable, str(bio.REPO_ROOT / "scripts" / "run_sorting.py"),
                 "--sorter", self.active_sorter, "--progress", "json"]
         if span == "quick":
-            argv += ["--duration", str(QUICK_SECONDS)]
+            argv += ["--duration", str(self.quick_seconds)]
         if self.use_docker:
             argv += ["--docker"]
         if getattr(self.args, "data_dir", None):
             argv += ["--data-dir", str(self.args.data_dir)]
         argv += ["--probe", self.active_probe]
+        argv += user_settings.sort_flags(self.cfg)
         overrides = self.get_overrides(self.active_sorter)
         if overrides:
             try:
@@ -1488,12 +1506,12 @@ class MenuController:
         --sorter is passed only when the active sorter actually HAS a saved
         analyzer - otherwise the child's default pick (the most complete saved
         sort) serves, instead of a ✓ over an empty page (D3b review F2). --probe
-        is always passed: the geometry caveat must tell the truth (F1 - the same
-        compensation the menu makes for the sort, per the CLAUDE.md gotcha)."""
+        is NOT passed: report.py then states the geometry the sort actually used
+        (its run_info probe_id). Passing the menu's active probe made the report
+        name whatever probe is selected NOW, even for a sort made with another."""
         argv = [sys.executable, str(SCRIPTS / "report.py"), "--progress", "json"]
         if _analyzer_dir(self.active_sorter).is_dir():
             argv += ["--sorter", self.active_sorter]
-        argv += ["--probe", self.active_probe]
         if getattr(self.args, "data_dir", None):
             argv += ["--data-dir", str(self.args.data_dir)]
         return argv
@@ -1524,12 +1542,295 @@ class MenuController:
         self.record_result("compare", ok)
         return ok, _last_message("compare", self.args.sorter, ok), True
 
+    # -- Spike 2.0: settings ------------------------------------------------- #
+    @property
+    def quick_seconds(self) -> int:
+        return user_settings.quick_seconds(self.cfg)
+
+    def settings_rows(self) -> list:
+        """Every setting (settings.py owns the schema), with the link rows' values
+        filled in from the live state their own screens edit."""
+        rows = user_settings.rows(self.cfg)
+        link_values = {
+            "active_probe": (self.probe_info or {}).get("label", self.active_probe),
+            "active_sorter": self.active_sorter,
+            "sorter_params": (lambda n: f"{n} changed" if n else "all defaults")(
+                len(self.get_overrides(self.active_sorter))),
+            "use_docker": "on" if self.use_docker else "off",
+            "theme": self.theme_name,
+        }
+        for r in rows:
+            if r["kind"] == "link":
+                r["value"] = link_values.get(r["key"], "")
+            if r["key"] == "data_dir":
+                r["value"] = self.data_report.get("data_dir") or r["value"]
+        return rows
+
+    def set_setting(self, key: str, raw) -> tuple[bool, str]:
+        ok, msg = user_settings.set_value(self.cfg, key, raw)
+        if not ok:
+            return ok, msg
+        _save_config(self.cfg)
+        if key == "data_dir":
+            found = self.set_data_dir(self.cfg.get("data_dir"))
+            if not found:
+                msg += " (no recording found there yet)"
+        else:
+            self._refresh_journey()     # a quality-rule edit re-judges every unit
+        return ok, msg
+
+    def reset_setting(self, key: str) -> tuple[bool, str]:
+        ok, msg = user_settings.reset(self.cfg, key)
+        if ok:
+            _save_config(self.cfg)
+            if key == "data_dir":
+                self.set_data_dir(None)
+            else:
+                self._refresh_journey()
+        return ok, msg
+
+    def sort_preview(self) -> list:
+        """(label, value) lines the Sort stage shows: what the NEXT sort will use."""
+        c = self.cfg
+        g = user_settings.get
+        bad = ("find + exclude (" + g(c, "bad_channel_method") + ")"
+               if g(c, "bad_channel_detection") else "detection off")
+        if g(c, "bad_channels"):
+            bad += " · always exclude " + g(c, "bad_channels")
+        n = len(self.get_overrides(self.active_sorter))
+        return [
+            ("probe", (self.probe_info or {}).get("label", self.active_probe)),
+            ("band-pass", f"{g(c, 'freq_min'):g}-{g(c, 'freq_max'):g} Hz"),
+            ("bad channels", bad),
+            ("aux channels", "kept" if g(c, "keep_analog") else "dropped"),
+            ("parameters", f"{n} changed from default" if n else "defaults"),
+            ("CPU workers", str(g(c, "n_jobs"))),
+        ]
+
+    # -- Spike 2.0: subprocess commands (run in-app, output to a log) ---------- #
+    def log_path(self, key: str) -> Path:
+        return bio.REPO_ROOT / "outputs" / "logs" / f"{key}.log"
+
+    def command(self, key: str, run_id: "str | None" = None) -> dict:
+        """argv + presentation for an action the app runs as a child process with
+        its output in a log (never a suspended terminal): {argv, title, log, open,
+        report}. ``open`` is a page to show on success; ``report`` a JSON the app
+        reads back (reproduce's match report)."""
+        py = sys.executable
+        data = (["--data-dir", str(self.args.data_dir)]
+                if getattr(self.args, "data_dir", None) else [])
+        sorter = self.active_sorter
+        out = {"log": self.log_path(key), "open": None, "report": None}
+        if key == "explore":
+            out.update(argv=[py, str(SCRIPTS / "explore_data.py"), *data],
+                       title="Exploring the recording", open="explore")
+        elif key == "verify":
+            out.update(argv=[py, str(SCRIPTS / "verify_install.py"), *data],
+                       title="Checking the install")
+        elif key == "phy":
+            out.update(argv=[py, str(SCRIPTS / "curation.py"), "export-phy", "--sorter", sorter],
+                       title=f"Exporting {sorter} to Phy")
+        elif key == "import_phy":
+            out.update(argv=[py, str(SCRIPTS / "curation.py"), "import-phy", "--sorter", sorter],
+                       title="Importing verdicts from Phy")
+        elif key == "apply":
+            out.update(argv=[py, str(SCRIPTS / "curation.py"), "apply", "--sorter", sorter],
+                       title=f"Applying the {sorter} decisions")
+        elif key == "sweep":
+            out.update(argv=[py, str(SCRIPTS / "sweep_page.py"), *data],
+                       title="Building the sorter shootout", open="sweep")
+        elif key == "reproduce":
+            run_id = run_id or (self.journey.get("run") or {}).get("id")
+            rep = journey.reproduce_report_path(sorter, run_id)
+            out.update(argv=[py, str(SCRIPTS / "runs.py"), "regenerate", "--sorter", sorter,
+                             "--run", run_id, "--json-report", str(rep)],
+                       title=f"Reproducing run {run_id[-6:]}", report=rep, run=run_id)
+        else:
+            raise KeyError(f"no command for {key}")
+        return out
+
+    def finish_command(self, key: str, ok: bool) -> str:
+        """Record a finished command and return its one-line outcome."""
+        if key in ("explore", "sweep", "phy", "verify"):
+            self.record_result(key, ok)
+        self.reload()
+        words = {
+            "explore": ("Built the recording overview", "Explore failed"),
+            "verify": ("Install check passed", "Install check found a problem"),
+            "phy": ("Exported to Phy", "Phy export failed"),
+            "import_phy": ("Imported the Phy verdicts", "Phy import failed"),
+            "apply": ("Applied the decisions: curated result built", "Apply failed"),
+            "sweep": ("Built the sorter shootout", "Shootout build failed"),
+            "reproduce": ("Reproduced the run", "Reproduction failed"),
+        }.get(key, (f"{key} done", f"{key} failed"))
+        return ("✓ " + words[0]) if ok else ("✗ " + words[1] + " - see the log")
+
+    # -- Spike 2.0: runs, recipes, reproduce ------------------------------------ #
+    def runs_overview(self) -> list:
+        return journey.runs_overview(self.active_sorter)
+
+    def run_recipe(self, run_id: str) -> dict:
+        return journey.recipe(self.active_sorter, run_id)
+
+    def reproduce_reports(self, run_id: str) -> list:
+        return journey.reproduce_reports(self.active_sorter, run_id)
+
+    def export_recipe(self, run_id: "str | None" = None) -> tuple[bool, str]:
+        run_id = run_id or (self.journey.get("run") or {}).get("id")
+        rec = journey.recipe(self.active_sorter, run_id) if run_id else {"config": None}
+        if not rec["config"]:
+            return False, "no run record to export"
+        path = journey.recipe_path(self.active_sorter, run_id)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(rec["config"], indent=2) + "\n", encoding="utf-8")
+        except OSError as e:
+            return False, f"couldn't write the recipe: {e}"
+        self._refresh_journey()
+        return True, (f"Recipe written → {path.relative_to(bio.REPO_ROOT).as_posix()} "
+                      f"(re-run anywhere: runs.py regenerate --config <file>)")
+
+    def make_current(self, run_id: str) -> tuple[bool, str]:
+        ok, msg = runs.set_current(self.active_sorter, run_id)
+        self.reload()
+        return ok, msg
+
+    # -- Spike 2.0: probe ------------------------------------------------------- #
+    def import_probe(self, path: str) -> tuple[bool, str]:
+        try:
+            prof = probes.import_probe_file(os.path.expanduser(path.strip()))
+        except Exception as e:  # noqa: BLE001 - one honest line
+            return False, f"couldn't import {path}: {e}"
+        self.reload()
+        return True, f"Imported probe {prof['name']} - press ↵ on it to use it"
+
+    def probe_detail(self, name: "str | None" = None) -> dict:
+        """Every value of one probe profile, plus its contact positions for the
+        drawing (built through probes.build; None when it cannot be built here)."""
+        name = name or self.active_probe
+        prof = probes.get(name)
+        if prof is None:
+            return {}
+        feats = probes.geometry_features(prof)
+        match, detail = self._probe_match(prof)
+        positions = None
+        try:
+            n = probes.contact_count(prof) or self.recording_channels() or 16
+            pr = probes.build(prof, n)
+            positions = [[float(x), float(y)] for x, y in pr.contact_positions]
+        except Exception:  # noqa: BLE001 - drawing is optional
+            positions = None
+        return {"name": prof["name"], "label": prof["label"], "kind": prof["kind"],
+                "params": dict(prof.get("params") or {}), "builtin": prof.get("builtin", False),
+                "note": prof.get("note", ""), "summary": probes.summary(prof),
+                "features": feats, "match": match, "match_detail": detail,
+                "active": name == self.active_probe, "positions": positions,
+                "saved_in": ("built into Spike (duplicate it to change it)"
+                             if prof.get("builtin") else "probes.json in this folder")}
+
+    # -- Spike 2.0: judge + apply ----------------------------------------------- #
+    def unit_evidence(self, unit_id) -> "dict | None":
+        """Waveform / ISI / amplitude evidence for one unit of the ACTIVE sorter's
+        current raw sort (the ids triage labels). All units load once per run and
+        stay cached - the Judge pane calls this from a worker thread."""
+        d = runs.sort_paths(self.active_sorter)["analyzer"]
+        key = str(d)
+        if self._evidence_key != key:
+            import unit_evidence as _ue
+
+            self._evidence = _ue.evidence_for_units(d) if d.exists() else {}
+            self._evidence_key = key
+        return self._evidence.get(str(unit_id))
+
+    def apply_preview(self) -> dict:
+        sorter = self.active_sorter
+        st = curation.state(sorter)
+        record = curation.load_record(sorter)
+        labels = {}
+        for m in ((record or {}).get("curation") or {}).get("manual_labels") or []:
+            q = (m.get("labels") or {}).get("quality") or []
+            if q:
+                labels[q[0]] = labels.get(q[0], 0) + 1
+        decisions = [{"at": d.get("at", ""), "type": d.get("type", ""),
+                      "units": d.get("units") or [], "label": (d.get("params") or {}).get("label"),
+                      "method": d.get("method", "")}
+                     for d in (record or {}).get("decisions") or []]
+        n_units = (self.journey.get("n_units") if self.journey else 0) or 0
+        return {"sorter": sorter, "run": st.get("run"), "n_units": n_units,
+                "labels": labels, "counts": st.get("counts") or {},
+                "decisions": decisions, "has_record": st.get("has_record"),
+                "has_curated": st.get("has_curated"), "stale": st.get("stale"),
+                "stale_reason": st.get("stale_reason"), "line": st.get("line"),
+                "noise_uV": (self.journey.get("run") or {}).get("noise_uV")}
+
+    # -- Spike 2.0: opening things ---------------------------------------------- #
+    def open_path(self, path) -> tuple[bool, str]:
+        """Show a file or folder in the OS (Finder / Explorer / the default app)."""
+        target = Path(path)
+        if not target.is_absolute():
+            target = bio.REPO_ROOT / target
+        if not target.exists():
+            return False, f"{path} does not exist yet"
+        try:
+            if sys.platform == "win32":
+                os.startfile(str(target))  # noqa: S606 - opening a local file/folder
+            else:
+                subprocess.Popen(["open" if sys.platform == "darwin" else "xdg-open",
+                                  str(target)], stdout=subprocess.DEVNULL,
+                                 stderr=subprocess.DEVNULL)
+        except Exception as e:  # noqa: BLE001
+            return False, f"couldn't open {path}: {e}"
+        return True, f"Opened {target.name}"
+
+    def open_output(self, key: str) -> tuple[bool, str]:
+        row = next((r for r in (self.share_rows or []) if r["key"] == key), None)
+        pages = {"report": "report.html", "compare": "comparison.html",
+                 "sweep": "sweep.html", "explore": "explore.html"}
+        if key in pages:
+            page = bio.REPO_ROOT / "outputs" / pages[key]
+            if not page.exists():
+                return False, f"outputs/{pages[key]} is not built yet"
+            _open_in_browser(page.resolve().as_uri())
+            return True, f"Opened outputs/{pages[key]}"
+        if row and row.get("path"):
+            target = bio.REPO_ROOT / row["path"]
+            if key in ("values", "phy", "recipe") and target.exists():
+                target = target.parent if target.is_file() else target
+            return self.open_path(target)
+        return False, f"nothing to open for {key}"
+
+    def open_data_folder(self) -> tuple[bool, str]:
+        return self.open_path(self.data_report.get("data_dir") or bio.REPO_ROOT)
+
+    def startup_checklist(self) -> list:
+        """(ok, label, text) rows for the launch splash, from the same journey
+        state the rail shows."""
+        snap = getattr(self, "journey", {}) or {}
+        d = snap.get("data") or {}
+        run = snap.get("run") or {}
+        out = []
+        if d.get("present"):
+            out.append((d.get("complete"), "recording",
+                        f"{d.get('base')} · {d.get('broadband_detail') or 'loaded'}"))
+        else:
+            out.append((False, "recording", "no recording found yet"))
+        pi = self.probe_info or {}
+        out.append((pi.get("match") != "mismatch", "probe", pi.get("label", "?")))
+        if run:
+            cur = snap.get("curation") or {}
+            out.append((True, "sort", f"{self.active_sorter} · run {run['id'][-6:]} · "
+                                      f"{snap.get('n_units')} units"
+                        + (" · curated" if cur.get("has_curated") else "")))
+        else:
+            out.append((None, "sort", f"{self.active_sorter} · not sorted yet"))
+        return out
+
     def run(self, key: str, span: str | None) -> tuple[bool, str, bool]:
         self.args.sorter = self.active_sorter
         self.args.probe = self.active_probe
         params_path = None
         if key == "sort":
-            self.args.duration = QUICK_SECONDS if span == "quick" else None
+            self.args.duration = self.quick_seconds if span == "quick" else None
             self.args.docker = self.use_docker
             params_path = _write_params_file(self.get_overrides(self.active_sorter))
             self.args.params_file = params_path
@@ -1740,7 +2041,7 @@ def _menu(args) -> int:
     theme = _apply_saved_theme(cfg)
 
     try:
-        import menu_app  # imports textual; any failure -> typed fallback
+        import spike_app  # imports textual; any failure -> typed fallback
         have_textual = True
     except Exception:  # noqa: BLE001 - missing/broken textual must degrade, not crash
         have_textual = False
@@ -1751,7 +2052,7 @@ def _menu(args) -> int:
         # second black screen. One line keeps it alive.
         ui.note("Loading recording and saved sorts…")
         controller = MenuController(args, cfg)
-        app = menu_app.SpikeMenuApp(controller)
+        app = spike_app.SpikeApp(controller, splash=True)
         app.run()
         return app.return_code or 0
     return _menu_fallback(args, cfg, theme)
@@ -1881,14 +2182,15 @@ def _menu_fallback(args, cfg: dict, theme: str) -> int:
             active_idx = sorter_list.index(args.sorter) if args.sorter in sorter_list else 0
             continue
         if action == "sort":
+            quick = user_settings.quick_seconds(_load_config())
             span = ui.select("Sort how much?",
                              [("full", "Full recording", ""),
-                              ("quick", f"Quick test - first {QUICK_SECONDS}s", "")],
+                              ("quick", f"Quick test - first {quick}s", "")],
                              default=0)
             if span is None:  # cancelled -> back to the menu without sorting
                 last = "Sort cancelled"
                 continue
-            args.duration = QUICK_SECONDS if span == "quick" else None
+            args.duration = quick if span == "quick" else None
             args.docker = use_docker
             params_path = _write_params_file(_load_config().get("sorter_params", {}).get(args.sorter, {}))
             args.params_file = params_path

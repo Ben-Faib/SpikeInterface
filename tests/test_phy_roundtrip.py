@@ -334,28 +334,29 @@ def test_a_seeded_export_round_trips_unchanged(tmp_path):
 # --------------------------------------------------------------------------- #
 # The menu wiring: one MANAGE row on its letter key
 # --------------------------------------------------------------------------- #
-async def test_phy_runs_from_its_manage_letter(make_app):
-    """``y`` dispatches the export through the controller, like the other MANAGE
-    letters - under the headless driver suspend() is unsupported, so this also
-    pins that the fallback in-place run does not crash the app."""
+async def test_phy_export_runs_in_app_from_the_apply_stage(make_app):
+    """``y`` on 5 Apply runs the export as an in-app child process (its output in a
+    log, never a suspended terminal) through the controller's command table."""
+    import spike_app
+
     app = make_app(present=True)
     async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.press("5", "y")
         await pilot.pause()
-        await pilot.press("y")
-        await pilot.pause()
-        assert ("phy", None) in app.c.ran
-        assert app.is_running
+        assert ("phy", None) in app.c.commands
+        assert isinstance(app.screen, spike_app.CommandScreen)
 
 
 async def test_phy_is_blocked_without_the_recording(make_app):
     """The export copies the preprocessed traces Phy needs, so it needs the data -
-    with none present it must guide rather than dispatch."""
+    with none present it must guide (to 1 Data) rather than dispatch."""
     app = make_app(present=False)
     async with app.run_test(size=(110, 40)) as pilot:
         await pilot.pause()
-        await pilot.press("y")
+        app.do("phy")
         await pilot.pause()
-        assert ("phy", None) not in app.c.ran
+        assert ("phy", None) not in app.c.commands
+        assert app._stage == 1
 
 
 # --------------------------------------------------------------------------- #

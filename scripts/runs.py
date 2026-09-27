@@ -9,6 +9,7 @@ regenerate one from its own record.
     uv run python scripts/runs.py regenerate --sorter X           # re-run it + match report
     uv run python scripts/runs.py export --sorter X --out sort_config.json
     uv run python scripts/runs.py regenerate --config sort_config.json
+    uv run python scripts/runs.py regenerate --sorter X --json-report out.json  # + JSON
 
 Single source of truth for **where a sort's results live and which one is
 current**. No other module builds an ``outputs/<sorter>/...`` path by hand:
@@ -1104,6 +1105,8 @@ def main() -> int:
     p_reg.add_argument("--run", default=None, help="run id (default: the current run)")
     p_reg.add_argument("--config", default=None, help="a config file from `runs.py export`")
     p_reg.add_argument("--out", default=None, help="where to write the regenerated sort")
+    p_reg.add_argument("--json-report", default=None, metavar="PATH",
+                       help="also write the match report as JSON (the menu reads it)")
 
     p_exp = sub.add_parser("export", help="write the committable config for a run")
     p_exp.add_argument("--sorter", required=True)
@@ -1162,6 +1165,14 @@ def main() -> int:
             print("regenerate needs --sorter or --config")
             return 2
         result = regenerate(sorter=sorter, run=args.run, config=config, out=args.out)
+        if args.json_report:
+            Path(args.json_report).parent.mkdir(parents=True, exist_ok=True)
+            Path(args.json_report).write_text(json.dumps({
+                "report": result["report"], "out": str(result["out"]),
+                "recorded_dir": (str(result["recorded_dir"]) if result["recorded_dir"]
+                                 else None),
+                "argv": [str(a) for a in result["argv"]]}, indent=2, default=str),
+                encoding="utf-8")
         if result["report"] is None:      # ran, but had nothing to compare against
             return 0
         print()

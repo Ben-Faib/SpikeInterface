@@ -8,9 +8,13 @@ sort, and - if you ever need to - rebuild the whole thing from its own record.
 Every step below gives the exact command and says where its output lands. You
 only need `uv run …`; there is no environment to activate.
 
-If you would rather press keys than type commands, most of this lives behind the
+If you would rather press keys than type commands, all of this lives behind the
 menu: `uv run python SpikeInterface_Menu.py` (on Windows, double-click
-`run.bat`).
+`run.bat`). Its rail across the top is this page in order - **1 Data · 2 Probe ·
+3 Sort · 4 Judge · 5 Apply · 6 Share** - each stage marked ✓ done, ! needs you, or
+· not started; the number keys jump to a stage, `Esc` goes back to Home, `/` finds
+any action by name, `,` opens Settings and `?` is help. Home always shows the one
+thing to do next: press Enter to do it.
 
 ---
 
@@ -39,8 +43,8 @@ A criterion that could not be measured is **skipped**, not failed - for example
 `presence` needs 60-second bins, so it is genuinely unmeasurable on a 30-second
 sort, and `amp cutoff` needs 500 spikes. A unit no criterion could be measured on
 is reported as **not judged**, never as a failure. The thresholds are yours to
-change: put a `quality_rule` block in `.si_menu.json` and every surface will
-state the rule you actually used.
+change: press `,` in the menu (Settings → Quality rule) or put a `quality_rule`
+block in `.si_menu.json`, and every surface will state the rule you actually used.
 
 **Passing and being called strong are not the same claim.** A unit with thirty
 spikes can satisfy every criterion - the ISI and amplitude criteria are counting
@@ -64,11 +68,12 @@ and the headline should not say otherwise.
 | You want to know | Go here | How |
 |---|---|---|
 | How many neurons did we find, and at which contacts? | **the report's Strong units block** | `uv run python SpikeInterface_Menu.py report` |
-| Is *this particular* unit any good? | **triage** | press `u` in the menu |
-| Do I need Phy? Is this unit two cells? | **the split advisory**, in the same Strong units block | `uv run python SpikeInterface_Menu.py report`, then `y` to export |
+| Is *this particular* unit any good? | **4 Judge** | press `4` in the menu |
+| Do I need Phy? Is this unit two cells? | **the split advisory**, in the same Strong units block and on 4 Judge | 6 Share → Phy export |
 | Does our sort agree with the manual/online one? | **compare** | `uv run python scripts/compare.py --online <sorter> --nev <file>.nev` |
-| What do the waveforms/correlograms actually look like? | **the Qt inspector** | press `4` in the menu |
-| Which sorts do I have, and which one am I looking at? | **the run store** | `uv run python scripts/runs.py list` |
+| What do the waveforms/correlograms actually look like? | **4 Judge**, or the Qt inspector | `4`, then `i` for the inspector |
+| Which sorts do I have, and which one am I looking at? | **the run store** | 3 Sort → `r`, or `uv run python scripts/runs.py list` |
+| Can I reproduce these values? | **reproduce** | 6 Share → Reproduce this run, or `runs.py regenerate` (step 8) |
 | Is my install healthy? | **the loader smoke test** | `uv run python scripts/verify_install.py` |
 
 **About the Qt inspector (`spikeinterface-gui`).** It is upstream software we do
@@ -87,7 +92,12 @@ uv run python scripts/run_sorting.py --duration 30    # quick check: the first 3
 uv run python scripts/run_sorting.py                  # the real thing: all 132 s
 ```
 
-Or press `2` in the menu, which runs the same thing with a live progress modal.
+Or, in the menu, go to **3 Sort**: choose the sorter (Enter), then `f` for the full
+recording or `t` for a quick test. The right side lists every value the sort will
+use - probe, band-pass, bad channels, aux channels, parameters, CPU workers - and
+`e` (parameters) and `s` (every other setting) change them. A sort from the menu
+passes every one of those values to `run_sorting.py` explicitly, so its
+`run_info.json` states exactly what ran.
 
 **Lands in:** `outputs/<sorter>/runs/<run id>/` - the saved `sorting/` and
 `analyzer/`, `quality_metrics.csv`, `summary.json`, and `run_info.json` (the full
@@ -140,8 +150,9 @@ ceiling), because that ratio divides by the spike count squared and a 30-spike
 junk unit with three violations would otherwise outscore every real merge. Where
 the sort saved spike amplitudes, a two-humped amplitude histogram is named as
 corroboration. It is advisory: no verdict, count or threshold changes, and
-nothing is blocked. The next step is `y` in the menu, which exports the sort for
-Phy; the verdicts come back with `curation.py import-phy`.
+nothing is blocked. The next step is the Phy export (6 Share, or `y` on 5 Apply),
+which exports the sort for Phy; the verdicts come back with `i` on 5 Apply
+(`curation.py import-phy`).
 
 The **isolation phrase** comes from the PCA metrics and says one of: *clean*,
 *mostly separate*, *not clearly separate from the other units*, *overlaps another
@@ -159,22 +170,22 @@ number there is not a disagreement; it is the two methods having different jobs.
 When no reference unit is well recovered, the cell says *"closest: …"* and makes
 no claim at all.
 
-The dashboard says the same thing in one line, so you can see it without opening
-a browser:
-
-```
-tridesclous2 · 1 strong unit of 15 · 132 s sorted
-strong at ch 7 · 4 more pass the rule on thin evidence    u  triage
-```
+The menu's Home says the same thing without opening a browser: its probe map
+draws every unit at its contact, marked good / unsure / noise / not judged, with
+the units that may be two cells in amber.
 
 ## 3. Triage the units yourself
 
-Press `u` in the menu (or click the RESULTS section).
+Press `4` in the menu (**4 Judge**).
 
-The list opens **strong-first** - the same ranking the report uses, because it is
-the same computation - with each row naming the unit and the contact it peaks on.
-The panel beside it shows the rule's verdict, the isolation phrase, the peak
-contact, spike count, V_pp and every quality metric the sort wrote.
+The queue opens with the units flagged as likely two cells first, then the rest
+**strong-first** - the same ranking the report uses, because it is the same
+computation - each row naming the unit and the contact it peaks on. The card
+beside it shows the evidence to judge by: the unit's average waveform on its peak
+contact and the neighbours (same µV scale), a histogram of the time between its
+spikes with the 1.5 ms refractory window in amber and how many spikes fall inside
+it, and its amplitude over the recording. Below that: the rule's verdict, the
+split advice, and every quality metric the sort wrote.
 
 Four keys, one per unit:
 
@@ -185,8 +196,8 @@ Four keys, one per unit:
 | `n` | noise | not a neuron |
 | `u` | unsure | looked at, undecided - come back to it |
 
-A verdict advances the cursor, so a pass down the list is one keypress per unit.
-`Esc` goes back to the dashboard.
+A verdict moves the cursor to the next unit not yet judged, so a pass down the
+list is one keypress per unit. `Esc` goes back to Home.
 
 The same verdicts can be typed instead, along with merges and splits:
 
@@ -206,6 +217,9 @@ number yet - that is step 4.
 
 ## 4. Apply the decisions
 
+Press `5` in the menu (**5 Apply**): it shows the result before and after and
+every decision, and Enter applies them. Or, in a terminal:
+
 ```bash
 uv run python scripts/curation.py apply --sorter tridesclous2
 ```
@@ -215,8 +229,8 @@ with its own `sorting/`, `analyzer/`, `quality_metrics.csv` and `summary.json`,
 re-scored from the curated units.
 
 From this point on, **the curated result is what every surface shows**, and every
-surface says so - the report's stamp, the dashboard's RESULTS line and the triage
-header all name it as curated and say how many decisions it replays. The raw sort
+surface says so - the report's stamp, the menu's header and 5 Apply all name it
+as curated and say how many decisions it replays. The raw sort
 stays where it was.
 
 If you re-sort afterwards, the record stays attached to the run it curated, and
@@ -291,7 +305,12 @@ Read it carefully:
 
 ## 8. Rebuild a sort from its own record
 
-Every run carries everything needed to reproduce it.
+Every run carries everything needed to reproduce it. In the menu: **6 Share →
+Reproduce this run**, or 3 Sort → `r` for every run - each with its recipe (sorter,
+parameters, seed, probe geometry, signal chain, software versions, git commit).
+Enter re-runs the highlighted run from its recipe and shows the match report
+criterion by criterion; `x` exports the recipe file; `c` makes a run current. The
+same, in a terminal:
 
 ```bash
 uv run python scripts/runs.py list                       # every saved run
@@ -320,9 +339,9 @@ it is how you hand a sort to someone else.
 | What you see | What it usually means |
 |---|---|
 | noise floor near **1 µV** | the µV gain was applied twice; every amplitude is ~4× too small. Do not trust any number until it reads ~4 µV again. |
-| **0 units** | the detect threshold is too high. Lower `detect_threshold` in the menu's Edit parameters (`e`) and re-sort. |
-| **0 strong units**, but some "pass the rule on thin evidence" | every unit that passed did so on too few spikes to mean it. Sort the full recording if you were on `--duration`; otherwise judge by hand with `u`. |
-| **0 strong units** and nothing passing at all | no unit cleared the rule. Judge them by hand with `u`, or loosen `quality_rule` in `.si_menu.json` if the thresholds are wrong for this preparation - check the manual column first: a unit that carries ~100% of a human-sorted unit and misses one threshold narrowly is telling you about the threshold, not about itself. |
+| **0 units** | the detect threshold is too high. Lower `detect_threshold` in the sorter parameters (`e` on 3 Sort) and re-sort. |
+| **0 strong units**, but some "pass the rule on thin evidence" | every unit that passed did so on too few spikes to mean it. Sort the full recording if you were on `--duration`; otherwise judge by hand on 4 Judge. |
+| **0 strong units** and nothing passing at all | no unit cleared the rule. Judge them by hand on 4 Judge, or loosen the quality rule in Settings (`,`) if the thresholds are wrong for this preparation - check the manual column first: a unit that carries ~100% of a human-sorted unit and misses one threshold narrowly is telling you about the threshold, not about itself. |
 | every isolation phrase says **too few spikes to judge** | normal on a short `--duration` run. Sort the full recording. |
 | the unit count **changed** between two identical sorts | expected - `tridesclous2` is non-deterministic on this recording. Compare spikes, not unit counts. |
 | a metric reads **–** | it could not be computed for that unit, which is not the same as zero. The surfaces never print a number they do not have. |

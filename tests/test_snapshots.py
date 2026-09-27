@@ -1,9 +1,10 @@
-"""Visual regression snapshots of the menu UI (pytest-textual-snapshot).
+"""Visual regression snapshots of Spike 2.0 (pytest-textual-snapshot).
 
-These pin the CURRENT dashboard and modals as SVG baselines so the D-track
-redesign lands as reviewable visual diffs instead of silent churn. They assert
-*what the whole screen looks like*, complementing the Pilot journey tests in
-``test_menu_app.py`` (which assert behaviour and must stay layout-agnostic).
+These pin the v2 app (the rail over Home and the stage panes, Settings, the
+palette) and the modals it reuses as SVG baselines, so a redesign lands as
+reviewable visual diffs instead of silent churn. They assert *what the whole
+screen looks like*, complementing the Pilot tests in ``test_spike_app.py`` and
+``test_menu_app.py`` (which assert behaviour and stay layout-agnostic).
 
 A snapshot failure is not automatically a bug: if the change is an intended
 redesign, re-baseline deliberately - see ``tests/README.md``. Baselines live in
@@ -27,11 +28,11 @@ import menu_app  # conftest puts scripts/ on sys.path
 if getattr(pytest_textual_snapshot.SVGImageExtension, "file_extension", None) == "raw":
     pytest_textual_snapshot.SVGImageExtension.file_extension = "svg"
 
-# Representative terminal sizes, matching the breakpoints the Pilot tests pin:
-# full three-panel, narrow (stacked), and short (chrome yields so lists fit).
+# Representative terminal sizes: a roomy window (the probe map shows), the
+# default 80x24 terminal, and a narrow split pane.
 FULL = (110, 40)
-NARROW = (60, 24)
-SHORT = (100, 14)
+DEFAULT = (80, 24)
+NARROW = (64, 22)
 
 
 class FrozenSortScreen(menu_app.SortProgressScreen):
@@ -85,54 +86,113 @@ DONE_EVENTS = [
 
 
 # --------------------------------------------------------------------------- #
-# The dashboard at the three representative sizes
+# Home, and each stage
 # --------------------------------------------------------------------------- #
+def _at(*keys):
+    async def go(pilot):
+        await pilot.pause()
+        for k in keys:
+            await pilot.press(k)
+        await pilot.pause()
+    return go
 
-def test_dashboard_full(snap_compare, make_app):
+
+def test_home_full(snap_compare, make_app):
     assert snap_compare(make_app(present=True), terminal_size=FULL)
 
 
-def test_dashboard_narrow_stacked(snap_compare, make_app):
+def test_home_default_terminal(snap_compare, make_app):
+    assert snap_compare(make_app(present=True), terminal_size=DEFAULT)
+
+
+def test_home_narrow(snap_compare, make_app):
     assert snap_compare(make_app(present=True), terminal_size=NARROW)
 
 
-def test_dashboard_short(snap_compare, make_app):
-    assert snap_compare(make_app(present=True), terminal_size=SHORT)
-
-
-def test_dashboard_no_data(snap_compare, make_app):
-    # The honest empty state: pipeline FAILs, data-needing actions dimmed.
+def test_home_no_data(snap_compare, make_app):
+    # The honest empty state: the rail's 1 Data needs attention, the next step
+    # is the recording.
     assert snap_compare(make_app(present=False), terminal_size=FULL)
+
+
+def test_data_stage_no_data(snap_compare, make_app):
+    assert snap_compare(make_app(present=False), terminal_size=FULL, run_before=_at("1"))
+
+
+def test_probe_stage(snap_compare, make_app):
+    assert snap_compare(make_app(present=True), terminal_size=FULL, run_before=_at("2"))
+
+
+def test_sort_stage(snap_compare, make_app):
+    assert snap_compare(make_app(present=True), terminal_size=FULL, run_before=_at("3"))
+
+
+def test_judge_stage_with_evidence(snap_compare, make_app):
+    # Mid-pass: two verdicts recorded, two units flagged, the evidence loaded.
+    app = make_app(present=True)
+    app.c.labels["tridesclous2"] = {0: "good", 1: "noise"}
+    app.c.split_candidates = 2
+    app.c.reload()
+
+    async def go(pilot):
+        await pilot.pause()
+        await pilot.press("4")
+        pane = pilot.app.query_one("#judge")
+        for _ in range(200):
+            await pilot.pause(0.02)
+            if pane._ev:
+                break
+        await pilot.pause()
+
+    assert snap_compare(app, terminal_size=FULL, run_before=go)
+
+
+def test_judge_stage_default_terminal(snap_compare, make_app):
+    async def go(pilot):
+        await pilot.pause()
+        await pilot.press("4")
+        pane = pilot.app.query_one("#judge")
+        for _ in range(200):
+            await pilot.pause(0.02)
+            if pane._ev:
+                break
+        await pilot.pause()
+
+    assert snap_compare(make_app(present=True), terminal_size=DEFAULT, run_before=go)
+
+
+def test_apply_stage(snap_compare, make_app):
+    app = make_app(present=True)
+    app.c.labels["tridesclous2"] = {0: "good", 1: "noise", 4: "unsure"}
+    assert snap_compare(app, terminal_size=FULL, run_before=_at("5"))
+
+
+def test_share_stage(snap_compare, make_app):
+    assert snap_compare(make_app(present=True), terminal_size=FULL, run_before=_at("6"))
+
+
+def test_settings_screen(snap_compare, make_app):
+    app = make_app(present=True)
+    app.c.cfg = {"sort_settings": {"freq_min": 250.0}, "quality_rule": {"snr_min": 5.0}}
+    assert snap_compare(app, terminal_size=(110, 44), run_before=_at("comma"))
+
+
+def test_palette(snap_compare, make_app):
+    assert snap_compare(make_app(present=True), terminal_size=FULL,
+                        run_before=_at("slash", "p", "h", "y"))
 
 
 # --------------------------------------------------------------------------- #
 # Modals
 # --------------------------------------------------------------------------- #
-
-def test_sort_span_modal(snap_compare, make_app):
-    # Pressing 2 (sort) opens the span ChoiceModal, including the overwrite
-    # caveat (the fake active sorter already has a 12-unit saved sort).
-    async def open_modal(pilot):
-        await pilot.pause()
-        await pilot.press("2")
-        await pilot.pause()
-
-    assert snap_compare(make_app(present=True), terminal_size=FULL, run_before=open_modal)
-
-
 def test_docker_confirm_modal(snap_compare, make_app):
-    # The real journey (D5): the Docker toggle row lives in the sorter picker.
     # installed-not-running is the richest state ([s] start + [r] re-check).
     app = make_app(present=True)
     app.c.docker_state = "installed_not_running"
 
     async def open_modal(pilot):
         await pilot.pause()
-        await pilot.press("t")
-        await pilot.pause()
-        picklist = pilot.app.screen.query_one("#picklist")
-        picklist.highlighted = 0                    # the [ ] Docker toggle row
-        await pilot.press("enter")
+        pilot.app._toggle_docker()
         await pilot.pause()
 
     assert snap_compare(app, terminal_size=FULL, run_before=open_modal)
@@ -166,37 +226,3 @@ def test_sort_progress_done_with_note(snap_compare, make_app):
         await pilot.pause()
 
     assert snap_compare(app, terminal_size=FULL, run_before=push_and_feed)
-
-
-# --------------------------------------------------------------------------- #
-# The unit triage screen (W1 slice 4)
-# --------------------------------------------------------------------------- #
-async def _open_triage(pilot):
-    await pilot.pause()
-    await pilot.press("u")
-    await pilot.pause()
-
-
-def test_triage_screen(snap_compare, make_app):
-    # Mid-pass: two verdicts already recorded, the cursor on the third unit.
-    app = make_app(present=True)
-    app.c.labels["tridesclous2"] = {0: "good", 1: "noise"}
-    assert snap_compare(app, terminal_size=FULL, run_before=_open_triage)
-
-
-def test_triage_screen_default_terminal(snap_compare, make_app):
-    # 80x24 stays fully usable: the list, the card and the verdict keys all fit.
-    assert snap_compare(make_app(present=True), terminal_size=(80, 24),
-                        run_before=_open_triage)
-
-
-def test_triage_screen_refused(snap_compare, make_app):
-    # The anchor refusal owns the screen's body: what happened + the next step.
-    app = make_app(present=True)
-    app.c.triage_blocked = (
-        "this curation record was written against a different tridesclous2 sort - "
-        "units: record 12, on disk 18. Unit ids are not stable across re-sorts, so "
-        "replaying these decisions would curate the wrong units. Next step: write a "
-        "fresh record against the sort now in outputs/tridesclous2/ - the old record "
-        "stays as the audit trail of what was decided about that run.")
-    assert snap_compare(app, terminal_size=FULL, run_before=_open_triage)

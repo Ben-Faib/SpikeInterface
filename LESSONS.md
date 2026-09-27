@@ -8,6 +8,14 @@ process lessons.*
 
 ---
 
+**S10 (2026-09-27) - a Textual member name can silently override an internal.** Building
+Spike 2.0, a screen method named `_render` (Textual's render hook) blanked the screen with an
+error deep in the compositor, a pane helper named `_name` (a Widget attribute) returned None,
+and an app method named `run_action` (Textual's binding dispatcher) broke every key. Lesson:
+before naming a member of a Widget/Screen/App subclass, check it against
+`dir()` of the base. Encoded: `tests/test_spike_app.py::
+test_no_member_shadows_a_textual_internal` fails on any such member of a spike_app class.
+
 **S9 (2026-08-19) - a repo-wide guard test must be able to scan itself, and its first
 honest run is AFTER it is tracked.** The em-dash pin (`tests/test_no_em_dashes.py`) walks
 `git ls-files`, so while the file was uncommitted it never scanned itself and ran green;

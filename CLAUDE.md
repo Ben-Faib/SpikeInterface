@@ -70,6 +70,7 @@ uv run python scripts/verify_install.py     # smoke test: versions + all three l
 uv run python scripts/run_sorting.py --duration 30   # quick sort smoke test (first 30 s)
 uv run python scripts/curation.py show --sorter tridesclous2   # curation record + curated state (label/merge/split/apply)
 uv run python scripts/runs.py list                  # the run store: every saved run + the current pointer (export/regenerate/compare)
+uv run python scripts/check_workbench.py            # every function, end to end, in a sandbox (the Windows acceptance test)
 uv run python scripts/sweep_page.py                 # the sorter shootout: outputs/sweep.html from the store's current runs
 ```
 
@@ -106,12 +107,16 @@ sync with the code, which is why this file does not restate them.
 | `viz_palette.py` | chart colors for EVERY HTML surface + the deck: the validated periwinkle palette (categorical light/dark, ramp, diverging, status, chrome, DECK) with the validation commands in its docstring | hardcode a chart hex, or change a value without re-running the dataviz validator |
 | `sweep_page.py` | the sorter-shootout page (`outputs/sweep.html`): per-sorter pair-test verdicts + recovery vs the manual .nev, judged via compare.py, effective params from run provenance | re-implement matching, or build a second shootout surface |
 | `ui.py` | shared rich styling, themes, fallback-menu widgets | |
-| `menu_app.py` + `SpikeInterface_Menu.py` (root) | Textual dashboard (view) + controller (data/actions) | |
+| `spike_app.py` + `menu_app.py` + `SpikeInterface_Menu.py` (root) | Spike 2.0 app (rail, panes, Settings, palette, Runs) + the modals it reuses (view) + controller (data/actions) | |
+| `journey.py` | the rail's stage marks, the next step, the probe map, output freshness, runs overview + recipes, and the palette's action table | decide done/stale/next in the view |
+| `settings.py` | every editable setting: schema, validation, defaults, and the `run_sorting` flags they become | add a knob the Settings screen and the sort argv don't both get |
+| `unit_evidence.py` | per-unit waveform / ISI / amplitude evidence for 4 Judge (reads the analyzer; µV-gated) | compute evidence in the view |
+| `check_workbench.py` | the sandboxed end-to-end check of every function (the Windows acceptance test) | test against the real outputs/ or settings |
 
 The six metrics `sort_summary` owns: **V_pp**, **SNR**, **noise floor**, **yield**
 (% of electrodes that are peak channel of ≥1 unit), **units/ch**, **units/active-ch**.
 They surface in four places - the `run_sorting` terminal card, `report.html`, the menu's
-RESULTS section, and `comparison.html`. Change the computation in one place only.
+sort result card, and `comparison.html`. Change the computation in one place only.
 
 ## Invariants that bite
 
@@ -224,29 +229,27 @@ placeholder (no two channels neighbours) remains available.
 - `group_of()` is the *stable* grouping (daemon-independent, so a sorter never jumps groups
   when Docker starts/stops); `status()` reflects the live daemon. Don't confuse them.
 
-### Menu
+### Menu (Spike 2.0 - `goals/GOAL_V2.md` is its spec of record, 2026-09-27)
 
-- **The view imports no SpikeInterface.** `scripts/menu_app.py` talks to `MenuController` -
-  which lives in the root `SpikeInterface_Menu.py`, *not* `scripts/` - through a structural
-  `Protocol`, which is why tests can inject a fake controller. Keep SI out of the view.
-  (The *process* does import SI, via the controller, during startup; this is a testability
-  boundary, not an import-cost claim.)
-- **A bare run on a non-TTY builds the report** rather than opening the dashboard - a piped
-  or CI invocation silently runs the `report` action.
-- **Esc is a deliberate no-op**, so a reflexive back-press never exits the dashboard.
-- Sorting runs *in-UI* via a `run_sorting.py --progress json` subprocess, never `suspend()`.
-  Actions needing a fresh process re-invoke the launcher itself (`_self`).
-- **Every function is a visible, labelled row** (F2, 2026-08-19): the dashboard is a state
-  block (DATA/PROBE · SORT · RESULTS) over ONE list holding all fourteen functions, grouped
-  into GET DATA · SORT & CURATE · LOOK & SHARE, each row printing its own key. Housekeeping
-  stays off the list: `m`/`c`/`?`/`q` on the footer key line, `x`/`w` documented in Help
-  only. The 1-6 numbers keep their historical meanings - don't remap them;
-  `docs/WORKFLOW.md` and the help name them.
-- Responsive yield is a budget walking `SpikeMenuApp._LADDER` (group air → section air →
-  title → RESULTS compact → LAST → RESULTS → banner → stage headings) and stopping the
-  moment the screen fits; the fourteen rows never yield. The budget counts rows from the
-  same painters that draw them, so it cannot drift. 80×24 shows everything without
-  scrolling; pinned by the painted-rows/never-clip Pilot tests and the SVG snapshots.
+- **The view imports no SpikeInterface.** `scripts/spike_app.py` (the app) and
+  `scripts/menu_app.py` (the modals it reuses) talk to `MenuController` - in the root
+  `SpikeInterface_Menu.py`, *not* `scripts/` - through the `Controller` Protocol in
+  `spike_app`, which is why tests inject `tests/conftest.py`'s FakeController. What is done /
+  stale / next is decided by `journey.py`, never by the view. (The *process* imports SI via
+  the controller at startup; this is a testability boundary, not an import-cost claim.)
+- **Keys:** `1`-`6` are the rail's stages (Ben's 2026-09-27 "build it" retired the old
+  historical 1-6 meanings); `Esc` returns Home and never exits; `/` palette, `,` Settings,
+  `?` help, `q` quit. Every other letter belongs to one pane and is printed on that pane's
+  key line; `ui.HELP_TOPICS` names them all (pinned against the panes' bindings).
+- **A bare run on a non-TTY builds the report** rather than opening the app - a piped or CI
+  invocation silently runs the `report` action.
+- Sorting runs *in-UI* via a `run_sorting.py --progress json` subprocess, never `suspend()`;
+  explore / verify / apply / Phy export+import / sweep / reproduce run as logged child
+  processes (`CommandScreen`, logs in `outputs/logs/`). Only the Qt windows (gui, traces)
+  suspend the app, re-invoking the launcher (`_self`).
+- Every panel truncates its own lines to the live width (Textual re-wraps option prompts, so
+  an overlong row becomes two). The key line drops whole items, never half a label. 80×24
+  and 64 columns draw every pane (pinned by the Pilot size test and the SVG snapshots).
 
 ## Conventions
 
@@ -266,8 +269,10 @@ placeholder (no two channels neighbours) remains available.
   into one env.
 - Local state is git-ignored: `.si_menu.json` (exactly `theme`, `use_docker`, `sorter_params`,
   `active_probe`, `seen_welcome`, `seen_probe_setup`, `active_sorter`, `last_result`,
-  `quality_rule` - the last three added 2026-08-18 by D1/W1; `quality_rule` is READ by
-  sort_summary, never written by the app yet) and `probes.json` (the user probe library).
+  `quality_rule`, plus v2's `sort_settings`, `data_dir` and `built` - `settings.py` owns the
+  schema of `sort_settings`/`quality_rule`/`data_dir` and writes them from the Settings
+  screen; `built` stamps which run each output was built from) and `probes.json` (the user
+  probe library).
 - Tests live in `tests/`; the menu is covered by Textual `Pilot` tests. Run the whole suite
   before claiming a menu change works - the view is easy to break in ways only Pilot catches.
   A green suite still isn't the whole story for sort-adjacent changes: the real feedback loop

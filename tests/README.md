@@ -4,10 +4,12 @@ Run everything with `uv run python -m pytest tests/` (needs `uv sync --group dev
 
 | File | Pins |
 |---|---|
-| `test_menu_app.py` + `conftest.py` | menu **journeys/behaviour** over `FakeController` (Textual Pilot) |
+| `test_spike_app.py` + `conftest.py` | Spike 2.0 **behaviour** (rail, panes, Settings, palette, Runs) over `FakeController` (Textual Pilot) |
+| `test_menu_app.py` | the reused **modal screens** (sort, report, editors, Docker) and the shared help text |
+| `test_check_workbench.py` | the sandbox rules of `scripts/check_workbench.py` (the end-to-end run itself is that script) |
 | ↳ journeys (T2) | whole flows through the real screens and the real subprocess event pipe: explore→sort→report, cancel mid-sort, the failure card, the 0-unit amber path |
 | ↳ honesty states (T3) | every §1.7 dead-end drives its state and asserts the **next step is named**: reopen-gone, nothing-to-reopen, folded GPU, imported-probe edit refusal, chain suppression |
-| `test_snapshots.py` | menu **appearance** - SVG snapshots of the dashboard + modals |
+| `test_snapshots.py` | **appearance** - SVG snapshots of Home, every stage, Settings, the palette and the modals |
 | `test_sort_progress.py` | reducer behaviour of the progress protocol |
 | `test_sort_progress_contract.py` | the protocol **contract**: event vocabulary/shapes, ordering, emitter lock, stdout purity |
 | `test_report_golden.py` | report **structure** - builds a fresh report into tmp, checks sections/nav/figures |

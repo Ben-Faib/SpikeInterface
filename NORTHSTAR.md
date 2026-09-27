@@ -124,11 +124,20 @@ this Mac never offers it). Every phase's work must hold on Windows, not just mac
   anywhere in the repo (hard boundary); periwinkle is the palette anchor across all
   surfaces and the deck.
 
+- **2026-09-27 (Ben, "build it and then test")** - Spike 2.0 authorized from the v2.0
+  mockups canvas (`goals/GOAL_V2.md` is the spec of record): the journey rail (1 Data ·
+  2 Probe · 3 Sort · 4 Judge · 5 Apply · 6 Share) with one next step on Home replaces F2's
+  fourteen-row list, and `1`-`6` become stage keys (retiring the "historical meanings"
+  rule). Same request: every setting clearly editable (probe values first), and values
+  reproducible in-app. This is the terminal face in practice; the web/wizard options stay
+  open only if the lab asks for them.
+
 ## Open questions (kept open on purpose - answers land here as dated decisions)
 
 - **What Tracy's lab actually needs first** - users, their fluency, the recordings beyond
   this block, whether curation or batch is the pain. A short requirements pass with the lab
   should precede W3's face pick and could reorder W1/W4.
-- **The W3 face**: wizard vs web vs terminal IDE - Ben's call, informed by the lab answer.
+- **The W3 face**: answered in practice by Spike 2.0 (2026-09-27, the terminal); a web or
+  wizard face reopens only if the lab asks for one.
 - **GPU sorters on the lab box**: which (kilosort4 first?), and how validated against the
   local sorters on the same recording.

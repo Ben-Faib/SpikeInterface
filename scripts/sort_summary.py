@@ -103,6 +103,13 @@ _RULE_LABELS = {
     "amplitude_cutoff_max": "amp cutoff ≤ {v:g}",
     "presence_ratio_min": "presence ≥ {v:g}",
 }
+# The same criteria named as editable settings (the menu's Settings screen).
+RULE_SETTING_LABELS = {
+    "snr_min": "SNR at least",
+    "isi_violations_ratio_max": "ISI violation ratio at most",
+    "amplitude_cutoff_max": "Amplitude cutoff at most",
+    "presence_ratio_min": "Presence ratio at least",
+}
 
 
 def _f(value):

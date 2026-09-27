@@ -18,37 +18,15 @@ sys.path.insert(0, str(ROOT / "scripts"))
 
 import sort_summary as _ss  # noqa: E402 - SI-free import; the fake quotes its words
 
-# Action table mirroring SpikeInterface_Menu._ACTIONS (key, title, hint,
-# needs_data, stage, hotkey), so the stage grouping, the printed keys and the
-# data-dimming behaviour match the real app. F2 order of record: every function is
-# a row, binned into data / sort / share; `chrome` rows are housekeeping and never
-# enter the list.
-ACTIONS = [
-    ("data", "Data files", "which files loaded, and where", False, "data", "d"),
-    ("probe", "Probe geometry", "the electrode map every sort uses", False, "data", "p"),
-    ("explore", "Explore the recording", "static figures - LFP, events, rates", True, "data", "1"),
-    ("traces", "Watch the traces", "scroll the raw signal in a window", True, "data", "6"),
-    ("verify", "Check the install", "every library and loader, pass or fail", False, "data", "v"),
-    ("picker", "Choose the sorter", "which algorithm finds the units", False, "sort", "t"),
-    ("params", "Sorter settings", "the parameters the next sort uses", False, "sort", "e"),
-    ("sort", "Sort the recording", "finds units in the broadband signal", True, "sort", "2"),
-    ("triage", "Judge the units", "good / MUA / noise, one key per unit", False, "sort", "u"),
-    ("phy", "Export to Phy", "a folder to curate the hard cases", True, "sort", "y"),
-    ("report", "Build the report", "one HTML page: units, quality, provenance", True, "share", "3"),
-    ("gui", "Inspect in the GUI", "waveforms + correlograms in a window", True, "share", "4"),
-    ("compare", "Compare two sorts", "how much two saved sorts agree", True, "share", "5"),
-    ("reopen", "Reopen last result", "the page you built most recently", False, "share", "r"),
-    ("manage", "Manage sorters", "download · delete", False, "chrome", "m"),
-    ("theme", "Colour theme", "accent", False, "chrome", "c"),
-    ("help", "Help", "which question · which surface · which key", False, "chrome", "?"),
-    ("quit", "Quit", "exit", False, "chrome", "q"),
-]
+import journey  # noqa: E402 - pure; the one action table the palette lists
+import settings as user_settings  # noqa: E402 - pure; the one settings schema
+
+ACTIONS = journey.ACTIONS
 
 
 class FakeController:
     """Stand-in for MenuController; no I/O, no SpikeInterface."""
 
-    quick_seconds = 30
     header = "University of Pittsburgh · SpikeInterface"
     sorters = ["tridesclous2", "spykingcircus2"]
     themes = {"periwinkle": "#9b8cff", "sea-green": "#56d39a", "amber": "#e3a008"}
@@ -62,8 +40,15 @@ class FakeController:
         self.active_sorter = "tridesclous2"
         self.active_idx = 0
         self.sorter_params: dict[str, dict] = {}
-        self.actions = [dict(key=k, title=t, hint=h, needs_data=nd, stage=s, hotkey=hk)
-                        for k, t, h, nd, s, hk in ACTIONS]
+        self.actions = [dict(key=k, title=t, hint=h, needs_data=nd, stage=st)
+                        for k, t, h, nd, st in ACTIONS]
+        self.cfg: dict = {}                 # the .si_menu.json stand-in (settings)
+        self.commands: list = []            # command() keys the app asked for
+        self.finished: list = []            # (key, ok) finish_command calls
+        self.opened: list = []              # open_output / open_path targets
+        self.recipes: list = []
+        self.reports: dict = {}             # run id -> [reproduce report rows]
+        self.made_current: list = []
         self.last_result = None
         self.reopened = 0
         # How many (non-accepted) fake units carry the merge advisory. 0 keeps
@@ -202,6 +187,217 @@ class FakeController:
             "error": None if self._present else "No Blackrock .nev/.nsX files found in '/data/recordings'.",
         }
         self.probe_info = self.active_probe_info()
+        self._refresh_v2()
+
+    # -- the Spike 2.0 journey, hand-built (journey.py is pinned on its own) --- #
+    def _refresh_v2(self) -> None:
+        info = next(i for i in self.infos if i["name"] == self.active_sorter)
+        present = bool(info.get("present"))
+        labels = self.labels.get(self.active_sorter, {}) if not self.triage_blocked else {}
+        n = info["units"] if present else 0
+        split = set(self._split_units(n)) if present else set()
+        units = [{"unit": str(u), "contact": str(u % 16 + 1), "n_spikes": 1000 + u,
+                  "v_pp_uV": 30.0 + u, "snr": 5.0, "strong": u % 3 == 0,
+                  "advised": u in split, "label": labels.get(u)} for u in range(n)]
+        run = ({"id": "20260819-035117-c7184d", "smoke": False, "created": "2026-08-19T03:51:51",
+                "n_units": n, "effective_seconds": 132.0, "total_seconds": 132.0,
+                "wall_seconds": 35.4, "noise_uV": 4.07,
+                "channel_ids": [str(c) for c in range(1, 17)], "dir": "outputs/x"}
+               if present else None)
+        n_lab = sum(1 for u in units if u["label"])
+        self.journey = {"sorter": self.active_sorter,
+                        "data": {"present": self._present, "complete": self._present,
+                                 "missing": [] if self._present else [".ns2", ".ns5", ".nev"],
+                                 "unreadable": False, "n_streams": 3 if self._present else 0,
+                                 "base": self.data_report.get("base"),
+                                 "data_dir": self.data_report.get("data_dir"),
+                                 "broadband_detail": "16 neural + 6 aux ch, 132.0s @ 30000 Hz"},
+                        "probe": self.probe_info, "run": run, "units": units, "n_units": n,
+                        "n_labelled": n_lab, "flagged": [u["unit"] for u in units if u["advised"]],
+                        "curation": {"has_curated": False, "stale": False, "counts": {"total": n_lab},
+                                     "updated": None},
+                        "reproduced": list(self.reports.get(run["id"], [])) if run else []}
+        mark = lambda ok: "done" if ok else "todo"  # noqa: E731
+        self.stages = [
+            {"key": "data", "n": 1, "label": "Data", "mark": "done" if self._present else "warn",
+             "caption": "3 streams" if self._present else "no files"},
+            {"key": "probe", "n": 2, "label": "Probe", "mark": "done", "caption": "16 contacts"},
+            {"key": "sort", "n": 3, "label": "Sort", "mark": mark(present),
+             "caption": f"{n} units" if present else "not sorted"},
+            {"key": "judge", "n": 4, "label": "Judge", "mark": mark(bool(n) and n_lab >= n),
+             "caption": f"{n_lab}/{n}" if n else ""},
+            {"key": "apply", "n": 5, "label": "Apply", "mark": "warn" if n_lab else "todo",
+             "caption": f"{n_lab} to apply" if n_lab else ""},
+            {"key": "share", "n": 6, "label": "Share", "mark": "todo", "caption": ""}]
+        steps = []
+        if not self._present:
+            steps.append({"title": "Add the recording", "detail": "Spike needs one Blackrock set.",
+                          "action": "stage:1", "label": "show me where the files go", "stage": 1})
+        elif not present:
+            steps.append({"title": "Sort the recording", "detail": "Find the units.",
+                          "action": "sort", "label": "sort the full recording", "stage": 3})
+        if present and n_lab < n:
+            steps.append({"title": f"Judge the {n - n_lab} units", "detail": "one key per unit",
+                          "action": "stage:4", "label": "start judging", "stage": 4})
+        if present:
+            steps.append({"title": "Build the report", "detail": "One HTML page.",
+                          "action": "report", "label": "build the report", "stage": 6})
+        self.steps = steps
+        by = {}
+        for u in units:
+            by.setdefault(u["contact"], []).append(u)
+        self.probe_map = {"contacts": [str(c) for c in range(16, 0, -1)] if present else [],
+                          "units": by}
+        self.recent = ([{"when": "2026-08-19T03:51:51", "text": "full sort · 12 units · current"}]
+                       if present else [])
+        self.share_rows = [
+            {"key": "report", "title": "Report", "path": "outputs/report.html", "exists": False,
+             "status": "missing", "note": "not built yet", "actions": ["open", "rebuild"]},
+            {"key": "phy", "title": "Phy export", "path": "outputs/x/phy", "exists": False,
+             "status": "missing", "note": "not exported", "actions": ["export"]},
+            {"key": "reproduce", "title": "Reproduce this run", "path": "", "exists": False,
+             "status": "missing", "note": "not checked yet", "actions": ["open"]},
+            {"key": "recipe", "title": "Run recipe", "path": "outputs/recipes/x.json",
+             "exists": False, "status": "missing", "note": "re-runs this sort anywhere",
+             "actions": ["export"]}]
+
+    def refresh_journey(self) -> None:
+        self._refresh_v2()
+
+    @property
+    def quick_seconds(self) -> int:
+        return user_settings.quick_seconds(self.cfg)
+
+    def settings_rows(self) -> list:
+        rows = user_settings.rows(self.cfg)
+        for r in rows:
+            if r["kind"] == "link":
+                r["value"] = {"active_probe": self.probe_info["label"],
+                              "active_sorter": self.active_sorter,
+                              "sorter_params": "all defaults",
+                              "use_docker": "on" if self.use_docker else "off",
+                              "theme": self.theme_name}.get(r["key"], "")
+        return rows
+
+    def set_setting(self, key, raw):
+        ok, msg = user_settings.set_value(self.cfg, key, raw)
+        if ok:
+            self._refresh_v2()
+        return ok, msg
+
+    def reset_setting(self, key):
+        return user_settings.reset(self.cfg, key)
+
+    def sort_preview(self) -> list:
+        g = user_settings.get
+        return [("probe", self.probe_info["label"]),
+                ("band-pass", f"{g(self.cfg, 'freq_min'):g}-{g(self.cfg, 'freq_max'):g} Hz")]
+
+    def command(self, key, run_id=None) -> dict:
+        import tempfile
+        from pathlib import Path as _P
+
+        self.commands.append((key, run_id))
+        log = _P(tempfile.gettempdir()) / f"spike_fake_{key}.log"
+        out = {"argv": ["true"], "title": f"Running {key}", "log": log, "open": None,
+               "report": None}
+        if key == "reproduce":
+            rep = _P(tempfile.gettempdir()) / "spike_fake_reproduce.json"
+            import json as _json
+            rep.write_text(_json.dumps({"report": {
+                "verdict": "REGENERATED", "recorded_run": "a", "regenerated_run": "b",
+                "criteria": [{"name": "noise floor", "recorded": 4.07, "regenerated": 4.05,
+                              "tolerance": "± 0.3 µV", "verdict": "WITHIN TOLERANCE",
+                              "note": ""}], "failed": []}, "out": "outputs/regen/b"}),
+                encoding="utf-8")
+            out["report"] = rep
+        return out
+
+    def finish_command(self, key, ok) -> str:
+        self.finished.append((key, ok))
+        return ("✓ " if ok else "✗ ") + key
+
+    def unit_evidence(self, unit_id):
+        u = int(unit_id)
+        wave = [0.0] * 10 + [-20.0 - u, -60.0 - u, -30.0, 10.0, 15.0] + [5.0] * 10
+        return {"unit": str(u), "n_spikes": 1000 + u, "peak_channel": str(u % 16 + 1),
+                "channels": [str(u % 16 + 1)], "waveforms": {str(u % 16 + 1): wave},
+                "wave_ms": 2.9, "peak_index": 11,
+                "isi": {"bin_ms": 0.5, "max_ms": 25.0, "counts": [3, 0, 1] + [10] * 47,
+                        "refractory_ms": 1.5, "n_refractory": 4, "ratio": 0.2},
+                "amplitude": {"t_s": [0, 1, 2], "median_uV": [-60.0, -61.0, -59.0], "n": [5, 5, 5]}}
+
+    def apply_preview(self) -> dict:
+        labels = {}
+        for lab in self.labels.get(self.active_sorter, {}).values():
+            labels[lab] = labels.get(lab, 0) + 1
+        total = sum(labels.values())
+        return {"sorter": self.active_sorter, "run": "20260819-035117-c7184d",
+                "n_units": 12, "labels": labels,
+                "counts": {"total": total, "merges": 0, "splits": 0, "labels": total},
+                "decisions": [{"at": "2026-08-19T03:53:36", "type": "label", "units": [u],
+                               "label": lab, "method": "tui"}
+                              for u, lab in self.labels.get(self.active_sorter, {}).items()],
+                "has_record": bool(total), "has_curated": False, "stale": False,
+                "stale_reason": "", "line": "raw", "noise_uV": 4.07}
+
+    def probe_detail(self, name=None) -> dict:
+        p = next((x for x in self._probe_lib if x["name"] == (name or self.active_probe)), None)
+        if p is None:
+            return {}
+        return {"name": p["name"], "label": p["label"], "kind": p["kind"],
+                "params": dict(p.get("params") or {}), "builtin": p.get("builtin"),
+                "note": p.get("note", ""), "summary": p.get("summary", ""),
+                "features": {"n": p.get("n"), "layout": p.get("layout"),
+                             "min_pitch_um": 100.0, "density_class": p.get("density_class")},
+                "match": p.get("match"), "match_detail": p.get("match_detail"),
+                "active": p["name"] == self.active_probe,
+                "positions": [[0.0, 100.0 * i] for i in range(p.get("n") or 4)],
+                "saved_in": "built into Spike" if p.get("builtin") else "probes.json"}
+
+    def import_probe(self, path):
+        if not str(path).strip().endswith((".json", ".prb")):
+            return False, f"couldn't import {path}: not a .json or .prb file"
+        self._probe_lib.append({**self._probe_lib[0], "name": "imported-x", "label": "imported x",
+                                "builtin": False, "kind": "imported"})
+        return True, "Imported probe imported-x - press ↵ on it to use it"
+
+    def runs_overview(self) -> list:
+        return [{"id": "20260819-035117-c7184d", "created": "2026-08-19T03:51:51",
+                 "smoke": False, "legacy": False, "units": 12, "current": True,
+                 "seconds": 132.0, "noise_uV": 4.07, "reproduced": None, "dir": "x"},
+                {"id": "20260927-162150-5a6312", "created": "2026-09-27T16:22:17",
+                 "smoke": True, "legacy": False, "units": 14, "current": False,
+                 "seconds": 30.0, "noise_uV": 3.94, "reproduced": None, "dir": "y"}]
+
+    def run_recipe(self, run_id) -> dict:
+        return {"config": {"sorter": self.active_sorter},
+                "rows": [("Sorter", self.active_sorter), ("Seed", "none")]}
+
+    def reproduce_reports(self, run_id) -> list:
+        return list(self.reports.get(run_id, []))
+
+    def export_recipe(self, run_id=None):
+        self.recipes.append(run_id)
+        return True, "Recipe written → outputs/recipes/x.json"
+
+    def make_current(self, run_id):
+        self.made_current.append(run_id)
+        return True, f"current → {run_id}"
+
+    def open_output(self, key):
+        self.opened.append(key)
+        return True, f"Opened {key}"
+
+    def open_path(self, path):
+        self.opened.append(str(path))
+        return True, f"Opened {path}"
+
+    def open_data_folder(self):
+        return self.open_path(self.data_report.get("data_dir"))
+
+    def startup_checklist(self) -> list:
+        return [(True, "recording", "PFCM7"), (True, "probe", self.probe_info["label"])]
 
     # A third of the units pass the rule, on ascending contacts - deterministic,
     # so both the RESULTS line and the strong-first triage order are assertable.
@@ -302,6 +498,7 @@ class FakeController:
         if any(p["name"] == name for p in self._probe_lib):
             self.active_probe = name
             self.probe_info = self.active_probe_info()
+            self._refresh_v2()
             return True
         return False
 
@@ -424,7 +621,7 @@ class FakeController:
     def label_unit(self, unit_id, label: str) -> tuple[bool, str]:
         if self.triage_blocked:
             return False, self.triage_blocked          # refused: nothing written
-        self.labels.setdefault(self.active_sorter, {})[unit_id] = label
+        self.labels.setdefault(self.active_sorter, {})[int(unit_id)] = label
         self.labelled.append((self.active_sorter, unit_id, label))
         return True, f"unit {unit_id} → {label}"
 
@@ -531,11 +728,11 @@ def make_controller():
 
 @pytest.fixture
 def make_app():
-    """Build a SpikeMenuApp over a FakeController. Accepts present/use_docker so the
-    three-panel tests can drive the broken-data and Docker-on universes."""
-    import menu_app
+    """Build the Spike 2.0 app (spike_app.SpikeApp) over a FakeController. Accepts
+    present/use_docker so tests can drive the no-data and Docker-on universes."""
+    import spike_app
 
     def _build(present: bool = True, use_docker: bool = False):
-        return menu_app.SpikeMenuApp(FakeController(present=present, use_docker=use_docker))
+        return spike_app.SpikeApp(FakeController(present=present, use_docker=use_docker))
 
     return _build
