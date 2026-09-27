@@ -80,7 +80,7 @@ A need left only in a chat summary is a need Ben never sees.*
 
 - **V2 - the Windows run**: follow `docs/WINDOWS_TEST.md` on the lab box (uv setup,
   `scripts\check_workbench.py`, ten minutes in the app) and send back the harness output
-  plus a screenshot of anything wrong. Also worth a look on this Mac: `run.bat`-free,
+  plus a screenshot of anything wrong. First look on this Mac:
   `uv run python SpikeInterface_Menu.py`. *(opened 2026-09-27)*
 - **DECK - the dry read**: open `outputs/lab_meeting_deck.pptx` in PowerPoint and read
   the notes script aloud once (the file passes the validator and renders cleanly in
