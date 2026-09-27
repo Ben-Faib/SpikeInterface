@@ -25,7 +25,9 @@ Pure: json-level data only, no SpikeInterface, no Textual.
 """
 from __future__ import annotations
 
+import math
 import os
+import re
 
 import run_sorting  # the pipeline owns its own method list and defaults
 import sort_summary
@@ -75,8 +77,9 @@ SCHEMA = [
      "kind": "int", "default": 30, "min": 5, "max": 600,
      "help": "how much of the recording a quick test sorts; it never becomes current"},
     {"key": "n_jobs", "group": _SORTER, "label": "CPU workers", "kind": "int",
-     "default": 1, "min": 1, "max": max(1, os.cpu_count() or 1), "flag": "--n-jobs",
-     "help": "parallel workers for the sort and metrics; 1 is the safest"},
+     "default": 1, "min": 1, "max": 256, "flag": "--n-jobs",
+     "help": f"parallel workers for the sort and metrics; 1 is the safest "
+             f"(this computer has {os.cpu_count() or '?'} cores)"},
     {"key": "use_docker", "group": _SORTER, "label": "Docker sorters", "kind": "link",
      "link": "docker", "help": "run sorters this computer lacks inside Docker"},
 
@@ -119,6 +122,16 @@ def get(cfg: dict, key: str):
     return value if ok else s["default"]
 
 
+def saved_raw(cfg: dict, key: str):
+    """What .si_menu.json holds for ``key`` (None when nothing is saved)."""
+    s = _BY_KEY[key]
+    if s["kind"] == "link":
+        return None
+    box = _store(cfg, s)
+    name = "data_dir" if s.get("store") == "data_dir" else key
+    return box.get(name)
+
+
 def is_default(cfg: dict, key: str) -> bool:
     return get(cfg, key) == _BY_KEY[key]["default"]
 
@@ -140,6 +153,8 @@ def _parse(s: dict, raw):
             value = float(str(raw).strip())
         except ValueError:
             return False, None, f"{s['label']} must be a number"
+        if not math.isfinite(value):
+            return False, None, f"{s['label']} must be a finite number"
         if kind == "int":
             if value != int(value):
                 return False, None, f"{s['label']} must be a whole number"
@@ -154,8 +169,7 @@ def _parse(s: dict, raw):
             return False, None, "choose one of " + ", ".join(s["choices"])
         return True, text, ""
     if kind == "channels":
-        text = str(raw or "").replace(" ", "")
-        parts = [p for p in text.split(",") if p]
+        parts = [p for p in re.split(r"[,\s]+", str(raw or "").strip()) if p]
         if any(not p.replace("_", "").isalnum() for p in parts):
             return False, None, "list channel ids separated by commas, e.g. 3,7"
         return True, ",".join(parts), ""
@@ -200,9 +214,13 @@ def reset(cfg: dict, key: str) -> "tuple[bool, str]":
     return True, f"{s['label']} back to its default ({display(cfg, key)})"
 
 
-def display(cfg: dict, key: str, value=None) -> str:
+_CURRENT = object()
+
+
+def display(cfg: dict, key: str, value=_CURRENT) -> str:
     s = _BY_KEY[key]
-    value = get(cfg, key) if value is None and s["kind"] != "link" else value
+    if value is _CURRENT:
+        value = get(cfg, key) if s["kind"] != "link" else None
     kind = s["kind"]
     if kind == "bool":
         return "on" if value else "off"
@@ -226,6 +244,9 @@ def rows(cfg: dict) -> list:
             row.update(value=display(cfg, s["key"]),
                        default=display(cfg, s["key"], s["default"]),
                        is_default=is_default(cfg, s["key"]))
+            saved = saved_raw(cfg, s["key"])
+            if saved is not None and not _parse(s, saved)[0]:
+                row["invalid"] = str(saved)     # on disk but unusable: the default runs
             for extra in ("choices", "min", "max"):
                 if extra in s:
                     row[extra] = s[extra]

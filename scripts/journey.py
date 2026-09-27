@@ -69,7 +69,6 @@ ACTIONS = [
     ("help",        "Help",                      "keys, stages, where things are saved",    False, 0),
     ("quit",        "Quit",                      "leave Spike",                             False, 0),
 ]
-# Keys that need a recording present (so the fallback menu can refuse them cleanly).
 
 STAGES = (("data", "Data"), ("probe", "Probe"), ("sort", "Sort"),
           ("judge", "Judge"), ("apply", "Apply"), ("share", "Share"))
@@ -185,6 +184,14 @@ def report_state(snap: dict) -> dict:
     cur = snap.get("curation") or {}
     if not b:
         return {"status": "unknown", "when": when, "note": "built outside Spike"}
+    # The stamp says what Spike built; a file written after it (a CLI rebuild,
+    # `run.bat report`) is something else - never vouch for it from the stamp.
+    try:
+        stamped = datetime.fromisoformat(str(b.get("when")))
+        if datetime.fromisoformat(when) > stamped.replace(second=59):
+            return {"status": "unknown", "when": when, "note": "rebuilt outside Spike"}
+    except (TypeError, ValueError):
+        return {"status": "unknown", "when": when, "note": "built outside Spike"}
     if b.get("sorter") != snap["sorter"] or (run and b.get("run") != run.get("id")):
         return {"status": "stale", "when": when,
                 "note": f"shows {b.get('sorter')} run {str(b.get('run'))[-6:]}"}
@@ -293,7 +300,8 @@ def next_steps(snap: dict) -> list:
                 "Only a quick test sort exists; it never counts as the result.",
                 "sort", "sort the full recording", 3)
     n, lab, flagged = snap["n_units"], snap["n_labelled"], snap["flagged"]
-    if run and n and lab < n:
+    real = bool(run) and not run["smoke"]      # a test sort is never the result
+    if real and n and lab < n:
         rest = n - lab
         detail = (f"{len(flagged)} flagged as likely two cells come first."
                   if flagged else "Label each good, multi-unit or noise, one key per unit.")
@@ -305,17 +313,17 @@ def next_steps(snap: dict) -> list:
             "Builds the curated result beside the raw sort and re-scores it.",
             "apply", "apply them", 5)
     rs = report_state(snap)
-    if run and rs["status"] != "fresh":
+    if real and rs["status"] != "fresh":
         add("Build the report", "One HTML page: units, quality, provenance.",
             "report", "build the report", 6)
-    if run and flagged and not snap.get("phy_exported"):
+    if real and flagged and not snap.get("phy_exported"):
         contacts = [u["contact"] for u in snap["units"] if u["advised"]]
         add("Split the merged pairs in Phy",
             f"Units on contacts {_contacts_text(contacts)} fire at impossible intervals: "
             "likely two cells each. Phy is where you split them.",
             "phy", f"export {len(flagged)} flagged unit{'s' if len(flagged) != 1 else ''} "
             "to Phy", 6)
-    if run and not run["smoke"] and not snap.get("reproduced"):
+    if real and not snap.get("reproduced"):
         add("Check this run reproduces",
             "Re-run it from its own recipe and compare every value.",
             "reproduce", "reproduce the values", 6)
@@ -405,22 +413,20 @@ def outputs(snap: dict) -> list:
     out_dir = bio.REPO_ROOT / "outputs"
     rows = []
 
-    def add(key, title, path, status, note, actions):
+    def add(key, title, path, status, note):
         rows.append({"key": key, "title": title, "path": _rel(path) if path else "",
                      "exists": bool(path) and Path(path).exists(), "status": status,
-                     "note": note, "actions": actions})
+                     "note": note})
 
     rs = report_state(snap)
-    add("report", "Report", out_dir / "report.html", rs["status"], rs["note"],
-        ["open", "rebuild"])
+    add("report", "Report", out_dir / "report.html", rs["status"], rs["note"])
     for key, title, name in (("compare", "Comparison", "comparison.html"),
                              ("sweep", "Sorter shootout", "sweep.html"),
                              ("explore", "Recording overview", "explore.html")):
         p = out_dir / name
         when = _mtime(p)
         add(key, title, p, "present" if when else "missing",
-            f"built {when[:16].replace('T', ' ')}" if when else "not built yet",
-            ["open", "rebuild"])
+            f"built {when[:16].replace('T', ' ')}" if when else "not built yet")
     if run:
         paths = runs.sort_paths(sorter)
         cur = snap.get("curation") or {}
@@ -428,28 +434,24 @@ def outputs(snap: dict) -> list:
         n_flag = len(snap.get("flagged") or [])
         if phy.is_dir():
             add("phy", "Phy export", phy, "warn" if n_flag else "present",
-                f"{n_flag} flagged units to split there" if n_flag else "exported",
-                ["export", "folder"])
+                f"{n_flag} flagged units to split there" if n_flag else "exported")
         else:
             add("phy", "Phy export", phy, "missing",
-                f"export {n_flag} flagged units" if n_flag else "not exported", ["export"])
-        add("gui", "Inspect in the GUI", None, "present", "waveforms + correlograms window",
-            ["open"])
+                f"export {n_flag} flagged units" if n_flag else "not exported")
+        add("gui", "Inspect in the GUI", None, "present", "waveforms + correlograms window")
         metrics = paths["curated_metrics"] if cur.get("has_curated") else paths["metrics"]
         add("values", "Values (CSV)", metrics, "present" if metrics.exists() else "missing",
-            "every unit's metrics, plus summary.csv", ["folder"])
+            "every unit's metrics, plus summary.csv")
         reps = snap.get("reproduced") or []
         add("reproduce", "Reproduce this run", None,
             "present" if reps else "missing",
-            f"last check: {reps[0]['verdict']}" if reps else "not checked yet",
-            ["open"])
+            f"last check: {reps[0]['verdict']}" if reps else "not checked yet")
         recipe = recipe_path(sorter, run["id"])
         add("recipe", "Run recipe", recipe, "present" if recipe.exists() else "missing",
-            "the file that re-runs this sort anywhere", ["export", "folder"])
+            "the file that re-runs this sort anywhere")
     deck = out_dir / "lab_meeting_deck.pptx"
     if deck.exists():
-        add("deck", "Lab deck", deck, "present", f"built {(_mtime(deck) or '')[:10]}",
-            ["open"])
+        add("deck", "Lab deck", deck, "present", f"built {(_mtime(deck) or '')[:10]}")
     return rows
 
 

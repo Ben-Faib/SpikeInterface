@@ -718,3 +718,71 @@ def test_dashboard_rollup_fires_the_advisory_from_the_summary_file_alone(monkeyp
     old = M._rollup_for(paths["out"])
     assert old["n_split_candidates"] == 0 and old["split_chip"] == ""
     assert all(u["n_spikes"] is None for u in old["units"])
+
+
+# --- Spike 2.0: the controller's new seams ---------------------------------- #
+def test_command_table_runs_each_task_on_the_active_sorter(monkeypatch, tmp_path):
+    _mock_registry(monkeypatch)
+    c = _controller(monkeypatch, tmp_path)
+    for key, script, verb in (("apply", "curation.py", "apply"),
+                              ("phy", "curation.py", "export-phy"),
+                              ("import_phy", "curation.py", "import-phy"),
+                              ("explore", "explore_data.py", None),
+                              ("verify", "verify_install.py", None),
+                              ("sweep", "sweep_page.py", None)):
+        cmd = c.command(key)
+        argv = [str(a) for a in cmd["argv"]]
+        assert argv[1].endswith(script), key
+        if verb:
+            assert verb in argv and c.active_sorter in argv, key
+        assert cmd["log"].parent.name == "logs" and cmd["title"]
+
+
+def test_reproduce_without_a_run_refuses_instead_of_crashing(monkeypatch, tmp_path):
+    import pytest
+
+    _mock_registry(monkeypatch)
+    c = _controller(monkeypatch, tmp_path)
+    c.journey = {"run": None}
+    with pytest.raises(LookupError, match="no saved"):
+        c.command("reproduce")
+    c.journey = {"run": {"id": "20260101-000000-aaaaaa"}}
+    cmd = c.command("reproduce")
+    assert "--json-report" in cmd["argv"] and str(cmd["report"]).endswith(".json")
+    assert "20260101-000000-aaaaaa" in cmd["argv"]
+
+
+def test_settings_edits_persist_and_the_data_folder_repoints(monkeypatch, tmp_path):
+    import SpikeInterface_Menu as M
+
+    _mock_registry(monkeypatch)
+    saved = []
+    monkeypatch.setattr(M, "_save_config", lambda cfg: saved.append(dict(cfg)))
+    c = M.MenuController(__import__("argparse").Namespace(
+        data_dir=str(tmp_path), sorter=None, duration=None, docker=False,
+        params_file=None, gui_mode="auto"), {})
+    ok, msg = c.set_setting("freq_max", "5000")
+    assert ok and c.cfg["sort_settings"]["freq_max"] == 5000.0 and saved
+    assert c.set_setting("freq_max", "100")[0] is False            # below the low edge
+    elsewhere = tmp_path / "rec"
+    elsewhere.mkdir()
+    ok, msg = c.set_setting("data_dir", str(elsewhere))
+    assert ok and c.args.data_dir == str(elsewhere) and "no recording" in msg
+    assert c.reset_setting("freq_max")[0] and "freq_max" not in c.cfg["sort_settings"]
+
+
+def test_export_recipe_writes_the_run_config(monkeypatch, tmp_path):
+    import journey
+
+    _mock_registry(monkeypatch)
+    c = _controller(monkeypatch, tmp_path)
+    c.journey = {"run": {"id": "20260101-000000-aaaaaa"}}
+    monkeypatch.setattr(journey, "recipe", lambda s, r: {"config": {"sorter": s, "from_run": r},
+                                                          "rows": []})
+    target = tmp_path / "outputs" / "recipes" / "x.json"
+    monkeypatch.setattr(journey, "recipe_path", lambda s, r: target)
+    monkeypatch.setattr(M.bio, "REPO_ROOT", tmp_path)
+    ok, msg = c.export_recipe()
+    assert ok and json.loads(target.read_text())["from_run"] == "20260101-000000-aaaaaa"
+    monkeypatch.setattr(journey, "recipe", lambda s, r: {"config": None, "rows": []})
+    assert c.export_recipe()[0] is False

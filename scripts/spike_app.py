@@ -110,6 +110,26 @@ class Controller(Protocol):
     def open_path(self, path) -> "tuple[bool, str]": ...
     def open_data_folder(self) -> "tuple[bool, str]": ...
     def startup_checklist(self) -> list: ...
+    # the sorter catalog, Docker and the reused modals
+    def set_active_by_name(self, name: str) -> bool: ...
+    def saved_sorters(self) -> list: ...
+    def active_blocked_on_docker(self) -> bool: ...
+    def docker_status(self, refresh: bool = False) -> dict: ...
+    def toggle_docker(self) -> bool: ...
+    def start_docker(self) -> bool: ...
+    def download_image(self, name, on_progress=None, on_status=None, should_cancel=None): ...
+    def delete_image(self, name: str) -> "tuple[bool, str]": ...
+    def clear_saved_sort(self, name: str) -> "tuple[bool, str]": ...
+    def default_params(self, sorter: str) -> dict: ...
+    def param_descriptions(self, sorter: str) -> dict: ...
+    def get_overrides(self, sorter: str) -> dict: ...
+    def set_params(self, sorter: str, overrides: dict) -> None: ...
+    def set_theme(self, name: str) -> str: ...
+    def run(self, key: str, span) -> "tuple[bool, str, bool]": ...
+    def run_compare(self, pair) -> "tuple[bool, str, bool]": ...
+    def record_result(self, key: str, ok: bool) -> None: ...
+    def reopen_last(self) -> "tuple[bool, str]": ...
+    def report_log_path(self): ...
 
 
 # --------------------------------------------------------------------------- #
@@ -540,13 +560,26 @@ class HelpScreen(Screen):
                 Binding("question_mark", "close", "Back", show=False),
                 Binding("q", "close", "Back", show=False)]
 
-    def __init__(self, accent: str):
+    def __init__(self, accent: str, data_report: "dict | None" = None):
         super().__init__()
         self._accent = accent
+        self._data = data_report or {}
+
+    def _data_lines(self) -> list:
+        d = self._data
+        out = [f"folder  {d.get('data_dir', '?')}"]
+        for f in d.get("files") or []:
+            mark = "✓" if f.get("present") else "✗ missing"
+            out.append(f"{mark:<10}{(d.get('base') or '<name>') + f['ext']:<32}{f['label']}")
+        if not d.get("present"):
+            out.append("Put the three files in that folder, or press f on 1 Data.")
+        return out
 
     def compose(self) -> ComposeResult:
         t = Text()
-        for _key, title, lines in ui.HELP_TOPICS:
+        for key, title, lines in ui.HELP_TOPICS:
+            if key == "data":
+                lines = self._data_lines()
             if not lines:
                 continue
             t.append(title.upper() + "\n", style=f"bold {self._accent}")
@@ -721,7 +754,10 @@ class SettingsScreen(Screen):
                 t.append("   ↵ opens its screen", style=MUTED)
             else:
                 t.append(f"{r['value']}", style=AMBER if not r["is_default"] else "")
-                if not r["is_default"]:
+                if r.get("invalid") is not None:
+                    t.append(f"   saved {r['invalid']} is not usable: default in use",
+                             style=RED)
+                elif not r["is_default"]:
                     t.append(f"   default {r['default']}", style=MUTED)
             t.truncate(width)
             ol.add_option(Option(t, id=r["key"]))
@@ -1722,6 +1758,7 @@ class JudgePane(Pane):
         super().__init__(app_ref, **kw)
         self._state = {}
         self._ev = {}
+        self._ev_run = None          # the run the cached evidence was read from
         self._ev_loading = False
         self._ev_error = None
 
@@ -1746,6 +1783,9 @@ class JudgePane(Pane):
         return flagged, rest
 
     def paint(self) -> None:
+        run = ((getattr(self.c, "journey", None) or {}).get("run") or {}).get("id")
+        if run != self._ev_run:            # a new sort: never draw the old run's evidence
+            self._ev, self._ev_error, self._ev_run = {}, None, run
         try:
             self._state = self.c.triage_state() or {}
         except Exception as e:  # noqa: BLE001 - an unreadable sort is a message, not a crash
@@ -1784,6 +1824,7 @@ class JudgePane(Pane):
         if not hasattr(self.c, "unit_evidence"):
             return
         self._ev_loading = True
+        run = self._ev_run
         units = [str(u["unit"]) for u in self._state.get("units") or []]
 
         def work():
@@ -1795,12 +1836,16 @@ class JudgePane(Pane):
                         out[uid] = ev
             except Exception as e:  # noqa: BLE001
                 err = str(e)
-            self.a.call_from_thread(self._evidence_ready, out, err)
+            self.a.call_from_thread(self._evidence_ready, out, err, run)
 
         self.a.run_worker(work, thread=True, exclusive=False)
 
-    def _evidence_ready(self, ev, err) -> None:
-        self._ev, self._ev_error, self._ev_loading = ev, err, False
+    def _evidence_ready(self, ev, err, run=None) -> None:
+        self._ev_loading = False
+        if run != self._ev_run:          # the sort changed while this loaded: drop it
+            self.paint()
+            return
+        self._ev, self._ev_error = ev, err
         self._paint_card()
 
     def _unit_id(self):
@@ -2162,7 +2207,7 @@ class SpikeApp(App):
         Binding("slash", "palette", "Find", show=False),
         Binding("comma", "settings", "Settings", show=False),
         Binding("question_mark", "help", "Help", show=False),
-        Binding("q", "quit", "Quit", show=False),
+        Binding("q", "quit_key", "Quit", show=False),
         Binding("ctrl+c", "quit", "Quit", show=False),
     ]
 
@@ -2283,8 +2328,16 @@ class SpikeApp(App):
         if self._stage:
             self.go(0)
 
+    def action_quit_key(self) -> None:
+        """`q` quits from the stages only. Over a dialog or a running sort/task it
+        would orphan the child process or skip a confirmation, so it says so."""
+        if len(self.screen_stack) > 1:
+            self.bell()
+            return
+        self.exit()
+
     def action_help(self) -> None:
-        self.push_screen(HelpScreen(self._accent))
+        self.push_screen(HelpScreen(self._accent, self.c.data_report))
 
     def action_palette(self) -> None:
         self.push_screen(PaletteScreen(self.c.actions, self._accent),
@@ -2379,7 +2432,11 @@ class SpikeApp(App):
 
     # -- actions ------------------------------------------------------------- #
     def _command(self, key: str, run_id=None, on_done=None) -> None:
-        cmd = self.c.command(key, run_id) if key == "reproduce" else self.c.command(key)
+        try:
+            cmd = self.c.command(key, run_id) if key == "reproduce" else self.c.command(key)
+        except LookupError as e:
+            self.say(f"✗ {e}", AMBER)
+            return
 
         def done(res):
             ok, _detail = res or (False, "cancelled")
@@ -2559,8 +2616,16 @@ class SpikeApp(App):
 
         self.push_screen(ChoiceModal("Accent colour", opts), done)
 
-    def _toggle_docker(self, after=None) -> None:
+    def _toggle_docker(self, after=None, offer: bool = False) -> None:
+        """Flip Docker sorters. Turning OFF is immediate; turning ON - or ``offer``,
+        when a Docker sorter was chosen and the daemon is not up - goes through the
+        confirm dialog, which can also start Docker. ``offer`` never turns it off."""
         def apply_toggle():
+            if offer and self.c.use_docker:      # already on: the dialog was for the daemon
+                self.refresh_all()
+                if after:
+                    after()
+                return
             on = self.c.toggle_docker()
             self.say("✓ Docker sorters on - choose one on 3 Sort" if on else "Docker sorters off",
                      GREEN if on else MUTED)
@@ -2568,7 +2633,7 @@ class SpikeApp(App):
             if after:
                 after()
 
-        if self.c.use_docker:
+        if self.c.use_docker and not offer:
             apply_toggle()
             return
         self.push_screen(DockerConfirmScreen(self.c, self._accent),
@@ -2583,15 +2648,17 @@ class SpikeApp(App):
             if self.c.docker_status(refresh=False).get("running"):
                 self.start_download(name)
             else:
-                self._toggle_docker()
+                self._toggle_docker(offer=True)     # get Docker running first
         elif info.get("runnable"):
             if self.c.set_active_by_name(name):
                 self.say(f"✓ {name} will run the next sort - f full sort, t quick test", GREEN)
             self.after_change()
         elif info.get("group") == "docker":
-            self._toggle_docker()
+            self._toggle_docker(offer=True)         # image cached; Docker sorters off
         else:
-            self.say(f"{name}: not available on this computer", AMBER)
+            self.say(f"{name}: needs an NVIDIA GPU build - not offered on this computer"
+                     if info.get("group") == "gpu" else f"{name}: not available on this computer",
+                     AMBER)
 
     def start_download(self, name: str) -> None:
         if self._download is not None and self._download.result is None:

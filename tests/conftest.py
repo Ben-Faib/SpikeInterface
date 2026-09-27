@@ -252,11 +252,11 @@ class FakeController:
                        if present else [])
         self.share_rows = [
             {"key": "report", "title": "Report", "path": "outputs/report.html", "exists": False,
-             "status": "missing", "note": "not built yet", "actions": ["open", "rebuild"]},
+             "status": "missing", "note": "not built yet"},
             {"key": "phy", "title": "Phy export", "path": "outputs/x/phy", "exists": False,
-             "status": "missing", "note": "not exported", "actions": ["export"]},
+             "status": "missing", "note": "not exported"},
             {"key": "reproduce", "title": "Reproduce this run", "path": "", "exists": False,
-             "status": "missing", "note": "not checked yet", "actions": ["open"]},
+             "status": "missing", "note": "not checked yet"},
             {"key": "recipe", "title": "Run recipe", "path": "outputs/recipes/x.json",
              "exists": False, "status": "missing", "note": "re-runs this sort anywhere",
              "actions": ["export"]}]
@@ -565,7 +565,8 @@ class FakeController:
         if output:
             out["output"] = output
         if key == "sort" and info.get("present"):
-            out["caveat"] = f"Re-running replaces the saved {info['name']} sort ({info['units']}u)."
+            out["caveat"] = (f"Re-running makes a new {info['name']} run; the saved one "
+                             f"({info['units']}u) is kept.")
         return out
 
     # -- unit triage (mirrors MenuController.triage_state / label_unit) --------- #
@@ -582,8 +583,8 @@ class FakeController:
               "blocked": self.triage_blocked, "empty": "",
               "columns": [], "units": [], "reviewed": 0, "total": 0}
         if not info.get("present"):
-            st["empty"] = (f"No saved {sorter} sort to triage yet - press 2 on the "
-                           "dashboard to sort, then come back.")
+            st["empty"] = (f"No saved {sorter} sort to judge yet - sort it on 3 Sort, "
+                           "then come back.")
             return st
         # A blocked record's labels are for a DIFFERENT sort's unit ids, so they are
         # not shown against these units (the real controller does the same).

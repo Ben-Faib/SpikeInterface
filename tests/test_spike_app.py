@@ -532,3 +532,83 @@ def test_no_member_shadows_a_textual_internal():
             private = name.startswith("_") and not name.startswith("__")
             if (private or name == "run_action") and name in base_names:
                 raise AssertionError(f"{cls.__name__}.{name} shadows Textual's {base.__name__}.{name}")
+
+
+# --- review follow-ups: the paths the old picker/journey tests used to pin -------- #
+async def test_choosing_an_undownloaded_docker_sorter_downloads_or_asks_for_docker(make_app):
+    import threading
+
+    app = make_app(present=True, use_docker=True)
+    app.c.dl_gate = threading.Event()
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.press("3")
+        await pilot.pause()
+        app.select_sorter("mountainsort5")           # image not downloaded, daemon up
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.DownloadProgressScreen)
+        assert "mountainsort5" in app.c.downloaded
+        app.c.dl_gate.set()
+        await pilot.press("escape")
+    app = make_app(present=True, use_docker=True)
+    app.c.docker_state = "installed_not_running"
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        app.select_sorter("mountainsort5")           # daemon down: get Docker going first
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.DockerConfirmScreen)
+        app.screen.action_start_docker()
+        await pilot.pause()
+        assert app.c.started_docker is True
+
+
+async def test_cancelling_a_sort_mid_run_returns_home_with_nothing_recorded(make_app):
+    app = make_app(present=True)
+    app.c.sort_command = lambda span: ["sleep", "30"]
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.press("3", "f")
+        await pilot.pause()
+        assert isinstance(app.screen, menu_app.SortProgressScreen)
+        await pilot.press("q")                        # q never quits from under a run
+        await pilot.pause()
+        assert app.is_running and isinstance(app.screen, menu_app.SortProgressScreen)
+        await pilot.press("escape")
+        await _wait(pilot, lambda: not isinstance(app.screen, menu_app.SortProgressScreen))
+        assert app._stage == 0 and app.c.last_result is None
+        assert "cancel" in _plain(app, "#status").lower()
+
+
+async def test_judge_never_draws_the_previous_runs_evidence_after_a_new_sort(make_app):
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.press("4")
+        pane = app.query_one("#judge")
+        assert await _wait(pilot, lambda: bool(pane._ev))
+        app.c.journey["run"] = dict(app.c.journey["run"], id="20260927-000000-bbbbbb")
+        pane.paint()
+        assert pane._ev == {} or pane._ev_run == "20260927-000000-bbbbbb"
+        assert await _wait(pilot, lambda: bool(pane._ev))
+        assert pane._ev_run == "20260927-000000-bbbbbb"
+
+
+async def test_reproduce_with_no_saved_run_says_so(make_app):
+    app = make_app(present=True)
+
+    def refuse(key, run_id=None):
+        raise LookupError("no saved tridesclous2 run to reproduce - sort one on 3 Sort")
+
+    app.c.command = refuse
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.pause()
+        app.do("reproduce")
+        await pilot.pause()
+        assert not isinstance(app.screen, spike_app.CommandScreen)
+        assert "no saved" in _plain(app, "#status")
+
+
+async def test_help_lists_the_live_data_files(make_app):
+    app = make_app(present=False)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.press("question_mark")
+        await pilot.pause()
+        body = app.screen.query_one("#helpbody", Static).render().plain
+        assert "DATA FILES" in body and "✗ missing" in body and "/data/recordings" in body

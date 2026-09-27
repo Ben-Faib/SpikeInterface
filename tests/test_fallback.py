@@ -66,12 +66,13 @@ def test_fallback_action_hint_falls_back_for_unknown_key():
     assert hint == "exit the menu"
 
 
-def test_fallback_sort_hint_warns_when_saved_sort_exists():
-    # With a saved sort for the active sorter, the typed `sort` hint carries the
-    # destructive re-run caveat so the user is warned before overwriting.
+def test_fallback_sort_hint_says_the_saved_sort_is_kept():
+    # Runs never overwrite each other (W2): the typed `sort` hint says a re-run is a
+    # new run and the saved one stays - it must not claim a replacement.
     active = {"name": "tridesclous2", "present": True, "units": 13}
     hint = M._fallback_action_hint("sort", "sort the active sorter", active_info=active)
-    assert "replaces" in hint and "tridesclous2" in hint and "13u" in hint
+    assert "new run" in hint and "kept" in hint and "13u" in hint
+    assert "replaces" not in hint
 
 
 def test_fallback_sort_hint_no_caveat_without_saved_sort():

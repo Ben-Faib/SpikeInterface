@@ -911,8 +911,8 @@ def _fallback_action_hint(key: str, fallback: str, active_info: dict | None = No
     """
     hint = _ACTION_DETAIL.get(key, {}).get("what") or fallback
     if key == "sort" and active_info and active_info.get("present"):
-        hint += (f"  ⚠ replaces the saved {active_info['name']} sort "
-                 f"({active_info['units']}u).")
+        hint += (f"  (a new run; the saved {active_info['name']} sort "
+                 f"({active_info['units']}u) is kept)")
     return hint
 
 
@@ -1286,8 +1286,8 @@ class MenuController:
         summary = sort_summary.load_summary(paths["out"]) or {}
         per_unit = summary.get("per_unit") or []
         if not per_unit:
-            out["empty"] = (f"No saved {sorter} sort to triage yet - press 2 on the "
-                            "dashboard to sort, then come back.")
+            out["empty"] = (f"No saved {sorter} sort to judge yet - sort it on 3 Sort, "
+                            "then come back.")
             return out
         record = curation.load_record(sorter)
         # A record anchored to a DIFFERENT sort must not be written into - and its
@@ -1393,8 +1393,8 @@ class MenuController:
         if meta.get("output"):
             out["output"] = meta["output"]
         if key == "sort" and info.get("present"):
-            out["caveat"] = (f"Re-running replaces the saved {info['name']} sort "
-                             f"({info['units']}u).")
+            out["caveat"] = (f"Re-running makes a new {info['name']} run; the saved one "
+                             f"({info['units']}u) is kept.")
         if key == "gui" and not info.get("present"):
             out["caveat"] = "No saved sort yet - run Sort first."
         if key in ("gui", "traces") and self.active_probe in (None, probes.PLACEHOLDER_PROBE):
@@ -1640,7 +1640,9 @@ class MenuController:
             out.update(argv=[py, str(SCRIPTS / "sweep_page.py"), *data],
                        title="Building the sorter shootout", open="sweep")
         elif key == "reproduce":
-            run_id = run_id or (self.journey.get("run") or {}).get("id")
+            run_id = run_id or ((getattr(self, "journey", None) or {}).get("run") or {}).get("id")
+            if not run_id:
+                raise LookupError(f"no saved {sorter} run to reproduce - sort one on 3 Sort")
             rep = journey.reproduce_report_path(sorter, run_id)
             out.update(argv=[py, str(SCRIPTS / "runs.py"), "regenerate", "--sorter", sorter,
                              "--run", run_id, "--json-report", str(rep)],
@@ -2221,6 +2223,10 @@ def main() -> int:
     parser.add_argument("--gui-mode", choices=["auto", "desktop", "web"], default="auto",
                         help="For 'gui': desktop window, browser (web), or auto-detect (default).")
     args = parser.parse_args()
+    # The data folder saved in Settings applies to every entry point (the app, the
+    # typed menu, `run.bat report`...); an explicit --data-dir still wins.
+    if not args.data_dir and _load_config().get("data_dir"):
+        args.data_dir = _load_config()["data_dir"]
 
     if args.action is None:
         return _menu(args)
