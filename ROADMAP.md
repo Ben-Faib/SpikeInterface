@@ -30,55 +30,16 @@ box) runs alongside everything.
   need-to-knows). Everything else on the board: WD (lab box) · W3 (fuller
   face pick) · W4 (lab recordings).
 
-## Previous NOW (v4, kept for provenance): **paste THE CONDUCTOR v4 (below) into ONE fresh session: the presentation arc**
-
-- **Ben's interview happened (2026-08-19)**: decisions of record and the full spec
-  live in `goals/GOAL_PRESENT.md`. Headlines: split path chosen for the merges
-  (diagnosis advisory + Phy prep; Ben splits later; rule defaults unchanged);
-  sorter sweep (local 3 + mountainsort5 + waveclus) judged by pair-splitting
-  against the manual .nev; new sweep-results HTML page; report facelift + content
-  audit; one periwinkle-anchored validated palette across every surface; a ~10 min
-  lab-meeting .pptx built LAST from finished pieces, speaker script in notes;
-  NO EM DASHES anywhere in the repo, ever (hard boundary, purge + pin first).
-- **v3 delivered and pushed**: face1 + face2 + the clean pass; one branch; demo
-  coherent against run `20260819-035117-c7184d`. See the v3 seal.
-- **Gated OPEN:** WD (lab-box access) · W3 (fuller face pick) · W4 (lab
-  recordings). P3 is now a standing assumption (no map coming), not a wait.
-
-## Previous NOW (v3 close, kept for provenance): **CONDUCTOR v3 CLOSED - one clean branch, pushed**
-
-- **The run delivered**: face1 (the takeaway surface, `8f651f2`, two Fable
-  reviews folded via a live baton handoff - LESSONS S8) + face2 (the binned-rows
-  dashboard, `dd90687`, review ship) + the clean pass (run
-  `20260819-035117-c7184d`: fresh full sort → 16 TUI-triaged labels as Ben's
-  real record → apply → report/dashboard/compare coherent against that one run
-  id) + unification (every side branch deleted after merge verification, main
-  pushed to origin). Final gates: full suite green, launch check OK,
-  canary 4.03–4.086 µV.
-- **In SEALS OPEN for Ben**: the quality-rule call - his four real cells
-  (recovered at 97.5–100%) fail the default ISI ≤ 0.5 at 1.06–1.36 on the demo
-  run while only thin-evidence units pass; the rule is tunable in
-  `.si_menu.json`, labels editable anytime with `u`.
-- **Gated OPEN (the whole board):** P3 (adapter map) · WD (lab-box access) ·
-  W3 (fuller face pick - takeaway + dashboard slices landed) · W4 (lab
-  recordings).
-
 ## The dependency graph
 
 ```
-  D0 spec (drafted) ──veto──► D1 dashboard ────► D4 flow modals
-        │                     D2 run experience
-        │                     D3 report ◄─────── M1 metrics (ready now)
-        │                                            │
-  T1 harness (SEALED ✓) ─────baselines/contracts──► D1 D2 D3        M1 (SEALED ✓) ──► W1 curation ──► W2 repro
-        └────────────────► T2 journey refactor + T3 honesty states         (W1 slice 4 TUI triage
-                              (after D1/D2)                                  inherits DESIGN_UX §1)
+  SEALED: T1 harness · M1 metrics · P1/P2 probes · D0-D6 overhaul · T2/T3 · W1 curation
+          · W2 repro · PRE1 bad channels · face1/face2 · GOAL_PRESENT (v4)
+  P3 wiring: closed as a wait (identity wiring is a standing assumption, 2026-08-19)
 
-  P1 probe import (ready now) ──► P2 multi-shank ──► P3 wiring verify (CLOSED as a wait
-                                    2026-08-19: identity wiring is a standing assumption)
-
-  W3 face (Ben's pick, after D track) ──► W4 multi-recording (last; needs W1+W2+lab data)
-  WD lab deployment: standing track, any time lab-box access exists
+  OPEN:  UX2 usability pass (goals/GOAL_UX2.md, Ben's pick of slices)
+         W3 fuller face (Ben's pick) ──► W4 multi-recording (needs lab data)
+         WD lab deployment: standing track, any time lab-box access exists
 ```
 
 ## The queue at a glance
@@ -158,14 +119,7 @@ sorters; test probes are built in-test, never committed fixtures; keep menu-side
 minimal (the real probe-UI pass follows D1). Seal per the between-run contract.
 ```
 
-### D1–D4 - the overhaul slices  [gated on the D0 veto]
-
-Authored with `fable-prompt-builder` **when Ben's veto lands**, against the spec as amended
-- pre-writing them risks quoting a spec line the veto changes. Each will cite
-`goals/GOAL_D_UIUX.md` + the spec sections from DESIGN_UX §7, name the T1 gates
-(deliberate snapshot re-baselining with reviewed diffs), and seal per the contract.
-
-### THE CONDUCTOR v4 - the presentation arc: diagnose, sweep, unify the visuals, then the deck  [READY - paste into a fresh session]
+### THE CONDUCTOR v4 - the presentation arc: diagnose, sweep, unify the visuals, then the deck  [RUN COMPLETED 2026-08-19 - kept for provenance]
 
 ```
 Ben presents this workbench at Tracy's lab meeting (next week or later; no fixed
@@ -461,10 +415,6 @@ this repo's saved sort, the no-saved-sort case errors honestly instead of crashi
 suite is green. Boundaries: resolution logic only - no report content changes. Seal per the
 between-run contract.
 ```
-
-### T2/T3, P2/P3, W1+ - authored when their gates clear
-
-Same rule: fresh prompts from the briefs at gate-time, constants verified against source.
 
 ## Rules for this file
 

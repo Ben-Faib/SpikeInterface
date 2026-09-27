@@ -44,7 +44,7 @@ the nondeterminism - don't re-baseline around it.
 (your `outputs/report.html` is never touched) and checks structure only:
 required sections present and ordered, nav complete, no crashed/empty
 sections, figures present, self-contained. It **skips cleanly when no saved
-sort exists** (`outputs/<sorter>/analyzer`) - run any sort first, e.g.
+sort exists** (a current run under `outputs/<sorter>/`) - run any sort first, e.g.
 `uv run python scripts/run_sorting.py --duration 30`.
 
 If a redesign legitimately renames/reorders/adds sections, update

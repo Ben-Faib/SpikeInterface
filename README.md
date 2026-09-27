@@ -133,17 +133,13 @@ uv run python SpikeInterface_Menu.py        # full-screen status dashboard + men
 On **Windows** you can instead double-click **`run.bat`** (or run `run.bat` /
 `.\run.ps1` from a terminal) - it wraps the same command.
 
-This opens a responsive two-pane dashboard: on the left a **Sorter** sidebar
-(which sorter the report/GUI/compare act on) over a **Pipeline** status panel
-(LFP / broadband / .nev / events, ✓/–/✗); on the right the **Actions** list -
-explore the data, run a sort, build & open the interactive HTML report, open the
-`spikeinterface-gui` inspector, scroll raw traces, or compare the two sorters.
-
-Navigate with the **arrow keys** (↑/↓ move within a pane, ←/→ or Tab switch
-between the Sorter and Actions panes), **Enter** to run the highlighted action
-(or activate the highlighted sorter); the number keys **1–9** jump-run an action,
-**t** switches the active sorter, **d** opens the data-setup help, and **q**
-quits. If a recording file is missing the menu says so and shows exactly which
+This opens the dashboard: a state block on top (DATA and PROBE · SORT · RESULTS -
+which files loaded, the probe geometry, the active sorter and its saved sort, and
+the headline result) over **one list of every function**, grouped as GET DATA ·
+SORT & CURATE · LOOK & SHARE. Each row prints its own key: press it, or move with
+**↑/↓** and press **Enter**. The footer keys are **m** (sorters & Docker),
+**c** (colour theme), **?** (help) and **q** (quit); **Esc** deliberately does
+nothing, so a reflexive back-press never exits. If a recording file is missing the menu says so and shows exactly which
 file goes where. It resizes from a wide desktop down to a short editor pane, and
 falls back to a plain typed menu when [Textual](https://textual.textualize.io) is
 absent or output isn't a terminal.
@@ -227,41 +223,44 @@ runs the whole pipeline:
 
 ```bash
 uv run python scripts/run_sorting.py                          # tridesclous2 (default), full recording
-uv run python scripts/run_sorting.py --sorter spykingcircus2  # the other installed sorter
+uv run python scripts/run_sorting.py --sorter spykingcircus2  # or lupin / simple (all installed)
 uv run python scripts/run_sorting.py --duration 30            # quick test: first 30 s only
 uv run python scripts/run_sorting.py --data-dir /path/to/recording
 ```
 
-It reads the broadband, attaches a placeholder probe (see below), band-passes
-(300–6000 Hz), applies a common median reference, runs the chosen sorter, and
-writes everything to `outputs/<sorter>/` (git-ignored):
+It reads the broadband, drops the 6 non-neural aux channels, applies the active
+probe geometry, band-passes (300–6000 Hz), excludes bad channels, applies a common
+median reference, runs the chosen sorter, and writes a NEW run directory - runs
+never overwrite each other (git-ignored; `scripts/runs.py` owns the layout):
 
 ```
 outputs/tridesclous2/
-├── sorter_output/        # raw sorter working folder
-├── sorting/              # saved SI Sorting   (reload: si.load(".../sorting"))
-├── analyzer/             # SortingAnalyzer    (open in spikeinterface-gui, or reload)
-└── quality_metrics.csv   # per-unit metrics: rate/SNR/ISI + presence, amplitude,
-                          #   and PCA isolation metrics where computable
+├── current.json          # which run every surface reads
+└── runs/<run_id>/
+    ├── run_info.json     # full provenance: params, seed, probe, versions, git sha
+    ├── sorting/          # saved SI Sorting   (reload: si.load(".../sorting"))
+    ├── analyzer/         # SortingAnalyzer    (open in spikeinterface-gui, or reload)
+    └── quality_metrics.csv
 ```
+
+A `--duration` smoke run never becomes current (`--make-current` overrides);
+`uv run python scripts/runs.py list` shows every run.
 
 For an interactive walk-through of the same pipeline (on a short slice, with
 plots), use `jupyter lab notebooks/02_spike_sorting.ipynb`.
 
 **About the probe / geometry.** These Blackrock files contain **no electrode map**,
-and the physical array layout is unknown, so the pipeline attaches a placeholder
-*independent-channel* probe (channels spaced far apart so the sorter assumes no
-adjacency). Sorting runs and per-unit metrics are valid, but **cross-channel
-spatial information is not physical**. If you obtain the real geometry, build a
-[`probeinterface`](https://probeinterface.readthedocs.io/) `Probe` and swap it in
-- in `scripts/blackrock_io.py`, replace the `attach_dummy_probe` call with
-`recording.set_probe(real_probe)`.
+so geometry is a user choice owned by `scripts/probes.py`. The default is this
+rig's real **NeuroNexus A1x16-3mm-100-703** (16 contacts, 100 µm pitch); pick
+another in the menu (`p`), import a probeinterface `.json`/`.prb` with
+`uv run python scripts/probes.py import <file>`, or pass `--probe <name>` /
+`--probe-file <file>`. A flagless CLI sort uses the probe the menu has active.
 
-**Sorters.** `tridesclous2` and `spykingcircus2` ship with
-`spikeinterface[full]`, run on CPU, and need no extra install - those are the two
-wired into `run_sorting.py`. **Kilosort4** is faster but needs an NVIDIA GPU
-(CUDA + PyTorch, `pip install kilosort`) and so won't run on this Mac. Kilosort
-1–3, IronClust, etc. need MATLAB or Docker.
+**Sorters.** Four sorters ship inside SpikeInterface itself - `tridesclous2`
+(the default), `spykingcircus2`, `lupin`, `simple` - run on CPU, and need no
+extra install. Others (mountainsort5, waveclus, ...) run through Docker when it
+is on (the menu's `m` manages images). **Kilosort4** and the other GPU sorters
+need an NVIDIA GPU and are not offered on this Mac.
 
 ## One-glance HTML report
 

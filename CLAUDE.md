@@ -165,9 +165,8 @@ The `SortingAnalyzer` returns µV, so `templates` and `noise_levels` are **alrea
 gain. This rig's gain is `0.249977 µV/count`, so re-applying it *multiplies by 0.25* - the
 bug this caused made V_pp and noise come out **~4× too small**, not too large.
 
-Note `run_sorting.py` never passes `return_in_uV` - it rides SpikeInterface's signature
-default (`create_sorting_analyzer(..., return_in_uV=True)`). That is an **unpinned upstream
-default**: if SI ever flips it, the gate is what saves us, so don't remove it.
+Both `create_sorting_analyzer` call sites (`run_sorting`, `curation`) pin
+`return_in_uV=True` explicitly; the gate stays as the second line of defence - don't remove it.
 
 **Regression canary:** noise floor is a property of the *recording* (post-bandpass + CMR),
 so it lands at **~4 µV for every sorter** (observed 3.88–4.02 across all saved sorts). If it
@@ -187,12 +186,9 @@ placeholder (no two channels neighbours) remains available.
 - **Fit failure is asymmetric by design:** an *explicit* `--probe`/`--probe-file` that doesn't
   fit is a hard error (rc 1); the *default* probe not fitting warns and falls back to the
   `independent` placeholder.
-- **Gotcha - the CLI ignores your menu selection.** `run_sorting.py` resolves the probe from
-  `probes.DEFAULT_PROBE`, never from `.si_menu.json`'s `active_probe`. The menu compensates by
-  always passing `--probe <active>` explicitly. So a bare CLI sort and a menu sort can use
-  different geometry.
-- `bio.attach_a1x16_probe()` / `A1X16_*` are **dead code** superseded by `probes.py` - don't
-  build on them.
+- **The active probe resolves in one place:** `probes.active_name()` (`.si_menu.json`'s
+  `active_probe` when the library has it, else `DEFAULT_PROBE`). A flagless CLI sort and
+  `show_channels` use it; the menu still passes `--probe <active>` explicitly.
 
 ### Loaders (`blackrock_io.py`)
 
@@ -204,16 +200,13 @@ placeholder (no two channels neighbours) remains available.
   `.nev` only when no analog data exists, and **refuses honestly, naming the candidates**,
   when several sets are genuinely ambiguous (callers degrade via `FileNotFoundError`).
 - **Stream selection:** pass exactly **one** selector. `read_lfp` normalises to `stream_id`
-  and leaves `stream_name=None`. (An in-code comment claims SI *rejects* receiving both - that
-  is stale: SI 0.104 only asserts at least one is given, and `stream_name` silently wins.
-  Passing one selector is still the rule; the stated reason is just wrong.)
+  and leaves `stream_name=None` (SI accepts both, and `stream_name` silently wins).
   `read_broadband` picks the **highest-rate** stream and raises below 10 kHz (i.e. when only
   LFP is present).
 - **NEV clock:** spike sample indices → seconds via `NEV_TIMESTAMP_RATE = 30_000.0`.
 - **`set_probe()` returns a new recording** - it does not mutate in place.
-- **Events are *not* actually best-effort**, despite the docstring: `read_events` has no
-  internal try/except, so a neo parse failure **propagates**. It returns `[]` only when there
-  are genuinely no event channels. Callers must wrap it.
+- **`read_events` raises** on a neo parse failure; it returns `[]` only when there are
+  genuinely no event channels. Callers must wrap it.
 - **Blackrock unit ids** - semantics owned by `blackrock_io` (`unit_class`,
   `UNIT_CLASS_LABELS`, `online_unit_labels`; consumed by compare/explore from that one
   home): `0` = unsorted threshold crossings, `1..n` = online-sorted units,
