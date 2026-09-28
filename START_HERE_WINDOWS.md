@@ -3,7 +3,7 @@
 Spike 2.0 lives on the branch **`Version-2`**. It has passed every automatic check on a
 Mac; nothing has run on Windows yet. This page hands the whole Windows audit to a Claude
 Code session on the lab machine. `START_HERE_WINDOWS.html` is the same content with copy buttons
-(built from this file).
+(`scripts/start_here_page.py` rebuilds it from this file).
 
 ## Ben: three steps
 
@@ -54,7 +54,9 @@ What to cover:
 5. What only a real Windows session can show: cancelling a sort (3 Sort, t, then Esc
    partway) really stops it, with no python.exe left behind; the spikeinterface-gui
    inspector (4 Judge, i) and the trace viewer (1 Data, t) open and hand control back
-   when closed - screenshot each window; the report opens in the browser; the app
+   when closed - screenshot each window; v on 4 Judge opens the unit pages in the
+   browser at that unit (screenshot it and judge whether the plots are good enough
+   to label a unit by); the report opens in the browser; the app
    works in both Windows Terminal and the classic console; a project path containing a
    space works (copy the project to such a folder and run the harness there).
 6. Every row of the table in docs\WINDOWS_TEST.md.
@@ -96,6 +98,7 @@ Your final message leads with the verdict, then what needs me, in under 200 word
 |---|---|
 | `scripts/check_workbench.py` | every function, end to end, on the real recording, in a throwaway copy |
 | `scripts/visual_audit.py` | every screen rendered at four sizes into a gallery |
+| `scripts/unit_page.py` | every unit's real plots in one browser page (`v` on 4 Judge opens it) |
 | `scripts/windows/terminal_screenshots.ps1` | the app in a real Windows terminal window, one PNG per screen |
 | `.claude/skills/run-spikeinterface/verify_launch.py` | the app launched exactly as a real start |
 | `docs/WINDOWS_TEST.md` | the checklist a person would follow |

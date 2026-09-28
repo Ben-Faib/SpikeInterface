@@ -54,6 +54,7 @@ ACTIONS = [
     ("stage:4",     "Go to 4 Judge",             "label each unit with its evidence",       False, 4),
     ("gui",         "Inspect in the GUI",        "waveforms + correlograms in a window",     True, 4),
     ("import_phy",  "Import verdicts from Phy",  "bring labels back from a Phy session",    False, 4),
+    ("units",       "Open the unit pages",       "every unit's real plots, in the browser",  False, 4),
     ("stage:5",     "Go to 5 Apply",             "build the curated result",                False, 5),
     ("apply",       "Apply the decisions",       "curated result, re-scored",               False, 5),
     ("stage:6",     "Go to 6 Share",             "every output and how fresh it is",        False, 6),
@@ -438,6 +439,12 @@ def outputs(snap: dict) -> list:
         else:
             add("phy", "Phy export", phy, "missing",
                 f"export {n_flag} flagged units" if n_flag else "not exported")
+        import unit_page as _up
+
+        units = _up.page_path(sorter)
+        add("units", "Unit pages", units, "present" if units.exists() else "missing",
+            "every unit's plots: spikes, correlograms, amplitude, features"
+            if units.exists() else "not built yet (v on 4 Judge builds it)")
         add("gui", "Inspect in the GUI", None, "present", "waveforms + correlograms window")
         metrics = paths["curated_metrics"] if cur.get("has_curated") else paths["metrics"]
         add("values", "Values (CSV)", metrics, "present" if metrics.exists() else "missing",

@@ -60,6 +60,15 @@ the old ones with stated tolerances.
 - **Launch**: a short splash (wordmark + the real startup checklist); any key skips it;
   never shown in tests or on a non-TTY.
 
+## Addendum 2026-09-27 (Ben): the terminal is the control surface, not the evidence
+
+Character-cell waveforms are a glance, too coarse to judge a unit by. 4 Judge keeps
+them, labelled "at a glance", and `v` opens the unit in `units.html` (one per run,
+`scripts/unit_page.py`): stored spikes over the template on nearby contacts,
+autocorrelogram and ISI with the refractory window, amplitude over time with its
+distribution, PC1/PC2 against the most similar unit, and their cross-correlogram.
+Labelling stays in the terminal.
+
 ## Boundaries
 
 - The view imports no SpikeInterface (unchanged). New data the view needs arrives as plain

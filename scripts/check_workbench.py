@@ -86,7 +86,7 @@ TAIL_LINES = 12
 STEPS = [
     ("install", ()), ("data", ()), ("probe", ("data",)), ("settings", ()),
     ("sort", ("data", "settings")), ("explore", ("data",)), ("judge", ("sort",)),
-    ("apply", ("judge",)), ("report", ("apply",)), ("phy", ("sort",)),
+    ("units", ("sort",)), ("apply", ("judge",)), ("report", ("apply",)), ("phy", ("sort",)),
     ("compare", ("sort",)), ("reproduce", ("sort",)), ("recipe", ("sort",)),
     ("runs", ("sort",)), ("app", ()), ("gui", ()),
 ]
@@ -545,6 +545,28 @@ def check_judge(ctx):
                     f"waveform, {sum(ev['isi']['counts'])} ISIs under {ev['isi']['max_ms']:g} ms, "
                     f"{p2p:.0f} µV p-p vs V_pp "
                     f"{vpp:.0f} µV")
+
+
+def check_units(ctx):
+    """The unit pages - the real plots v on 4 Judge opens - build for the current
+    run: one card per unit, each with its figures."""
+    import re
+
+    import unit_page
+
+    cmd = _run_command(ctx, "units")
+    page = unit_page.page_path(ctx.c.active_sorter)
+    if not page.is_file():
+        raise Fail("the unit pages were not written", cmd["log"])
+    text = page.read_text(encoding="utf-8")
+    cards = re.findall(r'<section class="card" id="unit-([^"]+)"', text)
+    if not cards:
+        raise Fail("the unit pages hold no unit cards", cmd["log"])
+    redirect = unit_page.open_at(page, cards[0])
+    if f"#unit-{cards[0]}" not in redirect.read_text(encoding="utf-8"):
+        raise Fail("the open-at-unit redirect lost the unit")
+    return "PASS", (f"{_rel(page)}: {len(cards)} unit cards, "
+                    f"{text.count('data-fig=')} plots, {page.stat().st_size / 1e6:.1f} MB")
 
 
 def check_apply(ctx):

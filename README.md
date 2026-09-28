@@ -217,6 +217,7 @@ By default they read the repo root; pass `data_dir="..."` to point elsewhere.
 │   ├── journey.py         # stage marks, the next step, output freshness, runs
 │   ├── settings.py        # every editable setting and the sort flags it becomes
 │   ├── unit_evidence.py   # waveform / spike-interval / amplitude data for 4 Judge
+│   ├── unit_page.py       # every unit's real plots in one page (v on 4 Judge)
 │   ├── runs.py            # the versioned run store, recipes, reproduce
 │   ├── check_workbench.py # drives every function against the real data (sandboxed)
 │   └── ui.py              # shared rich styling, help text, theme palette

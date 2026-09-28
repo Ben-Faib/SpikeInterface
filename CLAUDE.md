@@ -112,7 +112,8 @@ sync with the code, which is why this file does not restate them.
 | `spike_app.py` + `menu_app.py` + `SpikeInterface_Menu.py` (root) | Spike 2.0 app (rail, panes, Settings, palette, Runs) + the modals it reuses (view) + controller (data/actions) | |
 | `journey.py` | the rail's stage marks, the next step, the probe map, output freshness, runs overview + recipes, and the palette's action table | decide done/stale/next in the view |
 | `settings.py` | every editable setting: schema, validation, defaults, and the `run_sorting` flags they become | add a knob the Settings screen and the sort argv don't both get |
-| `unit_evidence.py` | per-unit waveform / ISI / amplitude evidence for 4 Judge (reads the analyzer; µV-gated) | compute evidence in the view |
+| `unit_evidence.py` | per-unit waveform / ISI / amplitude evidence for 4 Judge's at-a-glance drawing (reads the analyzer; µV-gated) | compute evidence in the view |
+| `unit_page.py` | the units page (`units.html` in each run folder): every unit's real plots, what `v` on 4 Judge opens | judge units from the terminal drawing |
 | `check_workbench.py` | the sandboxed end-to-end check of every function (the Windows acceptance test) | test against the real outputs/ or settings |
 
 The six metrics `sort_summary` owns: **V_pp**, **SNR**, **noise floor**, **yield**

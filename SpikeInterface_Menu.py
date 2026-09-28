@@ -1636,6 +1636,9 @@ class MenuController:
         elif key == "apply":
             out.update(argv=[py, str(SCRIPTS / "curation.py"), "apply", "--sorter", sorter],
                        title=f"Applying the {sorter} decisions")
+        elif key == "units":
+            out.update(argv=[py, str(SCRIPTS / "unit_page.py"), "--sorter", sorter],
+                       title=f"Drawing every {sorter} unit")
         elif key == "sweep":
             out.update(argv=[py, str(SCRIPTS / "sweep_page.py"), *data],
                        title="Building the sorter shootout", open="sweep")
@@ -1663,6 +1666,7 @@ class MenuController:
             "import_phy": ("Imported the Phy verdicts", "Phy import failed"),
             "apply": ("Applied the decisions: curated result built", "Apply failed"),
             "sweep": ("Built the sorter shootout", "Shootout build failed"),
+            "units": ("Built the unit pages", "Unit pages failed"),
             "reproduce": ("Reproduced the run", "Reproduction failed"),
         }.get(key, (f"{key} done", f"{key} failed"))
         return ("✓ " + words[0]) if ok else ("✗ " + words[1] + " - see the log")
@@ -1786,6 +1790,8 @@ class MenuController:
 
     def open_output(self, key: str) -> tuple[bool, str]:
         row = next((r for r in (self.share_rows or []) if r["key"] == key), None)
+        if key == "units":
+            return self.open_units()
         pages = {"report": "report.html", "compare": "comparison.html",
                  "sweep": "sweep.html", "explore": "explore.html"}
         if key in pages:
@@ -1800,6 +1806,23 @@ class MenuController:
                 target = target.parent if target.is_file() else target
             return self.open_path(target)
         return False, f"nothing to open for {key}"
+
+    def units_page_exists(self) -> bool:
+        import unit_page
+
+        return unit_page.page_path(self.active_sorter).exists()
+
+    def open_units(self, unit=None) -> tuple[bool, str]:
+        """Open the current run's unit pages in the browser, at ``unit`` when given
+        (through a redirect page: Windows drops a file URL's #fragment)."""
+        import unit_page
+
+        page = unit_page.page_path(self.active_sorter)
+        if not page.exists():
+            return False, "the unit pages are not built yet"
+        _open_in_browser(unit_page.open_at(page, unit).resolve().as_uri())
+        return True, (f"Opened unit {unit}'s plots in the browser" if unit is not None
+                      else "Opened the unit pages in the browser")
 
     def open_data_folder(self) -> tuple[bool, str]:
         return self.open_path(self.data_report.get("data_dir") or bio.REPO_ROOT)

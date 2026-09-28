@@ -629,3 +629,26 @@ async def test_splash_leaves_on_its_own_timer(monkeypatch):
         await pilot.press("space")
         await pilot.pause()
         assert app.is_running and app._stage == 0
+
+
+async def test_v_on_judge_opens_the_units_real_plots_building_them_first(make_app):
+    app = make_app(present=True)
+    async with app.run_test(size=(110, 40)) as pilot:
+        await pilot.press("4")
+        await pilot.pause()
+        unit = app.query_one("#judge")._unit_id()
+        await pilot.press("v")                        # not built yet: draw them first
+        await pilot.pause()
+        assert ("units", None) in app.c.commands
+        assert isinstance(app.screen, spike_app.CommandScreen)
+        assert await _wait(pilot, lambda: app.screen._done is not None)
+        await pilot.press("enter")
+        await pilot.pause()
+        assert ("units", unit) in app.c.opened         # opened at the highlighted unit
+        app.c.opened.clear()
+        await pilot.press("down", "v")                # built now: straight to the page
+        await pilot.pause()
+        assert app.c.opened and app.c.opened[0][0] == "units"
+        assert not isinstance(app.screen, spike_app.CommandScreen)
+        card = app.query_one("#judge #card", Static).render().plain
+        assert "AT A GLANCE" in card and "full plots" in card

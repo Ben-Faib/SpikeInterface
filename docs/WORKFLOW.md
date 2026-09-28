@@ -185,7 +185,14 @@ beside it shows the evidence to judge by: the unit's average waveform on its pea
 contact and the neighbours (same µV scale), a histogram of the time between its
 spikes with the 1.5 ms refractory window in amber and how many spikes fall inside
 it, and its amplitude over the recording. Below that: the rule's verdict, the
-split advice, and every quality metric the sort wrote.
+split advice, and every quality metric the sort wrote. Those terminal drawings
+are a glance, too coarse to judge by: press `v` and the unit opens in the browser
+at full resolution - 40 of its stored spikes over the template on each nearby
+contact, its autocorrelogram and spike intervals with the refractory window
+shaded, every spike's amplitude over the recording, and its features (PC1 against
+PC2) beside its most similar unit, with their cross-correlogram. The page covers
+every unit of the run (`units.html` in the run's folder); keep labelling in the
+terminal while you look.
 
 Four keys, one per unit:
 

@@ -78,6 +78,7 @@ Terminal** if it is installed: the older console host draws some characters badl
 | Press `3`, then `t` | A quick 30 s sort with a live checklist and clock. Press `Esc` partway: it stops. Open Task Manager: no leftover `python.exe` from the sort. |
 | Press `t` again and let it finish | A result card with the unit count and the noise floor (about 4 µV). |
 | Press `4` | Units listed; the card on the right shows waveforms drawn in blocks, a histogram, and an amplitude line. Press `g` on one unit: it is labelled and the cursor moves on. |
+| Press `v` on 4 Judge | The browser opens that unit's page: spikes over the template, correlograms, amplitude over time, features. `j` / `k` move between units. |
 | Press `i` on 4 Judge | The spikeinterface-gui window opens. Close it: the app comes back. |
 | Press `1`, then `t` | The trace viewer opens. Close it: the app comes back. |
 | Press `6`, highlight Report, Enter | The report builds, then opens in the browser. |

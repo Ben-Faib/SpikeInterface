@@ -393,6 +393,15 @@ class FakeController:
         self.opened.append(str(path))
         return True, f"Opened {path}"
 
+    units_built = False
+
+    def units_page_exists(self) -> bool:
+        return self.units_built or any(k == "units" for k, _r in self.commands)
+
+    def open_units(self, unit=None):
+        self.opened.append(("units", unit))
+        return True, f"Opened unit {unit}'s plots in the browser"
+
     def open_data_folder(self):
         return self.open_path(self.data_report.get("data_dir"))
 

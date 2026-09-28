@@ -110,6 +110,8 @@ class Controller(Protocol):
     def open_path(self, path) -> "tuple[bool, str]": ...
     def open_data_folder(self) -> "tuple[bool, str]": ...
     def startup_checklist(self) -> list: ...
+    def units_page_exists(self) -> bool: ...
+    def open_units(self, unit=None) -> "tuple[bool, str]": ...
     # the sorter catalog, Docker and the reused modals
     def set_active_by_name(self, name: str) -> bool: ...
     def saved_sorters(self) -> list: ...
@@ -1761,6 +1763,7 @@ class JudgePane(Pane):
     JudgePane #jcard { width: 1fr; height: 1fr; padding: 0 0 0 2; border-left: vkey $panel-lighten-1; }
     """
     BINDINGS = [*[Binding(k, f"label('{v}')", f"Label {v}", show=False) for k, v in _TRIAGE_KEYS],
+                Binding("v", "plots", "Full plots", show=False),
                 Binding("i", "inspect", "Inspect", show=False),
                 Binding("a", "apply", "Apply", show=False)]
 
@@ -1784,8 +1787,8 @@ class JudgePane(Pane):
         return self.query_one("#queue")
 
     def keys(self):
-        return [("↑↓", "unit"), ("g", "good"), ("m", "multi-unit"), ("n", "noise"),
-                ("u", "unsure"), ("i", "inspect in GUI"), ("a", "apply")]
+        return [("↑↓", "unit"), ("v", "full plots"), ("g", "good"), ("m", "multi-unit"),
+                ("n", "noise"), ("u", "unsure"), ("i", "inspect in GUI"), ("a", "apply")]
 
     def _ordered(self, units):
         flagged = [u for u in units if u.get("split_advice")]
@@ -1907,6 +1910,10 @@ class JudgePane(Pane):
         ev = self._ev.get(str(u["unit"]))
         t.append("\n")
         if ev:
+            t.append("AT A GLANCE", style=f"bold {SEC}")
+            t.append("  ", style=MUTED)
+            t.append_text(chip("v"))
+            t.append(" full plots, to judge by\n", style=MUTED)
             self._evidence(t, ev, u, width)
         elif self._ev_loading:
             t.append("loading waveforms and spike intervals…\n", style=MUTED)
@@ -1991,6 +1998,9 @@ class JudgePane(Pane):
             if not opt.disabled and not (units.get(opt.id) or {}).get("label"):
                 ol.highlighted = i
                 return
+
+    def action_plots(self) -> None:
+        self.a.open_units(self._unit_id())
 
     def action_inspect(self) -> None:
         self.a.do("gui")
@@ -2089,10 +2099,10 @@ class SharePane(Pane):
     BINDINGS = [Binding("r", "rebuild", "Rebuild", show=False),
                 Binding("f", "folder", "Show in folder", show=False),
                 Binding("x", "recipe", "Export recipe", show=False)]
-    _PRIMARY = {"report": "open:report", "compare": "open:compare", "sweep": "open:sweep",
+    _PRIMARY = {"units": "units", "report": "open:report", "compare": "open:compare", "sweep": "open:sweep",
                 "explore": "open:explore", "phy": "phy", "gui": "gui", "values": "open:values",
                 "reproduce": "runs", "recipe": "recipe", "deck": "open:deck"}
-    _REBUILD = {"report": "report", "compare": "compare", "sweep": "sweep",
+    _REBUILD = {"units": "units_rebuild", "report": "report", "compare": "compare", "sweep": "sweep",
                 "explore": "explore", "phy": "phy", "recipe": "recipe", "reproduce": "reproduce"}
 
     def compose(self) -> ComposeResult:
@@ -2412,6 +2422,8 @@ class SpikeApp(App):
             self._command(key)
         elif key == "reproduce":
             self.reproduce(None)
+        elif key == "units_rebuild":
+            self.open_units(None, rebuild=True)
         elif key == "runs":
             self.push_screen(RunsScreen(self), lambda _r: self.after_change())
         elif key == "recipe":
@@ -2430,6 +2442,8 @@ class SpikeApp(App):
             self._compare()
         elif key in ("gui", "traces"):
             self._suspend_run(key)
+        elif key == "units":
+            self.open_units(None)
         elif key in ("probe_edit", "probe_new", "probe_import"):
             self.go(2)
             pane = self.pane(2)
@@ -2463,6 +2477,16 @@ class SpikeApp(App):
                 on_done()
 
         self.push_screen(CommandScreen(cmd["argv"], cmd["title"], cmd["log"], self._accent), done)
+
+    def open_units(self, unit=None, rebuild: bool = False) -> None:
+        """The unit pages (real plots) at ``unit``: open them when this run's page
+        exists, else draw them first (a few seconds) and then open."""
+        if not rebuild and self.c.units_page_exists():
+            ok, msg = self.c.open_units(unit)
+            self.say(msg, GREEN if ok else AMBER)
+            return
+        self._command("units", on_done=lambda: self.c.units_page_exists()
+                      and self.say(self.c.open_units(unit)[1], GREEN))
 
     def reproduce(self, run_id, on_done=None) -> None:
         if not (self.c.data_report or {}).get("present"):

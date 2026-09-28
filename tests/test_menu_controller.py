@@ -729,7 +729,8 @@ def test_command_table_runs_each_task_on_the_active_sorter(monkeypatch, tmp_path
                               ("import_phy", "curation.py", "import-phy"),
                               ("explore", "explore_data.py", None),
                               ("verify", "verify_install.py", None),
-                              ("sweep", "sweep_page.py", None)):
+                              ("sweep", "sweep_page.py", None),
+                              ("units", "unit_page.py", "--sorter")):
         cmd = c.command(key)
         argv = [str(a) for a in cmd["argv"]]
         assert argv[1].endswith(script), key
