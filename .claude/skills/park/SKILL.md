@@ -12,8 +12,8 @@ product; write it for a reader who saw none of the work.
 ## The park brief
 
 This is what a session does to park itself. To park another session, send it this brief whole with
-`SendMessage` to its name (it may not have this skill), after `~/.claude/skills/conductor/scripts/iterm.sh
-interrupt <tty>` if it is mid-turn in an iTerm tab.
+`SendMessage` to its name (it may not have this skill), after `~/.claude/skills/conductor/scripts/term.sh
+interrupt <id>` if it is mid-turn in a terminal tab (WezTerm or iTerm2).
 
 > Park now: Ben wants to pause this work and continue it later. Finish only the tool call in flight, then:
 > 1. Stop everything you started in the background (workflows, shells, monitors, subagents), so nothing wakes

@@ -1,7 +1,7 @@
 ---
 name: conductor
 description: >-
-  Make this session the conductor for the repo it runs in. The conductor oversees the implementation sessions (it does not build anything itself): it reports status from the repo's own state files, turns Ben's rulings into records, launches, pauses, resumes and redirects run sessions in iTerm2 tabs, and checks their claims on disk. Use on "/conductor", "be the conductor", "oversee the runs", "start/pause/resume the run", "status", and to pick a repo back up after iTerm or the machine restarted. Works in any repo (decantv2, Sylph, SpikeInterface, …).
+  Make this session the conductor for the repo it runs in. The conductor oversees the implementation sessions (it does not build anything itself): it reports status from the repo's own state files, turns Ben's rulings into records, launches, pauses, resumes and redirects run sessions in terminal tabs (WezTerm on Windows or macOS, iTerm2 on macOS), and checks their claims on disk. Use on "/conductor", "be the conductor", "oversee the runs", "start/pause/resume the run", "status", and to pick a repo back up after the terminal or the machine restarted. Works in any repo (decantv2, Sylph, SpikeInterface, …).
 ---
 
 # Conductor
@@ -17,14 +17,16 @@ small: read state files and diffs, not code; delegate reading to the run or a su
    STATUS.md, DECISIONS.md, NORTHSTAR.md, LOOPS.md, LESSONS.md, SEALS.md exist (and anything CLAUDE.md
    names). Then `git log --oneline -10`, `git status --short`, `git branch --list 'wip/*'`, any run checklist
    (e.g. `out/run/checklist.md`), and your own notes at `~/.claude/conductor/<repo-dir-name>.md`.
-2. See what is alive: `ListAgents` (sessions and their busy/idle state) and `scripts/iterm.sh list`.
+2. See what is alive: `ListAgents` (sessions and their busy/idle state) and
+   `~/.claude/skills/conductor/scripts/term.sh list` (the terminal's tabs).
 3. Give Ben the status: bottom line first, then what each package or job is at, what needs him, what is
    next. If git shows work the state files do not, say so: that is the most useful line.
-4. Run `python3 ~/.claude/skills/conductor-health/scripts/health.py .` and, if any file grades bloated, say
-   so in one line and offer the `conductor-health` cleanup; do not start it unasked.
+4. Run `python3 ~/.claude/skills/conductor-health/scripts/health.py .` (`python` on Windows, where Git
+   Bash has no `python3`) and, if any file grades bloated, say so in one line and offer the
+   `conductor-health` cleanup; do not start it unasked.
 
 Everything the conductor knows must survive a restart in files: the repo's state files for the project's
-truth, and `~/.claude/conductor/<repo>.md` for the conductor's own: live run sessions (name, tty, what they
+truth, and `~/.claude/conductor/<repo>.md` for the conductor's own: live run sessions (name, tab id, what they
 were told last), parked branches, pending questions, resume commands. Update it whenever any of those change.
 
 ## Ben's rulings
@@ -37,14 +39,17 @@ instruction by its plainest reading and say which reading you took.
 
 ## Running sessions
 
-- **Launch** in a new iTerm2 tab of the current window: `~/.claude/skills/conductor/scripts/iterm.sh open
-  <repo> <command>`. Use the repo's own launcher when it has one (decantv2: `scripts/run_job.sh`); otherwise
-  `claude --name <repo>-run --model opus --effort xhigh --permission-mode auto "<prompt>"`, where the prompt
+- **Launch** in a new tab of the current window: `~/.claude/skills/conductor/scripts/term.sh open <repo>
+  <command>` (prints the tab id; WezTerm when the conductor runs in it, else iTerm2 on macOS). Use the
+  repo's own launcher when it has one (decantv2: `scripts/run_job.sh`); otherwise `claude --name <repo>-run --model opus --effort xhigh --permission-mode auto "<prompt>"`, where the prompt
   is self-contained (intent, the definition of done, hard boundaries, where to record results; Opus 5 mold,
   `~/.claude/skills/opus5-prompt-builder/references/opus5-patterns.md`). Never launch a second session into
-  a checkout a live session is working in; give it a worktree.
-- **Instruct** a live session with `SendMessage` to its `--name`. Typing into its tab does not submit.
-- **Pause**: `iterm.sh interrupt <tty>` stops its turn at once. Then SendMessage it to stop its background
+  a checkout a live session is working in; give it a worktree. Run sessions and the conductor must share a
+  permission mode (auto): a session in another mode holds the conductor's messages for Ben's approval.
+- **Instruct** a live session with `SendMessage` to its `--name`. In WezTerm, `term.sh send <id> <text>`
+  types and submits into its tab, for a session SendMessage cannot reach or a slash command (`/park`);
+  `term.sh screen <id>` shows what it is doing. In iTerm2, typing into a tab does not submit.
+- **Pause**: `term.sh interrupt <id>` stops its turn at once. Then SendMessage it to stop its background
   workflows, shells and monitors (each would wake it again when it finishes), write a Paused note in its
   checklist (where it stopped, what is uncommitted, any workflow run id for a cached resume), commit nothing
   and wait.
