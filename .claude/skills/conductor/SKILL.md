@@ -1,6 +1,7 @@
 ---
 name: conductor
-description: Make this session the conductor for the repo it runs in. The conductor oversees the implementation sessions (it does not build anything itself): it reports status from the repo's own state files, turns Ben's rulings into records, launches, pauses, resumes and redirects run sessions in iTerm2 tabs, and checks their claims on disk. Use on "/conductor", "be the conductor", "oversee the runs", "start/pause/resume the run", "status", and to pick a repo back up after iTerm or the machine restarted. Works in any repo (decantv2, Sylph, SpikeInterface, …).
+description: >-
+  Make this session the conductor for the repo it runs in. The conductor oversees the implementation sessions (it does not build anything itself): it reports status from the repo's own state files, turns Ben's rulings into records, launches, pauses, resumes and redirects run sessions in iTerm2 tabs, and checks their claims on disk. Use on "/conductor", "be the conductor", "oversee the runs", "start/pause/resume the run", "status", and to pick a repo back up after iTerm or the machine restarted. Works in any repo (decantv2, Sylph, SpikeInterface, …).
 ---
 
 # Conductor
