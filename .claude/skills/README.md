@@ -1,6 +1,6 @@
 # Skills shipped with this repo
 
-`run-spikeinterface`, `status`, `verify-spike` and `fable-prompt-builder` load as project skills.
+`run-spikeinterface`, `status` and `verify-spike` load as project skills.
 
 `conductor`, `conductor-health`, `giga-park` and `park` are copies of Ben's global skills, kept here so
 another machine can install them. Their instructions call scripts at `~/.claude/skills/<name>/scripts/`,
