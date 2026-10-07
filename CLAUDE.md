@@ -1,286 +1,37 @@
 # CLAUDE.md
 
-Guidance for Claude Code when working in this repository.
-
 **On Windows, asked to audit Spike 2.0? The task and its scope are in `START_HERE_WINDOWS.md`.**
 
-## What this is
+A SpikeInterface workbench being built into a lab tool for Tracy's UPitt lab: loaders, a sort
+pipeline, HTML reports and the Spike 2.0 Textual app, all around one Blackrock/Ripple
+recording, `PFCM7_d0ephys_Block2`. Not a package: put `scripts/` on `sys.path` and import the
+modules. Raw data is git-ignored, so a fresh clone or a cloud session has no data and cannot sort.
 
-A single-recording SpikeInterface workspace: loaders, analysis scripts, and a
-terminal front-door menu, all built around one Blackrock/Ripple recording
-(`PFCM7_d0ephys_Block2`) in the repo root. It is **not a package** - there is no
-install step; consumers put `scripts/` on `sys.path` and import the modules:
+## Read only what the task needs
 
-```python
-import sys; sys.path.insert(0, "scripts")   # notebooks use Path.cwd().parent / "scripts"
-import blackrock_io as bio
-```
+| When | Read |
+|---|---|
+| Finding where something lives | `docs/ARCHITECTURE.md` (module map, data, pipeline, app wiring, commands) |
+| Editing or reviewing code | `docs/INVARIANTS.md` (the rules that bite), then the module's docstring |
+| Product intent and rulings | `NORTHSTAR.md` (wins conflicts) |
+| A build run | `LOOPS.md` (gates, review, sealing) → the brief in `goals/` → `ROADMAP.md` (NOW + queue) |
+| UI work | `DESIGN_UX.md` (its §1 binds every surface) |
+| Where things stand | `SEALS.md`, or the `status` skill |
+| Calling anything done | the `verify-spike` skill |
+| Launching the app | the `run-spikeinterface` skill (a non-TTY launch builds the report instead) |
 
-| File | Stream | Loader |
-|---|---|---|
-| `.ns2` | LFP @ 1 kHz (`lfp N`) | `read_lfp()` → Recording |
-| `.ns5` | broadband @ 30 kHz - **the spike-sortable stream** | `read_broadband()` → Recording |
-| `.nev` | online-detected spikes + digital markers, 30 kHz clock | `read_spikes()` → Sorting; `read_events()` |
+## Rules for every session
 
-**Both streams carry 22 channels, but only 16 are neural.** The other 6 are non-neural
-`analog N` aux inputs (sync pulses etc., channel ids 10241+). Nothing hardcodes 16 or 22 -
-the split is discovered at runtime by `bio.neural_channel_ids()`. This one fact drives the
-aux-drop and probe invariants below; internalise it before touching the sort.
-
-Raw data is git-ignored (the `.ns5` is ~176 MB, over GitHub's 100 MB limit), so a fresh
-clone has no data. Loaders auto-discover any Blackrock file set by base name; a missing
-set surfaces as a clear `FileNotFoundError` from `find_blackrock_base()`.
-
-## Orchestration - how build work runs here (installed 2026-08-18, decantv2 pattern)
-
-The workbench is being built into a lab tool for Tracy's UPitt lab via loop engineering.
-Read order for a build session: `NORTHSTAR.md` (product + decisions of record, wins
-conflicts below it) → `LOOPS.md` (method + gates) → the active brief in `goals/` →
-`ROADMAP.md` (the live queue Ben pastes prompts from - keep its NOW box and constants true;
-a stale marker is a defect). Sessions touching any UI surface additionally read
-`DESIGN_UX.md` - the design authority; its §1 language binds all surface work.
-Conversational/small-fix sessions don't need any of it.
-
-**The between-run contract.** Every phase/slice run ends **sealed**: work committed with a
-descriptive message (explicit paths - see concurrent-edit rule below), ROADMAP.md updated,
-any surprise worth keeping written to `LESSONS.md` (one lesson per entry, encode the fix
-into a skill or brief), and **one five-line block appended to `SEALS.md`** - what you did,
-what it means, what moved, what needs Ben, what is next, one sentence each. Update SEALS.md's
-pinned "Where we stand" lines if your work changed one; add/close OPEN items. `/status`
-reads SEALS.md and reports nothing that is not in it. Git history + those files are the
-state tracker - a fresh session re-enters by reading them, never by asking Ben what
-happened. A run that stops short commits partial state and says plainly what is done, what
-is not, and why.
-
-**Verification is the `verify-spike` skill** (change-type → gates; the ~4 µV noise-floor
-canary is a verdict). **Substantive slices get one fresh-context Fable review** of the full
-diff against the brief and this file's invariants before sealing (the `reviewer` agent -
-reviews always run on Fable); findings addressed or recorded. No stacked self-verification
-beyond that. Agents: `scout`/`builder` on Opus, `reviewer`/`finalizer` on Fable; workflow
-`agent()` calls pass `model` explicitly. The closing chat summary says the same five things
-as the SEALS block and stops - under 200 words; the long version already exists on disk.
-
-## Commands
+- **Two facts for judging any result.** The noise floor is ~4 µV for every sorter; ~1 µV means
+  the channel gain was applied twice. tridesclous2 is non-deterministic here, so unit counts
+  and ids are never stable and never a reproduction criterion.
+- **NO EM DASHES (U+2014), anywhere, ever**: code, docs, UI strings, commit messages. Use a
+  hyphen, colon, period or middot. Pinned by `tests/test_no_em_dashes.py`.
+- **Others edit this repo concurrently.** Re-check `git status`/`git diff` right before
+  committing, stage explicit paths (never `git add -A`), and commit their unrelated changes
+  separately, before yours.
 
 ```bash
-uv sync                                     # env (Python 3.12); conda fallback: environment.yml
-uv sync --group dev                         # + pytest
-uv run python SpikeInterface_Menu.py        # front door: dashboard
-uv run python SpikeInterface_Menu.py sort   # ...or dispatch one action directly
-uv run python -m pytest tests/              # Textual Pilot tests for the menu + unit tests
-uv run python scripts/verify_install.py     # smoke test: versions + all three loaders
-uv run python scripts/run_sorting.py --duration 30   # quick sort smoke test (first 30 s)
-uv run python scripts/curation.py show --sorter tridesclous2   # curation record + curated state (label/merge/split/apply)
-uv run python scripts/runs.py list                  # the run store: every saved run + the current pointer (export/regenerate/compare)
-uv run python scripts/check_workbench.py            # every function, end to end, in a sandbox (the Windows acceptance test)
-uv run python scripts/sweep_page.py                 # the sorter shootout: outputs/sweep.html from the store's current runs
+uv sync --group dev              # env + pytest (Python 3.12 pinned, not 3.13)
+uv run python -m pytest tests/   # the whole suite
 ```
-
-Menu actions: `explore | sort | report | gui | traces | compare | verify | phy`
-(`phy` exports the saved sort - curated when one exists - for manual curation in Phy;
-verdicts return via `curation.py import-phy`).
-`verify_install.py` is the loader smoke test - run it after changing `blackrock_io.py`.
-
-Scripts document their own flags in their module docstrings (kept current - read those
-rather than a list here). `compare.py`'s flags: `--online SORTER` (offline sort vs a
-sorted .nev reference; flagless = the two-sorter page), `--nev PATH` (an explicit
-re-exported .nev, e.g. a manual sort), `--delta-ms` (coincidence window - the online
-default is deliberately wide, crossing-stamps lead peak-aligned spikes ~0.6 ms here);
-`make_report.py` is a thin shim
-that forwards argv to the launcher's `report` action.
-
-## Where things live
-
-Each `scripts/` module is a **single source of truth**. Extend it; don't re-implement or
-hardcode around it. Read a module's docstring for its API - they are thorough and stay in
-sync with the code, which is why this file does not restate them.
-
-| Module | Owns | Don't instead |
-|---|---|---|
-| `blackrock_io.py` | loading this dataset | open the files with neo/SI directly |
-| `sorters.py` | which sorters exist / are runnable, params, Docker | hardcode a sorter list |
-| `probes.py` | electrode geometry (profiles, active probe, sorter fit) | build a `Probe` inline |
-| `sort_summary.py` | the six array/yield metrics + the unit rollup (`unit_rollup`: strong / thin-evidence / sub-threshold / not-judged verdicts, plain-words isolation phrases, the takeaway + contact lines every surface quotes) | recompute amplitudes ad hoc, or re-decide "strong" outside the rollup |
-| `curation.py` | the curation record (merge/split/label decisions), applying it to a curated Sorting, and curated-vs-raw state - `preferred_analyzer()` is the one home for "curated wins when it exists" | test for `curated/` folders directly, or re-decide which analyzer a surface shows |
-| `runs.py` | the versioned run store: where runs live, which is current, provenance, regenerate-from-record - `runs.sort_paths()` is the one path resolver (curation.py delegates to it) | build `outputs/<sorter>/...` paths by hand, or read a run dir without the pointer |
-| `sort_progress.py` | the JSON event protocol between `run_sorting` and the TUI | print status for the UI to scrape |
-| `run_sorting.py` | the sort pipeline + its terminal presentation | |
-| `report.py` | self-contained `outputs/report.html` (Plotly inlined; `CHART_TEMPLATE` is the shared chart theme compare.py applies too) | |
-| `viz_palette.py` | chart colors for EVERY HTML surface + the deck: the validated periwinkle palette (categorical light/dark, ramp, diverging, status, chrome, DECK) with the validation commands in its docstring | hardcode a chart hex, or change a value without re-running the dataviz validator |
-| `sweep_page.py` | the sorter-shootout page (`outputs/sweep.html`): per-sorter pair-test verdicts + recovery vs the manual .nev, judged via compare.py, effective params from run provenance | re-implement matching, or build a second shootout surface |
-| `ui.py` | shared rich styling, themes, fallback-menu widgets | |
-| `spike_app.py` + `menu_app.py` + `SpikeInterface_Menu.py` (root) | Spike 2.0 app (rail, panes, Settings, palette, Runs) + the modals it reuses (view) + controller (data/actions) | |
-| `journey.py` | the rail's stage marks, the next step, the probe map, output freshness, runs overview + recipes, and the palette's action table | decide done/stale/next in the view |
-| `settings.py` | every editable setting: schema, validation, defaults, and the `run_sorting` flags they become | add a knob the Settings screen and the sort argv don't both get |
-| `unit_evidence.py` | per-unit waveform / ISI / amplitude evidence for 4 Judge's at-a-glance drawing (reads the analyzer; µV-gated) | compute evidence in the view |
-| `unit_page.py` | the units page (`units.html` in each run folder): every unit's real plots, what `v` on 4 Judge opens | judge units from the terminal drawing |
-| `check_workbench.py` | the sandboxed end-to-end check of every function (the Windows acceptance test) | test against the real outputs/ or settings |
-
-The six metrics `sort_summary` owns: **V_pp**, **SNR**, **noise floor**, **yield**
-(% of electrodes that are peak channel of ≥1 unit), **units/ch**, **units/active-ch**.
-They surface in four places - the `run_sorting` terminal card, `report.html`, the menu's
-sort result card, and `comparison.html`. Change the computation in one place only.
-
-## Invariants that bite
-
-Things that are wrong-by-default. Preserve them when editing.
-
-### The sort pipeline
-
-```
-read_broadband(attach_probe=False) → drop non-neural aux channels → set_probe(active probe)
-    → bandpass_filter(300–6000) → detect + drop bad channels → common_reference(global, median)
-    → run_sorter → save Sorting, then build SortingAnalyzer + metrics → outputs/<sorter>/
-```
-
-- **Aux channels are dropped first** (`bio.neural_channel_ids()` + `bio.select_channels()`;
-  keep them with `--keep-analog`). The ordering *is* the point: aux channels would poison the
-  common median reference that every neural channel is referenced against, and make the sorter
-  emit spurious units. Any new sort-adjacent code must drop them too.
-- **Bad channels leave before the CMR too** (PRE1, 2026-08-18): `detect_bad_channels`
-  (method `mad`, seed + threshold pinned for determinism) runs post-bandpass; flagged and
-  `--bad-channels`-named channels are excluded from reference AND sort, geometry preserved,
-  recorded in `run_info.json`'s `bad_channels` block and stated on every surface that shows
-  channels/yield. Auto-detection refuses wholesale above 25% of the array; manual names
-  always pass but must leave ≥2 channels. **On this recording nothing is flagged - the E1
-  channel-1 pathology is sub-300 Hz, so the bandpass removes it before the median; that
-  measured negative is the point, not a bug.** Note tridesclous2 is measurably
-  non-deterministic on this recording (14/16/18 units across identical runs) - never treat
-  unit counts/ids as stable across re-sorts.
-- **The sort passes `attach_probe=False`** and applies geometry from the probes layer
-  (`probes.build()` → `set_probe()`), *not* `attach_dummy_probe()`.
-- **Runs are versioned and never clobber** (W2, 2026-08-19): each sort lands in
-  `outputs/<sorter>/runs/<run_id>/`; `current.json` is an atomically-replaced pointer every
-  surface resolves through `runs.sort_paths()`; a `--duration` smoke run is refused as
-  current and the incumbent full run is pinned (`--make-current` overrides); legacy
-  `outputs/<sorter>/` layouts resolve read-only. The curation record, `curated/`, and
-  `phy/` ride inside the run they describe. No reproduction criterion may use unit
-  counts/ids (tdc2 non-determinism is measured law).
-- **Quality metrics are non-fatal.** The Sorting is saved *before* metrics run, so a metrics
-  crash degrades to success-with-note (rc 0) rather than discarding units - and the handler
-  deletes the half-built `analyzer/`, `quality_metrics.csv`, `summary.*` so downstream
-  surfaces never read stale derived data.
-- **`--progress json` keeps stdout pure**: JSON events go to stdout; human/rich output and the
-  sorters' own fd-1 writes are redirected to stderr. Never print to stdout in that mode.
-- `report.py` reads sorted-unit data **only** from the saved `SortingAnalyzer`. The loose
-  `outputs/<sorter>/sorting/` folder and `quality_metrics.csv` are leftovers from other runs -
-  ignore them.
-
-### µV scaling - the double-scaling trap
-
-The `SortingAnalyzer` returns µV, so `templates` and `noise_levels` are **already scaled**.
-`compute_summary` gates on `analyzer.return_in_uV` and must **not** re-apply the channel
-gain. This rig's gain is `0.249977 µV/count`, so re-applying it *multiplies by 0.25* - the
-bug this caused made V_pp and noise come out **~4× too small**, not too large.
-
-Both `create_sorting_analyzer` call sites (`run_sorting`, `curation`) pin
-`return_in_uV=True` explicitly; the gate stays as the second line of defence - don't remove it.
-
-**Regression canary:** noise floor is a property of the *recording* (post-bandpass + CMR),
-so it lands at **~4 µV for every sorter** (observed 3.88–4.02 across all saved sorts). If it
-varies by sorter, or reads **~1 µV**, the gain has been re-applied.
-
-### Geometry
-
-The Blackrock files carry no probe map, so geometry is a *user choice*, owned entirely by
-`probes.py`. The active probe defaults to this rig's real **NeuroNexus A1x16-3mm-100-703**
-(`probes.DEFAULT_PROBE = "nnx-a1x16-3mm-100"`, 16 contacts @ 100 µm); the `independent`
-placeholder (no two channels neighbours) remains available.
-
-- **Geometry only *softly re-ranks* sorters** (`probes.fit()`); it never blocks one.
-  **Sorting is not blocked on geometry - don't tell the user it is.**
-- 100 µm puts this probe in the `sparse` density class, which is *why* `recommended_for()`
-  keeps `tridesclous2` as the default sorter.
-- **Fit failure is asymmetric by design:** an *explicit* `--probe`/`--probe-file` that doesn't
-  fit is a hard error (rc 1); the *default* probe not fitting warns and falls back to the
-  `independent` placeholder.
-- **The active probe resolves in one place:** `probes.active_name()` (`.si_menu.json`'s
-  `active_probe` when the library has it, else `DEFAULT_PROBE`). A flagless CLI sort and
-  `show_channels` use it; the menu still passes `--probe <active>` explicitly.
-
-### Loaders (`blackrock_io.py`)
-
-- **neo file sets:** neo keys on the filename *without* extension (`foo.nev` + `foo.ns2` +
-  `foo.ns5` = one set). Pass `find_blackrock_base()`'s extension-less stem to
-  `read_blackrock`/`get_neo_streams`. `read_spikes` is the exception - it appends `.nev`.
-  Discovery prefers a stem that carries `.nsX` data (a stray/extra `.nev` beside the set -
-  e.g. a manual re-export - can never be picked by sort-order luck), falls back to a lone
-  `.nev` only when no analog data exists, and **refuses honestly, naming the candidates**,
-  when several sets are genuinely ambiguous (callers degrade via `FileNotFoundError`).
-- **Stream selection:** pass exactly **one** selector. `read_lfp` normalises to `stream_id`
-  and leaves `stream_name=None` (SI accepts both, and `stream_name` silently wins).
-  `read_broadband` picks the **highest-rate** stream and raises below 10 kHz (i.e. when only
-  LFP is present).
-- **NEV clock:** spike sample indices → seconds via `NEV_TIMESTAMP_RATE = 30_000.0`.
-- **`set_probe()` returns a new recording** - it does not mutate in place.
-- **`read_events` raises** on a neo parse failure; it returns `[]` only when there are
-  genuinely no event channels. Callers must wrap it.
-- **Blackrock unit ids** - semantics owned by `blackrock_io` (`unit_class`,
-  `UNIT_CLASS_LABELS`, `online_unit_labels`; consumed by compare/explore from that one
-  home): `0` = unsorted threshold crossings, `1..n` = online-sorted units,
-  `255` = noise/invalidated.
-
-### Sorters
-
-- The four locally-runnable sorters (`tridesclous2`, `spykingcircus2`, `lupin`, `simple`) are
-  SpikeInterface's own **internal** sorters - they need no external binary, so they are always
-  installed. Everything else needs Docker or a GPU.
-- **Docker is only a fallback for sorters you don't have** (`sorters.uses_docker()`): an
-  installed sorter runs natively even with Docker on.
-- **GPU sorters** (kilosort*, pykilosort, yass) are listed but never offered here - no NVIDIA
-  GPU, and Docker-on-Mac has no GPU passthrough.
-- `group_of()` is the *stable* grouping (daemon-independent, so a sorter never jumps groups
-  when Docker starts/stops); `status()` reflects the live daemon. Don't confuse them.
-
-### Menu (Spike 2.0 - `goals/GOAL_V2.md` is its spec of record, 2026-09-27)
-
-- **The view imports no SpikeInterface.** `scripts/spike_app.py` (the app) and
-  `scripts/menu_app.py` (the modals it reuses) talk to `MenuController` - in the root
-  `SpikeInterface_Menu.py`, *not* `scripts/` - through the `Controller` Protocol in
-  `spike_app`, which is why tests inject `tests/conftest.py`'s FakeController. What is done /
-  stale / next is decided by `journey.py`, never by the view. (The *process* imports SI via
-  the controller at startup; this is a testability boundary, not an import-cost claim.)
-- **Keys:** `1`-`6` are the rail's stages (Ben's 2026-09-27 "build it" retired the old
-  historical 1-6 meanings); `Esc` returns Home and never exits; `/` palette, `,` Settings,
-  `?` help, `q` quit. Every other letter belongs to one pane and is printed on that pane's
-  key line; `ui.HELP_TOPICS` names them all (pinned against the panes' bindings).
-- **A bare run on a non-TTY builds the report** rather than opening the app - a piped or CI
-  invocation silently runs the `report` action.
-- Sorting runs *in-UI* via a `run_sorting.py --progress json` subprocess, never `suspend()`;
-  explore / verify / apply / Phy export+import / sweep / reproduce run as logged child
-  processes (`CommandScreen`, logs in `outputs/logs/`). Only the Qt windows (gui, traces)
-  suspend the app, re-invoking the launcher (`_self`).
-- Every panel truncates its own lines to the live width (Textual re-wraps option prompts, so
-  an overlong row becomes two). The key line drops whole items, never half a label. 80×24
-  and 64 columns draw every pane (pinned by the Pilot size test and the SVG snapshots).
-
-## Conventions
-
-- **NO EM DASHES (U+2014), anywhere, ever** (Ben, 2026-08-19): code, docs, UI strings,
-  commit messages, board files, the deck. Substitutes: hyphen, colon, period, middot.
-  Pinned repo-wide by `tests/test_no_em_dashes.py` (exempts nothing).
-
-- `matplotlib.use("Agg")` **before** importing pyplot; figures go to `outputs/` (git-ignored).
-- Entry points: `if __name__ == "__main__": raise SystemExit(main())`, with `main()`
-  returning an int - also required for `n_jobs > 1` on Windows (`spawn`).
-- `pathlib` throughout (`REPO_ROOT` from `blackrock_io`); code must run on macOS/Windows/Linux.
-- **Python 3.12, not 3.13** - broadest prebuilt-wheel coverage on Windows, so installs never
-  need a C compiler. Enforced by `requires-python = "==3.12.*"` + `.python-version`.
-  Pins that matter: `zarr<3` (SI doesn't support 3.x), `plotly<6` (report inlines
-  `plotly.offline.get_plotlyjs`).
-- Qt binding is **PySide6** under uv, **PyQt5** under the conda fallback - don't install both
-  into one env.
-- Local state is git-ignored: `.si_menu.json` (exactly `theme`, `use_docker`, `sorter_params`,
-  `active_probe`, `seen_welcome`, `seen_probe_setup`, `active_sorter`, `last_result`,
-  `quality_rule`, plus v2's `sort_settings`, `data_dir` and `built` - `settings.py` owns the
-  schema of `sort_settings`/`quality_rule`/`data_dir` and writes them from the Settings
-  screen; `built` stamps which run each output was built from) and `probes.json` (the user
-  probe library).
-- Tests live in `tests/`; the menu is covered by Textual `Pilot` tests. Run the whole suite
-  before claiming a menu change works - the view is easy to break in ways only Pilot catches.
-  A green suite still isn't the whole story for sort-adjacent changes: the real feedback loop
-  is `run_sorting.py --duration 30` (plus one containerized sort when touching Docker paths).
-- **The user edits this repo concurrently from other sessions.** The tree can change
-  mid-session and unrelated WIP can appear even in files you're editing. Re-check
-  `git status`/`git diff` immediately before committing, stage explicit paths (never
-  `git add -A`), and put their unrelated changes in their own commit before yours.
