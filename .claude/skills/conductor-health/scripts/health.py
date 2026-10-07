@@ -25,7 +25,9 @@ def tokens(text): return len(text) // 4
 
 
 def memory_index(repo: Path) -> Path:
-    slug = str(repo.resolve()).replace("/", "-")
+    # Claude Code names a project dir by replacing every non-alphanumeric char of its path with "-"
+    # (/Users/x/repo -> -Users-x-repo; C:\Users\x\repo -> C--Users-x-repo).
+    slug = re.sub(r"[^A-Za-z0-9]", "-", str(repo.resolve()))
     return Path.home() / ".claude" / "projects" / slug / "memory" / "MEMORY.md"
 
 
@@ -42,7 +44,7 @@ def always_loaded(repo: Path) -> list[Path]:
 
 
 def tracked(repo: Path) -> list[str]:
-    r = subprocess.run(["git", "-C", str(repo), "ls-files"], capture_output=True, text=True)
+    r = subprocess.run(["git", "-C", str(repo), "ls-files"], capture_output=True, text=True, encoding="utf-8", errors="replace")
     if r.returncode == 0:
         return r.stdout.split("\n")
     out, skip = [], {"node_modules", ".git", ".venv", "venv", "__pycache__", ".next", "dist", "build"}
@@ -94,7 +96,7 @@ def main():
     rows = [measure(p, repo, "always", today, files) for p in always] + [measure(p, repo, "state", today, files) for p in state]
     try:
         branches = subprocess.run(["git", "-C", str(repo), "branch", "--format=%(refname:short) %(committerdate:short)"],
-                                  capture_output=True, text=True).stdout.split("\n")
+                                  capture_output=True, text=True, encoding="utf-8", errors="replace").stdout.split("\n")
         stale = [b for b in branches if b and (today - datetime.strptime(b.split()[-1], "%Y-%m-%d").date()).days > 21]
     except Exception:
         stale = []

@@ -13,7 +13,7 @@ Ben, without losing a ruling or a fact that is still in force.
 
 ## Measure first
 
-Run `python3 ~/.claude/skills/conductor-health/scripts/health.py <repo>` (add `--json` for the raw numbers).
+Run `python3 ~/.claude/skills/conductor-health/scripts/health.py <repo>` (`python` on Windows, which has no `python3`) (add `--json` for the raw numbers).
 It is read-only. It reports, per file: estimated tokens and a grade (always-loaded files are held to 2.5k
 tokens before "heavy", state files to 8k), the share of the file that is finished work, lines dated over 30
 days ago, lines over 600 characters, cited paths that no longer exist, sentences repeated across files, and
