@@ -11,7 +11,7 @@ it the next morning, and claim only what a tool result in this session shows.
 **Run each check once.** An edit that compiles is not a change that works - but more passes
 are not better. Do not stack additional self-verification on top of these checks, re-run a
 gate you have already run green, or spawn an agent to re-check a conclusion you have already
-checked; the independent Fable review below is the second set of eyes.
+checked; the independent review below is the second set of eyes.
 
 ## Map change-type → gates
 
@@ -41,7 +41,7 @@ never a green nothing).
 
 ## For substantive slices
 
-One fresh-context review pass, by Fable - not an extra round of self-checking. Spawn the
+One fresh-context review pass - not an extra round of self-checking. Spawn the
 `reviewer` agent with the brief's definition-of-done and the diff, no access to your
 reasoning. Ask for everything it finds, ranked and severity-labeled - a prompt that asks
 only for high-severity issues gets a shorter list, not a cleaner diff. Resolve or record the

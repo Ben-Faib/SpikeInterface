@@ -48,7 +48,7 @@ import run_sorting as rs  # noqa: E402
 import runs  # noqa: E402
 import sorters  # noqa: E402
 
-# The internal sorters: no external binary, so always installed (CLAUDE.md).
+# The internal sorters: no external binary, so always installed (docs/INVARIANTS.md).
 LOCAL_SORTERS = ["tridesclous2", "spykingcircus2", "lupin", "simple"]
 
 

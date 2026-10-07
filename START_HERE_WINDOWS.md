@@ -28,7 +28,7 @@ Code session on the lab machine. `START_HERE_WINDOWS.html` is the same content w
 Audit Spike 2.0 on this Windows machine before it goes to the lab, functionally and
 visually, and write up what you find.
 
-Where things are: this repo, branch Version-2. Read CLAUDE.md (invariants, and the
+Where things are: this repo, branch Version-2. Read CLAUDE.md and docs/INVARIANTS.md (the rules, and the
 ~4 µV noise-floor canary), goals/GOAL_V2.md (what Spike 2.0 is meant to do - the spec
 to audit against), docs/WINDOWS_TEST.md (what a person would check by hand) and this
 file, START_HERE_WINDOWS.md. The recording should be in the repo root; if the three
