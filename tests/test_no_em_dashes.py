@@ -1,6 +1,7 @@
 """The em-dash pin: U+2014 is banned from this repo (Ben, 2026-08-19).
 
-Hard boundary from the GOAL_PRESENT interview: the character disappears from
+Hard boundary from the 2026-08-19 interview (NORTHSTAR.md, decisions of
+record): the character disappears from
 UI strings, HTML surfaces, docs, code, tests, board files, and stays gone.
 This test walks every git-tracked file and fails on any occurrence, naming
 file and line. Exempt: nothing.
@@ -41,8 +42,8 @@ def test_no_em_dash_in_any_tracked_file():
         if len(offenders) >= 20:
             break
     assert not offenders, (
-        "U+2014 is banned from this repo (hard boundary, goals/GOAL_PRESENT.md "
-        "decision 4). Replace with hyphen/colon/period/middot:\n"
+        "U+2014 is banned from this repo (hard boundary, NORTHSTAR.md "
+        "2026-08-19). Replace with hyphen/colon/period/middot:\n"
         + "\n".join(offenders)
     )
 
