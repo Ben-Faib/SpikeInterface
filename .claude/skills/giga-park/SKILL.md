@@ -1,6 +1,6 @@
 ---
 name: giga-park
-description: Park the head conductor itself, so Ben can close everything and reopen the whole setup later with one click. Parks every run session under it, writes the conductor's notes and a start prompt that opens with the decisions waiting on Ben, and puts a clickable "<Repo> Conductor" launcher on the Desktop that reopens the conductor at xhigh effort (macOS: an app that opens it in iTerm2, a new tab or a new window if none; Windows: a shortcut that opens it in a new WezTerm window). Use on "/giga-park", "park the conductor", "park everything", "I'm stopping for the day", or before restarting the terminal or the machine. Only for a head conductor session; to park one worker session use `park`.
+description: Park the head conductor itself, so Ben can close everything and reopen the whole setup later with one click. Parks every run session under it, writes the conductor's notes and a start prompt that opens with the decisions waiting on Ben, and puts a clickable "<Repo> Conductor" launcher on the Desktop that reopens the conductor at xhigh effort (an iTerm2 app on macOS, opening a new tab or a new window if none; a shortcut to a new WezTerm window on Windows). Use on "/giga-park", "park the conductor", "park everything", "I'm stopping for the day", or before restarting the terminal or the machine. Only for a head conductor session; to park one worker session use `park`.
 ---
 
 # Giga-park
